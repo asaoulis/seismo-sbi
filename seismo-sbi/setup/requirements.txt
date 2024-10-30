@@ -1,0 +1,5 @@
+jupyter
+matplotlib
+joblib
+coverage
+sbi
