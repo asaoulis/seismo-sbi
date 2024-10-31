@@ -17,6 +17,13 @@ Seismic waveform data contains complicated noise that common Gaussian likelihood
 
 Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/), though `seismo-sbi` is designed to be forward model agnostic.
 
+### `seismo-sbi` workflow
+
+SBI builds a dataset of realistic observations, drawing samples from likelihood directly. It then trains a NDE to model the resulting likelihood (or posterior) distribution. Once trained, new observations can be fed through the NDE to perform inference, completely foregoing the forward model. 
+
+![SBI Cartoon](assets/imgs/sbi_cartoon.png)
+_Fig. 3 from the `seismo-sbi` paper._
+
 ## Getting Started <a name = "getting_started"></a>
 
 ### Prerequisites
