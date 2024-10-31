@@ -1,27 +1,20 @@
 from constants import ( UPFLOW_config, STATION_CODES_PATHS, 
                        STATION_LOCATIONS, STATION_CODES_PATHS )
 
-import sys
-import os
-import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
-import math as m
 
-sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname('.'), '..')))
+from seismo_sbi.data_handling.noise_collection import NoiseCollector, EventNoiseAggregator, ProcessedDataSlicer
+from seismo_sbi.data_handling.event_window_selection import EventWindowSelector
+from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
 
-from src.data_handling.noise_collection import NoiseCollector, EventNoiseAggregator, ProcessedDataSlicer
-from src.data_handling.event_window_selection import EventWindowSelector
-from src.data_handling.noise_database import NoiseDatabaseGenerator
-
-from src.instaseis_simulator.receivers import Receivers
-from src.sbi.noises.covariance_estimation import EmpiricalCovarianceEstimator
+from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.sbi.noises.covariance_estimation import EmpiricalCovarianceEstimator
 
 
 NUM_JOBS = 14
 
-noise_name = 'november_cluster'
+noise_name = 'azores_event'
 
 DAILY_OUTPUT_DIRECTORY = Path(f'data/noise/{noise_name}_daily')
 DAILY_OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -30,44 +23,12 @@ NOISE_OUTPUT_DIRECTORY = Path(f'data/noise/{noise_name}_samples')
 NOISE_OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
 date_format = '%Y-%m-%d'
-noise_start_time = '2021-10-23'
-noise_end_time = '2021-11-15'
+noise_start_time = '2022-01-10'
+noise_end_time = '2022-01-13'
 
-
-# event_window = [datetime(2022, 3, 29, 21, 55, 16), datetime(2022, 3, 29, 22, 10, 16)] # sao jorge M4
-# event_location = (38.67, -28.1)
-
-# # event_location = (sao_jorge_lat, sao_jorge_lon)
-# event_window = [datetime(2022, 2, 16, 4, 31, 40), datetime(2022, 2, 16, 4, 46, 40)] # madeira M5
-# event_location = (32.3700, -16.7000) # madeira
-
-# # 021/12/07 15:06:52.81 Event 621618746 Azores-Cape St. Vincent Ridge
-# event_window = [datetime(2021, 12, 7, 15, 5, 52), datetime(2021, 12, 7, 15, 20, 52)]
-# event_location = (37.6302,  -19.3792)
-
-# # north islands 2022/01/13 06:46:12.23 Event 621827081
-# event_window = [datetime(2022, 1, 13, 6, 45, 12), datetime(2022, 1, 13, 7, 0, 12)]
-# event_location = (39.9267,  -29.9392)
-
-# 2022/03/06 02:26:13.60 Event 622117678 Azores Islands region # north_2
-# event_window = [datetime(2022, 3, 6, 2, 25, 13), datetime(2022, 3, 6, 2, 40, 13)]
-# event_location = (40.7900, -29.1900)
-
-# 2021/11/10 11:02:12.20 Event 621385927 Azores Islands azores_2
-event_window = [datetime(2021, 11, 10, 11, 1, 12), datetime(2021, 11, 10, 11, 16, 12)]
-event_location = (36.7800,  -33.3700)
-
-# 2021/12/31 00:58:33.50 Event 621657646 Azores Islands region azores_3
-# event_window = [datetime(2021, 12, 31, 0, 57, 33), datetime(2021, 12, 31, 1, 12, 33)]
-# event_location = (37.5700,  -31.7500)
-
-# # 2022/01/13 06:46:15.90 Event 621827081 Azores Islands azores_4
-# event_window = [datetime(2022, 1, 13, 6, 45, 15), datetime(2022, 1, 13, 7, 0, 15)]
-# event_location = (40.1700, -29.7000 ) 
-
-# 2021/11/14 16:32:44.03 Event 621468712 Azores Islands region gloria
-# event_window = [datetime(2021, 11, 14, 16, 31, 44), datetime(2021, 11, 14, 16, 46, 44)]
-# event_location = (37.1036 , -23.9688)
+# # north islands 2022/01/13 06:46:12.23 Azores Islands Event 621827081
+event_window = [datetime(2022, 1, 13, 6, 45, 12), datetime(2022, 1, 13, 7, 0, 12)]
+event_location = (39.9267,  -29.9392)
 
 max_frequency =  1
 noise_collector = NoiseCollector(UPFLOW_config, STATION_CODES_PATHS, STATION_LOCATIONS)
@@ -125,7 +86,7 @@ data_slicer = ProcessedDataSlicer(data_folder=DAILY_OUTPUT_DIRECTORY,
 data_saver = NoiseDatabaseGenerator(data_slicer.load_noise_window_data, data_vector_length=901, num_jobs=NUM_JOBS)
 data_saver._collect_and_save_noise(Path('./data/events/'), noise_window=event_window, name=f'{noise_name}_event_filtered_1hz')
 
-h5_files = list(Path(DAILY_OUTPUT_DIRECTORY).glob("*.h5"))[:-6]
+h5_files = list(Path(DAILY_OUTPUT_DIRECTORY).glob("*.h5"))[:-1]
 successful_files = []
 for h5_file in h5_files:
     # Extract the file's stem (filename without extension)

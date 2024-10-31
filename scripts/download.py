@@ -1,33 +1,59 @@
+import argparse
+from pathlib import Path
 import obspy
-from obspy.clients.fdsn.mass_downloader import RectangularDomain, \
-    Restrictions, MassDownloader, CircularDomain
-import os
+from obspy.clients.fdsn.mass_downloader import Restrictions, MassDownloader, CircularDomain
+from obspy.clients.fdsn import Client
+import sys
 
+def get_arguments():
+    parser = argparse.ArgumentParser(description="Download seismic data and station XML files.")
+    parser.add_argument(
+        '-o', '--output_dir', type=Path, default=Path("./data"),
+        help="Directory to save downloaded data. Defaults to ./data"
+    )
+    return parser.parse_args()
 
-# Rectangular domain containing parts of southern Germany.
-#idomain = RectangularDomain(minlatitude=38.2, maxlatitude=39.15,
-#                           minlongitude=-29, maxlongitude=-27)
-domain = CircularDomain(latitude=38.67, longitude=-28.15, minradius=0, maxradius=3.00)
-# domain = CircularDomain(latitude=32.370, longitude=-16.7000, minradius=0, maxradius=5.00)
-restrictions = Restrictions(
-    station="*",
-    starttime=obspy.UTCDateTime(2021, 11, 1),
-    endtime=obspy.UTCDateTime(2021, 11, 11),
-    # starttime=obspy.UTCDateTime(2021, 9, 1),
-    # endtime=obspy.UTCDateTime(2021, 9, 2),
-    chunklength_in_sec=86400,
-    channel_priorities= ["HH[ZNE12]", "BH[ZNE12]"],
-    reject_channels_with_gaps=False,
-    minimum_length=0.0,
-    minimum_interstation_distance_in_m=100.0)
+def check_output_directory(path):
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if not path.is_dir():
+            raise NotADirectoryError(f"The path {path} is not a directory.")
+    except Exception as e:
+        print(f"Error with output directory: {e}")
+        sys.exit(1)
 
-stor = ("stor/{station}/{starttime.year}.{starttime.julday:03g}/{network}.{station}.{location}.{channel}.{starttime.year}.{starttime.julday:03g}.mseed")
-def get_mseed_storage(network, station, location, channel, starttime, endtime):
-    ROOT = "/data/UPFLOW/_azores_obs_/IPMA_DATA_EARLY/stor/"
-    return os.path.join(ROOT, "%s/%s.%03g/%s.%s.%s.%s.%s.%03g.mseed" % (station, starttime.year, starttime.julday, network, station, location, channel, starttime.year, starttime.julday))
+def get_mseed_storage(output_dir, network, station, location, channel, starttime, endtime):
+    return str(output_dir / f"{station}/{starttime.year}.{starttime.julday:03g}/{network}.{station}.{location}.{channel}.{starttime.year}.{starttime.julday:03g}.mseed")
 
-mseed_storage = get_mseed_storage
+def main():
+    args = get_arguments()
+    output_dir = args.output_dir
+    check_output_directory(output_dir)
 
-mdl = MassDownloader(providers=["http://ceida.ipma.pt"])
-mdl.download(domain, restrictions, mseed_storage=mseed_storage,
-             stationxml_storage="stations")
+    domain = CircularDomain(latitude=38.67, longitude=-28.15, minradius=0, maxradius=5.00)
+    mdl = Client("http://ceida.ipma.pt/")
+    mdl.get_stations(
+        latitude=38.67, longitude=-28.15, minradius=0, maxradius=5.00,
+        channel="*H*", level="response", filename="stations.xml"
+    )
+
+    restrictions = Restrictions(
+        station="*",
+        starttime=obspy.UTCDateTime(2022, 1, 10),
+        endtime=obspy.UTCDateTime(2022, 1, 14),
+        chunklength_in_sec=86400,
+        channel_priorities=["HH[ZNE12]", "BH[ZNE12]"],
+        reject_channels_with_gaps=False,
+        minimum_length=0.0,
+        minimum_interstation_distance_in_m=100.0
+    )
+
+    mdl = MassDownloader(providers=["http://ceida.ipma.pt"])
+    mdl.download(
+        domain, restrictions,
+        mseed_storage=lambda *args: get_mseed_storage(output_dir, *args),
+        stationxml_storage=output_dir / "stations"
+    )
+
+if __name__ == "__main__":
+    main()

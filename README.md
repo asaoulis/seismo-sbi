@@ -1,6 +1,6 @@
 ## Full-waveform seismic source inversion using simulation-based inference
 
-This is the official repo used to produce the results in [https://arxiv.org/abs/2410.23238](https://arxiv.org/abs/2410.23238).
+This is the official repo used to produce the results in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238).
 
 ## Table of Contents
 

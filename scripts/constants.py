@@ -4,9 +4,7 @@ import numpy as np
 import sys
 import os
 
-sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname('.'), '..')))
-from src.instaseis_simulator.receivers import Receivers
+from seismo_sbi.instaseis_simulator.receivers import Receivers
 
 receivers = Receivers('data/UPFLOW_STATIONS')
 
