@@ -1,0 +1,16 @@
+sbi==0.21.0
+setuptools
+wheel
+jupyter
+matplotlib
+joblib
+tqdm
+obspy==1.4.0
+obspyDMT==2.2.11
+pyyaml
+scipy==1.10.1
+scikit-learn==1.2.1
+emcee
+ChainConsumer==0.34.0
+tarp==0.1.0
+h5py

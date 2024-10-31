@@ -25,3 +25,4 @@ paper/
 *.dat
 data/
 final_plots/
+*.egg-info/
