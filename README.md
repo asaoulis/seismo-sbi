@@ -21,7 +21,7 @@ Forward modelling is currently performed using [`Instaseis`](https://instaseis.n
 
 SBI builds a dataset of realistic observations, drawing samples from likelihood directly. It then trains a NDE to model the resulting likelihood (or posterior) distribution. Once trained, new observations can be fed through the NDE to perform inference, completely foregoing the forward model. 
 
-![SBI Cartoon](assets/imgs/sbi_cartoon.png)
+![SBI Cartoon](assets/imgs/sbi_diagram.png)
 _Fig. 3 from the `seismo-sbi` paper._
 
 ## Getting Started <a name = "getting_started"></a>
