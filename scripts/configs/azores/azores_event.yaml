@@ -1,0 +1,83 @@
+run_name: azores_real_event
+output_directory: .
+job_name: full_inversion
+generate_dataset: True
+num_jobs: 20
+
+seismic_context:
+  components: 'ZEN'
+  stations_path: './configs/azores/azores_stations.txt'
+  station_components_path: './configs/azores/azores_components.json'
+  seismogram_duration: 900
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.04
+      corners: 4
+      zerophase: False
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [-2.1e+16, 0.386e+16, 1.72e+16, 0.829e+16, 0.333e+16, 0.892e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16],
+              [5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16]]
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [39.9267,  -29.9392 , 8, 0]
+      stencil_deltas: [0.00001, 0.00001, 0.001, 0.001]
+      bounds: [[39.9267, -29.9392, 8.5, -1],
+              [39.9267, -29.9392, 24.5, 1]]
+  nuisance: {}
+
+simulations:
+  num_simulations: 4000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "uniform"
+  use_fisher_to_constrain_bounds: 6
+
+
+compression: 
+
+  optimal_score:
+    empirical_block:  './data/noise/azores_event_samples'
+
+inference:
+  sbi:
+    method: 'posterior'
+
+    noise_model: 
+      type: 'real_noise'
+      noise_catalogue_path: './data/noise/azores_event_samples'
+      noise_level: 3.e-6
+
+  likelihood: 
+    run: True
+    ensemble: True
+    covariance: empirical
+    num_samples: 20000
+    walker_burn_in: 1000
+    move_size: 0.0005
+
+
+jobs:
+  real_events: 
+    real_north: ./data/events/azores_event_event_filtered_1hz.h5
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: './data/noise/azores_event_samples'
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [[optimal_score, real_noise], [gaussian_likelihood, real_noise]]
+    disable_plotting: False

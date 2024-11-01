@@ -100,7 +100,7 @@ def main():
     # Generate synthetics dataset
     Pipeline = SingleEventPipeline if config.pipeline_type == 'single_event' else MultiEventPipeline
     Pipeline = VaryDatasetSizeEventPipeline if config.pipeline_type == 'vary_dataset_size' else Pipeline
-    sbi_pipeline = Pipeline(config.pipeline_parameters, config.compression_methods, config_path)
+    sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
 
     test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)

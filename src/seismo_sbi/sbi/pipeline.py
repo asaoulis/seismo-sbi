@@ -83,6 +83,7 @@ class SBIPipeline:
         self.data_vector_length = None
         self.trace_length = None
         self.compressors = {}
+        self.compression_methods = None
 
         self.training_noise_sampler = None
         self.test_noises = {}
@@ -98,6 +99,19 @@ class SBIPipeline:
                                downsampled_length=None):
 
         self._load_base_pipeline_params(simulation_parameters, model_parameters, dataset_parameters, downsampled_length)
+
+    def compute_data_vector_properties(self, test_jobs_paths, real_event_jobs_config):
+        if len(test_jobs_paths) > 0:
+            data_vector_length  = self.data_loader.load_flattened_simulation_vector(test_jobs_paths[0]).shape[0]
+        else:
+            real_event_data = list(real_event_jobs_config.values())[0]
+            if isinstance(real_event_data, str):
+                real_event_path = real_event_data
+            else:
+                real_event_path = real_event_data['path']
+            data_vector_length = self.data_loader.load_flattened_simulation_vector(real_event_path).shape[0]
+
+        self.data_vector_length = data_vector_length
 
     def _load_base_pipeline_params(self, simulation_parameters, model_parameters, dataset_parameters, downsampled_length):
         self.parameters = model_parameters
@@ -211,6 +225,8 @@ class SBIPipeline:
         return lambda : np.random.normal(0, noise_level *np.ones((self.data_vector_length)))
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
+
+        self.compression_methods = compression_methods
 
         compression_method_details = [compression_method[0] for compression_method in compression_methods]
         score_compression_data = None
@@ -518,7 +534,7 @@ class SBIPipeline:
             plotter.plot_compression(compressed_dataset, compressed_x0, job_name = job_name)
         plotter.plot_posterior(job_name, inversion_data, kde=True)
 
-    def plot_comparisons(self, inversion_results, chain_consumer_config):
+    def plot_comparisons(self, inversion_results, chain_consumer_config, savefig = True):
 
         flattened_param_info = self.parameters.parameter_to_vector('information')
 
@@ -540,7 +556,7 @@ class SBIPipeline:
                                                         for compressor, test_noise in dict_keys}
                     
                     flattened_dict_keys = [item for sublist in dict_keys for item in sublist]
-                    plotter.plot_chain_consumer("_".join(flattened_dict_keys), job_name, chain_consumer_dict, kde=True)
+                    plotter.plot_chain_consumer("_".join(flattened_dict_keys), job_name, chain_consumer_dict, kde=True, savefig=savefig)
                 except Exception as e:
                     print(e)
                     print("ChainConsumer failed, skipping plotting of posterior comparisons")
@@ -551,11 +567,9 @@ from sbi import utils as utils
 
 class SingleEventPipeline(SBIPipeline):
 
-    def __init__(self, pipeline_parameters : PipelineParameters, compression_methods, config_path : str = None):
+    def __init__(self, pipeline_parameters : PipelineParameters, config_path : str = None):
 
         super().__init__(pipeline_parameters, config_path)
-    
-        self.compression_methods = compression_methods
 
     def load_seismo_parameters(self,
                                simulation_parameters : SimulationParameters, 
@@ -624,7 +638,7 @@ class SingleEventPipeline(SBIPipeline):
                 
                 print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
 
-                # plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, "", covariance = self.empirical_cov_mat)
+                plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, "", covariance = self.empirical_cov_mat)
 
                 inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
 
@@ -694,7 +708,7 @@ class SingleEventPipeline(SBIPipeline):
 
     def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details):
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
-        num_iterations = 10 if not only_moment_tensor_variable else 1
+        num_iterations = 25 if not only_moment_tensor_variable else 1
         compression_data = self.compute_compression_data_from_stencil(self.parameters, rerun_if_stencil_exists = True)
         self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data)
         compressor = self.compressors['optimal_score']
@@ -861,8 +875,6 @@ class MultiEventPipeline(SingleEventPipeline):
                     
                 print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
 
-                # plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, "", covariance = self.empirical_cov_mat)
-
                 inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
 
                 yield job_result, inversion_result
@@ -1023,7 +1035,7 @@ class SBIPipelinePlotter:
         plot_path = figure_path / f"./{single_job.job_name}.png"
         plot_stacked_waveforms(receivers.receivers, single_job.data_vector, figname=plot_path)
     
-    def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None):
+    def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None, savefig=True):
             
         figure_path = self.base_output_path / "./misfits"
         figure_path.mkdir(parents=True, exist_ok=True)
@@ -1031,33 +1043,36 @@ class SBIPipelinePlotter:
         misfits_plotter = MisfitsPlotting(receivers, 1, covariance)
         data_vector = single_job.data_vector
 
-        plot_path = figure_path / f"./raw_{single_job.job_name}.png"
+        plot_path = figure_path / f"./raw_{single_job.job_name}.png" if savefig else None
         misfits_plotter.raw_synthetic_misfits(data_vector, synthetics, figname=plot_path)
 
-        plot_path = figure_path / f"./arrival_{single_job.job_name}.png"
+        plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
         misfits_plotter.arrival_synthetic_misfits(data_vector, synthetics, (39.9267,  -29.9392, 20), figname=plot_path)
 
     
-    def plot_posterior(self, test_name, inversion_data, kde=True):
+    def plot_posterior(self, test_name, inversion_data, kde=True, savefig=True):
 
-        figure_path = self.base_output_path / "./inversions"
-        figure_path.mkdir(parents=True, exist_ok=True)
+        figure_path = self.base_output_path / "./inversions" if savefig else None
+        if savefig:
+            figure_path.mkdir(parents=True, exist_ok=True)
 
-        self.plot_chain_consumer(f"inversions", test_name, {"":inversion_data}, kde=kde)
+        self.plot_chain_consumer(f"inversions", test_name, {"":inversion_data}, kde=kde, savefig=savefig)
 
         if "moment_tensor" in self.parameters.names.keys():
-            plot_path = self.base_output_path / f"./beachballs/{test_name}" 
-            plot_path.parent.mkdir(parents=True, exist_ok=True)
+            plot_path = self.base_output_path / f"./beachballs/{test_name}"  if savefig else None
+            if savefig:
+                plot_path.parent.mkdir(parents=True, exist_ok=True)
             self.posterior_plotter.plot_beachball_samples(inversion_data, plot_path=plot_path)
 
-    def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True):
-        plot_path = self.base_output_path / f"./{base_figure_path}" / f"./{test_name}.png" 
-        plot_path.parent.mkdir(parents=True, exist_ok=True)
+    def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True):
+        plot_path = self.base_output_path / f"./{base_figure_path}" / f"./{test_name}.png"  if savefig else None
+        if savefig:
+            plot_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.posterior_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, figsave=plot_path)
 
         if "moment_tensor" in self.parameters.names.keys():
-            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./nodal_params_{test_name}.png" 
+            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./nodal_params_{test_name}.png"  if savefig else None
             self.reparametrised_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, inverse=True, figsave=plot_path)
 
     def plot_compression(self, raw_compressed_dataset, compressed_estimate = None, job_name=None):

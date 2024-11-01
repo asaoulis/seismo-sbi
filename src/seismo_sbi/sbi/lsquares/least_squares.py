@@ -26,7 +26,7 @@ class IterativeLeastSquaresSolver:
     @error_handling_wrapper(num_attempts=3)
     def solve_least_squares(self, observation, compressor, iterations = 5):
         misfit = np.inf
-        damping = 0.5 if iterations > 4 else 0
+        damping = 0.01 if iterations > 4 else 0
         new_parameters = deepcopy(self.model_parameters)
         model_params = new_parameters.parameter_to_vector('theta_fiducial', True)
         true_priors = deepcopy(compressor.prior_mean), deepcopy(compressor.prior_covariance)
@@ -58,7 +58,7 @@ class IterativeLeastSquaresSolver:
             else:
                 damping /= 1.5
             misfit = misfit_new
-            print(misfit_new, damping, flush=True)
+            print(f"chi^2: {misfit_new:.5f}, damping lambda: {damping:.3f}", flush=True)
             
             # Step 4: Compute the update step using the Gauss-Newton method
             theta_MLE = compressor.compute_theta_MLE(observation, damping=damping)

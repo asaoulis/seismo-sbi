@@ -4,6 +4,7 @@
 import yaml
 from math import log10
 from functools import partial
+from copy import copy
 
 from seismo_sbi.plotting.parameters import ParameterInformation, DegreeKMConverter, DegreeType
 from seismo_sbi.instaseis_simulator.receivers import Receivers
@@ -44,31 +45,37 @@ class SBI_Configuration:
         self.test_noise_models = []
         self.plotting_options = None
 
-        self._parsing_callables = [self.parse_main_options,
-                                    self.parse_parameters,
-                                    self.parse_simulations_options,
-                                    self.parse_seismic_context,
-                                    self.parse_compression_options,
-                                    self.parse_sbi_config,
-                                    self.parse_jobs_config]
+        self._parsing_callables = {'job_options': self.parse_main_options,
+                                    'parameters': self.parse_parameters,
+                                    'simulations': self.parse_simulations_options,
+                                    'seismic_context' : self.parse_seismic_context,
+                                    'compression': self.parse_compression_options,
+                                    'inference': self.parse_sbi_config,
+                                    'jobs': self.parse_jobs_config}
 
     def parse_config_file(self, config_file):
         # read yaml config file
         with open(config_file, 'r', encoding = 'utf-8') as stream:
             config = yaml.safe_load(stream)
         
-        for parsing_callable in self._parsing_callables:
-            parsing_callable(config)
+        self.process_configuration_data(config)
+
+    def process_configuration_data(self, config):
+        for name, parsing_callable in self._parsing_callables:
+            if name == 'job_options':
+                subconfig = {key: value for key, value in config.items() if not isinstance(value, dict)}
+            else:
+                subconfig = config[name]
+            parsing_callable(subconfig)
     
     def parse_main_options(self, config):
         # parse top level options 
-        main_options = {key: value for key, value in config.items() if not isinstance(value, dict)}
 
-        self.pipeline_parameters = PipelineParameters(**main_options)
+        self.pipeline_parameters = PipelineParameters(**config)
 
     def parse_parameters(self, config):
 
-        parameters_config = config["parameters"]["inference"]
+        parameters_config = config["inference"]
         for parameter_type in parameters_config.keys():
             if parameter_type in SBI_Configuration.parameter_types:
                 parameter_values =parameters_config[parameter_type] 
@@ -78,7 +85,7 @@ class SBI_Configuration:
                 allowed_types = ', '.join(SBI_Configuration.parameter_types)
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")
         
-        nuisance_config = config["parameters"]["nuisance"]
+        nuisance_config = config["nuisance"]
         for parameter_type in nuisance_config.keys():
             if parameter_type in SBI_Configuration.parameter_types:
                 parameter_values = nuisance_config[parameter_type] 
@@ -97,12 +104,12 @@ class SBI_Configuration:
         self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
 
     def parse_simulations_options(self, config):
-        simulations_config = config["simulations"]
+        simulations_config = config
         self.dataset_parameters = DatasetGenerationParameters(**simulations_config)
         
     
     def parse_seismic_context(self, config):
-        seismic_context_config = config["seismic_context"]
+        seismic_context_config = copy(config)
         receivers_details = seismic_context_config.pop("stations_path")
         receiver_component_details = seismic_context_config.pop("station_components_path")
         seismic_context_config["receivers"] = Receivers(receivers_details, receiver_component_details)
@@ -111,7 +118,8 @@ class SBI_Configuration:
 
     def parse_compression_options(self, config):
 
-        compression_config = config["compression"]
+        compression_config = config
+        self.compression_methods = []
         for compression_type, options in compression_config.items():
             if compression_type in SBI_Configuration.compression_types:
                 self.compression_methods.append((compression_type, options))
@@ -122,14 +130,15 @@ class SBI_Configuration:
     
     
     def parse_sbi_config(self, config):
-        inference_config = config["inference"]
+        inference_config = config
         self.sbi_method = inference_config["sbi"]["method"]
         self.pipeline_type = inference_config["sbi"].get("pipeline", "single_event")
         self.sbi_noise_model = inference_config["sbi"]["noise_model"]
         self.likelihood_config = inference_config["likelihood"]
 
     def parse_jobs_config(self, config):
-        jobs_config = config["jobs"]
+        jobs_config = config
+        self.test_noise_models = []
 
         test_simulations_config = jobs_config["simulations"]
         self.test_job_simulations = TestJobs(**test_simulations_config)

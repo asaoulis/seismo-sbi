@@ -1,3 +1,4 @@
+torch==2.0.0 # not a hard requirement, just worked on my machine
 sbi==0.21.0
 setuptools
 wheel
@@ -14,3 +15,4 @@ emcee
 ChainConsumer==0.34.0
 tarp==0.1.0
 h5py
+pyrocko

@@ -79,13 +79,13 @@ def run_embarrassingly_parallel_simulations(num_parameters, log_probability, bur
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
     sampler = emcee.EnsembleSampler(1, num_parameters, log_probability, moves = GaussianMove(first_size))
     initial  =  np.random.rand(1, num_parameters)
-    state = sampler.run_mcmc(initial, burn_in, skip_initial_state_check=True, progress=True)
+    state = sampler.run_mcmc(initial, burn_in, skip_initial_state_check=True, progress=True, progress_kwargs=dict(position=0, leave=True))
     state = sampler.get_chain()[-1]
     sampler.reset()
 
     sampler = emcee.EnsembleSampler(1, num_parameters, log_probability, moves = GaussianMove(second_size))
 
-    sampler.run_mcmc(state, nsamples_per_walker, skip_initial_state_check=True, progress=True)
+    sampler.run_mcmc(state, nsamples_per_walker, skip_initial_state_check=True, progress=True, progress_kwargs=dict(position=0, leave=True))
     if return_sampler:
         return sampler
     return sampler.get_chain(flat=True, thin=1)
@@ -110,7 +110,7 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
         np.save("probabilities.npy", sampler.get_log_prob())
         samples = sampler.get_chain(flat=True)
     else:
-        with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes)) as progress_bar:
+        with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)) as progress_bar:
                         with joblib.parallel_backend('loky', n_jobs=num_processes):
                             samples = joblib.Parallel()(
                                 joblib.delayed(run_embarrassingly_parallel_simulations)(num_parameters, log_probability, burn_in, nsamples_per_walker, theta0, move_size) for

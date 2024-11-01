@@ -469,7 +469,7 @@ class PosteriorPlotter:
                 shade = False
             c_plot.add_chain(samples, parameters=parameters_label, color=colors[i], name=name, shade=shade, linewidth=2.5)
             i+=1
-        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, inverse=inverse, max_ticks=3, diagonal_tick_labels=False, tick_font_size=tick_font_size, label_font_size=40, summary=True, usetex=True, bar_shade=True)
+        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, tick_font_size=tick_font_size, label_font_size=40, summary=True, usetex=True, bar_shade=True)
         c_plot.configure_truth(lw=2)
         scale = 3*self.num_dim
 
