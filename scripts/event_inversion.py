@@ -17,8 +17,8 @@ from functools import partial
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname('.'), '..')))
 
-from src.sbi.configuration import SBI_Configuration
-from src.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi.configuration import SBI_Configuration
+from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')

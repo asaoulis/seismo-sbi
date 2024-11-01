@@ -7,8 +7,8 @@ from functools import partial
 
 import numpy as np
 
-from src.sbi.configuration import InvalidConfiguration, ModelParameters
-from src.sbi.configuration import SBI_Configuration
+from seismo_sbi.sbi.configuration import InvalidConfiguration, ModelParameters
+from seismo_sbi.sbi.configuration import SBI_Configuration
 
 import contextlib
 from tqdm import tqdm

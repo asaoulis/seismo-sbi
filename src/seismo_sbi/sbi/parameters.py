@@ -5,7 +5,7 @@ import numpy as np
 from typing import NamedTuple, List
 from copy import deepcopy
 
-from src.instaseis_simulator.receivers import Receivers
+from seismo_sbi.instaseis_simulator.receivers import Receivers
 
 class PipelineParameters(NamedTuple):
     run_name : str

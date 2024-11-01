@@ -9,8 +9,8 @@ from .receivers import Receivers
 from .simulation_saver import SimulationSaver
 from .wrapper import GenericPointSource, InstaseisDBQuerier, SimpleMomentTensor, \
     GeneralMomentTensor, SourceLocation
-from src.sbi.configuration import InvalidConfiguration
-from src.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.sbi.configuration import InvalidConfiguration
+from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 
 import instaseis
 

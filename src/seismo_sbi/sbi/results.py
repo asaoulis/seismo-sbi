@@ -1,5 +1,5 @@
 from typing import NamedTuple, Callable, Dict, Tuple
-from src.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 import numpy as np
 
 class JobData(NamedTuple):

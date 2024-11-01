@@ -5,9 +5,9 @@ import yaml
 from math import log10
 from functools import partial
 
-from src.plotting.parameters import ParameterInformation, DegreeKMConverter, DegreeType
-from src.instaseis_simulator.receivers import Receivers
-from src.sbi.parameters import ModelParameters, PipelineParameters, \
+from seismo_sbi.plotting.parameters import ParameterInformation, DegreeKMConverter, DegreeType
+from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.sbi.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs
 
 class InvalidConfiguration(Exception):

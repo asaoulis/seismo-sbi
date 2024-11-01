@@ -3,8 +3,8 @@ import numpy as np
 import obspy
 import os
 
-from src.sbi.configuration import SimulationParameters
-from src.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.sbi.configuration import SimulationParameters
+from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
 
 
 class RealNoiseSampler:

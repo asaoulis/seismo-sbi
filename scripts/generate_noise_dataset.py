@@ -1,6 +1,3 @@
-from constants import ( UPFLOW_config, STATION_CODES_PATHS, 
-                       STATION_LOCATIONS, STATION_CODES_PATHS )
-
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -9,10 +6,12 @@ from seismo_sbi.data_handling.event_window_selection import EventWindowSelector
 from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
 
 from seismo_sbi.instaseis_simulator.receivers import Receivers
-from seismo_sbi.sbi.noises.covariance_estimation import EmpiricalCovarianceEstimator
 
+from constants import STATION_CODES_PATHS, create_ipma_data_format
+output_dir = Path('./data')
+station_config = create_ipma_data_format(output_dir)
 
-NUM_JOBS = 14
+NUM_JOBS = 5
 
 noise_name = 'azores_event'
 
@@ -24,19 +23,18 @@ NOISE_OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
 date_format = '%Y-%m-%d'
 noise_start_time = '2022-01-10'
-noise_end_time = '2022-01-13'
+noise_end_time = '2022-01-14'
 
 # # north islands 2022/01/13 06:46:12.23 Azores Islands Event 621827081
 event_window = [datetime(2022, 1, 13, 6, 45, 12), datetime(2022, 1, 13, 7, 0, 12)]
 event_location = (39.9267,  -29.9392)
 
 max_frequency =  1
-noise_collector = NoiseCollector(UPFLOW_config, STATION_CODES_PATHS, STATION_LOCATIONS)
+noise_collector = NoiseCollector(station_config, STATION_CODES_PATHS, {})
 event_noise_aggregator = EventNoiseAggregator(noise_collector, STATION_CODES_PATHS, sampling_rate = max_frequency)
 event_noise_aggregator.select_event_and_check_available_stations(event_window, event_location, buffer=timedelta(minutes=3), convert_to_numpy=True)
 
-
-receivers = Receivers(station_config=UPFLOW_config, 
+receivers = Receivers(station_config=station_config, 
                       stations=event_noise_aggregator.available_stations_during_event, 
                       station_codes_paths=STATION_CODES_PATHS)
 
@@ -51,15 +49,17 @@ distant_events, near_events = event_window_selector.select_events(
     distant_min_radius = 20, distant_min_magnitude = 6.0,
     close_max_radius = 20, close_min_magnitude=4
 )
-           
-event_start_end_times = event_window_selector.get_unavailability_time_pairs(
-    receivers, near_events, distant_events
-)
+try:
+    event_start_end_times = event_window_selector.get_unavailability_time_pairs(
+        receivers, near_events, distant_events
+    )
 
-continuous_noise_regions, gaps = event_window_selector.get_continuous_regions(event_start_end_times,
-    datetime.strptime(noise_start_time, date_format), 
-    datetime.strptime(noise_end_time, date_format))
-
+    continuous_noise_regions, gaps = event_window_selector.get_continuous_regions(event_start_end_times,
+        datetime.strptime(noise_start_time, date_format), 
+        datetime.strptime(noise_end_time, date_format))
+except Exception as e:
+    print(e)
+    continuous_noise_regions = [(datetime.strptime(noise_start_time, date_format), datetime.strptime(noise_end_time, date_format))]
 noise_time_windows= event_window_selector.create_daily_overlapping_windows_from_regions(
     continuous_noise_regions, window_length=timedelta(minutes= 20), buffer = timedelta(minutes=20), overlap_offset=timedelta(minutes=3)
 )
@@ -77,12 +77,13 @@ noise_collection_callable = partial(event_noise_aggregator.collect_noise_data, n
 
 noise_database_generator = NoiseDatabaseGenerator(noise_collection_callable, num_jobs=NUM_JOBS, mseed_output=True)
 
-noise_database_generator.create_database(DAILY_OUTPUT_DIRECTORY, windows)
+# noise_database_generator.create_database(DAILY_OUTPUT_DIRECTORY, windows)
 
 data_slicer = ProcessedDataSlicer(data_folder=DAILY_OUTPUT_DIRECTORY, 
                                   sampling_rate=max_frequency, 
                                   covariance_estimation_window=timedelta(minutes=15),
-                                  full_auto_correlation=True)
+                                  full_auto_correlation=True,
+                                  receivers=event_noise_aggregator.available_stations_during_event)
 data_saver = NoiseDatabaseGenerator(data_slicer.load_noise_window_data, data_vector_length=901, num_jobs=NUM_JOBS)
 data_saver._collect_and_save_noise(Path('./data/events/'), noise_window=event_window, name=f'{noise_name}_event_filtered_1hz')
 
@@ -112,7 +113,8 @@ print("Num noise windows: ", sum([len(windows) for windows in final_noise_window
 data_slicer = ProcessedDataSlicer(data_folder=DAILY_OUTPUT_DIRECTORY, 
                                   sampling_rate=max_frequency, 
                                   covariance_estimation_window=timedelta(minutes=15),
-                                  full_auto_correlation=True)
+                                  full_auto_correlation=True,
+                                  receivers=event_noise_aggregator.available_stations_during_event)
 flattened_time_windows = [time for date in final_noise_windows for time in final_noise_windows[date]]
 
 noise_database_generator = NoiseDatabaseGenerator(data_slicer.load_noise_window_data, data_vector_length=901, num_jobs=NUM_JOBS)

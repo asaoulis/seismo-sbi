@@ -4,7 +4,7 @@ import os
 
 from .compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
 from .compression.gaussian import Compressor, ScoreCompressionData
-from src.instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.instaseis_simulator.dataset_generator import tqdm_joblib
 from tqdm import tqdm
 
 

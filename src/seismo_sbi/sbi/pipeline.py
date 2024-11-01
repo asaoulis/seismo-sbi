@@ -13,35 +13,35 @@ import time
 from typing import List
 
 
-from src.instaseis_simulator.receivers import Receivers
-from src.sbi.noises.real_noise import RealNoiseSampler
-from src.sbi.configuration import SBI_Configuration
+from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
+from seismo_sbi.sbi.configuration import SBI_Configuration
 
-from src.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
-from src.instaseis_simulator.dataloader import SimulationDataLoader
-from src.instaseis_simulator.dataset_generator import DatasetGenerator
+from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
+from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.instaseis_simulator.dataset_generator import DatasetGenerator
 
-from src.sbi.compression.gaussian import GaussianCompressor, MachineLearningCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
+from seismo_sbi.sbi.compression.gaussian import GaussianCompressor, MachineLearningCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
 
-from src.sbi.dataset_compressor import DatasetCompressor
-from src.sbi.compression.gaussian import ScoreCompressionData
-from src.sbi.noises.covariance_estimation import EmpiricalCovarianceEstimator, ScalarEmpiricalCovariance, \
+from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
+from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.sbi.noises.covariance_estimation import EmpiricalCovarianceEstimator, ScalarEmpiricalCovariance, \
                                                         DiagonalEmpiricalCovariance, BlockDiagonalEmpiricalCovariance
 
-from src.plotting.seismo_plots import plot_stacked_waveforms, MisfitsPlotting
-from src.plotting.distributions import PosteriorPlotter, MomentTensorReparametrised
-from src.sbi.inference import SBI_Inference
-from src.sbi.fixed_jobs import FixedEventJobs
-import src.sbi.likelihood as likelihood
-from src.sbi.lsquares.least_squares import IterativeLeastSquaresSolver
+from seismo_sbi.plotting.seismo_plots import plot_stacked_waveforms, MisfitsPlotting
+from seismo_sbi.plotting.distributions import PosteriorPlotter, MomentTensorReparametrised
+from seismo_sbi.sbi.inference import SBI_Inference
+from seismo_sbi.sbi.fixed_jobs import FixedEventJobs
+import seismo_sbi.sbi.likelihood as likelihood
+from seismo_sbi.sbi.lsquares.least_squares import IterativeLeastSquaresSolver
 
-from src.sbi.scalers import FlexibleScaler, GeneralScaler
+from seismo_sbi.sbi.scalers import FlexibleScaler, GeneralScaler
 
-from src.sbi.configuration import  ModelParameters, SimulationParameters, \
+from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters, \
     PipelineParameters, DatasetGenerationParameters, TestJobs
 
-from src.sbi.results import InversionResult, InversionData, JobResult, InversionConfig, JobData
-from src.utils.errors import error_handling_wrapper
+from seismo_sbi.sbi.results import InversionResult, InversionData, JobResult, InversionConfig, JobData
+from seismo_sbi.utils.errors import error_handling_wrapper
 
 
 

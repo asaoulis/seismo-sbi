@@ -36,7 +36,7 @@ class NoiseCollector:
         cha = channel
         loc = ""
         year, jday, month, day = current_datetime.strftime("%Y %j %m %d").split()
-        return eval(fstring)
+        return fstring.format(master_path, sta=sta, net=net, cha=cha, loc=loc, year=year, jday=jday, month=month, day=day)
 
     @staticmethod
     def evaluate_response_filepath(fstring, master_path, current_datetime, station_code, network, channel):
@@ -45,7 +45,7 @@ class NoiseCollector:
         cha = channel
         loc = ""
         
-        return eval(fstring)
+        return fstring.format(master_path, sta=sta, net=net, cha=cha, loc=loc)
     
     @staticmethod
     def get_station_location(instrument_response_path):

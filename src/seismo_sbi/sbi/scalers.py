@@ -2,7 +2,7 @@
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
-from src.sbi.configuration import ModelParameters
+from seismo_sbi.sbi.configuration import ModelParameters
 
 
 class SymmetricLogScaler:

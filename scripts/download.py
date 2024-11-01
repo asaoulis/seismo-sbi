@@ -2,7 +2,6 @@ import argparse
 from pathlib import Path
 import obspy
 from obspy.clients.fdsn.mass_downloader import Restrictions, MassDownloader, CircularDomain
-from obspy.clients.fdsn import Client
 import sys
 
 def get_arguments():
@@ -22,6 +21,24 @@ def check_output_directory(path):
         print(f"Error with output directory: {e}")
         sys.exit(1)
 
+def save_response_files(output_dir, inv):
+    outputs = output_dir / 'RESP'
+    outputs.mkdir(parents=True, exist_ok=True)
+    for network in inv:
+        for station in network:
+            for channel in station:
+                loc = channel.location_code
+                cha = channel.code
+
+                try:
+                    selected_inv = inv.select(network=network.code, station=station.code, location=loc, channel=cha)
+                except:
+                    continue
+                selected_inv.write(
+                    str(output_dir / 'RESP' / f"{network.code}.{station.code}.{channel.location_code}.{channel.code}.RESP"),
+                    format="STATIONXML"
+                )
+
 def get_mseed_storage(output_dir, network, station, location, channel, starttime, endtime):
     return str(output_dir / f"{station}/{starttime.year}.{starttime.julday:03g}/{network}.{station}.{location}.{channel}.{starttime.year}.{starttime.julday:03g}.mseed")
 
@@ -31,11 +48,6 @@ def main():
     check_output_directory(output_dir)
 
     domain = CircularDomain(latitude=38.67, longitude=-28.15, minradius=0, maxradius=5.00)
-    mdl = Client("http://ceida.ipma.pt/")
-    mdl.get_stations(
-        latitude=38.67, longitude=-28.15, minradius=0, maxradius=5.00,
-        channel="*H*", level="response", filename="stations.xml"
-    )
 
     restrictions = Restrictions(
         station="*",
@@ -52,8 +64,11 @@ def main():
     mdl.download(
         domain, restrictions,
         mseed_storage=lambda *args: get_mseed_storage(output_dir, *args),
-        stationxml_storage=output_dir / "stations"
+        stationxml_storage=str(output_dir / "stations.xml")
     )
+    inv = obspy.read_inventory(str(output_dir / "stations.xml"))
+    save_response_files(output_dir, inv)
+
 
 if __name__ == "__main__":
     main()

@@ -49,7 +49,7 @@ class RunningStandardDeviations:
 
             self.nobservations += n
 
-from src.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
 import h5py
 from abc import ABC, abstractmethod
 from functools import partial
