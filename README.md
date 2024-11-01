@@ -53,9 +53,15 @@ pip install -e .
 
 ## Usage <a name = "usage"></a>
 
-We provide a few simple scripts that download data and run the basic functionality of the package. 
+An example notebook is provided under [examples/azores_inversion.ipynb](examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
 
-This section is under construction.
+Before running the notebook, you will need to run the two provided scripts
+```
+cd scripts
+python download.py
+python generate_noise_database.py
+```
+which downloads the nearby IPMA permanent land station data, and then processes the data to build an event file and a noise catalogue. 
 
 ## Technical details <a name = "technical"></a>
 
