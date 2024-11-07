@@ -582,7 +582,8 @@ class SingleEventPipeline(SBIPipeline):
         self.least_squares_solver = IterativeLeastSquaresSolver(simulation_parameters, 
                                                                 model_parameters,
                                                                  self.data_loader, 
-                                                                 self.simulator, 
+                                                                 self.simulator,
+                                                                 dataset_parameters.iterative_least_squares, 
                                                                  self.num_parallel_jobs)
     
     def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
@@ -708,12 +709,11 @@ class SingleEventPipeline(SBIPipeline):
 
     def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details):
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
-        num_iterations = 25 if not only_moment_tensor_variable else 1
+        single_step =  only_moment_tensor_variable
         compression_data = self.compute_compression_data_from_stencil(self.parameters, rerun_if_stencil_exists = True)
         self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data)
         compressor = self.compressors['optimal_score']
-        if num_iterations > 0:
-            compression_data = self.least_squares_solver.solve_least_squares(data_vector, compressor, iterations=num_iterations)
+        compression_data = self.least_squares_solver.solve_least_squares(data_vector, compressor, single_step=single_step)
         self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data)
 
         return compression_data

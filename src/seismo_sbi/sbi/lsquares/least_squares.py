@@ -6,27 +6,31 @@ import tempfile
 
 from tqdm import tqdm
 import numpy as np
+from pprint import pprint
 
 from ..compression.derivative_stencil import DerivativeStencil, ScoreCompressionData
 from ...plotting.distributions import compute_scalar_moment
 from ...utils.errors import error_handling_wrapper
-
+from ..parameters import IterativeLeastSquaresParameters
 
 class IterativeLeastSquaresSolver:
 
-    def __init__(self, sim_parameters, model_parameters, dataloader, simulator, num_parallel_jobs = 1):
+    def __init__(self, sim_parameters, model_parameters, dataloader, simulator, least_squares_configuration : IterativeLeastSquaresParameters, num_parallel_jobs = 1):
         self.sim_parameters = sim_parameters
         self.model_parameters = model_parameters
 
         self.data_loader = dataloader
         self.simulator = simulator
+        self.least_squares_configuration = least_squares_configuration
 
         self.num_parallel_jobs = num_parallel_jobs
 
     @error_handling_wrapper(num_attempts=3)
-    def solve_least_squares(self, observation, compressor, iterations = 5):
+    def solve_least_squares(self, observation, compressor, single_step = True):
+        iterations = self.least_squares_configuration.max_iterations if not single_step else 1
+        damping = self.least_squares_configuration.damping_factor if not single_step else 0
+
         misfit = np.inf
-        damping = 0.01 if iterations > 4 else 0
         new_parameters = deepcopy(self.model_parameters)
         model_params = new_parameters.parameter_to_vector('theta_fiducial', True)
         true_priors = deepcopy(compressor.prior_mean), deepcopy(compressor.prior_covariance)
@@ -65,7 +69,12 @@ class IterativeLeastSquaresSolver:
             
             # Step 5: Update the model parameters
             model_params = theta_MLE / scaling_factors
-            print("theta_MLE: ", model_params, flush=True)
+            theta_MLE_map =  {**new_parameters.vector_to_parameters(model_params, 'theta_fiducial')}
+            update = 'New MLE:\n' + "\n".join(
+                f"{k}: [{', '.join(f'{v_i:.3e}' if abs(v_i) < 1e-3 or abs(v_i) >= 1e3 else f'{v_i:.3f}' for v_i in v)}]" 
+                for k, v in theta_MLE_map.items()
+            )
+            print(update, flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
 
         final_score_compression_data = self._compute_gradients(new_parameters)

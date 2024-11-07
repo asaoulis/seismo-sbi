@@ -29,11 +29,17 @@ class SimulationParameters(NamedTuple):
     sampling_rate: float
     processing : dict
 
+class IterativeLeastSquaresParameters(NamedTuple):
+
+    max_iterations : int
+    damping_factor : float
+
 class DatasetGenerationParameters(NamedTuple):
 
     num_simulations : int
     sampling_method : str
     use_fisher_to_constrain_bounds : int = 5
+    iterative_least_squares : IterativeLeastSquaresParameters = IterativeLeastSquaresParameters(10, 0.01)
 
 import hashlib
 

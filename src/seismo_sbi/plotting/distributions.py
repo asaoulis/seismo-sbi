@@ -10,7 +10,7 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
 
 from .parameters import ParameterInformation
 import torch
-from chainconsumer import ChainConsumer
+from .patched_chainconsumer import CustomChainConsumer as ChainConsumer
 from obspy.imaging.beachball import beach
 from obspy.imaging import beachball
 from pyrocko.plot import beachball as rocko_beachball
@@ -469,7 +469,7 @@ class PosteriorPlotter:
                 shade = False
             c_plot.add_chain(samples, parameters=parameters_label, color=colors[i], name=name, shade=shade, linewidth=2.5)
             i+=1
-        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, tick_font_size=tick_font_size, label_font_size=40, summary=True, usetex=True, bar_shade=True)
+        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=True, usetex=True, bar_shade=True)
         c_plot.configure_truth(lw=2)
         scale = 3*self.num_dim
 
@@ -579,7 +579,7 @@ class PosteriorPlotter:
             figsave_1 = None
             figsave_2 = None
         self.plot_seperate_beachballs(plotting_units_samples, plotting_units_theta_0, figsave=figsave_1)
-        self.plot_fuzzy_beachball_samples(plotting_units_samples, plotting_units_theta_0, figsave=figsave_2)
+        self.plot_beachball_projection_samples(plotting_units_samples, figsave=figsave_2)
 
     def plot_seperate_beachballs(self, plotting_units_samples, plotting_units_theta_0, sample_color='b', figsave = None):
         with plt.rc_context({'font.size' : 8}):
@@ -607,6 +607,35 @@ class PosteriorPlotter:
             else:
                 fig.savefig(figsave, dpi=200, transparent=True)
             plt.close()
+
+    def plot_beachball_projection_samples(self, plotting_units_samples, sample_color='cornflowerblue', alpha=0.1, figsave = None, dpi=200):
+        samples = plotting_units_samples
+        np.random.shuffle(samples)
+        fig, ax = plt.subplots(figsize=(5, 5))
+
+        # Plot each moment tensor in the ensemble
+        warning = False
+        for sample in samples[:500]:
+            sample_inputs = self.parameters.vector_to_simulation_inputs(sample, only_theta_fiducial=True)
+            mt = sample_inputs["moment_tensor"]
+            # Use beach() to plot the full moment tensor in 1x6 format
+
+            try:
+                b = beach(mt, linewidth=0.2, width=1.5, facecolor=sample_color, edgecolor=sample_color, alpha=alpha, nofill=True)
+                ax.add_collection(b)
+            except:
+                if not warning:
+                    print("Warning: beachball plotting failed for some samples. This is likely due to a bug in obspy.imaging.beachball.")
+                    warning = True
+                pass
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
+        plt.axis('off')
+        if figsave is None:
+            plt.show()
+        else:
+            fig.savefig(figsave, dpi=dpi, transparent=True)
+        plt.close()
     
     def plot_fuzzy_beachball_samples(self, plotting_units_samples, plotting_units_theta_0, sample_color='cornflowerblue', figsave = None):
 

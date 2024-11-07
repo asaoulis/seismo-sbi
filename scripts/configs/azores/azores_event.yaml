@@ -23,7 +23,7 @@ parameters:
   inference:
     moment_tensor:
       #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
-      fiducial: [-2.1e+16, 0.386e+16, 1.72e+16, 0.829e+16, 0.333e+16, 0.892e+16]
+      fiducial: [1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15]
       stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
       bounds: [[-5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16],
               [5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16]]
@@ -36,7 +36,7 @@ parameters:
   nuisance: {}
 
 simulations:
-  num_simulations: 4000
+  num_simulations: 10000
   sampling_method: 
     moment_tensor: "uniform"
     source_location: "uniform"
@@ -61,7 +61,7 @@ inference:
     run: True
     ensemble: True
     covariance: empirical
-    num_samples: 20000
+    num_samples: 40000
     walker_burn_in: 1000
     move_size: 0.0005
 
