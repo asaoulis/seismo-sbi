@@ -96,11 +96,12 @@ class InstaseisSourceSimulator(Simulator):
 
 class FixedLocationKernelSimulator(Simulator):
 
-    def __init__(self, score_compression_data : ScoreCompressionData, trace_length,  *args, **kwargs):
+    def __init__(self, score_compression_data : ScoreCompressionData,  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.sensitivity_kernels = score_compression_data.data_parameter_gradients
-        self.trace_length = trace_length
+        num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
+        self.trace_length = self.sensitivity_kernels.shape[1] // num_traces
 
     def generic_point_source_simulation(self, source: GenericPointSource):
         

@@ -34,7 +34,7 @@ class DatasetCompressor:
 
 
     def run_derivative_stencil_for_compression_data(self, parameters,
-                                                    stencil_output_folder, score_compression_data_path):
+                                                    stencil_output_folder):
 
         derivative_stencil = DerivativeStencil(parameters, stencil_output_folder)
         
@@ -42,8 +42,6 @@ class DatasetCompressor:
                                     self.simulator,
                                     self.data_loader.load_flattened_simulation_vector,
                                     self.num_parallel_jobs)
-
-        np.save(score_compression_data_path, score_compression_data._asdict())
 
         return score_compression_data
 

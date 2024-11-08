@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
 
-from seismo_sbi.sbi.parameters import ModelParameters 
+from seismo_sbi.sbi.types.parameters import ModelParameters 
 
 class FixedEventJobs:
 

@@ -1,17 +1,15 @@
 
-import shutil
 from pathlib import Path
 from copy import deepcopy
 import tempfile
 
 from tqdm import tqdm
 import numpy as np
-from pprint import pprint
 
-from ..compression.derivative_stencil import DerivativeStencil, ScoreCompressionData
+from ..compression.derivative_stencil import DerivativeStencil
 from ...plotting.distributions import compute_scalar_moment
 from ...utils.errors import error_handling_wrapper
-from ..parameters import IterativeLeastSquaresParameters
+from ..types.parameters import IterativeLeastSquaresParameters
 
 class IterativeLeastSquaresSolver:
 

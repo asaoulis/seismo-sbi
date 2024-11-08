@@ -8,6 +8,12 @@ from sbi import analysis as analysis
 from seismo_sbi.sbi.configuration import InvalidConfiguration
 
 class SBI_Inference:
+    """
+    Class to handle the inference using the sbi library.
+    
+    Thin wrapper implementing their version of SNPE (SNPE-C).
+    
+    """
 
     def __init__(self, inference_mode, num_dim = None) -> None:
 

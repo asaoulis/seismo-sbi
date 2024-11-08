@@ -11,24 +11,6 @@ from functools import partial
 import joblib
 from ..instaseis_simulator.dataset_generator import tqdm_joblib
 
-class LightweightSimulator:
-
-    def __init__(self, parameters, data_loader, samplers):
-        self.parameters = parameters
-        self.data_loader = data_loader
-        self.samplers = samplers
-
-
-    def input_output_simulation(self, simulator, theta):
-        if len(theta.shape) == 1:
-            theta = theta.reshape(1,-1)
-        theta_fiducial_map = self.parameters.vector_to_parameters(theta[0], 'theta_fiducial')
-        sampled_nuisance = {key: next(self.samplers[key](1)) for key in self.parameters.nuisance.keys()}
-        inputs_map = {**theta_fiducial_map, **sampled_nuisance}
-        return self.data_loader.convert_sim_data_to_array(
-                    {"outputs": simulator.run_simulation(inputs_map)[1]}
-                ).flatten()
-
 class GaussianLikelihoodEvaluator:
 
     def __init__(self, data, simulation_callable, scaler, loss_callable, ensemble = False, priors= (None, None)):
@@ -107,7 +89,6 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
             print("Starting posterior sampling..", flush=True)
             sampler.run_mcmc(state, nsamples_per_walker, progress=True)
             
-        np.save("probabilities.npy", sampler.get_log_prob())
         samples = sampler.get_chain(flat=True)
     else:
         with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)) as progress_bar:

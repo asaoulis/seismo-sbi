@@ -8,7 +8,7 @@ from copy import copy
 
 from seismo_sbi.plotting.parameters import ParameterInformation, DegreeKMConverter, DegreeType
 from seismo_sbi.instaseis_simulator.receivers import Receivers
-from seismo_sbi.sbi.parameters import ModelParameters, PipelineParameters, \
+from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 
 class InvalidConfiguration(Exception):
@@ -105,7 +105,8 @@ class SBI_Configuration:
 
     def parse_simulations_options(self, config):
         simulations_config = config
-        simulations_config["iterative_least_squares"] = IterativeLeastSquaresParameters(**simulations_config["iterative_least_squares"])
+        if "iterative_least_squares" in simulations_config:
+            simulations_config["iterative_least_squares"] = IterativeLeastSquaresParameters(**simulations_config["iterative_least_squares"])
         self.dataset_parameters = DatasetGenerationParameters(**simulations_config)
         
     

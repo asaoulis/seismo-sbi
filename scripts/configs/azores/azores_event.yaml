@@ -1,6 +1,6 @@
 run_name: azores_real_event
 output_directory: .
-job_name: full_inversion
+job_name: test_least_squares
 generate_dataset: True
 num_jobs: 20
 
@@ -36,11 +36,14 @@ parameters:
   nuisance: {}
 
 simulations:
-  num_simulations: 10000
+  num_simulations: 2000
   sampling_method: 
     moment_tensor: "uniform"
     source_location: "uniform"
   use_fisher_to_constrain_bounds: 6
+  iterative_least_squares:
+    max_iterations: 12
+    damping_factor: 0.01
 
 
 compression: 
@@ -58,7 +61,7 @@ inference:
       noise_level: 3.e-6
 
   likelihood: 
-    run: True
+    run: False
     ensemble: True
     covariance: empirical
     num_samples: 40000
