@@ -36,7 +36,7 @@ class SBIPipelinePlotter:
         plot_path = figure_path / f"./{single_job.job_name}.png"
         plot_stacked_waveforms(receivers.receivers, single_job.data_vector, figname=plot_path)
     
-    def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None, savefig=True):
+    def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None, only_raw=False, savefig=True):
             
         figure_path = self.base_output_path / "./misfits"
         figure_path.mkdir(parents=True, exist_ok=True)
@@ -46,9 +46,9 @@ class SBIPipelinePlotter:
 
         plot_path = figure_path / f"./raw_{single_job.job_name}.png" if savefig else None
         misfits_plotter.raw_synthetic_misfits(data_vector, synthetics, figname=plot_path)
-
-        plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
-        misfits_plotter.arrival_synthetic_misfits(data_vector, synthetics, (39.9267,  -29.9392, 20), figname=plot_path)
+        if not only_raw:
+            plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
+            misfits_plotter.arrival_synthetic_misfits(data_vector, synthetics, (*event_location, 20), figname=plot_path)
 
     
     def plot_posterior(self, test_name, inversion_data, kde=True, savefig=True):

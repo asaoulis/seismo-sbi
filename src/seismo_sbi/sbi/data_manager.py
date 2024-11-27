@@ -12,9 +12,10 @@ from seismo_sbi.utils.errors import error_handling_wrapper
 
 class DataManager:
 
-    def __init__(self, data_loader : SimulationDataLoader, dataset_compressor : DatasetCompressor):
+    def __init__(self, data_loader : SimulationDataLoader, dataset_compressor : DatasetCompressor, data_length = None):
         self.data_loader = data_loader
         self.dataset_compressor = dataset_compressor
+        self.data_length = data_length
 
     def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler = None):
         sim_string = "sim_" # TODO: either remove this glob or make it a constant
@@ -63,10 +64,10 @@ class DataManager:
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
                 priors = tuple(real_event_data['priors'])
-            self.data_loader.data_length = 901
+            self.data_loader.data_length = self.data_length
             D = self.load_simulation_vector(real_event_path)
             covariance_data = self.load_noise_parametrisation_data(real_event_path)
-            self.data_loader.data_length = None
+            # self.data_loader.data_length = None
             for test_noise_name in test_noises.keys():
                 real_jobs.append(
                     JobData(real_event_name,

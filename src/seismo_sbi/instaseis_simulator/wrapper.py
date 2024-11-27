@@ -6,6 +6,7 @@ from typing import NamedTuple
 from datetime import timedelta
 
 from .receivers import Receiver
+from .utils import compute_data_vector_length
 
 import instaseis
 
@@ -13,10 +14,12 @@ class SyntheticsPreprocessing:
 
     def __init__(self, processing_config):
         self.processing_config = processing_config
+        self.sampling_rate = processing_config['sampling_rate']
 
     def __call__(self, seismograms):
+
         start, end = seismograms[0].stats.starttime, seismograms[0].stats.endtime
-        length = end - start
+        length = (end - start)*self.sampling_rate
         seismograms = seismograms.trim(starttime=start - length * 0.3, endtime=end + length * 0.3, pad = True, fill_value=0)
         seismograms = seismograms.taper(max_percentage=0.05, type='cosine')
         # seismograms = seismograms.filter('bandpass', freqmin=0.04, freqmax=0.07, corners=4, zerophase=False)
@@ -104,8 +107,8 @@ class InstaseisDBQuerier:
         # seismograms = seismograms.decimate(factor=2, no_filter=True)
         seismograms = self.preprocessing(seismograms)
         starttime = seismograms[0].stats.starttime
-
-        seismograms = seismograms.interpolate(1, starttime=starttime, npts=901, method='lanczos', a=20)
+        npts = compute_data_vector_length(self._seismogram_duration_in_s, self.preprocessing.sampling_rate)
+        seismograms = seismograms.interpolate(self.preprocessing.sampling_rate, starttime=starttime, npts=npts +1, method='lanczos', a=20)
         seismograms = {component: seismograms.select(component=component)[0].data for component in components}
 
         # seismograms = {component: seismograms[component] for component in components}
@@ -123,6 +126,7 @@ class InstaseisDBQuerier:
         if location.depth < 0:
             print('Warning: depth is negative. Setting depth to 0')
             location = location._replace(depth = 0)
+            raise ValueError('Depth cannot be negative')
         custom_scale = 1
         source = instaseis.Source(
             latitude=location.latitude,

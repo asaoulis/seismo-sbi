@@ -74,7 +74,6 @@ class GaussianCompressor(Compressor):
         self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
 
     def set_priors(self, prior):
-        print('setting priors')
         self.prior_mean, self.prior_covariance = prior
         self.Fisher_mat = self._compute_Fisher_matrix()
         self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)

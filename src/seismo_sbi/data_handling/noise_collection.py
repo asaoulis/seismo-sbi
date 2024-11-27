@@ -7,6 +7,7 @@ import datetime
 from datetime import timedelta
 import math as m
 import traceback
+from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
 
 
 def convert_channel_type(channel_type, sta_cha):
@@ -20,30 +21,36 @@ def convert_channel_type(channel_type, sta_cha):
         if channel_type == sta_cha_type[-1]:
             return sta_cha_type
 
-    return None
+    return sta_cha + ' chan conversion'
 
 class NoiseCollector:
-    def __init__(self, UPFLOW_config, station_codes_paths, station_locations, channel_basis = None):
+    def __init__(self, UPFLOW_config, station_codes_paths, station_locations, channel_basis = None, prefilter_kwargs = {}, filter_kwargs = {}):
         self.UPFLOW_config = UPFLOW_config
         self.station_codes_paths = station_codes_paths
         self.station_locations = station_locations
         self.channel_basis = channel_basis
 
+        self.prefilter_kwargs = dict(pre_filt=[0.005, 0.01, 2.5, 5], taper=True, taper_fraction=0.05)
+        self.prefilter_kwargs = {**self.prefilter_kwargs, **prefilter_kwargs}
+
+        self.filter_kwargs = dict(freqmin=0.02, freqmax=0.04, corners=4, zerophase=False)
+        self.filter_kwargs = {**self.filter_kwargs, **filter_kwargs}
+
     @staticmethod
-    def evaluate_data_filepath(fstring, master_path, current_datetime, station_code, network, channel):
+    def evaluate_data_filepath(fstring, master_path, current_datetime, station_code, network, channel, loc):
         sta = station_code
         net = network
         cha = channel
-        loc = ""
+        loc = loc
         year, jday, month, day = current_datetime.strftime("%Y %j %m %d").split()
         return fstring.format(master_path, sta=sta, net=net, cha=cha, loc=loc, year=year, jday=jday, month=month, day=day)
 
     @staticmethod
-    def evaluate_response_filepath(fstring, master_path, current_datetime, station_code, network, channel):
+    def evaluate_response_filepath(fstring, master_path, current_datetime, station_code, network, channel, loc):
         sta = station_code
         net = network
         cha = channel
-        loc = ""
+        loc = loc
         
         return fstring.format(master_path, sta=sta, net=net, cha=cha, loc=loc)
     
@@ -64,9 +71,9 @@ class NoiseCollector:
         for channel in ['Z', '1', '2']:
             try:
                 formatted_channel =  convert_channel_type(channel, config['sta_cha'])
-                instrument_response_path = self.evaluate_response_filepath(config['response_seismometer'], config['master_path'], event_datetime, station_code, config['network'], formatted_channel)
+                instrument_response_path = self.evaluate_response_filepath(config['response_seismometer'], config['master_path'], event_datetime, station_code, config['network'], formatted_channel, config["location"])
                 
-                filepath = self.evaluate_data_filepath(config['path_structure'], config['master_path'], event_datetime, station_code, config['network'], formatted_channel)
+                filepath = self.evaluate_data_filepath(config['path_structure'], config['master_path'], event_datetime, station_code, config['network'], formatted_channel, config["location"])
                 new_st = obspy.read(filepath, starttime=obspy.UTCDateTime(datetime_window[0]), endtime=obspy.UTCDateTime(datetime_window[1]), format='MSEED', check_compression=False)
                 new_st = self.process_seismograms(new_st, max_frequency, instrument_response_path)
 
@@ -99,11 +106,11 @@ class NoiseCollector:
         new_st = new_st.detrend('demean')
         new_st = new_st.detrend('linear')
         # new_st = new_st.remove_response(inventory=inventory_response, output="DISP", pre_filt=[0.01, 0.02, 2.5, 5], taper=True, taper_fraction=0.1)
-        new_st = new_st.remove_response(inventory=inventory_response, output="DISP", pre_filt=[0.005, 0.01, 2.5, 5], taper=True, taper_fraction=0.05)
+        new_st = new_st.remove_response(inventory=inventory_response, output="DISP", **self.prefilter_kwargs)
         # taper
         new_st = new_st.taper(max_percentage=0.05, type='cosine')
         # new_st = new_st.filter('bandpass', freqmin=0.04, freqmax=0.07, corners=4, zerophase=False)
-        new_st = new_st.filter('bandpass', freqmin=0.02, freqmax=0.04, corners=4, zerophase=False)
+        new_st = new_st.filter('bandpass', **self.filter_kwargs)
 
 
         # # print(f"Decimation factor: {decimation_factor}")
@@ -209,6 +216,7 @@ class EventNoiseAggregator:
 
                     self.event_data[station] = st
                 except Exception as e:
+                    print(f"Error with station {station}: {e}")
                     continue
         
         def collect_noise_data(self, padded_noise_window, noise_window_length, convert_to_numpy = False):
@@ -282,26 +290,46 @@ class ProcessedDataSlicer:
                     data += data_copy.select(station=receiver).copy()
                 except Exception as e:
                     continue
-            # data = data.slice(obspy.UTCDateTime(datetime_window[0]), obspy.UTCDateTime(exact_end_time), nearest_sample=False)
+            data = data.slice(obspy.UTCDateTime(datetime_window[0] - timedelta(seconds=2)), obspy.UTCDateTime(exact_end_time + timedelta(2)), nearest_sample=False)
+            npts = compute_data_vector_length(fixed_num_seconds, self.sampling_rate) + 1
+            for i, trace in enumerate(data):
+
+                try:
+                    interped_trace = trace.interpolate(
+                        sampling_rate=self.sampling_rate,
+                        starttime=obspy.UTCDateTime(datetime_window[0]),
+                        npts=npts,
+                        method='lanczos',
+                        a=20
+                    )
+                except Exception as e:
+                    # print("trace staart time", trace.stats.starttime, trace.stats.endtime)
+                    # traceback.print_exc()
+                    # print(f"Error in Trace {i}: {trace.id}")
+                    # print(f"Exception: {e}")
+                    pass
+
             try:
-                interped_data = data.interpolate(self.sampling_rate, starttime=obspy.UTCDateTime(datetime_window[0]), npts=901, method='lanczos', a=20)
+                interped_data = data.interpolate(self.sampling_rate, starttime=obspy.UTCDateTime(datetime_window[0]), npts=npts, method='lanczos', a=20)
             except Exception as e:
-                return None
+                print(datetime_window[0])
+                # traceback.print_exc()
+                return station  + ' interp falied'
             # get all stations and the associated components
             data_map = {station:{} for station in station_component_map.keys()}
             for station in station_component_map.keys():
                 station_data =  interped_data.select(station=station)
                 
                 if len(station_component_map[station]) != 3:
-                    return None
+                    return station + ' comp'
                 if len(station_data) == 0:
-                    return None
+                    return station + ' empty'
                 for component in station_component_map[station]:
                     renamed_component = self.rename_component(component)
                     try:
                         data_map[station][renamed_component] = station_data.select(channel=component)[0].data
                     except Exception as e:
-                        return None
+                        return station + ' no data'
                 if '2' not in data_map[station].keys():
                     print(station, list(data_map[station].keys()), station_component_map[station])
             if self.covariance_estimation_window is not None:
@@ -332,12 +360,13 @@ class ProcessedDataSlicer:
                             variance_dict[station] = {}
                         # print(auto_cov)
                         variance_dict[station][renamed_component] = auto_cov
-                        if variance <= 1e-20:
-                            return None
+                        if variance <= 1e-30:
+                            print(station, renamed_component, variance)
+                            return station + ' variance'
 
                 except Exception as e:
                     print(e)
-                    return None
+                    return station + ' exception'
                 
             else:
                 variance_dict = None

@@ -58,7 +58,7 @@ class Receivers:
         for station in stations:
             config = station_config[station_codes_paths[station]]
             formatted_channel =  convert_channel_type(channel, config['sta_cha'])
-            instrument_response_path = NoiseCollector.evaluate_response_filepath(config['response_seismometer'], config['master_path'], "", station, config['network'], formatted_channel)
+            instrument_response_path = NoiseCollector.evaluate_response_filepath(config['response_seismometer'], config['master_path'], "", station, config['network'], formatted_channel, config['location'])
 
             station_location = NoiseCollector.get_station_location(instrument_response_path)
 
@@ -80,3 +80,28 @@ class Receivers:
             for rec in self.receivers:
                 f.write("%s %s %s %s\n" % (rec.station_name, rec.network, rec.latitude, rec.longitude))
             
+
+    def plot(self):
+        import matplotlib.pyplot as plt
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+
+        fig = plt.figure(figsize=(6, 6))
+        ax = plt.axes(projection=ccrs.PlateCarree())
+
+        # Add map features
+        ax.add_feature(cfeature.COASTLINE)
+        ax.add_feature(cfeature.BORDERS, linestyle=':')
+        ax.add_feature(cfeature.LAND, facecolor='lightgray')
+        # ax.set_extent([min_lon, max_lon, min_lat, max_lat], crs=ccrs.PlateCarree())
+
+        # Plot stations
+        
+        for rec in self.iterate():
+            lat, lon = rec.latitude, rec.longitude
+            net, sta = rec.network, rec.station_name
+            ax.plot(lon, lat, marker='v', color='red', markersize=6, transform=ccrs.PlateCarree())
+            ax.text(lon, lat + 0.2, f"{net}.{sta}", fontsize=10, transform=ccrs.PlateCarree())
+        # Add title and labels
+        ax.set_title("Receiver network")
+        plt.show()

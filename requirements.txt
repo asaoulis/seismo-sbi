@@ -16,3 +16,4 @@ ChainConsumer==0.34.0
 tarp==0.1.0
 h5py
 pyrocko
+cartopy

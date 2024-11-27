@@ -1,0 +1,90 @@
+run_name: indo_pacific
+output_directory: .
+job_name: TALAUD_ISLANDS_INDONESIA_20240909_210131
+generate_dataset: True
+num_jobs: 20
+
+seismic_context:
+  components: 'ZEN'
+  stations_path: './configs/indo_pacific/stations.txt'
+  station_components_path: './configs/indo_pacific/components_talaud3.json'
+  seismogram_duration: 1740
+  sampling_rate: 0.5
+  syngine_address: "/data/shared/prem_i_10s" # if no local version, can use "syngine://prem_i_2s"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.01
+      freqmax: 0.02
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [-1.032e+15, 7.561e+15, 2.596e+16, -1.096e+15, 3.933e+15, -1.937e+15]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16],
+              [5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16]]
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [ 4.3537, 126.7401, 75.4, 0]
+      stencil_deltas: [0.0001, 0.0001, 0.01, 0.001]
+      bounds: [[ 4.3537, 126.7401, 75.4, 0],
+              [ 4.3537, 126.7401, 75.4, 0]]
+  nuisance: {}
+
+simulations:
+  num_simulations: 1000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "uniform"
+  use_fisher_to_constrain_bounds: 15
+  iterative_least_squares:
+    max_iterations: 20
+    damping_factor: 0.01
+
+compression: 
+
+  optimal_score:
+    empirical_block:  '/data/alex/noise/indo_pacific/long_period_samples'
+
+inference:
+  sbi:
+    method: 'posterior'
+
+    noise_model: 
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/noise/indo_pacific/long_period_samples'
+      noise_level: 3.e-6
+
+  likelihood: 
+    run: False
+    ensemble: False
+    covariance: empirical
+    num_samples: 10000
+    walker_burn_in: 2000
+    move_size: 0.0005
+
+
+jobs:
+  real_events: 
+    real_talaud:
+      path: /data/alex/indo_pacific/events_0.5hz/TALAUD_ISLANDS_INDONESIA_20240909_210131_Lat4.3537_Lon126.7401_event_filtered_0.5hz.h5
+      priors:
+        - [0, 0, 0, 0, 0, 0, 4.3537, 126.7401, 75.4, 0]
+        - [1.e+36, 1.e+36, 1.e+36, 1.e+36, 1.e+36, 1.e+36, 0.1, 0.1, 625, 100]
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: '/data/alex/noise/indo_pacific/long_period_samples'
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [[optimal_score, real_noise], [gaussian_likelihood, real_noise]]
+    disable_plotting: False

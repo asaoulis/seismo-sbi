@@ -6,10 +6,11 @@ from pathlib import Path
 from .receivers import Receivers
 from .wrapper import GenericPointSource
 
+
 class SimulationDataLoader():
 
     def __init__(self,components : str,
-                        receivers: Receivers,
+                        receivers : Receivers,
                         data_length = None,):
 
         self.components = components

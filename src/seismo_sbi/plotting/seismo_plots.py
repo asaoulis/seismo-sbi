@@ -155,7 +155,10 @@ class MisfitsPlotting:
                 ax.plot(synthetic_seismogram, color='blue', label='mle')
                 if self.covariance_matrix is not None:
                     trace_misfits = chi_squared[seismogram_index][arrival_slice]
-                    ax.text(0, np.max(data_seismogram), f'$\chi^2 = ${np.mean(trace_misfits):.2f}')
+                    try:
+                        ax.text(0, np.max(data_seismogram), f'$\chi^2 = ${np.mean(trace_misfits):.2f}')
+                    except:
+                        pass
 
                 ax.axis('off')
                 ax.set_title(f'{station_name} {component}')

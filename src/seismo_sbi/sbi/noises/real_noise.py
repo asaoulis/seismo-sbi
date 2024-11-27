@@ -44,7 +44,10 @@ class RealNoiseSampler:
         if noise_path is None:
             noise_index = np.random.randint(0, len(self.noise_paths))
             noise_path = self.noise_paths[noise_index]
-        noise_realisations = self._load_noise_file(noise_path)
+        try:
+            noise_realisations = self._load_noise_file(noise_path)
+        except KeyError:
+            return self.__call__(noise_path = None, no_rescale = no_rescale, noise_index=noise_index +1)
         # self.noise_index_counter += 1
 
         if no_rescale:

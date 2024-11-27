@@ -38,6 +38,8 @@ from ..instaseis_simulator.dataset_generator import DatasetGenerator
 from .data_manager import DataManager
 from .simulator_wrapper import GeneralSimulatorWrapper
 from .utils import convert_lists_to_arrays
+
+from ..instaseis_simulator.utils import compute_data_vector_length
     
 
 class SBIPipeline:
@@ -103,7 +105,8 @@ class SBIPipeline:
         self.simulator_wrapper = GeneralSimulatorWrapper(simulation_parameters, self.parameters, data_loader, self.dataset_generation_samplers)
 
         dataset_compressor = DatasetCompressor(data_loader, self.simulator_wrapper.simulation_save_callable, self.num_parallel_jobs, downsampled_length)
-        self.data_manager = DataManager(data_loader, dataset_compressor)
+        data_length = compute_data_vector_length(simulation_parameters.seismogram_duration, simulation_parameters.sampling_rate) + 1
+        self.data_manager = DataManager(data_loader, dataset_compressor, data_length)
 
     def compute_data_vector_properties(self, test_jobs_paths, real_event_jobs_config):
         self.data_vector_length = self.data_manager.compute_data_vector_length(test_jobs_paths, real_event_jobs_config)
@@ -423,7 +426,9 @@ class SingleEventPipeline(SBIPipeline):
         dataset.clear_all_outputs()
 
         train_data = torch.Tensor(self.scale_dataset(raw_compressed_dataset, self.ground_truth_scaler, statistic_scaler))
+        train_data, raw_compressed_dataset = self.clean_train_data(train_data, raw_compressed_dataset)
         sbi_model = SBI_Inference(sbi_method, self.num_dim)
+
         sbi_model.build_amortised_estimator(train_data)
 
         sample_results, _ = sbi_model.sample_posterior(x_0_scaled, num_samples=10000)
@@ -431,6 +436,18 @@ class SingleEventPipeline(SBIPipeline):
         inversion_data = InversionData(theta0_scaled, sample_results, deepcopy(self.ground_truth_scaler), compression_data)
         job_result = JobResult(raw_compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))
         return inversion_data, job_result, sbi_model
+
+    def clean_train_data(self, train_data, raw_compressed_dataset):
+        # if mean relative error is too high, remove the row
+        start_length = train_data.shape[0]
+        truths = train_data[:, :self.num_dim]
+        compressions = train_data[:, self.num_dim:]
+        mean_relative_error = torch.mean(torch.abs(compressions - truths)/truths, dim=1)
+        train_data = train_data[mean_relative_error < 5]
+        raw_compressed_dataset = raw_compressed_dataset[mean_relative_error < 3]
+        print(f"Removed {start_length - train_data.shape[0]} rows due to high relative compression error.")
+        # count number of rows removed
+        return train_data, raw_compressed_dataset
 
     def set_known_parameters(self, dataset_details, theta_dict):
         for param, sampler in dataset_details.sampling_method.items():

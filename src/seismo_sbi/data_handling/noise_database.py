@@ -42,12 +42,13 @@ class NoiseDatabaseGenerator:
         except Exception as e:
             traceback.print_exc()
             return
-        if noise_data is not None:
+        if not isinstance(noise_data, str):
             if isinstance(noise_data, tuple):
                 return self.save_data_stream(noise_window_string_id, output_path, *noise_data)
             else:
                 return self.save_data_stream(noise_window_string_id, output_path, noise_data)
         else:
+            print(f"Error collecting noise data for {noise_data}.", flush=True)
             return 0
 
     def save_data_stream(self, noise_window_string_id, output_path, noise_stream, misc_data = None):
@@ -65,6 +66,7 @@ class NoiseDatabaseGenerator:
                 trace_saver.dump_data_as_hdf5(output_path)
             return 1
         else:
+            print(f"Data quality check failed for {noise_window_string_id}.")
             return 0
 
     
