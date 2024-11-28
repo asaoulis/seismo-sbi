@@ -7,8 +7,8 @@ from typing import NamedTuple, Callable
 
 import torch
 
-from .ML.seismogram_transformer import LightningModel
-from .ML.utils import get_best_model
+# from .ML.seismogram_transformer import LightningModel
+# from .ML.utils import get_best_model
 from ..noises.covariance_estimation import EmpiricalCovariance, DiagonalEmpiricalCovariance
 
 class ScoreCompressionData(NamedTuple):

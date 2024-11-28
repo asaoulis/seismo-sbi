@@ -46,9 +46,12 @@ class SBIPipelinePlotter:
 
         plot_path = figure_path / f"./raw_{single_job.job_name}.png" if savefig else None
         misfits_plotter.raw_synthetic_misfits(data_vector, synthetics, figname=plot_path)
-        if not only_raw:
-            plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
-            misfits_plotter.arrival_synthetic_misfits(data_vector, synthetics, (*event_location, 20), figname=plot_path)
+        try:
+            if not only_raw:
+                plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
+                misfits_plotter.arrival_synthetic_misfits(data_vector, synthetics, (*event_location, 20), figname=plot_path)
+        except:
+            pass
 
     
     def plot_posterior(self, test_name, inversion_data, kde=True, savefig=True):

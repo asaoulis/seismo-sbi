@@ -1,9 +1,10 @@
+numpy==1.23.5
 torch==2.0.0 # not a hard requirement, just worked on my machine
 sbi==0.21.0
 setuptools
 wheel
 jupyter
-matplotlib
+matplotlib==3.7.5
 joblib
 tqdm
 obspy==1.4.0
@@ -14,6 +15,8 @@ scikit-learn==1.2.1
 emcee
 ChainConsumer==0.34.0
 tarp==0.1.0
-h5py
+h5py==3.10.0
 pyrocko
 cartopy
+ipykernel
+autoreload
