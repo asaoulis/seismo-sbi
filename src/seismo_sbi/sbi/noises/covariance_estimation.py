@@ -191,53 +191,20 @@ def parallel_execution(inputs, func, num_jobs = 20):
         return [func(block) for block in inputs]
     return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
 
-class BlockDiagonalEmpiricalCovariance(EmpiricalCovariance):
-        
-        data_vector_length = None
-    
-        def __init__(self, station_component_covariances, receivers, data_vector_length, block_exp_tapering = True, num_jobs = 20):
+class BlockDiagonalCovariance(EmpiricalCovariance):
+
+        def __init__(self, receivers, data_vector_length, block_exp_tapering = True, covariance_gradients = None, num_jobs = 20):
 
             self.set_data_vector_length(data_vector_length)
             self.block_exp_tapering = block_exp_tapering
             self.receivers = receivers
+            self.covariance_gradients = covariance_gradients
             self.num_jobs = num_jobs
-            self.station_component_covariances = deepcopy(station_component_covariances)
-            self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances)
-            self.num_jobs = num_jobs
-            self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, num_jobs)))
 
         @classmethod
         def set_data_vector_length(cls, data_vector_length):
             cls.data_vector_length = data_vector_length
-    
-        def create_covariance_matrix(self, station_component_covariances):
-            # build full list with comphrension
-            receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
-            if self.block_exp_tapering:
-                station_component_covariances = EmpiricalCovarianceEstimator.taper_covariances(station_component_covariances, fit_length=25, ols_fit=False)
-            def compute_covariance(station_name_components):
-                    station_name, component = station_name_components
-                    try:
-                        covar_data = station_component_covariances[station_name][component]
-                    except KeyError:
-                        component = component.replace('E', '1').replace('N', '2')
-                        covar_data = station_component_covariances[station_name][component]
-                    covar_data = covar_data[:self.data_vector_length]
-                    if self.block_exp_tapering:
-                        cov_matrix_block = toeplitz(covar_data)
 
-                    else:
-                        eigvals, eigvecs = np.linalg.eig(toeplitz(covar_data))
-                        eigvals[np.where(eigvals < 0)]=0
-                        cov_matrix_block = np.dot(eigvecs, np.dot(np.diag(eigvals), np.linalg.inv(eigvecs)))
-                    
-                    if np.any(np.linalg.eigvals(cov_matrix_block) < 0):
-                        print("Warning: Covariance matrix block is not positive definite.", np.linalg.cond(cov_matrix_block))
-                        
-                    return cov_matrix_block
-            covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
-            return covariance_blocks
-        
         @classmethod
         def generic_loss_callable(cls, residuals, reduce=True):
             if reduce:
@@ -286,9 +253,64 @@ class BlockDiagonalEmpiricalCovariance(EmpiricalCovariance):
                 return noise_vector, self.station_component_covariances
             sampling_object = GaussianNoiseSampler(sampler)
             return sampling_object
-            
 
+class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
+        
+        data_vector_length = None
+    
+        def __init__(self, station_component_covariances, *args, **kwargs):
+            """
+            station_component_covariances: dict of dicts, where keys are station names and values are dicts with components as keys and covariance data as values
+            """
+            super().__init__(
+                *args, **kwargs
+            )
+            self.station_component_covariances = deepcopy(station_component_covariances)
+            self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances)
+            self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
 
+        def create_covariance_matrix(self, station_component_covariances):
+            # build full list with comphrension
+            receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
+            if self.block_exp_tapering:
+                station_component_covariances = EmpiricalCovarianceEstimator.taper_covariances(station_component_covariances, fit_length=25, ols_fit=False)
+            def compute_covariance(station_name_components):
+                    station_name, component = station_name_components
+                    try:
+                        covar_data = station_component_covariances[station_name][component]
+                    except KeyError:
+                        component = component.replace('E', '1').replace('N', '2')
+                        covar_data = station_component_covariances[station_name][component]
+                    covar_data = covar_data[:self.data_vector_length]
+                    if self.block_exp_tapering:
+                        cov_matrix_block = toeplitz(covar_data)
+
+                    else:
+                        eigvals, eigvecs = np.linalg.eig(toeplitz(covar_data))
+                        eigvals[np.where(eigvals < 0)]=0
+                        cov_matrix_block = np.dot(eigvecs, np.dot(np.diag(eigvals), np.linalg.inv(eigvecs)))
+                    
+                    if np.any(np.linalg.eigvals(cov_matrix_block) < 0):
+                        print("Warning: Covariance matrix block is not positive definite.", np.linalg.cond(cov_matrix_block))
+                        
+                    return cov_matrix_block
+            covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
+            return covariance_blocks
+    
+
+class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
+
+    def __init__(self, station_component_covariances, noise_level, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances.data_fiducial, noise_level)
+        self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
+    
+    def create_covariance_matrix(self, station_component_covariances, noise_level):
+        theory_covariances =  station_component_covariances.reshape(-1, self.data_vector_length, self.data_vector_length)
+        data_covariances = np.array([np.eye(self.data_vector_length) * noise_level**2 for _ in range(theory_covariances.shape[0])])
+        return theory_covariances + data_covariances
+    
 class EmpiricalCovarianceEstimator:
 
     def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True):

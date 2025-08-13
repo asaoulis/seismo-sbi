@@ -10,19 +10,20 @@ from seismo_sbi.plotting.parameters import ParameterInformation, DegreeKMConvert
 from seismo_sbi.instaseis_simulator.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
-
+from seismo_sbi.cps_simulator.compatibility import load_velocity_model
 class InvalidConfiguration(Exception):
     pass
 
 class SBI_Configuration:
 
-    parameter_types = ["source_location", "earthquake_magnitude", "moment_tensor"]
+    parameter_types = ["source_location", "earthquake_magnitude", "moment_tensor", "velocity_model"]
 
     param_names_map = {"source_location": ["latitude", "longitude", "depth", "time_shift"],
                         "moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"],
-                        "earthquake_magnitude": ["earthquake_magnitude"]}
+                        "earthquake_magnitude": ["earthquake_magnitude"],
+                        "velocity_model": ["velocity_model"]}
 
-    compression_types = ["optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
+    compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
     test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian']
 
     
@@ -89,7 +90,10 @@ class SBI_Configuration:
         for parameter_type in nuisance_config.keys():
             if parameter_type in SBI_Configuration.parameter_types:
                 parameter_values = nuisance_config[parameter_type] 
-                self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
+                if parameter_type == 'velocity_model':
+                    self.model_parameters.nuisance[parameter_type] = load_velocity_model(parameter_values["fiducial"])
+                else:
+                    self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
                 self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
             else:
                 allowed_types = ', '.join(SBI_Configuration.parameter_types)

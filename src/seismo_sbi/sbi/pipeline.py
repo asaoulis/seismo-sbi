@@ -21,7 +21,8 @@ from .compression.gaussian import ScoreCompressionData
 from .noises.real_noise import RealNoiseSampler
 from .noises.covariance_estimation import ScalarEmpiricalCovariance, \
                                                             DiagonalEmpiricalCovariance, \
-                                                                BlockDiagonalEmpiricalCovariance
+                                                                BlockDiagonalEmpiricalCovariance, \
+                                                                 TheoryBlockDiagonalEmpiricalCovariance
 
 from .inference import SBI_Inference
 from . import likelihood as likelihood
@@ -113,8 +114,7 @@ class SBIPipeline:
         num_traces = [component for receiver in self.simulation_parameters.receivers.receivers for component in receiver.components]
         self.trace_length = int(self.data_vector_length// len(num_traces))
 
-
-    def load_compressors(self, compression_methods : dict, score_compression_data, priors=(None,None), covariance_data=None, hessian_gradients = None):
+    def load_compressors(self, compression_methods : dict, score_compression_data, priors=(None,None), covariance_data=None, extra_gradients = None):
 
         for compression_type, options in compression_methods:
             if compression_type == "optimal_score":
@@ -130,7 +130,12 @@ class SBIPipeline:
                     _, cov_data = sampler(noise_index=0, no_rescale=True)
                     self.empirical_cov_mat = self.create_covariance_matrix(cov_matrix_option, cov_data)
                 compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
-
+            elif compression_type == "theory_optimal_score":
+                theory_covariance = extra_gradients
+                noise_level = options["noise_level"]
+                cov_mat_config = "theory_block"
+                self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, (theory_covariance, noise_level))
+                compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
             elif compression_type == "multi_optimal_score":
                 noise_level = options["noise_level"]
                 cov_mat = np.diag(noise_level**2 *np.ones((self.data_vector_length)))
@@ -138,7 +143,7 @@ class SBIPipeline:
             elif compression_type == "second_order_score":
                 noise_level = options["noise_level"]
                 cov_mat = np.diag(noise_level**2 *np.ones((self.data_vector_length)))
-                compressor = SecondOrderCompressor(score_compression_data, hessian_gradients, cov_mat)
+                compressor = SecondOrderCompressor(score_compression_data, extra_gradients, cov_mat)
             elif compression_type == "ml_compressor":
                 compressor = MachineLearningCompressor(**options) # TODO: IMPLEMENT THIS
             self.compressors[compression_type] = compressor
@@ -150,6 +155,9 @@ class SBIPipeline:
 
         if cov_matrix_option == "empirical_block":
             cov_mat = BlockDiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
+        elif cov_matrix_option == "theory_block":
+            covariance_blocks, noise_level = stationwise_covariances
+            cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, noise_level, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "empirical_diagonal":
             cov_mat = DiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length)
         elif cov_matrix_option == "noise_level":
@@ -178,6 +186,7 @@ class SBIPipeline:
             
         
         train_noise_type =  sbi_noise_model['type']
+        print(f"Training noise type: {train_noise_type}", flush=True)
         
         if train_noise_type == 'gaussian':
             train_noise_level = sbi_noise_model['noise_level']
@@ -192,8 +201,8 @@ class SBIPipeline:
             self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
 
 
-    def _build_lambda_noiselevel(self, noise_level):
-        return lambda : np.random.normal(0, noise_level *np.ones((self.data_vector_length)))
+    def _build_lambda_noiselevel(self, noise_level, **kwargs):
+        return lambda no_rescale: np.random.normal(0, noise_level *np.ones((self.data_vector_length)))
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
 
@@ -201,14 +210,21 @@ class SBIPipeline:
 
         compression_method_details = [compression_method[0] for compression_method in compression_methods]
         score_compression_data = None
-        hessian_gradients = None
+        extra_gradients = None
         if "optimal_score" in compression_method_details or "multi_optimal_score" in compression_method_details:
             score_compression_data = self.data_manager.compute_compression_data_from_stencil(model_parameters)
+        if "theory_optimal_score" in compression_method_details:
+            score_compression_data = self.data_manager.compute_compression_data_from_stencil(model_parameters)
+            simulator_config = ("cps_covariance", self.simulator_wrapper.simulator)
+            covariance_simulator = self.simulator_wrapper.select_and_initialise_simulator(simulator_config, self.simulation_parameters)
+            dummy_datamanager = deepcopy(self.data_manager)
+            dummy_datamanager.dataset_compressor.simulator = covariance_simulator.execute_sim_and_save_outputs
+            extra_gradients = dummy_datamanager.compute_compression_data_from_stencil(model_parameters, use_fiducial=False)
         if "second_order_score" in compression_method_details:
             if score_compression_data is None:
                 score_compression_data = self.data_manager.compute_compression_data_from_stencil(model_parameters)
-            hessian_gradients = self.data_manager.compute_hessian(score_compression_data, model_parameters)
-        return score_compression_data, hessian_gradients
+            extra_gradients = self.data_manager.compute_hessian(score_compression_data, model_parameters)
+        return score_compression_data, extra_gradients
     
     def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
 
@@ -285,17 +301,19 @@ class SBIPipeline:
         for inversion_result, job_result in tqdm_progress_bar:
             self.plot_result(job_result, inversion_result, bounds)
 
-    def plot_result(self, job_result, inversion_result, bounds):
+    def plot_result(self, job_result, inversion_result, output = True):
         job_name, inversion_data, inversion_config = inversion_result
         train_noise, test_noise, method_name = inversion_config
+        if not output:
+            job_name = None
 
         plotter = SBIPipelinePlotter(self.job_outputs_path / f"{method_name}/{test_noise}", self.parameters)
-        flattened_param_info = self.parameters.parameter_to_vector('information')
+        flattened_param_info = self.parameters.parameter_to_vector('information')[:6]
         plotter.initialise_posterior_plotter(inversion_data.data_scaler, flattened_param_info)
 
         if job_result is not None:
             compressed_dataset, compressed_x0, _ = job_result
-            plotter.plot_compression(compressed_dataset, compressed_x0, job_name = job_name)
+            plotter.plot_compression(compressed_dataset, compressed_x0, job_name = None)
         plotter.plot_posterior(job_name, inversion_data, kde=True)
 
     def plot_comparisons(self, inversion_results, chain_consumer_config, savefig = True):
@@ -322,6 +340,8 @@ class SBIPipeline:
                     flattened_dict_keys = [item for sublist in dict_keys for item in sublist]
                     plotter.plot_chain_consumer("_".join(flattened_dict_keys), job_name, chain_consumer_dict, kde=True, savefig=savefig)
                 except Exception as e:
+                    import traceback
+                    traceback.print_exc()
                     print(e)
                     print("ChainConsumer failed, skipping plotting of posterior comparisons")
 
@@ -470,19 +490,19 @@ class SingleEventPipeline(SBIPipeline):
         return dataset_details
                 
 
-    def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details):
+    def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details, extra_gradients=None):
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
         single_least_squares_step =  only_moment_tensor_variable
         compression_data = self.data_manager.compute_compression_data_from_stencil(self.parameters)
-        self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data)
-        compressor = self.compressors['optimal_score']
+        self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
+        compressor = list(self.compressors.values())[0]
         compression_data = self.least_squares_solver.solve_least_squares(data_vector, compressor, single_step=single_least_squares_step)
-        self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data)
+        self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
 
         return compression_data
 
     def use_fisher_to_constrain_bounds(self, dataset_details, compression_data):
-        compressor = self.compressors['optimal_score']
+        compressor = list(self.compressors.values())[0]
         prior_covariance_matrix = (compressor.Fisher_mat_inverse)
         marginals = np.sqrt(np.diag(prior_covariance_matrix))
         num_sigmas = dataset_details.use_fisher_to_constrain_bounds
@@ -518,6 +538,8 @@ class SingleEventPipeline(SBIPipeline):
         if covariance == 'empirical':
             if 'optimal_score' in self.compressors.keys():
                 covariance = deepcopy(self.compressors['optimal_score'].C)
+            elif 'theory_optimal_score' in self.compressors.keys():
+                covariance = deepcopy(self.compressors['theory_optimal_score'].C)
         elif isinstance(covariance, float):
             covariance = covariance **2
         walker_burn_in = likelihood_config['walker_burn_in']

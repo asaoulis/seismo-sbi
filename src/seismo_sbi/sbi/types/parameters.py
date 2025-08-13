@@ -28,6 +28,7 @@ class SimulationParameters(NamedTuple):
     syngine_address : str
     sampling_rate: float
     processing : dict
+    simulation_type : str = "instaseis"
 
 class IterativeLeastSquaresParameters(NamedTuple):
 
@@ -91,15 +92,21 @@ class ModelParameters:
         for param, parameter_value in copied_map.items():
             inputs[param] = np.zeros(len(parameter_value))
             for j in range(len(parameter_value)):
-                inputs[param][j] = vector[i]
+                value = vector[i]
+                inputs[param][j] = value
                 i +=1
         if only_theta_fiducial:
             return inputs
         copied_map = deepcopy(self._parameters_register['nuisance'])
         for param, parameter_value in copied_map.items():
-            inputs[param] = np.zeros(len(parameter_value))
-            for j in range(len(parameter_value)):
-                inputs[param][j] = vector[i]
+            parameter_value = np.asarray(parameter_value)
+            if np.isscalar(parameter_value) or parameter_value.ndim < 2:
+                inputs[param] = np.zeros_like(parameter_value)
+                for j in range(len(parameter_value)):
+                    inputs[param][j] = vector[i]
+                    i +=1
+            else:
+                inputs[param] = vector[i]
                 i +=1
         return inputs
 

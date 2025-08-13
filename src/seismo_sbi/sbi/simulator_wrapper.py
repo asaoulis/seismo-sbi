@@ -3,7 +3,8 @@ from sbi import utils as utils
 from sbi import analysis as analysis
 from copy import deepcopy
 
-from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
+from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator, CPSVariableKernelSimulator, CPSPrecomputedSimulator
+from seismo_sbi.sbi.compression.theory_covariance import CPSTheoryCovarianceEstimationSimulator
 from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
 from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters
 
@@ -12,9 +13,9 @@ class GeneralSimulatorWrapper:
     def __init__(self, simulation_parameters: SimulationParameters,  parameters, data_loader, samplers):
 
         # in future, this can be extended for aribitrary forward models
-        default_config = ('instaseis', None)
+        default_config = (simulation_parameters.simulation_type, None)
         self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, samplers)
-
+        self.data_loader_callable = data_loader.convert_sim_data_to_array
         self.generic_simulation_callable = deepcopy(self.simulation_callable)
         self.generic_simulation_save_callable = deepcopy(self.simulation_save_callable)
 
@@ -41,6 +42,31 @@ class GeneralSimulatorWrapper:
                             receivers = simulation_parameters.receivers,
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing)
+        elif simulator_config[0] == 'cps':
+            simulator = CPSVariableKernelSimulator(
+                            components= simulation_parameters.components, 
+                            receivers = simulation_parameters.receivers,
+                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
+                            synthetics_processing = simulation_parameters.processing,
+                            gf_storage_root='./cps_5kappa')
+        elif simulator_config[0] == 'cps_precomputed':
+            simulator = CPSPrecomputedSimulator(
+                            fiducial_model_path='./cps_long_valley/fiducial',
+                            components= simulation_parameters.components, 
+                            receivers = simulation_parameters.receivers,
+                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
+                            synthetics_processing = simulation_parameters.processing,
+                            gf_storage_root='./cps_5kappa')
+        elif simulator_config[0] == 'cps_covariance':
+            cps_simulator = simulator_config[1]
+            simulator = CPSTheoryCovarianceEstimationSimulator(
+                            simulator=cps_simulator,
+                            data_flattening = self.data_loader_callable,
+                            components= simulation_parameters.components, 
+                            receivers = simulation_parameters.receivers,
+                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
+                            synthetics_processing = simulation_parameters.processing,
+                            )
         else:
             raise NotImplementedError(f"Simulator {simulator_config[0]} not implemented")
         return simulator

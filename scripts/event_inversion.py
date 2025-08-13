@@ -44,11 +44,11 @@ def main():
     test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
 
-    score_compression_data, hessian_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
+    score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
                                                                             config.model_parameters,  
                                                                             rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
 
-    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, hessian_gradients=hessian_gradients)
+    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
     
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 

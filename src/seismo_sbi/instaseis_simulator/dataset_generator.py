@@ -9,6 +9,7 @@ import numpy as np
 
 from seismo_sbi.sbi.configuration import InvalidConfiguration, ModelParameters
 from seismo_sbi.sbi.configuration import SBI_Configuration
+from ..cps_simulator.compatibility import load_velocity_model
 
 import contextlib
 from tqdm import tqdm
@@ -110,8 +111,20 @@ def gaussian_sampler(bounds, num_samples):
 def transform_sampling_func(sampling_func, transform_func):
     def wrapper(*args, **kwargs):
         for value in sampling_func(*args, **kwargs):
-            value = [np.array([v]) if np.isscalar(v) else v for v in value]
-            yield transform_func(np.concatenate(value))
+            flat = []
+            for v in value:
+                if np.isscalar(v):
+                    flat.append(v)
+                elif isinstance(v, (list, tuple)):
+                    flat.extend(v)
+                elif isinstance(v, np.ndarray):
+                    if v.ndim == 1:
+                        flat.extend(v)
+                    else:
+                        flat.append(v)
+                else:
+                    flat.append(v)  # fallback for unknown types
+            yield transform_func(np.array(flat, dtype=object))
     return wrapper
 
 class MomentTensorLogScaleHomogeneous:
@@ -203,6 +216,27 @@ def truncated_gaussian_sampler(bounds, num_samples):
     for sample in sampler.sampler(num_samples):
         yield sample
 
+from seismo_sbi.cps_simulator.CPS import perturb_model
+class VelocityModelSampler:
+    
+    def __init__(self, velocity_model, kappa, num_samples):
+        self.velocity_model = velocity_model
+        self.kappa = kappa
+        self.num_samples = num_samples
+
+    def __iter__(self):
+        for _ in range(self.num_samples):
+            yield perturb_model(self.velocity_model, self.kappa)
+
+def velocity_model_sampler(velocity_model_args, num_samples):
+    """
+    Returns a generator of perturbed velocity models.
+    """
+    velocity_model_path, kappa = velocity_model_args
+    velocity_model = load_velocity_model(velocity_model_path)
+    sampler = iter(VelocityModelSampler(velocity_model, kappa, num_samples))
+    return sampler
+
 
 class DatasetGenerator(ParallelSimulationRunner):
 
@@ -212,7 +246,8 @@ class DatasetGenerator(ParallelSimulationRunner):
                           "gaussian"        : gaussian_sampler,                     
                           "moment tensor log prior"   : MomentTensorLogScaleHomogeneous.sampler,
                           "constant": constant_sampler,
-                          "truncated gaussian": truncated_gaussian_sampler}
+                          "truncated gaussian": truncated_gaussian_sampler,
+                          "velocity model": velocity_model_sampler}
 
     def __init__(self, simulator, output_base_path, num_parallel_jobs=1):
         super().__init__(simulator, num_parallel_jobs)
@@ -248,7 +283,7 @@ class DatasetGenerator(ParallelSimulationRunner):
 
 
         simulation_job_args_list = [input_config for input_config in input_generator]
-
+        # print(simulation_job_args_list[::25])
         self.run_parallel_simulations(simulation_job_args_list)
     
     def run_predefined_batch(self, thetas, indices, parameters : ModelParameters):

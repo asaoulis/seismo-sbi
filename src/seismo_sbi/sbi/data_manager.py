@@ -80,13 +80,14 @@ class DataManager:
         return real_jobs
 
     @error_handling_wrapper(num_attempts=3)
-    def compute_compression_data_from_stencil(self, model_parameters : ModelParameters):
+    def compute_compression_data_from_stencil(self, model_parameters : ModelParameters, use_fiducial=True):
 
         with tempfile.TemporaryDirectory() as stencil_outputs_folder:
             
             score_compression_data = self.dataset_compressor.run_derivative_stencil_for_compression_data(
                                             model_parameters,
-                                            Path(stencil_outputs_folder)
+                                            Path(stencil_outputs_folder),
+                                            use_fiducial=use_fiducial
                                         )
         return score_compression_data
     

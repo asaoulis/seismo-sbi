@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from pathlib import Path
 from itertools import product
+from functools import partial
 
 from .gaussian import ScoreCompressionData
 from ..configuration import ModelParameters
@@ -13,11 +14,12 @@ class DerivativeStencil:
 
     five_point_stencil_offsets = np.array([-2, -1, 1, 2])
 
-    def __init__(self, parameters : ModelParameters, output_folder: Path):
+    def __init__(self, parameters : ModelParameters, output_folder: Path, use_fiducial=True):
 
         self.num_params = len(list(parameters.iterate_over_parameters()))
         self.parameters = parameters
         self.output_folder = output_folder
+        self.use_fiducial = use_fiducial
 
         self.simulation_output_paths = np.empty((self.num_params, 4), dtype=object)
 
@@ -29,6 +31,8 @@ class DerivativeStencil:
 
     def calculate_score_compression_data(self, simulator, data_loader, num_jobs=1) -> ScoreCompressionData:
 
+        simulator = partial(simulator, use_fiducial=self.use_fiducial)
+        print("using fiducial:", self.use_fiducial)
         self.run_stencil_simulations(simulator, num_jobs)
 
         stencil_results = self.load_simulation_results(data_loader)

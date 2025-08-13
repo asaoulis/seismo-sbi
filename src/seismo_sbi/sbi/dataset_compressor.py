@@ -34,9 +34,9 @@ class DatasetCompressor:
 
 
     def run_derivative_stencil_for_compression_data(self, parameters,
-                                                    stencil_output_folder):
+                                                    stencil_output_folder, use_fiducial=True):
 
-        derivative_stencil = DerivativeStencil(parameters, stencil_output_folder)
+        derivative_stencil = DerivativeStencil(parameters, stencil_output_folder, use_fiducial=use_fiducial)
         
         score_compression_data = derivative_stencil.calculate_score_compression_data(
                                     self.simulator,

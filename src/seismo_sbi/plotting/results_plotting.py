@@ -81,10 +81,11 @@ class SBIPipelinePlotter:
 
     def plot_compression(self, raw_compressed_dataset, compressed_estimate = None, job_name=None):
         plotting_base_output_path = self.base_output_path
-        if job_name is not None:
+        figname = None
+        if job_name:
             plotting_base_output_path = plotting_base_output_path / 'compression'
-        plotting_base_output_path.mkdir(exist_ok=True, parents=True)
+            figname = (plotting_base_output_path / f"./{job_name}.png").resolve()
+            plotting_base_output_path.mkdir(exist_ok=True, parents=True)
 
-        figname = (plotting_base_output_path / f"./{job_name}.png").resolve()
         self.posterior_plotter.plot_compression_errors(raw_compressed_dataset[:, :2*self.num_dim], compressed_estimate, figname=figname)
     

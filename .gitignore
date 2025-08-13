@@ -26,3 +26,6 @@ paper/
 data/
 final_plots/
 *.egg-info/
+dfile
+*.mseed
+*.mod
