@@ -27,7 +27,7 @@ def asynchronous_plotting(plotting_callable, results_queue, plotting_complete_ev
             job_result, inversion_result = results_queue.get()
             if inversion_result is None:
                 break
-            plotting_callable(job_result, inversion_result, bounds = None)
+            plotting_callable(job_result, inversion_result)
         plotting_complete_event.set()
     except Exception as e:
         import traceback

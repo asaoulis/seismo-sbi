@@ -13,12 +13,15 @@ from ..types.parameters import IterativeLeastSquaresParameters
 
 class IterativeLeastSquaresSolver:
 
-    def __init__(self, sim_parameters, model_parameters, dataloader, simulator, least_squares_configuration : IterativeLeastSquaresParameters, num_parallel_jobs = 1):
+    def __init__(self, sim_parameters, compression_methods, model_parameters, data_manager, simulator_wrapper, least_squares_configuration : IterativeLeastSquaresParameters, num_parallel_jobs = 1):
         self.sim_parameters = sim_parameters
         self.model_parameters = model_parameters
+        self.compression_methods = compression_methods
 
-        self.data_loader = dataloader
-        self.simulator = simulator
+        self.data_manager = data_manager
+        self.data_loader = data_manager.data_loader
+        self.stencil_args = (compression_methods, simulator_wrapper, self.sim_parameters)
+        self.simulator = simulator_wrapper.simulator
         self.least_squares_configuration = least_squares_configuration
 
         self.num_parallel_jobs = num_parallel_jobs
@@ -36,23 +39,24 @@ class IterativeLeastSquaresSolver:
         for _ in tqdm(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             # Step 1: Compute gradients
 
-            score_compression_data = self._compute_gradients(new_parameters)
+            score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
             scaling_factors = self._create_scaling_vector(new_parameters)
+            scaling_factors = np.ones_like(scaling_factors)
 
-            # Step 2: Compute the synthetic vector
-            parameter_map = {**self.model_parameters.vector_to_parameters(model_params, 'theta_fiducial'),
-                             **self.model_parameters.nuisance}
-            synthetic = self.data_loader.convert_sim_data_to_array(
-                    {"outputs": self.simulator.run_simulation(parameter_map)[1]}
-                ).flatten()
-            scaled_gradients = score_compression_data.data_parameter_gradients / scaling_factors[:, np.newaxis] 
-            score_compression_data = score_compression_data._replace(data_parameter_gradients = scaled_gradients)
-            score_compression_data = score_compression_data._replace(data_fiducial = synthetic)
-            score_compression_data = score_compression_data._replace(theta_fiducial = model_params * scaling_factors)
             if true_priors[0] is not None:
                 scaled_priors = (true_priors[0] * scaling_factors, true_priors[1] * scaling_factors**2)
                 compressor.set_priors(scaled_priors)
+            if extra_gradients is not None:
+                compressor.C.set_covariance(extra_gradients)
             compressor.set_compression_variables(score_compression_data)
+
+            # import matplotlib.pyplot as plt
+            # cov_blocks = compressor.C.C_derivative[0]
+            # fig, axs = plt.subplots(2, 2, figsize=(12, 12))
+            # for i, ax in enumerate(axs.flat):
+            #     block = cov_blocks[i]
+            #     im = ax.imshow(block, aspect='auto')
+            # plt.show()
 
             misfit_new = compressor.compute_misfit(observation)
             if misfit_new > 0.99 * misfit:
@@ -75,17 +79,9 @@ class IterativeLeastSquaresSolver:
             print(update, flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
 
-        final_score_compression_data = self._compute_gradients(new_parameters)
-        theta_MLE = model_params
-        theta_MLE_map =  {**new_parameters.vector_to_parameters(model_params, 'theta_fiducial'),
-                          **self.model_parameters.nuisance}
-        D_MLE = self.data_loader.convert_sim_data_to_array(
-                    {"outputs": self.simulator.run_simulation(theta_MLE_map)[1]}
-                ).flatten()
-        final_score_compression_data = final_score_compression_data._replace(data_fiducial = D_MLE)
-        final_score_compression_data = final_score_compression_data._replace(theta_fiducial = theta_MLE)
+        final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
 
-        return final_score_compression_data
+        return final_score_compression_data, extra_gradients
 
     @error_handling_wrapper(num_attempts=3)
     def _compute_gradients(self, model_parameters):

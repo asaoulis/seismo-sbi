@@ -118,7 +118,7 @@ class ConditionalTransformer(nn.Module):
         super().__init__()
         self.device = device
         self.timepoints = torch.Tensor(np.arange(seq_len_in)).to(self.device)
-        self.station_positions = station_positions.to(self.device)
+        self.station_positions = torch.Tensor(station_positions).to(self.device)
 
         self.emb_time_dim = config["timeemb"]
         self.emb_position_dim = config["posemb"]
@@ -127,7 +127,7 @@ class ConditionalTransformer(nn.Module):
 
         config["side_dim"] = self.emb_total_dim
 
-        input_dim = 1
+        input_dim = 128
         self.diffmodel = SkipTransformer(config, input_dim)
 
     def time_embedding(self, pos, d_model=128):

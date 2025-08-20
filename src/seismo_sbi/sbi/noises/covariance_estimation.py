@@ -72,6 +72,7 @@ class EmpiricalCovariance(ABC):
     # https://thelaziestprogrammer.com/python/multiprocessing-pool-a-global-solution
     C_inverse = None
     data_vector_length = None
+    C_derivative = None
 
     @abstractmethod
     def create_sampler(self):
@@ -235,7 +236,24 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             reshaped_vector = data_vector.reshape(-1, data_vector_length)
             return np.einsum('ijk,ik->ij', C_inverse, reshaped_vector).reshape(-1)
 
+        def matrix_vector_product(self, matrix, data_vector):
+            reshaped_vector = data_vector.reshape(-1, self.data_vector_length)
+            # return np.matvec(matrix, reshaped_vector).reshape(-1)
+            return np.einsum('ijk,ik->ij', matrix, reshaped_vector).reshape(-1)
         
+        def matrix_matrix_product(self, matrix1, matrix2):
+            # return np.matmul(matrix1, matrix2)
+            return np.einsum('ijk,ikl->ijl', matrix1, matrix2)
+
+        def vector_vector_dot_product(self, vector1, vector2):
+            return np.dot(vector1, vector2)
+            # reshaped_vector1 = vector1.reshape(-1, self.data_vector_length)
+            # reshaped_vector2 = vector2.reshape(-1, self.data_vector_length)
+            # return np.einsum('ij,ij->', reshaped_vector1, reshaped_vector2)
+    
+        def compute_trace(self, matrix):
+            return np.trace(matrix, axis1=1, axis2=2).sum()
+
         @staticmethod
         def create_matmul_inverse_covariance(C_inverse, data_vector_length):
             return partial(BlockDiagonalEmpiricalCovariance.callable_matmul_inverse_covariance, 
@@ -302,15 +320,36 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
 
     def __init__(self, station_component_covariances, noise_level, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances.data_fiducial, noise_level)
+        self.noise_level = noise_level
+        self.kernels = None
+        self.traces = None
+
+        self.set_covariance(station_component_covariances)
+
+    def set_covariance(self, station_component_covariances):
+        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances.data_fiducial, self.noise_level)
         self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
+        # self.C_derivative = self.create_C_derivative(station_component_covariances)
+        # self.set_covariance_constants()
     
     def create_covariance_matrix(self, station_component_covariances, noise_level):
         theory_covariances =  station_component_covariances.reshape(-1, self.data_vector_length, self.data_vector_length)
         data_covariances = np.array([np.eye(self.data_vector_length) * noise_level**2 for _ in range(theory_covariances.shape[0])])
         return theory_covariances + data_covariances
-    
+
+    def create_C_derivative(self, station_component_covariances):
+        flattened_cov_derivatives = station_component_covariances.data_parameter_gradients
+        return flattened_cov_derivatives.reshape(-1, self.covariance_matrix_arrays.shape[0], self.data_vector_length, self.data_vector_length)
+
+    def set_covariance_constants(self):
+        self.kernels = []
+        self.traces = []
+        for a in range(self.C_derivative.shape[0]):
+            cov_kernel = self.matrix_matrix_product(self.C_inverse, self.matrix_matrix_product(self.C_derivative[a], self.C_inverse))
+            trace = self.compute_trace(self.matrix_matrix_product(self.C_inverse, self.C_derivative[a]))
+            self.kernels.append(cov_kernel)
+            self.traces.append(trace)
+
 class EmpiricalCovarianceEstimator:
 
     def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True):

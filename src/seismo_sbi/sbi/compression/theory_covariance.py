@@ -1,6 +1,7 @@
 import numpy as np
 
-from ...instaseis_simulator.simulator import Simulator, CPSPrecomputedSimulator
+from ...instaseis_simulator.simulator import Simulator
+from ...cps_simulator.simulator import CPSPrecomputedSimulator
 
 class CPSTheoryCovarianceEstimationSimulator(Simulator):
     """

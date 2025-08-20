@@ -13,11 +13,14 @@ from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
 from seismo_sbi.sbi import utils as utils
+from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.scalers import ZeroOneScaler, FlexibleScaler
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
     parser.add_argument('--config', '-c', type=str, help='Filepath of sbi_pipeline configuration file.', required = True)
-
+    # run name argument
+    parser.add_argument('--run_name', '-n', type=str, help='Name of the run. Used to create a subfolder in the output directory.', default = 'default_run')
     args = parser.parse_args()
     return args
 
@@ -42,7 +45,9 @@ def main():
     sbi_pipeline.compression_methods = config.compression_methods
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
 
-    test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
+    # test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
+    test_jobs_paths = [Path('/data/alex/cps/alex/sims/cps_working/query_aggregation/random_event_0.h5'),]
+
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
     score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
                                                                             config.model_parameters,  
@@ -52,27 +57,26 @@ def main():
     
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
-    # Preparations for performing sbi
-    job_data = sbi_pipeline.create_job_data(test_jobs_paths, config.real_event_jobs)
-
-    results_generator = sbi_pipeline.run_compressions_and_inversions(
-        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters)
-    
-    output_path = Path(config.pipeline_parameters.output_directory) / 'jobs' / config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    if config.plotting_options['disable_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_results_saving(job_data, results_generator, output_path)
-    elif config.plotting_options['async_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_plotting(sbi_pipeline, results_generator)
-    else:
-        job_results, inversion_results = utils.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
-
-    with open(output_path / "inversion_results.pkl", 'wb') as f:
-        pickle.dump((job_data, job_results, inversion_results), f)
-            
-    sbi_pipeline.plot_comparisons(inversion_results, config.plotting_options['test_posteriors']['chain_consumer'])
-
+    components = sbi_pipeline.data_manager.data_loader.components
+    station_locations = sbi_pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(sbi_pipeline.parameters)
+    trainer = CompressionTrainer(components, station_locations)
+    dataloader_args = {
+        'data_loader': sbi_pipeline.data_manager.data_loader,
+        'data_folder': sbi_pipeline.simulations_output_path,
+        'parameter_name_map': sbi_pipeline.parameters.names,
+        'synthetic_noise_model_sampler': sbi_pipeline.training_noise_sampler,
+        'data_scaler': data_scaler,
+        'train_max_index': 19000,
+        'train_batch_size': 256,
+        'val_batch_size': 256,
+        'train_shuffle': True,
+        'val_shuffle': False,
+        'num_workers': 20,
+    }
+    run_name = args.run_name
+    data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
+    trainer.train(run_name, epochs=100, output_path=data_path, dataloader_args=dataloader_args)
 
 if __name__ == '__main__':
     main()

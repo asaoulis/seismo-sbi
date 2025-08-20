@@ -94,6 +94,14 @@ class GaussianCompressor(Compressor):
             for b in range(0, self.num_params):
                 F[a, b] += 0.5*(np.dot(self.dD_Dtheta_gradients[a,:], self.C.matmul_inverse_covariance(self.dD_Dtheta_gradients[b,:])) \
                                 + np.dot(self.dD_Dtheta_gradients[b,:], self.C.matmul_inverse_covariance(self.dD_Dtheta_gradients[a,:])))
+                # print("Fisher matrix element", a, b, F[a, b])
+                if self.C.C_derivative is not None:
+                    F[a, b] += 0.5 * self.C.compute_trace(self.C.matrix_matrix_product(
+                        self.C.matrix_matrix_product(self.C.C_inverse, self.C.C_derivative[a]),
+                        self.C.matrix_matrix_product(self.C.C_inverse, self.C.C_derivative[b])
+                    ))
+                    # print("Fisher matrix element with derivative", a, b, F[a, b])
+
         
         if self.prior_covariance is not None:
             F +=  np.linalg.inv(np.diag(self.prior_covariance))
@@ -106,12 +114,6 @@ class GaussianCompressor(Compressor):
         score = self.compute_score(D, matmul_callable=matmul_callable)
 
         t = self.convert_score_to_theta_MLE(score, damping)
-        # if self.prior_mean is not None:
-        #     theta_diff = self.prior_mean - self.theta_fiducial
-        #     print('pre prior', t)
-        #     t += np.dot(self.Fisher_mat_inverse, 
-        #                 )# + damping*np.diag(np.diag(self.Fisher_mat))
-        #     print('post prior', t)
         return t
     
     def convert_score_to_theta_MLE(self, score, damping = None):
@@ -125,15 +127,21 @@ class GaussianCompressor(Compressor):
         return self.compute_theta_MLE(D, matmul_callable=matmul_callable)
 
     def compute_score(self, D, matmul_callable = None, reduce=True):
-
+        residual = D - self.D_fiducial
         if matmul_callable is not None:
-            covariance_residual_product = matmul_callable(D - self.D_fiducial)
+            covariance_residual_product = matmul_callable(residual)
         else:
-            covariance_residual_product = self.C.matmul_inverse_covariance(D - self.D_fiducial)
+            covariance_residual_product = self.C.matmul_inverse_covariance(residual)
         if reduce:
             dL_dtheta = np.zeros(self.num_params)
             for a in range(self.num_params):
                 dL_dtheta[a] += np.dot(self.dD_Dtheta_gradients[a,:], covariance_residual_product)
+                if self.C.C_derivative is not None:
+                    # final terms of EQ18 https://arxiv.org/pdf/1712.00012
+                    covariance_products = self.C.kernels[a]
+                    first_cov_term = 0.5 * self.C.vector_vector_dot_product(residual, self.C.matrix_vector_product(covariance_products,residual)) 
+                    second_cov_term = -0.5* self.C.traces[a]
+                    dL_dtheta[a] += first_cov_term + second_cov_term
         else:
             dL_dtheta = np.zeros((self.dD_Dtheta_gradients[0,:].shape[0], self.num_params))
             for a in range(self.num_params):

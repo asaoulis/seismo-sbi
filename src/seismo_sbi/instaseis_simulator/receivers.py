@@ -105,3 +105,9 @@ class Receivers:
         # Add title and labels
         ax.set_title("Receiver network")
         plt.show()
+    
+    def get_station_locations_array(self):
+        """
+        Returns an array of station locations in the format [latitude, longitude].
+        """
+        return np.array([[rec.latitude, rec.longitude] for rec in self.iterate()])

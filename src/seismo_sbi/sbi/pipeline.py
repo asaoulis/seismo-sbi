@@ -9,6 +9,7 @@ from sbi import analysis as analysis
 from copy import deepcopy
 import time
 from typing import List
+from functools import partial
 
 from .configuration import SBI_Configuration
 from .configuration import  ModelParameters, SimulationParameters, PipelineParameters, DatasetGenerationParameters, TestJobs
@@ -186,7 +187,6 @@ class SBIPipeline:
             
         
         train_noise_type =  sbi_noise_model['type']
-        print(f"Training noise type: {train_noise_type}", flush=True)
         
         if train_noise_type == 'gaussian':
             train_noise_level = sbi_noise_model['noise_level']
@@ -205,26 +205,7 @@ class SBIPipeline:
         return lambda no_rescale: np.random.normal(0, noise_level *np.ones((self.data_vector_length)))
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
-
-        self.compression_methods = compression_methods
-
-        compression_method_details = [compression_method[0] for compression_method in compression_methods]
-        score_compression_data = None
-        extra_gradients = None
-        if "optimal_score" in compression_method_details or "multi_optimal_score" in compression_method_details:
-            score_compression_data = self.data_manager.compute_compression_data_from_stencil(model_parameters)
-        if "theory_optimal_score" in compression_method_details:
-            score_compression_data = self.data_manager.compute_compression_data_from_stencil(model_parameters)
-            simulator_config = ("cps_covariance", self.simulator_wrapper.simulator)
-            covariance_simulator = self.simulator_wrapper.select_and_initialise_simulator(simulator_config, self.simulation_parameters)
-            dummy_datamanager = deepcopy(self.data_manager)
-            dummy_datamanager.dataset_compressor.simulator = covariance_simulator.execute_sim_and_save_outputs
-            extra_gradients = dummy_datamanager.compute_compression_data_from_stencil(model_parameters, use_fiducial=False)
-        if "second_order_score" in compression_method_details:
-            if score_compression_data is None:
-                score_compression_data = self.data_manager.compute_compression_data_from_stencil(model_parameters)
-            extra_gradients = self.data_manager.compute_hessian(score_compression_data, model_parameters)
-        return score_compression_data, extra_gradients
+        return self.data_manager.compute_required_compression_data(model_parameters, compression_methods, self.simulator_wrapper, self.simulation_parameters)
     
     def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
 
@@ -313,7 +294,7 @@ class SBIPipeline:
 
         if job_result is not None:
             compressed_dataset, compressed_x0, _ = job_result
-            plotter.plot_compression(compressed_dataset, compressed_x0, job_name = None)
+            plotter.plot_compression(compressed_dataset, compressed_x0, job_name = job_name)
         plotter.plot_posterior(job_name, inversion_data, kde=True)
 
     def plot_comparisons(self, inversion_results, chain_consumer_config, savefig = True):
@@ -360,9 +341,10 @@ class SingleEventPipeline(SBIPipeline):
         self._load_base_pipeline_params(simulation_parameters, model_parameters, dataset_parameters, downsampled_length)
 
         self.least_squares_solver = IterativeLeastSquaresSolver(simulation_parameters, 
+                                                                self.compression_methods,
                                                                 model_parameters,
-                                                                 self.data_manager.data_loader, 
-                                                                 self.simulator_wrapper.simulator,
+                                                                 self.data_manager, 
+                                                                 self.simulator_wrapper,
                                                                  dataset_parameters.iterative_least_squares, 
                                                                  self.num_parallel_jobs)
     
@@ -404,7 +386,7 @@ class SingleEventPipeline(SBIPipeline):
                 
                 print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
 
-                plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.parameter_to_vector('source_location')[:2], covariance = self.empirical_cov_mat)
+                plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
 
                 inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
 
@@ -426,7 +408,7 @@ class SingleEventPipeline(SBIPipeline):
         if dataset_details.use_fisher_to_constrain_bounds:
             dataset_details = self.use_fisher_to_constrain_bounds(dataset_details, compression_data)
 
-        compressor = self.compressors['optimal_score']
+        compressor = list(self.compressors.values())[0]
         x_0 = compression_data.theta_fiducial
         
         print('MLE', x_0)
@@ -434,10 +416,6 @@ class SingleEventPipeline(SBIPipeline):
         self.ground_truth_scaler = FlexibleScaler(self.parameters)
         statistic_scaler = self.ground_truth_scaler
         x_0_scaled = statistic_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
-        if theta0 is not None:
-            theta0_scaled = self.ground_truth_scaler.transform(theta0.reshape(1,-1)).reshape(-1)
-        else:
-            theta0_scaled = None
 
         dataset = self.generate_simulation_data(dataset_details, priors=priors)
         raw_compressed_dataset = self.data_manager.compress_dataset(
@@ -452,19 +430,21 @@ class SingleEventPipeline(SBIPipeline):
         sbi_model.build_amortised_estimator(train_data)
 
         sample_results, _ = sbi_model.sample_posterior(x_0_scaled, num_samples=10000)
+        # unscale the results
+        sample_results = self.ground_truth_scaler.inverse_transform(sample_results)
 
-        inversion_data = InversionData(theta0_scaled, sample_results, deepcopy(self.ground_truth_scaler), compression_data)
+        inversion_data = InversionData(theta0, sample_results, deepcopy(self.ground_truth_scaler), compression_data)
         job_result = JobResult(raw_compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))
         return inversion_data, job_result, sbi_model
 
-    def clean_train_data(self, train_data, raw_compressed_dataset):
+    def clean_train_data(self, train_data, raw_compressed_dataset, factor=10):
         # if mean relative error is too high, remove the row
         start_length = train_data.shape[0]
         truths = train_data[:, :self.num_dim]
         compressions = train_data[:, self.num_dim:]
         mean_relative_error = torch.mean(torch.abs(compressions - truths)/truths, dim=1)
-        train_data = train_data[mean_relative_error < 5]
-        raw_compressed_dataset = raw_compressed_dataset[mean_relative_error < 3]
+        train_data = train_data[mean_relative_error < factor]
+        raw_compressed_dataset = raw_compressed_dataset[mean_relative_error < factor]
         print(f"Removed {start_length - train_data.shape[0]} rows due to high relative compression error.")
         # count number of rows removed
         return train_data, raw_compressed_dataset
@@ -493,10 +473,10 @@ class SingleEventPipeline(SBIPipeline):
     def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details, extra_gradients=None):
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
         single_least_squares_step =  only_moment_tensor_variable
-        compression_data = self.data_manager.compute_compression_data_from_stencil(self.parameters)
+        compression_data, extra_gradients = self.data_manager.compute_required_compression_data( self.parameters, self.compression_methods, self.simulator_wrapper, self.simulation_parameters)
         self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
         compressor = list(self.compressors.values())[0]
-        compression_data = self.least_squares_solver.solve_least_squares(data_vector, compressor, single_step=single_least_squares_step)
+        compression_data, extra_gradients = self.least_squares_solver.solve_least_squares(data_vector, compressor, single_step=single_least_squares_step)
         self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
 
         return compression_data
@@ -555,22 +535,23 @@ class SingleEventPipeline(SBIPipeline):
         
         if theta0_dict is not None:
             theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
-            theta0_scaled = scaler.transform(theta0.reshape(1,-1)).reshape(-1)
+            # theta0_scaled = scaler.transform(theta0.reshape(1,-1)).reshape(-1)
         else:
-            theta0_scaled = None
+            theta0 = None
         # multiprocessing and joblib use two different backends
         if ensemble:
             covariance_loss_callable = covariance.generic_loss_callable
         else:
             covariance_loss_callable = covariance.create_loss_callable(covariance.C_inverse, covariance.data_vector_length)
 
-        simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(D, self.simulator_wrapper.simulation_callable, scaler, loss_callable=covariance_loss_callable, priors=priors)
+        simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(D, partial(self.simulator_wrapper.simulation_callable, use_fiducial=True) , scaler, loss_callable=covariance_loss_callable, priors=priors)
 
         samples = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
                                                         nsamples_per_walker=nsamples_per_walker, nwalkers=self.num_parallel_jobs, 
-                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0_scaled, move_size=move_size)
-        inversion_data = InversionData(theta0_scaled, samples, scaler)
+                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size)
+        samples = scaler.inverse_transform(samples)
+        inversion_data = InversionData(theta0, samples, scaler)
 
         inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
         yield None, inversion_result

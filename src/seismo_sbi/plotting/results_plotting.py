@@ -76,6 +76,8 @@ class SBIPipelinePlotter:
         self.posterior_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, figsave=plot_path)
 
         if "moment_tensor" in self.parameters.names.keys():
+            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./lune_{test_name}.png"  if savefig else None
+            self.posterior_plotter.plot_lunes(inversion_data_dict, figsave=plot_path)
             plot_path = self.base_output_path / f"./{base_figure_path}" / f"./nodal_params_{test_name}.png"  if savefig else None
             self.reparametrised_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, inverse=True, figsave=plot_path)
 

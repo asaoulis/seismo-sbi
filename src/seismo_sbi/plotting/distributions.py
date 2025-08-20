@@ -19,6 +19,8 @@ from ..instaseis_simulator.dataset_generator import tqdm_joblib
 from tqdm import tqdm
 from contextlib import contextmanager
 import logging
+from seismo_sbi.plotting.MTfit import _LunePlot
+
 
 # disable chain consumer warnings for reparametrised moment tensor
 # as the angle distributions cover periodic sample space
@@ -195,9 +197,10 @@ class MomentTensorReparametrised:
         for name, (theta0, samples, data_scaler, _) in samples_theta0_dict.items():
             if data_scaler is None:
                 data_scaler = self.data_scaler
-            samples = data_scaler.inverse_transform(samples)
+            # samples = data_scaler.inverse_transform(samples)
             if theta0 is not None:
-                theta0 = self.data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
+                pass
+                # theta0 = self.data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
             samples, theta0 = self.convert_samples(samples, theta0, custom_processing)
             # if custom_processing is not None:
             #     samples, theta0 = custom_processing(samples, theta0)
@@ -481,6 +484,74 @@ class PosteriorPlotter:
         else:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
         plt.close()
+    
+    def plot_lunes(self, inversion_data, num_samples=250, figsave=None):
+
+        fig = plt.figure(figsize=(5, 5))
+
+        colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+        true_theta0 = None
+        for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
+            np.random.shuffle(samples)
+            samples = samples[:num_samples]
+            samples_MT, theta0 = self.get_moment_tensors(samples, theta0)
+            if i == 0:
+                true_theta0 = theta0
+        
+            kwargs = dict(color=colors[i], alpha=0.3, marker='o')
+
+            lune = _LunePlot(None, fig, samples_MT, fontsize=16, **kwargs)
+            lune._convert()
+            handle = lune._ax_plot(**kwargs)
+            lune._background(handle)
+            lune.ax.set_axis_off()
+            ax = lune.ax  # Get current axis from fig
+            ax.set_axis_off()  # Remove the entire axis
+            ax.set_xticks([])  # Remove x-ticks
+            ax.set_yticks([])  # Remove y-ticks
+            ax.spines['top'].set_visible(False)  # Hide top border
+            ax.spines['right'].set_visible(False)  # Hide right border
+            ax.spines['left'].set_visible(False)  # Hide left border
+            ax.spines['bottom'].set_visible(False)  # Hide bottom border
+
+
+        kwargs = dict(color='plum', alpha=1, marker='*', markersize=10)
+        if true_theta0 is not None:
+            lune_truth = _LunePlot(None, fig, true_theta0, fontsize=16, **kwargs)
+            lune_truth.ax = lune.ax
+            lune_truth._convert()
+            handle = lune_truth._ax_plot(**kwargs)
+            lune_truth.ax.set_axis_off()
+            lune_truth._background(handle)
+            ax = lune_truth.ax  # Get current axis from fig
+
+            ax.set_axis_off()  # Remove the entire axis
+            ax.set_xticks([])  # Remove x-ticks
+            ax.set_yticks([])  # Remove y-ticks
+            ax.spines['top'].set_visible(False)  # Hide top border
+            ax.spines['right'].set_visible(False)  # Hide right border
+            ax.spines['left'].set_visible(False)  # Hide left border
+            ax.spines['bottom'].set_visible(False)  # Hide bottom border
+
+
+        if figsave is None:
+            plt.show()
+        else:
+            fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
+        plt.close()
+
+    def get_moment_tensors(self, samples, theta0):
+        sample_mts = []
+        for sample in samples:
+            inputs = self.parameters.vector_to_simulation_inputs(sample, only_theta_fiducial=True)
+            sample = inputs["moment_tensor"]
+            sample_mts.append(sample)
+        sample_mts = np.array(sample_mts)
+        
+        if theta0 is not None:
+            theta_inputs = self.parameters.vector_to_simulation_inputs(theta0, only_theta_fiducial=True)
+            theta0 = theta_inputs["moment_tensor"]
+        return sample_mts, theta0
 
     def plot_posterior_distribution(self, samples, theta0, bounds, figsave= None):
 
@@ -517,13 +588,13 @@ class PosteriorPlotter:
 
         if data_scaler is None:
             data_scaler = self.data_scaler
-        raw_units_samples = data_scaler.inverse_transform(samples)
+        # raw_units_samples = data_scaler.inverse_transform(samples)
         if theta0 is not None:
-            raw_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1))
-
-        plotting_units_samples = self._transform_to_plotting_units(raw_units_samples)
+            # raw_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1))
+            pass
+        plotting_units_samples = self._transform_to_plotting_units(samples)
         if theta0 is not None:
-            plotting_units_theta_0 = self._transform_to_plotting_units(raw_units_theta_0).flatten()
+            plotting_units_theta_0 = self._transform_to_plotting_units(theta0.reshape(1, -1)).flatten()
         else:
             plotting_units_theta_0 = None
         return plotting_units_samples,plotting_units_theta_0
@@ -564,13 +635,13 @@ class PosteriorPlotter:
         theta0, samples, data_scaler, _ = inversion_data
         if data_scaler is None:
             data_scaler = self.data_scaler
-        plotting_units_samples = data_scaler.inverse_transform(samples)
-        if theta0 is not None:
-            plotting_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
-        else:
-            plotting_units_theta_0 = None
+        # plotting_units_samples = data_scaler.inverse_transform(samples)
+        # if theta0 is not None:
+        #     plotting_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
+        # else:
+        #     plotting_units_theta_0 = None
 
-        np.random.shuffle(plotting_units_samples)
+        np.random.shuffle(samples)
         if plot_path is not None:
             filename = plot_path.stem
             figsave_1 = plot_path.with_name(f"{filename}_samples.png")
@@ -578,8 +649,8 @@ class PosteriorPlotter:
         else:
             figsave_1 = None
             figsave_2 = None
-        self.plot_seperate_beachballs(plotting_units_samples, plotting_units_theta_0, figsave=figsave_1)
-        self.plot_beachball_projection_samples(plotting_units_samples, figsave=figsave_2)
+        self.plot_seperate_beachballs(samples, theta0, figsave=figsave_1)
+        self.plot_beachball_projection_samples(samples, figsave=figsave_2)
 
     def plot_seperate_beachballs(self, plotting_units_samples, plotting_units_theta_0, sample_color='b', figsave = None):
         with plt.rc_context({'font.size' : 8}):

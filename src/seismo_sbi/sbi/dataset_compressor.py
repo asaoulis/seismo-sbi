@@ -7,9 +7,7 @@ from .compression.gaussian import Compressor, ScoreCompressionData
 from seismo_sbi.instaseis_simulator.dataset_generator import tqdm_joblib
 from tqdm import tqdm
 
-
 from ..instaseis_simulator.dataloader import SimulationDataLoader
-
 
 class DatasetCompressor:
 

@@ -3,7 +3,8 @@ from sbi import utils as utils
 from sbi import analysis as analysis
 from copy import deepcopy
 
-from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator, CPSVariableKernelSimulator, CPSPrecomputedSimulator
+from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
+from seismo_sbi.cps_simulator.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator
 from seismo_sbi.sbi.compression.theory_covariance import CPSTheoryCovarianceEstimationSimulator
 from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
 from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters
@@ -48,15 +49,15 @@ class GeneralSimulatorWrapper:
                             receivers = simulation_parameters.receivers,
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing,
-                            gf_storage_root='./cps_5kappa')
+                            gf_storage_root=simulation_parameters.cps_GFs_path,)
         elif simulator_config[0] == 'cps_precomputed':
             simulator = CPSPrecomputedSimulator(
-                            fiducial_model_path='./cps_long_valley/fiducial',
+                            fiducial_model_path=simulation_parameters.cps_GFs_fiducial_path,
                             components= simulation_parameters.components, 
                             receivers = simulation_parameters.receivers,
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing,
-                            gf_storage_root='./cps_5kappa')
+                            gf_storage_root=simulation_parameters.cps_GFs_path)
         elif simulator_config[0] == 'cps_covariance':
             cps_simulator = simulator_config[1]
             simulator = CPSTheoryCovarianceEstimationSimulator(
@@ -74,12 +75,12 @@ class GeneralSimulatorWrapper:
     def create_input_output_simulation_callable(self, parameters, data_loader, samplers):
         return partial(self.input_output_simulation, parameters, data_loader, samplers)
 
-    def input_output_simulation(self, parameters : ModelParameters, data_loader : SimulationDataLoader, samplers, simulator, theta):
+    def input_output_simulation(self, parameters : ModelParameters, data_loader : SimulationDataLoader, samplers, simulator, theta, **kwargs):
         if len(theta.shape) == 1:
             theta = theta.reshape(1,-1)
         theta_fiducial_map = parameters.vector_to_parameters(theta[0], 'theta_fiducial')
         sampled_nuisance = {key: next(samplers[key](1)) for key in parameters.nuisance.keys()}
-        inputs_map = {**theta_fiducial_map, **sampled_nuisance}
+        inputs_map = {**theta_fiducial_map, **sampled_nuisance, **kwargs}
         return data_loader.convert_sim_data_to_array(
                     {"outputs": simulator.run_simulation(inputs_map)[1]}
                 ).flatten()

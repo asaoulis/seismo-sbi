@@ -29,3 +29,5 @@ final_plots/
 dfile
 *.mseed
 *.mod
+*.svg
+wandb/

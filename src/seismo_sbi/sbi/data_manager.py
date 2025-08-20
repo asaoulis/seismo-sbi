@@ -90,6 +90,38 @@ class DataManager:
                                             use_fiducial=use_fiducial
                                         )
         return score_compression_data
+
+    def compute_required_compression_data(
+        self,
+        model_parameters: ModelParameters,
+        compression_methods,
+        simulator_wrapper,
+        simulation_parameters,
+    ):
+        from copy import deepcopy
+        compression_method_details = [cm[0] for cm in compression_methods]
+        extra_gradients = None
+
+        score_compression_data = self.compute_compression_data_from_stencil(
+            model_parameters
+        )
+
+        if "theory_optimal_score" in compression_method_details:
+            simulator_config = ("cps_covariance", simulator_wrapper.simulator)
+            covariance_simulator = simulator_wrapper.select_and_initialise_simulator(
+                simulator_config, simulation_parameters
+            )
+
+            dummy_datamanager = deepcopy(self)
+            dummy_datamanager.dataset_compressor.simulator = (
+                covariance_simulator.execute_sim_and_save_outputs
+            )
+            extra_gradients = dummy_datamanager.compute_compression_data_from_stencil(
+                model_parameters, use_fiducial=False
+            )
+
+        return score_compression_data, extra_gradients
+
     
     @error_handling_wrapper(num_attempts=3)
     def compute_hessian(self, score_compression_data, model_parameters : ModelParameters):
