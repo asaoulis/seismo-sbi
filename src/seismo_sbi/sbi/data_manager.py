@@ -80,14 +80,15 @@ class DataManager:
         return real_jobs
 
     @error_handling_wrapper(num_attempts=3)
-    def compute_compression_data_from_stencil(self, model_parameters : ModelParameters, use_fiducial=True):
+    def compute_compression_data_from_stencil(self, model_parameters : ModelParameters, use_fiducial=True, **kwargs):
 
         with tempfile.TemporaryDirectory() as stencil_outputs_folder:
             
             score_compression_data = self.dataset_compressor.run_derivative_stencil_for_compression_data(
                                             model_parameters,
                                             Path(stencil_outputs_folder),
-                                            use_fiducial=use_fiducial
+                                            use_fiducial=use_fiducial,
+                                            **kwargs
                                         )
         return score_compression_data
 
@@ -97,13 +98,14 @@ class DataManager:
         compression_methods,
         simulator_wrapper,
         simulation_parameters,
+        skip_cov_gradients=True,
     ):
         from copy import deepcopy
         compression_method_details = [cm[0] for cm in compression_methods]
         extra_gradients = None
 
         score_compression_data = self.compute_compression_data_from_stencil(
-            model_parameters
+            model_parameters,
         )
 
         if "theory_optimal_score" in compression_method_details:
@@ -117,7 +119,7 @@ class DataManager:
                 covariance_simulator.execute_sim_and_save_outputs
             )
             extra_gradients = dummy_datamanager.compute_compression_data_from_stencil(
-                model_parameters, use_fiducial=False
+                model_parameters, use_fiducial=False, skip_gradients=skip_cov_gradients
             )
 
         return score_compression_data, extra_gradients

@@ -23,7 +23,7 @@ from .noises.real_noise import RealNoiseSampler
 from .noises.covariance_estimation import ScalarEmpiricalCovariance, \
                                                             DiagonalEmpiricalCovariance, \
                                                                 BlockDiagonalEmpiricalCovariance, \
-                                                                 TheoryBlockDiagonalEmpiricalCovariance
+                                                                 TheoryBlockDiagonalEmpiricalCovariance, BlockDiagonalFilteredCovariance
 
 from .inference import SBI_Inference
 from . import likelihood as likelihood
@@ -135,7 +135,8 @@ class SBIPipeline:
                 theory_covariance = extra_gradients
                 noise_level = options["noise_level"]
                 cov_mat_config = "theory_block"
-                self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, (theory_covariance, noise_level))
+                self.data_cov_mat = self.create_covariance_matrix("filtered_block", noise_level)
+                self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, theory_covariance)
                 compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
             elif compression_type == "multi_optimal_score":
                 noise_level = options["noise_level"]
@@ -157,8 +158,11 @@ class SBIPipeline:
         if cov_matrix_option == "empirical_block":
             cov_mat = BlockDiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "theory_block":
-            covariance_blocks, noise_level = stationwise_covariances
-            cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, noise_level, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
+            covariance_blocks = stationwise_covariances
+            cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, self.data_cov_mat.covariance_matrix_arrays, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
+        elif cov_matrix_option == "filtered_block":
+            noise_level = cov_mat_config
+            cov_mat = BlockDiagonalFilteredCovariance(noise_level, self.simulation_parameters.processing['filter'], self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "empirical_diagonal":
             cov_mat = DiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length)
         elif cov_matrix_option == "noise_level":
@@ -176,6 +180,10 @@ class SBIPipeline:
                 noise_factor = noise_options
                 noise_callable =  self._build_lambda_noiselevel( noise_factor *train_noise_level)
                 self.test_noises[f"{noise_type}_x{noise_factor}"] = noise_callable
+            elif noise_type == "gaussian_filtered":
+                noise_level = noise_options
+                cov = self.data_cov_mat
+                self.test_noises[noise_type] = cov.create_sampler()
             elif noise_type == "real_noise":
                 noise_catalogue_path = noise_options
                 self.test_noises[noise_type] = RealNoiseSampler(self.simulation_parameters,
@@ -191,6 +199,9 @@ class SBIPipeline:
         if train_noise_type == 'gaussian':
             train_noise_level = sbi_noise_model['noise_level']
             self.training_noise_sampler = lambda : np.random.normal(0, train_noise_level *np.ones((self.data_vector_length)))
+        elif train_noise_type == 'gaussian_filtered':
+            train_noise_level = sbi_noise_model['noise_level']
+            self.training_noise_sampler = self.data_cov_mat.create_sampler()
         elif train_noise_type == 'real_noise':
             noise_catalogue_path = sbi_noise_model['noise_catalogue_path']
 

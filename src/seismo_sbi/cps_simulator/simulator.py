@@ -138,7 +138,6 @@ class CPSVariableKernelSimulator(CPSSimulator):
         return update_with_Gtensor(
             objstats, velocity_model, delta=delta, force_calc=force_calc, verbose=verbose, rootdir=rootdir, return_gf=return_gf, filter_params=self.synthetics_processing['filter'], **kwargs)
 
-
 from pathlib import Path
 class CPSPrecomputedSimulator(CPSSimulator):
     
@@ -172,3 +171,17 @@ class CPSPrecomputedSimulator(CPSSimulator):
             print(f"Using CPS data folder: {cps_data_folder}")
         return update_with_Gtensor(
             objstats, velocity_model, delta=delta, force_calc=False, verbose=verbose, gf_directory=cps_data_folder, return_gf=return_gf, filter_params=self.synthetics_processing['filter'], **kwargs)
+
+    def get_all_models_array(self):
+        """
+        Returns an array of all models in the CPS data folders.
+        """
+        all_models = []
+        for folder in self.cps_data_folders:
+            model_path = folder / 'vel.mod'
+            if model_path.exists():
+                model = np.genfromtxt(model_path, skip_header=12)  # Skip header line
+                all_models.append(model)
+        
+        fiducial_model = np.genfromtxt(self.fiducial_model_path / 'vel.mod', skip_header=12)
+        return fiducial_model, np.array(all_models)

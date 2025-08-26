@@ -272,6 +272,58 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             sampling_object = GaussianNoiseSampler(sampler)
             return sampling_object
 
+class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
+    """
+    Block diagonal covariance with filtered noise.
+    This is used for the NPE training with filtered noise.
+    """
+    
+    def __init__(self, station_component_covariances, filter, *args, **kwargs):
+        super().__init__(
+            *args, **kwargs
+        )
+        self.station_component_covariances = station_component_covariances
+        self.freqs = filter['freqmin'], filter['freqmax']
+
+        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances)
+        self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
+
+    
+    def gamma_bandpass(self, tau, sigma_sqr, freqs):
+        fmin, fmax = freqs
+        if tau == 0:
+            return 2 * sigma_sqr * (fmax - fmin)
+        else:
+            return sigma_sqr * (np.sin(2*np.pi*fmax*tau) - np.sin(2*np.pi*fmin*tau)) / (np.pi * tau)
+
+    def build_single_covariance_block(self, sigma_sqr, data_vector_length, freqs):
+        lags = np.arange(data_vector_length)
+        gamma_vals = np.array([self.gamma_bandpass(t,sigma_sqr, freqs) for t in lags])
+        cov_y = toeplitz(gamma_vals)      
+        return cov_y
+    
+    def create_covariance_matrix(self, station_component_covariances):
+        # build full list with comphrension
+        receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
+        data_vector_length = self.data_vector_length
+        freqs= self.freqs
+        if isinstance(station_component_covariances, dict):
+            def compute_covariance(station_name_components):
+                station_name, component = station_name_components
+                try:
+                    sigma_sqr = station_component_covariances[station_name][component]
+                except KeyError:
+                    component = component.replace('E', '1').replace('N', '2')
+                    sigma_sqr = station_component_covariances[station_name][component]
+                cov_y = self.build_single_covariance_block(sigma_sqr, data_vector_length, freqs)
+                return cov_y
+            covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
+        else:
+            sigma_sqr = station_component_covariances**2
+            builder = lambda _: self.build_single_covariance_block(sigma_sqr=sigma_sqr, data_vector_length=data_vector_length, freqs=freqs)
+            covariance_blocks = parallel_execution(receiver_components_list, builder, self.num_jobs)
+        return np.array(covariance_blocks)
+
 class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
         
         data_vector_length = None
@@ -313,29 +365,41 @@ class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
                         
                     return cov_matrix_block
             covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
-            return covariance_blocks
+            return np.array(covariance_blocks)
     
+from scipy.linalg import cho_factor, cho_solve
+
+def stable_inverse(C, eps=1e-12):
+    # ensure symmetry
+    C = (C + C.T) / 2
+    # add jitter for numerical stability
+    C = C + np.eye(C.shape[0]) * eps
+    c, low = cho_factor(C, lower=True, check_finite=False)
+    return cho_solve((c, low), np.eye(C.shape[0]), check_finite=False)
+
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
 
-    def __init__(self, station_component_covariances, noise_level, *args, **kwargs):
+    def __init__(self, station_component_covariances, data_covariance_arrays, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.noise_level = noise_level
         self.kernels = None
         self.traces = None
-
+        self.station_component_covariances = station_component_covariances
+        self.data_covariance_arrays = data_covariance_arrays
         self.set_covariance(station_component_covariances)
 
     def set_covariance(self, station_component_covariances):
-        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances.data_fiducial, self.noise_level)
-        self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
+        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances.data_fiducial)
+        self.set_C_inverse(
+            np.array(parallel_execution(self.covariance_matrix_arrays, stable_inverse, self.num_jobs))
+        )
         # self.C_derivative = self.create_C_derivative(station_component_covariances)
         # self.set_covariance_constants()
     
-    def create_covariance_matrix(self, station_component_covariances, noise_level):
+    def create_covariance_matrix(self, station_component_covariances):
         theory_covariances =  station_component_covariances.reshape(-1, self.data_vector_length, self.data_vector_length)
-        data_covariances = np.array([np.eye(self.data_vector_length) * noise_level**2 for _ in range(theory_covariances.shape[0])])
-        return theory_covariances + data_covariances
+        data_covariances = np.array([np.eye(self.data_vector_length) * 0.00001**2 for _ in range(theory_covariances.shape[0])])
+        return theory_covariances + self.data_covariance_arrays + data_covariances
 
     def create_C_derivative(self, station_component_covariances):
         flattened_cov_derivatives = station_component_covariances.data_parameter_gradients

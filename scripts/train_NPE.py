@@ -46,7 +46,7 @@ def main():
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
 
     # test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
-    test_jobs_paths = [Path('/data/alex/cps/alex/sims/cps_working/query_aggregation/random_event_0.h5'),]
+    test_jobs_paths = [Path('/data/alex/cps/alex/sims/filtered_data_covariance/simple_synthetic_inversions/random_event_0.h5'),]
 
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
     score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
@@ -76,7 +76,7 @@ def main():
     }
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    trainer.train(run_name, epochs=100, output_path=data_path, dataloader_args=dataloader_args)
+    trainer.train(run_name, epochs=250, output_path=data_path, dataloader_args=dataloader_args)
 
 if __name__ == '__main__':
     main()

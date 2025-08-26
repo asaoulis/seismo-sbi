@@ -5,20 +5,20 @@ from torch import nn
 class ConvolutionalFeatureExtractor(nn.Module):
 
     def __init__(self, num_seismic_components, final_feature_length, 
-                     should_concat_location : bool, feedforward_layers = [256,256], **cnn_kwargs) -> None:
+                     should_concat_location : bool, feedforward_layers = [512,512], **cnn_kwargs) -> None:
         super().__init__()
 
         self.seismic_trace_CNN = SeismicTraceCNN(num_seismic_components, **cnn_kwargs)
         self.feature_combination_operation = ConcatLayer() if should_concat_location else None  # TODO: Implement sinusoidal embeddings option 
-
-        self.feedforward_net = FeedForwardFeatureProcessing(feedforward_layers, 
+        ffd_input_dim = self.seismic_trace_CNN.output_channels
+        self.feedforward_net = FeedForwardFeatureProcessing(ffd_input_dim, feedforward_layers, 
                                     output_dim = final_feature_length)
 
 
     def forward(self, x_trace):
 
         cnn_processed_trace = self.seismic_trace_CNN.forward(x_trace)
-        return cnn_processed_trace
+        # return cnn_processed_trace
         return self.feedforward_net(cnn_processed_trace)
 
 
@@ -49,7 +49,7 @@ class SeismicTraceCNN(nn.Module):
         # Defaults that reproduce the previous hardcoded stack:
         # [Conv(num_comp->64, k=3,s=2), x4], then [Conv(64->16,k=3,s=1), Conv(16->4,k=3,s=1)]
         if conv_channels is None:
-            conv_channels = [32, 64, 64, 128, 128, 128]
+            conv_channels = [64, 64, 64, 128, 128, 128]
         if conv_kernels is None:
             conv_kernels = [5] * len(conv_channels)
         if conv_strides is None:
@@ -57,7 +57,7 @@ class SeismicTraceCNN(nn.Module):
             n = len(conv_channels)
             n_strided = min(4, n)
             conv_strides = [2] * n_strided + [1] * (n - n_strided)
-
+        self.output_channels = conv_channels[-1] + 1  # +1 for log amplitude
         if not (len(conv_channels) == len(conv_kernels) == len(conv_strides)):
             raise ValueError("conv_channels, conv_kernels, and conv_strides must have the same length")
 
@@ -127,6 +127,7 @@ class FeedForwardFeatureProcessing(nn.Module):
 
     def __init__(
         self,
+        input_dim: int,
         hidden_layer_dims,
         output_dim,
         activation: str = "silu",
@@ -143,24 +144,33 @@ class FeedForwardFeatureProcessing(nn.Module):
         self._use_residual = bool(residual)
         self._output_norm = (output_norm.lower() if isinstance(output_norm, str) else None)
 
-        # Build MLP blocks
-        self.blocks = nn.ModuleList([
-            _FFBlock(
-                out_dim=h_dim,
-                activation=self._get_activation(self._activation_name),
-                norm=self._make_norm(self._norm_type),
-                dropout_p=self._dropout_p,
-                residual=self._use_residual,
+        # Build MLP blocks with eager LayerNorm where dimensions are known
+        hidden_dims = list(hidden_layer_dims or [])
+        blocks = []
+        for i, h_dim in enumerate(hidden_dims):
+            # For block i, the prenorm acts on the current input dimension.
+            # Known for i > 0 as hidden_dims[i-1]; unknown for the first block.
+            in_dim_for_norm = hidden_dims[i - 1] if i > 0 else input_dim
+            blocks.append(
+                _FFBlock(
+                    out_dim=h_dim,
+                    activation=self._get_activation(self._activation_name),
+                    norm=self._make_norm(self._norm_type, feature_dim=in_dim_for_norm),
+                    dropout_p=self._dropout_p,
+                    residual=self._use_residual,
+                )
             )
-            for h_dim in (hidden_layer_dims or [])
-        ])
+        self.blocks = nn.ModuleList(blocks)
 
         # Final projection head
-        self.pre_out_norm = self._make_norm(self._norm_type)
+        # Pre-out norm dimension is known if there is at least one hidden layer.
+        pre_out_norm_dim = hidden_dims[-1] if len(hidden_dims) > 0 else None
+        self.pre_out_norm = self._make_norm(self._norm_type, feature_dim=pre_out_norm_dim)
         self.last_layer = nn.LazyLinear(output_dim)
 
         # Optional output normalization for stable embeddings
-        self.out_layernorm = _LazyLayerNorm1d() if self._output_norm == "layer" else None
+        # Output dim is known: initialize eagerly.
+        self.out_layernorm = _LazyLayerNorm1d(normalized_dim=output_dim) if self._output_norm == "layer" else None
 
     def _get_activation(self, name: str) -> nn.Module:
         if name == "gelu":
@@ -169,11 +179,12 @@ class FeedForwardFeatureProcessing(nn.Module):
             return nn.SiLU()
         return nn.ReLU()
 
-    def _make_norm(self, norm_type: str ) -> nn.Module:
+    def _make_norm(self, norm_type: str , feature_dim: int = None) -> nn.Module:
         if norm_type is None or norm_type == "none":
             return None
         if norm_type == "layer":
-            return _LazyLayerNorm1d()
+            # Eager when feature_dim is known, otherwise will init on first forward.
+            return _LazyLayerNorm1d(normalized_dim=feature_dim)
         if norm_type == "batch":
             # Works with 2D (N, C) feature tensors
             return nn.LazyBatchNorm1d()
@@ -233,13 +244,19 @@ class _FFBlock(nn.Module):
 class _LazyLayerNorm1d(nn.Module):
     """
     Lazy LayerNorm for 2D feature tensors (N, C); initializes on first forward.
+    If normalized_dim is provided, initialize eagerly for non-lazy behavior.
     """
-    def __init__(self, eps: float = 1e-5, affine: bool = True) -> None:
+    def __init__(self, eps: float = 1e-5, affine: bool = True, normalized_dim: int = None) -> None:
         super().__init__()
         self.eps = eps
         self.affine = affine
         self._ln: nn.LayerNorm = None
-
+        # Eager initialization when dimension is known
+        if normalized_dim is not None:
+            self._ln = nn.LayerNorm(normalized_dim, eps=self.eps, elementwise_affine=self.affine)
+        else:
+            print("Lazy LayerNorm initialized; will create on first forward call.")
+            self._ln = None
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._ln is None:
             self._ln = nn.LayerNorm(x.shape[-1], eps=self.eps, elementwise_affine=self.affine).to(x.device)

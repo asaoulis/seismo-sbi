@@ -38,10 +38,10 @@ class TorchSimulationDataset(Dataset):
         sim_path = self.paths[idx]
         theta, D = self._load_sim(sim_path)
 
-        noise = self.synthetic_noise_model_sampler().reshape(*D.shape)
+        noise = self.synthetic_noise_model_sampler()
         if isinstance(noise, tuple):
             noise, _ = noise
-        x = D + noise
+        x = D + noise.reshape(*D.shape)
         if self.data_scaler is not None:
             theta = self.data_scaler.transform(theta[np.newaxis, :]).flatten()
         if self.return_tensors:

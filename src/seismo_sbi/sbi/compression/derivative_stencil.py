@@ -10,6 +10,26 @@ from .gaussian import ScoreCompressionData
 from ..configuration import ModelParameters
 
 
+import os
+from contextlib import contextmanager
+
+@contextmanager
+def set_num_threads(n):
+    old = {k: os.environ.get(k) for k in [
+        "OMP_NUM_THREADS", "MKL_NUM_THREADS", 
+        "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"
+    ]}
+    try:
+        for var in old:
+            os.environ[var] = str(n)
+        yield
+    finally:
+        for var, val in old.items():
+            if val is None:
+                del os.environ[var]
+            else:
+                os.environ[var] = val
+
 class DerivativeStencil:
 
     five_point_stencil_offsets = np.array([-2, -1, 1, 2])
@@ -29,21 +49,22 @@ class DerivativeStencil:
                     (output_folder / f"stencil_sim_{i}{j}.h5").resolve())
                 self.simulation_output_paths[i, j] = sim_name
 
-    def calculate_score_compression_data(self, simulator, data_loader, num_jobs=1) -> ScoreCompressionData:
+    def calculate_score_compression_data(self, simulator, data_loader, num_jobs=1, skip_gradients=False) -> ScoreCompressionData:
 
         simulator = partial(simulator, use_fiducial=self.use_fiducial)
-        print("using fiducial:", self.use_fiducial)
-        self.run_stencil_simulations(simulator, num_jobs)
+        self.run_stencil_simulations(simulator, skip_gradients, num_jobs)
 
-        stencil_results = self.load_simulation_results(data_loader)
         data_fiducial = data_loader(str((self.output_folder / "theta_fiducial.h5").resolve()))
-
-        gradients = self.compute_gradients_from_stencil(stencil_results)
-        second_order_gradients = self.compute_second_order_gradients_from_stencil(stencil_results, data_fiducial)
+        gradients = None
+        second_order_gradients = None
+        if not skip_gradients:
+            stencil_results = self.load_simulation_results(data_loader)
+            gradients = self.compute_gradients_from_stencil(stencil_results)
+            second_order_gradients = self.compute_second_order_gradients_from_stencil(stencil_results, data_fiducial)
 
         return ScoreCompressionData(self.parameters.parameter_to_vector('theta_fiducial'), data_fiducial, gradients, second_order_gradients)
 
-    def run_stencil_simulations(self, simulator, num_jobs=1):
+    def run_stencil_simulations(self, simulator, skip_gradients=False, num_jobs=1):
 
         five_point_stencil_offsets = np.array([-2, -1, 1, 2])
         simulation_job_args_list = []
@@ -51,18 +72,19 @@ class DerivativeStencil:
 
         simulation_job_args_list.append(({**base_parameters.theta_fiducial, **self.parameters.nuisance}, 
             str((self.output_folder / "theta_fiducial.h5").resolve())))
+        if not skip_gradients:
+            for i, (param_value, delta) in enumerate(self.parameters.iterate_over_parameters()):
+                for j, offset in enumerate(five_point_stencil_offsets):
 
-        for i, (param_value, delta) in enumerate(self.parameters.iterate_over_parameters()):
-            for j, offset in enumerate(five_point_stencil_offsets):
+                    new_parameters = deepcopy(self.parameters)
+                    new_parameters.change_parameter(param_value + offset * delta, i)
 
-                new_parameters = deepcopy(self.parameters)
-                new_parameters.change_parameter(param_value + offset * delta, i)
-
-                sim_name = self.simulation_output_paths[i, j]
-                simulation_job_args_list.append(({**new_parameters.theta_fiducial, **self.parameters.nuisance}, str(sim_name)))
-
+                    sim_name = self.simulation_output_paths[i, j]
+                    simulation_job_args_list.append(({**new_parameters.theta_fiducial, **self.parameters.nuisance}, str(sim_name)))
+        else:
+            num_jobs = 1
         self.run_parallel_simulations(
-            simulator, simulation_job_args_list, num_jobs)
+                simulator, simulation_job_args_list, num_jobs)
 
     def run_parallel_simulations(self, simulator, simulation_job_args_list, num_parallel_jobs):
 
@@ -72,8 +94,9 @@ class DerivativeStencil:
                     joblib.delayed(simulator)(*simulation_job_args) for simulation_job_args in simulation_job_args_list
                 )
         else: 
-            for simulation_job_args in simulation_job_args_list:
-                simulator(*simulation_job_args)
+            with set_num_threads(10):
+                for simulation_job_args in simulation_job_args_list:
+                    simulator(*simulation_job_args)
 
     def load_simulation_results(self, simulation_D_loader, stencil_simulations=None):
 

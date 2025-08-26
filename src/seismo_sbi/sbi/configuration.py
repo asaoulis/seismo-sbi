@@ -24,7 +24,7 @@ class SBI_Configuration:
                         "velocity_model": ["velocity_model"]}
 
     compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
-    test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian']
+    test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
 
     
     def __init__(self) -> None:

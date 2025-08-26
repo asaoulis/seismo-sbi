@@ -23,8 +23,8 @@ class CompressionTrainer:
         feature_length = 128  # context dimension for the flow
 
         model_config = {"layers": 4,
-            "channels": 64,
-            "nheads": 8,
+            "channels": 128,
+            "nheads": 4,
             "timeemb": 64,
             "posemb": 64}
 
@@ -69,7 +69,7 @@ class CompressionTrainer:
         # Build train/val dataloaders from a single split index
         train_dataloader, val_dataloader = make_torch_dataloaders(**dataloader_args)
 
-        checkpoint_cb = create_best_checkpoint_callback(output_path)
+        checkpoint_cb = create_best_checkpoint_callback(output_path / run_name)
         output_path = Path(output_path) / run_name
         wandb_logger = WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)  # added
 
