@@ -56,7 +56,7 @@ def main():
     job_data = sbi_pipeline.create_job_data(test_jobs_paths, config.real_event_jobs)
 
     results_generator = sbi_pipeline.run_compressions_and_inversions(
-        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters)
+        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters, do_plots = not config.plotting_options['disable_plotting'])
     
     output_path = Path(config.pipeline_parameters.output_directory) / 'jobs' / config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
     output_path.mkdir(parents=True, exist_ok=True)

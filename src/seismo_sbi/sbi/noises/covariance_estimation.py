@@ -425,12 +425,13 @@ def stable_inverse(C, eps=1e-18):
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
 
-    def __init__(self, station_component_covariances, data_covariance_arrays, *args, **kwargs):
+    def __init__(self, station_component_covariances, data_covariance_arrays, *args, diag_regularisation=.001, **kwargs):
         super().__init__(*args, **kwargs)
         self.kernels = None
         self.traces = None
         self.station_component_covariances = station_component_covariances
         self.data_covariance_arrays = data_covariance_arrays
+        self.diag_regularisation_magnitude = diag_regularisation
         self.set_covariance(station_component_covariances)
 
     def set_covariance(self, station_component_covariances):
@@ -443,8 +444,10 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     
     def create_covariance_matrix(self, station_component_covariances):
         theory_covariances =  station_component_covariances.reshape(-1, self.data_vector_length, self.data_vector_length)
-        diag_data_covariances = np.array([np.eye(self.data_vector_length) * EPS for _ in range(theory_covariances.shape[0])])
-        return theory_covariances + self.data_covariance_arrays# +diag_data_covariances 
+        # take the max of each theory covariance diagonal and add diag regularisation
+        diag_reg_covariances = np.array([np.eye(self.data_vector_length) * (np.max(np.diag(theory_covariances[i])) * self.diag_regularisation_magnitude) 
+                                          for i in range(theory_covariances.shape[0])])
+        return theory_covariances + self.data_covariance_arrays + diag_reg_covariances 
 
     def create_C_derivative(self, station_component_covariances):
         flattened_cov_derivatives = station_component_covariances.data_parameter_gradients

@@ -134,9 +134,11 @@ class SBIPipeline:
             elif compression_type == "theory_optimal_score":
                 theory_covariance = extra_gradients
                 noise_level = options["noise_level"]
+                diag_regularisation_magnitude = options.get("diag_regularisation_magnitude", 0.0)
+                cov_mat_options = (theory_covariance, diag_regularisation_magnitude)
                 cov_mat_config = "theory_block"
                 self.data_cov_mat = self.create_covariance_matrix("filtered_block", noise_level)
-                self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, theory_covariance)
+                self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, cov_mat_options)
                 compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
             elif compression_type == "multi_optimal_score":
                 noise_level = options["noise_level"]
@@ -157,8 +159,8 @@ class SBIPipeline:
         if cov_matrix_option == "empirical_block":
             cov_mat = BlockDiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "theory_block":
-            covariance_blocks = stationwise_covariances
-            cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, self.data_cov_mat.covariance_matrix_arrays, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
+            covariance_blocks, diag_reg_magnitude = stationwise_covariances
+            cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, self.data_cov_mat.covariance_matrix_arrays, self.simulation_parameters.receivers, self.trace_length, diag_regularisation=diag_reg_magnitude, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "filtered_block":
             noise_level = cov_mat_config
             cov_mat = BlockDiagonalFilteredCovariance(noise_level, self.simulation_parameters.processing['filter'], self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
@@ -372,7 +374,7 @@ class SingleEventPipeline(SBIPipeline):
             self.least_squares_solver.simulator = self.simulator_wrapper.simulator
 
     
-    def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details):
+    def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details, do_plots = True):
 
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
@@ -401,8 +403,8 @@ class SingleEventPipeline(SBIPipeline):
                 inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, priors)
                 
                 print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
-
-                plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
+                if do_plots:
+                    plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
 
                 inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
 

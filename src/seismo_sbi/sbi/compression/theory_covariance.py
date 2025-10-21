@@ -53,7 +53,7 @@ class CPSTheoryCovarianceEstimationSimulator(Simulator):
         counter = 0
         for receiver in self.simulator.receivers.iterate():
             all_cov_blocks_map[receiver.station_name] = {}
-            for component in self.components:
+            for component in receiver.components:
                 all_cov_blocks_map[receiver.station_name][component] = cov_blocks[counter]
                 counter += 1
 
