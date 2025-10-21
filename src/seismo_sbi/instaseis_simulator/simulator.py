@@ -11,6 +11,8 @@ from .wrapper import GenericPointSource, InstaseisDBQuerier, SimpleMomentTensor,
     GeneralMomentTensor, SourceLocation
 from seismo_sbi.sbi.configuration import InvalidConfiguration
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
+from .utils import apply_station_time_shifts
+
 
 class Simulator(ABC):
 
@@ -67,7 +69,9 @@ class Simulator(ABC):
             raise InvalidConfiguration(f"Source mechanism specified incorrectly. No moment tensor or earthquake magnitude specified in {combined_params.keys()}.")
 
         source = GenericPointSource(source_location, moment)
-        return source, self.generic_point_source_simulation(source, velocity_model=velocity_model_params, **kwargs)
+        all_seismograms_map = self.generic_point_source_simulation(source, velocity_model=velocity_model_params, **kwargs)
+        shifted_seismograms_map = apply_station_time_shifts(self.receivers, all_seismograms_map)
+        return source, shifted_seismograms_map
 
 
 class InstaseisSourceSimulator(Simulator):

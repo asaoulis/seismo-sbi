@@ -5,6 +5,7 @@ from torch import nn
 
 from .cnn_feature_extractor import ConvolutionalFeatureExtractor
 from .csdi_transformer import ConditionalTransformer
+from .axial_transformer import SeismogramAxialTransformer
 
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR, StepLR
@@ -28,24 +29,34 @@ class SeismogramTransformer(nn.Module):
         if aggregation not in ("mean", "query"):
             raise ValueError(f"Invalid aggregation '{aggregation}'. Choose 'mean' or 'query'.")
         self.aggregation = aggregation
+        d_model = transformer_config['channels']
+
 
         self.CNN_feature_extractor = ConvolutionalFeatureExtractor(
-            num_seismic_components, feature_length,
+            num_seismic_components, cnn_output_dim=d_model, final_feature_length=feature_length,
             should_concat_location = True
         )
-        
-        self.all_station_transformer = ConditionalTransformer(
-            feature_length, seismogram_locations, transformer_config, device=device
+        # self.all_station_transformer = ConditionalTransformer(
+        #     feature_length, seismogram_locations, transformer_config, device=device
+        # )
+        mode = 'axial'
+        self.L = self.CNN_feature_extractor.seismic_trace_CNN.output_length
+        self.D = self.CNN_feature_extractor.seismic_trace_CNN.output_channels  
+        self.all_station_transformer = SeismogramAxialTransformer(
+            seismogram_locations,
+            d_model=d_model,
+            # d_model=transformer_config['channels'],
+            nheads=transformer_config["nheads"],
+            num_layers=transformer_config["layers"],
+            time_steps=self.L,
+            conv_length=self.D,
+            mode=mode
         )
 
-        # Attention-based pooling: learnable query vector
-        self.query_token = nn.Parameter(torch.randn(1, 1, feature_length))
-        self.attn = nn.MultiheadAttention(embed_dim=feature_length, num_heads=1, batch_first=True)
-
         self.source_param_predictor = nn.Sequential(
-            nn.Linear(feature_length, feature_length),
+            nn.Linear(d_model, d_model),
             nn.ReLU(),
-            nn.Linear(feature_length, num_outputs)
+            nn.Linear(d_model, num_outputs)
         )
     
     def sample_noise_model(self, batch_size):
@@ -58,25 +69,17 @@ class SeismogramTransformer(nn.Module):
 
     def embed(self, x: torch.Tensor):
         (batch_size, num_stations, num_seismic_components, trace_length) = x.shape
-        
+        B, N = batch_size, num_stations
+
         # flatten to feed CNN
         x_flattened = x.reshape((batch_size*num_stations, num_seismic_components, trace_length))
         extracted_features = self.CNN_feature_extractor(x_flattened)
-        # reshape back to per-station sequences
-        feature_sequences = extracted_features.reshape((batch_size, num_stations, self.feature_length))
-        
+        # reshape back to (B, N, L, D)
+        feature_sequences = extracted_features.view(B, N, self.D, self.L).permute(0, 1, 3, 2).contiguous()
         # contextualize with transformer
         transformer_output = self.all_station_transformer(feature_sequences)  # (B, N, D)
         # Aggregate across stations based on selected operator
-        if self.aggregation == "query":
-            # attention pooling with query token
-            query = self.query_token.expand(batch_size, 1, -1)  # (B, 1, D)
-            aggregated_station_info, _ = self.attn(query, transformer_output, transformer_output)
-            aggregated_station_info = aggregated_station_info.squeeze(1)  # (B, D)
-        else:
-            # default: mean pooling across stations
-            aggregated_station_info = transformer_output.mean(dim=1)  # (B, D)
-        return aggregated_station_info
+        return transformer_output[2] # returned query
 
 
 class LightningModel(pl.LightningModule):

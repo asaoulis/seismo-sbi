@@ -4,11 +4,11 @@ from torch import nn
 
 class ConvolutionalFeatureExtractor(nn.Module):
 
-    def __init__(self, num_seismic_components, final_feature_length, 
+    def __init__(self, num_seismic_components, cnn_output_dim, final_feature_length, 
                      should_concat_location : bool, feedforward_layers = [512,512], **cnn_kwargs) -> None:
         super().__init__()
 
-        self.seismic_trace_CNN = SeismicTraceCNN(num_seismic_components, **cnn_kwargs)
+        self.seismic_trace_CNN = SeismicTraceCNN(num_seismic_components, final_layer=cnn_output_dim, **cnn_kwargs)
         self.feature_combination_operation = ConcatLayer() if should_concat_location else None  # TODO: Implement sinusoidal embeddings option 
         ffd_input_dim = self.seismic_trace_CNN.output_channels
         self.feedforward_net = FeedForwardFeatureProcessing(ffd_input_dim, feedforward_layers, 
@@ -18,8 +18,8 @@ class ConvolutionalFeatureExtractor(nn.Module):
     def forward(self, x_trace):
 
         cnn_processed_trace = self.seismic_trace_CNN.forward(x_trace)
-        # return cnn_processed_trace
-        return self.feedforward_net(cnn_processed_trace)
+        return cnn_processed_trace
+        # return self.feedforward_net(cnn_processed_trace)
 
 
 class ConcatLayer(nn.Module):
@@ -36,6 +36,8 @@ class SeismicTraceCNN(nn.Module):
     def __init__(
         self,
         num_seismic_components,
+        input_length=300,
+        final_layer=128,
         conv_channels=None,          # list[int]: out_channels per conv
         conv_kernels=None,           # list[int]: kernel_size per conv
         conv_strides=None,           # list[int]: stride per conv
@@ -49,19 +51,34 @@ class SeismicTraceCNN(nn.Module):
         # Defaults that reproduce the previous hardcoded stack:
         # [Conv(num_comp->64, k=3,s=2), x4], then [Conv(64->16,k=3,s=1), Conv(16->4,k=3,s=1)]
         if conv_channels is None:
-            conv_channels = [64, 64, 64, 128, 128, 128]
+            conv_channels = [64, 64, 64, 128, 128, final_layer-1]
         if conv_kernels is None:
             conv_kernels = [5] * len(conv_channels)
         if conv_strides is None:
             # First 4 layers strided, rest stride=1 (matches previous behavior)
             n = len(conv_channels)
-            n_strided = min(4, n)
+            n_strided = min(2, n)
             conv_strides = [2] * n_strided + [1] * (n - n_strided)
+
+        # Compute output temporal length after the full conv stack
+        L = int(input_length)
+        for k, s in zip(conv_kernels, conv_strides):
+            pad = (k // 2) if same_padding else 0
+            # Conv1d output length: floor((L + 2*pad - (k - 1) - 1)/stride + 1)
+            L = (L + 2 * pad - (k - 1) - 1) // s + 1
+            if L <= 0:
+                raise ValueError(
+                    f"Conv stack produces non-positive length after a layer: "
+                    f"input_length={input_length}, k={k}, stride={s}, pad={pad}, current_L={L}. "
+                    f"Check conv_kernels/strides or increase input_length."
+                )
+        self.output_length = L
         self.output_channels = conv_channels[-1] + 1  # +1 for log amplitude
+
         if not (len(conv_channels) == len(conv_kernels) == len(conv_strides)):
             raise ValueError("conv_channels, conv_kernels, and conv_strides must have the same length")
 
-        self._eps = 1e-8
+        self._eps = 1e-12
         in_c = num_seismic_components
         layers = []
         for out_c, k, s in zip(conv_channels, conv_kernels, conv_strides):
@@ -109,10 +126,13 @@ class SeismicTraceCNN(nn.Module):
 
         scaled_x = self.conv_stack(scaled_x)
 
-        scaled_x = self.flatten(scaled_x)
+        # scaled_x = self.flatten(scaled_x)
         # Concatenate log amplitude (avoid -inf)
-        scaled_x = torch.cat([scaled_x, max_trace_val.clamp_min(self._eps).log()[:, 0]], dim = 1)
-
+        amp_feature = max_trace_val.clamp_min(self._eps).log()[:, 0]  # (B,)
+        amp_feature = amp_feature.squeeze()                            # (B,)
+        amp_feature = amp_feature[:, None, None]                       # (B,1,1)
+        amp_feature = amp_feature.expand(-1, 1, scaled_x.size(-1))     # (B,1,L)
+        scaled_x = torch.cat([scaled_x, amp_feature], dim=1)       
         return scaled_x
 
 
@@ -137,7 +157,7 @@ class FeedForwardFeatureProcessing(nn.Module):
         output_norm: str = "layer" # None | "layer" | "l2"
     ) -> None:
         super().__init__()
-        self._eps = 1e-8
+        self._eps = 1e-12
         self._activation_name = (activation or "relu").lower()
         self._norm_type = (norm_type.lower() if norm_type is not None else None)
         self._dropout_p = float(dropout) if dropout else 0.0

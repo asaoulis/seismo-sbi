@@ -150,7 +150,6 @@ class SBIPipeline:
                 compressor = MachineLearningCompressor(**options) # TODO: IMPLEMENT THIS
             self.compressors[compression_type] = compressor
 
-    @error_handling_wrapper(num_attempts=3)
     def create_covariance_matrix(self, cov_matrix_option, cov_mat_config):
 
         stationwise_covariances = cov_mat_config
@@ -359,6 +358,8 @@ class SingleEventPipeline(SBIPipeline):
                                                                  dataset_parameters.iterative_least_squares, 
                                                                  self.num_parallel_jobs)
     
+        self.mcmc_chain_for_mle = dataset_parameters.iterative_least_squares.mcmc_chain_for_mle
+    
     def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
 
         only_moment_tensor_variable = all([sampler == 'constant' for param, sampler in sampling_methods.items() if param != 'moment_tensor'])
@@ -375,8 +376,10 @@ class SingleEventPipeline(SBIPipeline):
 
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
+        original_parameters = deepcopy(self.parameters)
 
         for single_job in job_data:
+            self.parameters = deepcopy(original_parameters)
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
                 self.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance)
@@ -391,7 +394,9 @@ class SingleEventPipeline(SBIPipeline):
                 
                 inversion_config = InversionConfig("", test_noise, compressor_name)
 
-                compression_data = self.find_mle_and_set_compressor(D, covariance, priors, dataset_details)
+                compression_data = self.find_mle_and_set_compressor(D, covariance, priors, dataset_details, )
+                for _ in range(self.mcmc_chain_for_mle):
+                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, covariance, priors, mle_start=compression_data.theta_fiducial)
 
                 inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, priors)
                 
@@ -410,6 +415,18 @@ class SingleEventPipeline(SBIPipeline):
                 yield from self.run_single_gaussian_likelihood_inversion(single_job, likelihood_config, deepcopy(self.parameters), priors)
                 print(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
+    def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, priors, mle_start = None):
+        MLE_likelihood_config = deepcopy(likelihood_config)
+        MLE_likelihood_config['walker_burn_in'] = 800
+        MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 800
+        _, res = next(iter(self.run_single_gaussian_likelihood_inversion(single_job, MLE_likelihood_config, deepcopy(self.parameters), priors, mle_start = mle_start)))
+        mcmc_MLE = np.mean(res.inversion_data.samples, axis=0)
+        print('MCMC MLE', mcmc_MLE)
+        self.parameters.theta_fiducial = self.parameters.vector_to_parameters(mcmc_MLE, 'theta_fiducial')
+        compression_data, extra_gradients = self.compute_required_compression_data(self.compression_methods, self.parameters)
+        self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance, extra_gradients=extra_gradients)
+        return compression_data
+
     def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, priors):
         
         param_names = self.parameters.names
@@ -423,6 +440,7 @@ class SingleEventPipeline(SBIPipeline):
         x_0 = compression_data.theta_fiducial
         
         print('MLE', x_0)
+        print('theta0', theta0)
         print('bounds', self.parameters.bounds)
         self.ground_truth_scaler = FlexibleScaler(self.parameters)
         statistic_scaler = self.ground_truth_scaler
@@ -484,7 +502,7 @@ class SingleEventPipeline(SBIPipeline):
     def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details, extra_gradients=None):
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
         single_least_squares_step =  only_moment_tensor_variable
-        compression_data, extra_gradients = self.data_manager.compute_required_compression_data( self.parameters, self.compression_methods, self.simulator_wrapper, self.simulation_parameters)
+        compression_data, extra_gradients = self.compute_required_compression_data(self.compression_methods, self.parameters,)
         self.load_compressors(self.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
         compressor = list(self.compressors.values())[0]
         compression_data, extra_gradients = self.least_squares_solver.solve_least_squares(data_vector, compressor, single_step=single_least_squares_step)
@@ -502,8 +520,13 @@ class SingleEventPipeline(SBIPipeline):
 
                     
         new_bounds = np.sort(new_bounds, axis=0)
+        old_bounds = self.parameters.parameter_to_vector('bounds', only_theta_fiducial=True)
         lower_bound_inputs = self.parameters.vector_to_simulation_inputs(new_bounds[0], only_theta_fiducial=True)
         upper_bound_inputs = self.parameters.vector_to_simulation_inputs(new_bounds[1], only_theta_fiducial=True)
+        # use old bounds if new bounds are outside old bounds
+        lower_bound_inputs = {param: np.maximum(lower_bound_inputs[param], old_bounds[0][i]) for i, param in enumerate(self.parameters.names)}
+        upper_bound_inputs = {param: np.minimum(upper_bound_inputs[param], old_bounds[1][i]) for i, param in enumerate(self.parameters.names)}
+
         for parameter in lower_bound_inputs.keys():
             if parameter == 'source_location':
                 lower_bound_inputs[parameter][2] = max(lower_bound_inputs[parameter][2], 0)
@@ -521,7 +544,7 @@ class SingleEventPipeline(SBIPipeline):
             dataset_details = deepcopy(original_dataset_details)
         return theta0, dataset_details
 
-    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, parameters, priors=(None,None)):
+    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, parameters, priors=(None,None), mle_start = None):
 
         param_names = self.parameters.names
         ensemble = likelihood_config.get('ensemble', True)
@@ -549,6 +572,8 @@ class SingleEventPipeline(SBIPipeline):
             # theta0_scaled = scaler.transform(theta0.reshape(1,-1)).reshape(-1)
         else:
             theta0 = None
+        if mle_start is not None:
+            mle_start = scaler.transform(mle_start.reshape(1,-1)).reshape(-1)
         # multiprocessing and joblib use two different backends
         if ensemble:
             covariance_loss_callable = covariance.generic_loss_callable
@@ -560,7 +585,7 @@ class SingleEventPipeline(SBIPipeline):
         samples = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
                                                         nsamples_per_walker=nsamples_per_walker, nwalkers=self.num_parallel_jobs, 
-                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size)
+                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size, mle_start = mle_start)
         samples = scaler.inverse_transform(samples)
         inversion_data = InversionData(theta0, samples, scaler)
 
@@ -750,3 +775,33 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             yield from self.run_single_gaussian_likelihood_inversion(single_job, likelihood_config, deepcopy(self.parameters), priors)
                             print(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
+
+class MLEEstimatePipeline(SingleEventPipeline):
+
+    def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details, plot = True):
+
+        param_names = self.parameters.names
+        original_dataset_details = deepcopy(dataset_details)
+
+        for single_job in job_data:
+            sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
+            if covariance is not None:
+                self.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance)
+
+            plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
+
+            theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, theta0_dict)
+
+            for compressor_name, compressor in self.compressors.items():
+
+                start_time = time.time()
+                
+                inversion_config = InversionConfig("", test_noise, compressor_name)
+
+                compression_data = self.find_mle_and_set_compressor(D, covariance, priors, dataset_details, )
+                if plot:
+                    plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
+                inversion_data = InversionData(theta0, None, None, compression_data)
+                inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
+
+                yield None, inversion_result

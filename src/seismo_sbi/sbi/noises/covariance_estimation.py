@@ -2,7 +2,9 @@ import numpy as np
 import statsmodels.api as sm
 import joblib
 import os
+import torch
 
+EPS = 1e-18
 
 class RunningStandardDeviations:
     def __init__(self, data=None, track = False):
@@ -192,6 +194,21 @@ def parallel_execution(inputs, func, num_jobs = 20):
         return [func(block) for block in inputs]
     return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
 
+class BlockGaussianSampler:
+    def __init__(self, Ls, block_sizes, station_component_covariances):
+        self.Ls = Ls
+        self.block_sizes = block_sizes
+        self.station_component_covariances = station_component_covariances
+
+    def __call__(self, *args, **kwargs):
+        noise_vectors = []
+        for L, n in zip(self.Ls, self.block_sizes):
+            z = np.random.randn(n)
+            noise_vectors.append(L @ z)
+        noise_vector = np.concatenate(noise_vectors)
+        return noise_vector, self.station_component_covariances
+
+
 class BlockDiagonalCovariance(EmpiricalCovariance):
 
         def __init__(self, receivers, data_vector_length, block_exp_tapering = True, covariance_gradients = None, num_jobs = 20):
@@ -234,7 +251,7 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
         @staticmethod
         def callable_matmul_inverse_covariance(data_vector, C_inverse, data_vector_length):
             reshaped_vector = data_vector.reshape(-1, data_vector_length)
-            return np.einsum('ijk,ik->ij', C_inverse, reshaped_vector).reshape(-1)
+            return np.matmul(C_inverse, reshaped_vector[..., None]).reshape(-1)
 
         def matrix_vector_product(self, matrix, data_vector):
             reshaped_vector = data_vector.reshape(-1, self.data_vector_length)
@@ -259,18 +276,39 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             return partial(BlockDiagonalEmpiricalCovariance.callable_matmul_inverse_covariance, 
                            C_inverse = C_inverse, data_vector_length = data_vector_length)
         
-        def create_sampler(self):
+        def create_sampler(self, scale=1e9):
+
+            # scaled_covs = [(block * (scale**2)) for block in self.covariance_matrix_arrays]
+            scaled_covs = [(block) for block in self.covariance_matrix_arrays]
+
+            # Ls = [np.linalg.cholesky(block + np.eye(block.shape[0]) * EPS) for block in scaled_covs]
+            Ls = [np.linalg.cholesky(block) for block in scaled_covs]
+            
+            block_sizes = [block.shape[0] for block in scaled_covs]
+
             def sampler(*args, **kwargs):
-                # extremely slow so not being used
                 noise_vectors = []
-                for block in self.covariance_matrix_arrays:
-                    noise_vectors.append(
-                        np.random.multivariate_normal(np.zeros(block.shape[0]), block, size=1).flatten()
-                    ) 
+                for L, n in zip(Ls, block_sizes):
+                    z = np.random.randn(n)
+                    noise_vectors.append(L @ z)
                 noise_vector = np.concatenate(noise_vectors)
-                return noise_vector, self.station_component_covariances
-            sampling_object = GaussianNoiseSampler(sampler)
-            return sampling_object
+                # noise_vector /= scale   # rescale back to physical units
+                return noise_vector, None # self.station_component_covariances
+
+            return GaussianNoiseSampler(sampler)
+
+
+        # def create_sampler(self):
+        #     if not hasattr(self, "_Ls"):
+        #         eps = 1e-18
+        #         self._Ls = [np.linalg.cholesky(block + np.eye(block.shape[0]) * eps)
+        #                     for block in self.covariance_matrix_arrays]
+        #         self._block_sizes = [block.shape[0] for block in self.covariance_matrix_arrays]
+
+        #     return GaussianNoiseSampler(
+        #         BlockGaussianSampler(self._Ls, self._block_sizes, self.station_component_covariances)
+        #     )
+
 
 class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
     """
@@ -298,8 +336,12 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
 
     def build_single_covariance_block(self, sigma_sqr, data_vector_length, freqs):
         lags = np.arange(data_vector_length)
-        gamma_vals = np.array([self.gamma_bandpass(t,sigma_sqr, freqs) for t in lags])
-        cov_y = toeplitz(gamma_vals)      
+        gamma_vals = np.array([self.gamma_bandpass(t,1.0, freqs) for t in lags])
+        cov_y = toeplitz(gamma_vals)   
+        # now rescale such that variance at lag 0 is sigma_sqr
+        cov_y *= sigma_sqr / cov_y[0,0]
+        eps_diag = EPS * np.eye(cov_y.shape[0])
+        cov_y += eps_diag   
         return cov_y
     
     def create_covariance_matrix(self, station_component_covariances):
@@ -369,14 +411,17 @@ class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     
 from scipy.linalg import cho_factor, cho_solve
 
-def stable_inverse(C, eps=1e-12):
-    # ensure symmetry
-    C = (C + C.T) / 2
-    # add jitter for numerical stability
-    C = C + np.eye(C.shape[0]) * eps
-    c, low = cho_factor(C, lower=True, check_finite=False)
-    return cho_solve((c, low), np.eye(C.shape[0]), check_finite=False)
+# def stable_inverse(C, eps=1e-18):
+#     # ensure symmetry
+#     C = (C + C.T) / 2
+#     # add jitter for numerical stability
+#     C = C + np.eye(C.shape[0]) * eps
+#     c, low = cho_factor(C, lower=True, check_finite=False)
+#     return cho_solve((c, low), np.eye(C.shape[0]), check_finite=False)
 
+def stable_inverse(C, eps=1e-18):
+    # ensure symmetry
+    return np.linalg.inv(C)
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
 
@@ -398,8 +443,8 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     
     def create_covariance_matrix(self, station_component_covariances):
         theory_covariances =  station_component_covariances.reshape(-1, self.data_vector_length, self.data_vector_length)
-        data_covariances = np.array([np.eye(self.data_vector_length) * 0.00001**2 for _ in range(theory_covariances.shape[0])])
-        return theory_covariances + self.data_covariance_arrays + data_covariances
+        diag_data_covariances = np.array([np.eye(self.data_vector_length) * EPS for _ in range(theory_covariances.shape[0])])
+        return theory_covariances + self.data_covariance_arrays# +diag_data_covariances 
 
     def create_C_derivative(self, station_component_covariances):
         flattened_cov_derivatives = station_component_covariances.data_parameter_gradients

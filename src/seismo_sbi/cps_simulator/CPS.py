@@ -77,14 +77,14 @@ def perturb_model(vmodel, kappa, random_seed=None):
     perturb = vmodel.copy()
     # assert kappa >= 0 and kappa <= 100
     if kappa < 1.: print ('Warning: kappa is too small to make any perturbation')
-    perturb[1:3, :] *= np.random.normal(1, kappa/100, (2, vmodel.shape[1]))
+    perturb[:3, :] *= np.random.normal(1, kappa/100, (3, vmodel.shape[1]))
     # else:
     #     if np.abs(kappa) <1: print('Warning: kappa is too small to make any perturbation')
     #     perturb[1:3, :] *= (1 + kappa/100)
     return perturb
 
 def calc_CPS_GFs(dists_in_km,evdp_in_km,vmodel,output='DISP',
-                 dt=0.5,npts=512,t0=0,vred=0,wdir='.',verbose=False):
+                 dt=1,npts=512,t0=0,vred=0,wdir='.',verbose=False):
     """
     Wrapper of CPS programs to calculate Green's functions in a velocity model.
     :param dist_in_km: list of epicentra distances in km
@@ -175,23 +175,40 @@ def update_with_Gtensor(objstats,vmodel,delta=None,evdp_in_km=None, filter_param
     gfstream_processed = Stream()
     ## preprocess GF and cut window
     for s in objstats:
-        gfid = '%03d'%(np.where(dists==np.round(s.distance,1))[0][0]+1)
+        gfid = '%03d' % (np.where(dists == np.round(s.distance, 1))[0][0] + 1)
         gftmp = gfstream.select(station=gfid)
-        ## bandpass filter
-        if delta is not None: gftmp.resample(1/delta)
-        # gftmp.filter('bandpass', **filter_params)
-        start, end = gftmp[0].stats.starttime, gftmp[0].stats.endtime
-        # length = (end - start)*delta
-        if filter_params:
-            # gftmp = gftmp.trim(starttime=start - length * 0.3, endtime=end + length * 0.3, pad = True, fill_value=0)
-            gftmp = gftmp.taper(max_percentage=0.02, type='cosine')
-            # seismograms = seismograms.filter('bandpass', freqmin=0.04, freqmax=0.07, corners=4, zerophase=False)
-            gftmp = gftmp.filter(**filter_params)
-        ## window
-        offset = s.t0 if s.vred<=0 else (s.t0+s.distance/s.vred)
-        t1 = gftmp[0].stats.starttime+offset
+
+        # compute offset for final window
+        offset = s.t0 if s.vred <= 0 else (s.t0 + s.distance / s.vred)
+        t1 = gftmp[0].stats.starttime + offset
         t2 = t1 + s.window
-        gfstream_processed.extend(gftmp.slice(t1,t2,nearest_sample=False))
+
+        if filter_params:
+            pad = 0.1 * s.window
+            t1_ext = t1 - pad
+            t2_ext = t2 + pad
+
+            # slice the extended window (allow pad with zeros if needed)
+            tr = gftmp.copy()
+            tr.trim(t1_ext, t2_ext, pad=True, fill_value=0)  # guarantees actual padding if trace is too short
+
+            tr.taper(max_percentage=0.05, type='cosine')
+
+            tr.filter(**filter_params)
+
+            tr = tr.slice(t1, t2, nearest_sample=False)
+            if delta is not None:
+                tr = tr.resample(1 / delta)
+
+            gfstream_processed.extend(tr)
+
+        else:
+            # no filtering: preserve original behavior (just slice)
+            tr = gftmp.slice(t1, t2, nearest_sample=False)
+            # also preserve original resample behavior—even without filtering?
+            if delta is not None:
+                tr = tr.resample(1 / delta)
+            gfstream_processed.extend(tr)
     ## Greens tensor of CPS elementary GFs
     try:
         ns = len(objstats)

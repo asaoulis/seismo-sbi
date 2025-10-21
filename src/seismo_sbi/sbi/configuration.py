@@ -118,7 +118,8 @@ class SBI_Configuration:
         seismic_context_config = copy(config)
         receivers_details = seismic_context_config.pop("stations_path")
         receiver_component_details = seismic_context_config.pop("station_components_path")
-        seismic_context_config["receivers"] = Receivers(receivers_details, receiver_component_details)
+        receiver_time_shifts_details = seismic_context_config.pop("station_time_shifts_path", None)
+        seismic_context_config["receivers"] = Receivers(receivers_details, receiver_component_details, receiver_time_shifts_details)
 
         self.sim_parameters = SimulationParameters(**seismic_context_config)
 

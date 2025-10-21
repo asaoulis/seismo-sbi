@@ -4,9 +4,19 @@ import numpy as np
 from pathlib import Path
 
 from .receivers import Receivers
+from .utils import apply_station_time_shifts
 from .wrapper import GenericPointSource
-
-
+def to_numpy(obj):
+    # 1) If Dataset → load to NumPy
+    if isinstance(obj, h5py.Dataset):
+        return obj[...]  # or obj[:]
+    
+    # 2) If Group or dict → recurse
+    if isinstance(obj, (h5py.Group, dict)):
+        return {k: to_numpy(v) for k, v in obj.items()}
+    
+    # 3) If it's already a numpy array or other object → return as is
+    return obj
 class SimulationDataLoader():
 
     def __init__(self,components : str,
@@ -38,6 +48,13 @@ class SimulationDataLoader():
         # context manager to close file
         with h5py.File(sim_name, 'r') as simulation_data_map:
             return self.convert_sim_data_to_array(simulation_data_map, *args, **kwargs)
+
+    def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *args, **kwargs):
+        # context manager to close file
+        self.receivers.set_time_shifts(shift_dict)
+        with h5py.File(sim_name, 'r') as simulation_data_map:
+            shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}
+            return self.convert_sim_data_to_array(shifted_map, *args, **kwargs)
 
     def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False):
         """Convert simulation data map into seismogram array.

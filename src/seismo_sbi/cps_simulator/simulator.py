@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 
 from abc import ABC, abstractmethod
+import pyrocko.moment_tensor as mtm
+
 
 from seismo_sbi.cps_simulator.compatibility import build_objstats
 from seismo_sbi.cps_simulator.CPS import update_with_Gtensor
@@ -11,8 +13,28 @@ from seismo_sbi.instaseis_simulator.simulator import Simulator
 from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
 
 # convert newtons into dynes
-CPS_INPUT_COVERSION = 1.e-7
+CPS_INPUT_COVERSION = 1.e-13
 CPS_OUTPUT_COVERSION = 1.e-2
+def convert_mt_convention(mt_rr_phi_theta):
+    """(mnn, mee, mdd, mne, mnd, med)"""
+
+    return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
+
+def create_matrix(moment_tensor_sol):
+    moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
+                                        [moment_tensor_sol[3], moment_tensor_sol[1], moment_tensor_sol[5]],
+                                        [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
+                                        
+    return moment_tensor_matrix
+
+def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
+    Mnn = Myy
+    Mee = Mxx
+    Mdd = Mzz
+    Mne = Mxy
+    Mnd = -Myz
+    Med = -Mxz
+    return [Mnn, Mee, Mdd, Mne, Mnd, Med]
 
 import torch
 
@@ -86,10 +108,32 @@ class CPSSimulator(Simulator):
                 trace_counter +=1
             
         return all_seismograms_map
+
+    def to_enu_convention(self, gf_tensor):
+        """
+        Convert GF tensor from (Z, E, N) [with Z positive up]
+        into (U, S, E) convention, matching moment tensors.
+
+        Input shape: (ns, 3, ne, nt)
+            index 0 = Z (Up)
+            index 1 = E
+            index 2 = N
+        Output shape: (ns, 3, ne, nt)
+            index 0 = U (Up)
+            index 1 = S (South)
+            index 2 = E
+        """
+        Z = gf_tensor[:, 0, :, :]   # up
+        N = gf_tensor[:, 2, :, :]   # north
+        E = gf_tensor[:, 1, :, :]   # east
+
+        U = Z
+        return np.stack([E, N, U], axis=1)
     
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
         greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)
+        # greens_functions = self.to_enu_convention(greens_functions)
         greens_functions = greens_functions.transpose(2, 0, 1, 3)
 
         trace_counter = 0
@@ -103,9 +147,13 @@ class CPSSimulator(Simulator):
         return np.concatenate(used_greens_functions, axis=1)
 
     def _compute_seismograms_from_kernels(self, source: GenericPointSource):
-
         moment_tensor_components = source.moment_tensor.components
-        seismograms = np.dot(self.sensitivity_kernels.T, np.array(moment_tensor_components) * CPS_INPUT_COVERSION) * CPS_OUTPUT_COVERSION
+        mt = mtm.MomentTensor(m_up_south_east=create_matrix(convert_mt_convention(moment_tensor_components)))
+        moment_tensor_components = mt.m6_east_north_up()
+        # print('converting to NED')
+        moment_tensor_components = np.array(enu_to_ned(*moment_tensor_components))
+        seismograms = moment_tensor_components @ self.sensitivity_kernels * CPS_INPUT_COVERSION * CPS_OUTPUT_COVERSION
+        # seismograms = np.dot(self.sensitivity_kernels.T, np.array(moment_tensor_components) * CPS_INPUT_COVERSION) * CPS_OUTPUT_COVERSION
         return seismograms
     
     @abstractmethod

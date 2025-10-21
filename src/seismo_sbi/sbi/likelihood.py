@@ -49,7 +49,11 @@ class GaussianLikelihoodEvaluator:
             return -np.inf
         return self.log_likelihood(scaled_source_parameters) + log_prior_value
 
-def run_embarrassingly_parallel_simulations(num_parameters, log_probability, burn_in, nsamples_per_walker, theta0, move_size, thin=5, return_sampler=False):
+def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
+                                            burn_in, nsamples_per_walker,
+                                            initial_state, move_size,
+                                            thin=5, return_sampler=False):
+
     if isinstance(move_size, list):
          first_size, second_size = tuple(move_size)
     else:
@@ -60,7 +64,7 @@ def run_embarrassingly_parallel_simulations(num_parameters, log_probability, bur
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
     sampler = emcee.EnsembleSampler(1, num_parameters, log_probability, moves = GaussianMove(first_size))
-    initial  =  np.random.rand(1, num_parameters)
+    initial = initial_state.reshape(1, num_parameters)
     state = sampler.run_mcmc(initial, burn_in, skip_initial_state_check=True, progress=True, progress_kwargs=dict(position=0, leave=True))
     state = sampler.get_chain()[-1]
     sampler.reset()
@@ -73,10 +77,12 @@ def run_embarrassingly_parallel_simulations(num_parameters, log_probability, bur
     return sampler.get_chain(flat=True, thin=1)
 
 
-def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None):
+def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None):
 
-
-    initial_samples = np.random.rand(nwalkers, num_parameters)
+    if mle_start is not None:
+         initial_samples = np.tile(mle_start, (nwalkers,1))
+    else:
+        initial_samples = np.random.rand(nwalkers, num_parameters)
     if ensemble:
         with Pool(processes=num_processes) as pool:
             sampler = emcee.EnsembleSampler(nwalkers, num_parameters, log_probability, pool=pool)
@@ -92,10 +98,16 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
         samples = sampler.get_chain(flat=True)
     else:
         with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)) as progress_bar:
-                        with joblib.parallel_backend('loky', n_jobs=num_processes):
-                            samples = joblib.Parallel()(
-                                joblib.delayed(run_embarrassingly_parallel_simulations)(num_parameters, log_probability, burn_in, nsamples_per_walker, theta0, move_size) for
-                                    _ in range(num_processes)
-                            )
+            with joblib.parallel_backend('loky', n_jobs=num_processes):
+                samples = joblib.Parallel()(
+                    joblib.delayed(run_embarrassingly_parallel_simulations)(
+                        num_parameters, log_probability, burn_in,
+                        nsamples_per_walker,
+                        initial_samples[i],   # <-- pass the correct initial state
+                        move_size
+                    ) 
+                    for i in range(num_processes)
+                )
+
         samples = np.stack(samples).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
     return samples

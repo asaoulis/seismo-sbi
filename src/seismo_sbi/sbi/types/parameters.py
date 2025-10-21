@@ -36,6 +36,9 @@ class IterativeLeastSquaresParameters(NamedTuple):
 
     max_iterations : int
     damping_factor : float
+    dynamic_damping : bool = True
+    mcmc_chain_for_mle : int = 0
+    use_best_model : bool = True  # Use the lowest-chi^2 model at the end
 
 class DatasetGenerationParameters(NamedTuple):
 

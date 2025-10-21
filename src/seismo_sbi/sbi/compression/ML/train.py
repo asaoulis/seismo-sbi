@@ -12,10 +12,11 @@ from .dataloading import make_torch_dataloader, make_torch_dataloaders
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger  # added
+# from lightning.pytorch.profiler import AdvancedProfiler, SimpleProfiler, PyTorchProfiler
 
 class CompressionTrainer:
 
-    def __init__(self, components, station_locations):
+    def __init__(self, components, station_locations, channels=128, latent_dim=128):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -23,13 +24,12 @@ class CompressionTrainer:
         feature_length = 128  # context dimension for the flow
 
         model_config = {"layers": 4,
-            "channels": 128,
+            "channels": channels,
             "nheads": 4,
             "timeemb": 64,
             "posemb": 64}
 
         self.num_dims = 6  # dimensionality of theta
-        latent_dim = 128
         self.latent_dim = latent_dim
         # Embedding network (context extractor)
         seismogram_transformer_model = SeismogramTransformer(
@@ -47,7 +47,7 @@ class CompressionTrainer:
         self.flow = build_nsf(
             dim=self.num_dims,
             conditional_dim=latent_dim,
-            hidden_features=128,
+            hidden_features=128,#256,
             num_transforms=5,
             num_blocks=2,
             dropout_probability=0.0,

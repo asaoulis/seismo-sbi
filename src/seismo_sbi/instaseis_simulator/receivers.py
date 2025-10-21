@@ -11,19 +11,29 @@ class Receiver(NamedTuple):
     network : str = "XX"
     station_name : str = "XXXX"
     components : List[str] = ["Z", "E", "N"]
+    time_shift : int = 0  # time shift indices
 
 
 class Receivers:
 
-    def __init__(self, path_to_stations =None, receiver_components_map = None, station_config=None, stations=None, station_codes_paths=None, receivers=None):
+    def __init__(self, path_to_stations =None, receiver_components_map = None, receiver_time_shifts_map = None, station_config=None, stations=None, station_codes_paths=None, receivers=None):
         if path_to_stations is not None:
-            self.receivers = self._convert_to_instaseis_receivers(path_to_stations, receiver_components_map)
+            self.receivers = self._convert_to_instaseis_receivers(path_to_stations, receiver_components_map, receiver_time_shifts_map)
         elif station_config is not None:
             self.receivers = self._generate_receivers_from_config(station_config, stations, station_codes_paths)
         else:
             self.receivers = receivers
-
-    def _convert_to_instaseis_receivers(self, path_to_stations, receiver_components_map_path) -> List[Receiver]:
+        print("At receiver init",[rec.time_shift for rec in self.receivers])
+    def set_time_shifts(self, time_shifts_map):
+        self.receiver_time_shifts_map = time_shifts_map
+        new_receivers = []
+        for rec in self.receivers:
+            time_shift = self.receiver_time_shifts_map.get(rec.station_name, 0)
+            new_rec = rec._replace(time_shift=time_shift)
+            new_receivers.append(new_rec)
+        self.receivers = new_receivers
+        
+    def _convert_to_instaseis_receivers(self, path_to_stations, receiver_components_map_path, receiver_time_shifts_map) -> List[Receiver]:
 
         stations_details = np.genfromtxt(path_to_stations, comments="#", dtype='str')
 
@@ -33,18 +43,31 @@ class Receivers:
         else:
             with open(receiver_components_map_path, 'r') as f:
                 receiver_components_map = json.load(f)
+        if receiver_time_shifts_map is None:
+            self.receiver_time_shifts_map = {}
+        else:
+            with open(receiver_time_shifts_map, 'r') as f:
+                self.receiver_time_shifts_map = json.load(f)
         receivers = []
         for station_details in stations_details:
             lat = float(station_details[2])
             long = float(station_details[3])
+
+            # Components (existing logic)
             if receiver_components_map is not None:
                 components = receiver_components_map[station_details[0]]
-            
-            rec = Receiver(latitude=lat,
-                            longitude=long,
-                            network=station_details[1], 
-                            station_name=station_details[0],
-                            components=components)
+
+            # NEW: look up time shift
+            time_shift = self.receiver_time_shifts_map.get(station_details[0], 0)
+
+            rec = Receiver(
+                latitude=lat,
+                longitude=long,
+                network=station_details[1],
+                station_name=station_details[0],
+                components=components,
+                time_shift=time_shift  # NEW
+            )
 
             if len(components) != 0:
                 receivers.append(rec)

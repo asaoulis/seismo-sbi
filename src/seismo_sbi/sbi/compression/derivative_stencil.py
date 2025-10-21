@@ -94,7 +94,7 @@ class DerivativeStencil:
                     joblib.delayed(simulator)(*simulation_job_args) for simulation_job_args in simulation_job_args_list
                 )
         else: 
-            with set_num_threads(10):
+            with set_num_threads(24):
                 for simulation_job_args in simulation_job_args_list:
                     simulator(*simulation_job_args)
 

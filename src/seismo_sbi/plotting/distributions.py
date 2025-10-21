@@ -20,6 +20,8 @@ from tqdm import tqdm
 from contextlib import contextmanager
 import logging
 from seismo_sbi.plotting.MTfit import _LunePlot
+from pyrocko import moment_tensor as pmt
+
 
 
 # disable chain consumer warnings for reparametrised moment tensor
@@ -765,16 +767,15 @@ class PosteriorPlotter:
         return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
 
 
-    @staticmethod
-    def add_beachball_plot(ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):
+    def add_beachball_plot(self, ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):
+        mt = mtm.MomentTensor(m_up_south_east=create_matrix(moment_tensor_sol))
         if add_text:
             extra_text = f"\n $M_W=${M0_epsilon[0]:.3f},\n$\epsilon= {M0_epsilon[1]:.2f}$"
         else:
             extra_text = ""
         ax.axis('off')
         ax.set_title(f"{name}{extra_text}")
-        ax.add_collection(beach(moment_tensor_sol, width=1.5, facecolor=col))
+        rocko_beachball.plot_beachball_mpl(mt, ax, beachball_type='full', linewidth=1.5, color_t=col, size=50)
         ax.set_aspect("equal")
-        ax.set_xlim((-0.8, 0.8))  
-        ax.set_ylim((-0.8, 0.8))
-        
+        ax.set_xlim((-0.1, 0.1))  
+        ax.set_ylim((-0.1, 0.1))

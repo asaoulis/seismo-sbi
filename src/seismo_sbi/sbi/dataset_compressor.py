@@ -79,7 +79,7 @@ class DatasetCompressor:
         else:
             results = []
             for sim_path in simulation_data_paths:
-                    results.append(self._load_and_compress_sim(sim_path, param_names))
+                    results.append(self._load_and_compress_sim(sim_path, param_names, matmul_callable))
 
         return np.stack(results)
 

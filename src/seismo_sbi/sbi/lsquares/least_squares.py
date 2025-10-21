@@ -1,9 +1,16 @@
-
 from pathlib import Path
 from copy import deepcopy
 import tempfile
 
-from tqdm import tqdm
+# Optional progress wrapper: use tqdm if available, else no-op
+try:
+    from tqdm import tqdm as _tqdm
+    def iter_progress(iterable, desc=None, total=None):
+        return _tqdm(iterable, desc=desc, total=total)
+except Exception:
+    def iter_progress(iterable, desc=None, total=None):
+        return iterable
+
 import numpy as np
 
 from ..compression.derivative_stencil import DerivativeStencil
@@ -30,13 +37,19 @@ class IterativeLeastSquaresSolver:
     def solve_least_squares(self, observation, compressor, single_step = True):
         iterations = self.least_squares_configuration.max_iterations if not single_step else 1
         damping = self.least_squares_configuration.damping_factor if not single_step else 0
+        adaptive = self.least_squares_configuration.dynamic_damping
 
         misfit = np.inf
         new_parameters = deepcopy(self.model_parameters)
         model_params = new_parameters.parameter_to_vector('theta_fiducial', True)
         true_priors = deepcopy(compressor.prior_mean), deepcopy(compressor.prior_covariance)
+
+        # Track the best (lowest chi^2) model encountered during iterations
+        best_chi2 = np.inf
+        best_params_vec = None
+        best_iter = -1
         
-        for _ in tqdm(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
+        for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             # Step 1: Compute gradients
 
             score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
@@ -49,21 +62,20 @@ class IterativeLeastSquaresSolver:
             if extra_gradients is not None:
                 compressor.C.set_covariance(extra_gradients)
             compressor.set_compression_variables(score_compression_data)
-
-            # import matplotlib.pyplot as plt
-            # cov_blocks = compressor.C.C_derivative[0]
-            # fig, axs = plt.subplots(2, 2, figsize=(12, 12))
-            # for i, ax in enumerate(axs.flat):
-            #     block = cov_blocks[i]
-            #     im = ax.imshow(block, aspect='auto')
-            # plt.show()
-
+            
             misfit_new = compressor.compute_misfit(observation)
-            if misfit_new > 0.99 * misfit:
-                damping *= 1.2
-            else:
-                damping /= 1.5
-            misfit = misfit_new
+            # Keep track of best model before applying update
+            if misfit_new < best_chi2:
+                best_chi2 = misfit_new
+                best_params_vec = np.copy(model_params)
+                best_iter = it
+            
+            if adaptive and not single_step:
+                if misfit_new > 0.99 * misfit:
+                    damping *= 1.2
+                else:
+                    damping /= 1.5
+                misfit = misfit_new
             print(f"chi^2: {misfit_new:.5f}, damping lambda: {damping:.3f}", flush=True)
             
             # Step 4: Compute the update step using the Gauss-Newton method
@@ -78,6 +90,11 @@ class IterativeLeastSquaresSolver:
             )
             print(update, flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
+
+        # Optionally use the best (lowest chi^2) model found during the iterations
+        if self.least_squares_configuration.use_best_model and best_params_vec is not None:
+            new_parameters.theta_fiducial = new_parameters.vector_to_parameters(best_params_vec, 'theta_fiducial')
+            print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
 
         final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
 

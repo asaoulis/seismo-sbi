@@ -64,7 +64,7 @@ class GeneralSimulatorWrapper:
                             simulator=cps_simulator,
                             data_flattening = self.data_loader_callable,
                             components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
+                            receivers = deepcopy(simulation_parameters.receivers),
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing,
                             )
