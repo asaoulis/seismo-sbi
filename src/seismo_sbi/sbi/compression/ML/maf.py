@@ -206,10 +206,7 @@ def build_nsf(
 
 
 def build_maf(
-    batch_x: Tensor,
-    batch_y: Tensor,
-    z_score_x: Optional[str] = "independent",
-    z_score_y: Optional[str] = "independent",
+    dim : int,
     hidden_features: int = 50,
     num_transforms: int = 5,
     embedding_net: nn.Module = nn.Identity(),
@@ -218,7 +215,8 @@ def build_maf(
     use_batch_norm: bool = False,
     use_residual_blocks: bool = False,
     use_identity: bool = False,
-    random_permutation: bool = True,
+    random_permutation: bool = False,
+    conditional_dim = None,
     **kwargs,
 ) -> nn.Module:
     """Builds MAF p(x|y).
@@ -246,11 +244,11 @@ def build_maf(
     Returns:
         Neural network.
     """
-    x_numel = batch_x[0].numel()
-    # Infer the output dimensionality of the embedding_net by making a forward pass.
-    # check_data_device(batch_x, batch_y)
-    # check_embedding_net_device(embedding_net=embedding_net, datum=batch_y)
-    y_numel = embedding_net(batch_y[:1]).numel()
+    x_numel = dim
+    if conditional_dim:
+        y_numel = conditional_dim
+    else:
+        y_numel = x_numel
     made_constructor = MaskedAffineAutoregressiveTransform 
     if x_numel == 1:
         warn("In one-dimensional output space, this flow is limited to Gaussians")
@@ -282,18 +280,6 @@ def build_maf(
                 block.append(perm_transform)  # Add the actual permutation layer
 
             transform_list += block
-
-    z_score_x_bool, structured_x = z_score_parser(z_score_x)
-    if z_score_x_bool:
-        transform_list = [
-            standardizing_transform(batch_x, structured_x)
-        ] + transform_list
-
-    z_score_y_bool, structured_y = z_score_parser(z_score_y)
-    if z_score_y_bool:
-        embedding_net = nn.Sequential(
-            standardizing_net(batch_y, structured_y), embedding_net
-        )
 
     # Combine transforms.
     transform = transforms.CompositeTransform(transform_list)

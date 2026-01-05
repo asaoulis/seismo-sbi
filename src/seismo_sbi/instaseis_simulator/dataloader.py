@@ -56,7 +56,7 @@ class SimulationDataLoader():
             shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}
             return self.convert_sim_data_to_array(shifted_map, *args, **kwargs)
 
-    def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False):
+    def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False, fill_unused=False):
         """Convert simulation data map into seismogram array.
 
         Args:
@@ -77,10 +77,9 @@ class SimulationDataLoader():
 
         for receiver in self.receivers.iterate():
             receiver_name = receiver.station_name
-            components = receiver.components
+            rec_components = receiver.components 
             comp_data = []
-
-            for component in components:
+            for component in rec_components:
                 # Handle component name remapping
                 alt_component = component.replace('E', '1').replace('N', '2')
 
@@ -104,13 +103,34 @@ class SimulationDataLoader():
                 comp_data.append(trace_data_vector)
 
             station_data.append(comp_data)
-
+        if fill_unused:
+            station_data = self.zero_fill_unused_components([comp for station in station_data for comp in station], seismogram_array_length)
         if stacked:
             # shape (num_stations, num_components, trace_length)
-            return np.array(station_data)
+            array = np.array(station_data)
         else:
             # Flatten into single long vector
-            return np.concatenate([comp for comps in station_data for comp in comps])
+            array= np.concatenate([comp for comps in station_data for comp in comps])
+        return array
+
+    def zero_fill_unused_components(self, flattened_list, seismogram_array_length):
+        """Zero-fill unused components in the seismogram array.
+        """
+        all_comps = []
+        index = 0
+        for receiver in self.receivers.iterate():
+            rec_components = receiver.components 
+            receiver_components = []
+            for component in self.components:
+                if component in rec_components:
+                    trace_data_vector = flattened_list[index]
+                    receiver_components.append(trace_data_vector)
+                    index += 1
+                else:
+                    receiver_components.append(np.zeros(seismogram_array_length))
+            all_comps.append(receiver_components)
+
+        return all_comps
 
     def load_misc_data(self, sim_name):
         with h5py.File(sim_name, 'r') as simulation_data_map:

@@ -419,10 +419,37 @@ class SingleEventPipeline(SBIPipeline):
 
     def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, priors, mle_start = None):
         MLE_likelihood_config = deepcopy(likelihood_config)
-        MLE_likelihood_config['walker_burn_in'] = 800
-        MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 800
-        _, res = next(iter(self.run_single_gaussian_likelihood_inversion(single_job, MLE_likelihood_config, deepcopy(self.parameters), priors, mle_start = mle_start)))
-        mcmc_MLE = np.mean(res.inversion_data.samples, axis=0)
+        use_best = MLE_likelihood_config.get('mle_use_best', False)
+
+        if use_best:
+            MLE_likelihood_config['walker_burn_in'] = 30
+            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 800
+        else:
+            MLE_likelihood_config['walker_burn_in'] = 500
+            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 800
+        MLE_likelihood_config['ensemble'] = False
+        MLE_likelihood_config['return_log_prob'] = bool(use_best)
+
+        result = next(iter(self.run_single_gaussian_likelihood_inversion(
+            single_job,
+            MLE_likelihood_config,
+            deepcopy(self.parameters),
+            priors,
+            mle_start=mle_start,
+        )))
+        if len(result) == 3:
+            _, res, logps = result
+        else:
+            _, res = result
+            logps = None
+
+        samples = res.inversion_data.samples
+        if use_best and logps is not None:
+            best_idx = int(np.argmax(logps))
+            print("Best chi2 value:", -logps[best_idx])
+            mcmc_MLE = samples[best_idx]
+        else:
+            mcmc_MLE = np.mean(samples, axis=0)
         print('MCMC MLE', mcmc_MLE)
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(mcmc_MLE, 'theta_fiducial')
         compression_data, extra_gradients = self.compute_required_compression_data(self.compression_methods, self.parameters)
@@ -468,7 +495,7 @@ class SingleEventPipeline(SBIPipeline):
         job_result = JobResult(raw_compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))
         return inversion_data, job_result, sbi_model
 
-    def clean_train_data(self, train_data, raw_compressed_dataset, factor=10):
+    def clean_train_data(self, train_data, raw_compressed_dataset, factor=100):
         # if mean relative error is too high, remove the row
         start_length = train_data.shape[0]
         truths = train_data[:, :self.num_dim]
@@ -562,6 +589,7 @@ class SingleEventPipeline(SBIPipeline):
         num_samples = likelihood_config['num_samples']
         move_size = likelihood_config.get('move_size')
         nsamples_per_walker = num_samples//self.num_parallel_jobs
+        return_log_prob = bool(likelihood_config.get('return_log_prob', False))
 
 
         scaler = FlexibleScaler(parameters)
@@ -584,15 +612,24 @@ class SingleEventPipeline(SBIPipeline):
 
         simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(D, partial(self.simulator_wrapper.simulation_callable, use_fiducial=True) , scaler, loss_callable=covariance_loss_callable, priors=priors)
 
-        samples = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
+        if return_log_prob:
+            samples_scaled, logps = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
+                                                        self.num_dim,
+                                                        nsamples_per_walker=nsamples_per_walker, nwalkers=self.num_parallel_jobs, 
+                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size, mle_start = mle_start, return_log_prob=True)
+        else:
+            samples_scaled = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
                                                         nsamples_per_walker=nsamples_per_walker, nwalkers=self.num_parallel_jobs, 
                                                         burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size, mle_start = mle_start)
-        samples = scaler.inverse_transform(samples)
+        samples = scaler.inverse_transform(samples_scaled)
         inversion_data = InversionData(theta0, samples, scaler)
 
         inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
-        yield None, inversion_result
+        if return_log_prob:
+            yield None, inversion_result, logps
+        else:
+            yield None, inversion_result
 
 class MultiEventPipeline(SingleEventPipeline):
     def __init__(self, pipeline_parameters : PipelineParameters, compression_methods, config_path : str = None):

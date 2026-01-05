@@ -34,7 +34,7 @@ class IterativeLeastSquaresSolver:
         self.num_parallel_jobs = num_parallel_jobs
 
     @error_handling_wrapper(num_attempts=3)
-    def solve_least_squares(self, observation, compressor, single_step = True):
+    def solve_least_squares(self, observation, compressor, single_step = True, return_history = False):
         iterations = self.least_squares_configuration.max_iterations if not single_step else 1
         damping = self.least_squares_configuration.damping_factor if not single_step else 0
         adaptive = self.least_squares_configuration.dynamic_damping
@@ -48,6 +48,7 @@ class IterativeLeastSquaresSolver:
         best_chi2 = np.inf
         best_params_vec = None
         best_iter = -1
+        all_steps = [model_params]
         
         for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             # Step 1: Compute gradients
@@ -90,6 +91,7 @@ class IterativeLeastSquaresSolver:
             )
             print(update, flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
+            all_steps.append(deepcopy(model_params))
 
         # Optionally use the best (lowest chi^2) model found during the iterations
         if self.least_squares_configuration.use_best_model and best_params_vec is not None:
@@ -97,8 +99,10 @@ class IterativeLeastSquaresSolver:
             print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
 
         final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
-
-        return final_score_compression_data, extra_gradients
+        if not return_history:
+            return final_score_compression_data, extra_gradients
+        else:
+            return final_score_compression_data, extra_gradients, all_steps
 
     @error_handling_wrapper(num_attempts=3)
     def _compute_gradients(self, model_parameters):

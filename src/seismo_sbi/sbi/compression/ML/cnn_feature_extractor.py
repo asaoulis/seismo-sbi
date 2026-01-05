@@ -36,7 +36,7 @@ class SeismicTraceCNN(nn.Module):
     def __init__(
         self,
         num_seismic_components,
-        input_length=300,
+        input_length=200,
         final_layer=128,
         conv_channels=None,          # list[int]: out_channels per conv
         conv_kernels=None,           # list[int]: kernel_size per conv

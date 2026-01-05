@@ -1,4 +1,3 @@
-
 import numpy as np
 import emcee
 from emcee.moves import GaussianMove
@@ -41,7 +40,8 @@ class GaussianLikelihoodEvaluator:
         source_parameters = self.scaler.inverse_transform(scaled_source_parameters.reshape(1,-1))
         synthetic_waveform = self.simulation_callable(source_parameters.flatten())
         diff = synthetic_waveform - self.data
-        return self.loss_callable(diff)
+        return  self.loss_callable(diff)
+        # return  2*(self.loss_callable(diff) / self.data.size)
 
     def log_probability(self, scaled_source_parameters):
         log_prior_value = self.log_prior(scaled_source_parameters)
@@ -52,7 +52,7 @@ class GaussianLikelihoodEvaluator:
 def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
                                             burn_in, nsamples_per_walker,
                                             initial_state, move_size,
-                                            thin=5, return_sampler=False):
+                                            thin=5, return_sampler=False, return_log_prob=False):
 
     if isinstance(move_size, list):
          first_size, second_size = tuple(move_size)
@@ -74,10 +74,15 @@ def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
     sampler.run_mcmc(state, nsamples_per_walker, skip_initial_state_check=True, progress=True, progress_kwargs=dict(position=0, leave=True))
     if return_sampler:
         return sampler
-    return sampler.get_chain(flat=True, thin=1)
+
+    chain = sampler.get_chain(flat=True, thin=1)
+    if return_log_prob:
+        logp = sampler.get_log_prob(flat=True)
+        return chain, logp
+    return chain
 
 
-def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None):
+def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None, return_log_prob=False):
 
     if mle_start is not None:
          initial_samples = np.tile(mle_start, (nwalkers,1))
@@ -94,20 +99,30 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
 
             print("Starting posterior sampling..", flush=True)
             sampler.run_mcmc(state, nsamples_per_walker, progress=True)
-            
-        samples = sampler.get_chain(flat=True)
+        if return_log_prob:
+            flat_chain = sampler.get_chain(flat=True)
+            logp = sampler.get_log_prob(flat=True)
+            return flat_chain, logp
+        else:
+            samples = sampler.get_chain(flat=True)
     else:
         with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)) as progress_bar:
             with joblib.parallel_backend('loky', n_jobs=num_processes):
-                samples = joblib.Parallel()(
+                results = joblib.Parallel()(
                     joblib.delayed(run_embarrassingly_parallel_simulations)(
                         num_parameters, log_probability, burn_in,
                         nsamples_per_walker,
                         initial_samples[i],   # <-- pass the correct initial state
-                        move_size
+                        move_size,
+                        return_log_prob=return_log_prob
                     ) 
                     for i in range(num_processes)
                 )
-
-        samples = np.stack(samples).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
+        if return_log_prob:
+            chains, logps = zip(*results)
+            samples = np.stack(chains).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
+            logp = np.stack(logps).reshape(num_processes, -1).T.reshape(-1)
+            return samples, logp
+        else:
+            samples = np.stack(results).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
     return samples

@@ -1,10 +1,11 @@
-
 from typing import List
 
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import joblib
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from matplotlib.transforms import Affine2D
 
 plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
 
@@ -16,11 +17,45 @@ from obspy.imaging import beachball
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from ..instaseis_simulator.dataset_generator import tqdm_joblib
+from .rocko_beachball_patch import plot_beachball_on_axes
 from tqdm import tqdm
 from contextlib import contextmanager
 import logging
 from seismo_sbi.plotting.MTfit import _LunePlot
 from pyrocko import moment_tensor as pmt
+# New: reusable lune plotting utilities
+from seismo_sbi.plotting.lune import (
+    mts6_to_gamma_delta,
+    plot_lune_frame,
+    kde_on_grid,
+    kde_hpd_contour_levels,
+)
+
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import Polygon
+
+def make_beachball_collection(mt, facecolor, edgecolor, alpha=1.0, linewidth=1.3):
+    # Get raw, unit beachball polygons
+    data = rocko_beachball.mt2beachball(
+        mt,
+        beachball_type='full',
+        position=(0., 0.),
+        size=.06
+    )
+
+    patches = []
+    for (path, fc, ec, lw) in data:
+        patches.append(
+            Polygon(
+                xy=path,
+                facecolor=facecolor if fc != 'none' else 'none',
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                alpha=alpha
+            )
+        )
+
+    return PatchCollection(patches, match_original=True)
 
 
 
@@ -107,6 +142,7 @@ class DummyDataScaler:
 def get_MW_and_epsilon(moment_tensor_sol):
 
     moment_tensor_matrix, M_0 = compute_scalar_moment(moment_tensor_sol)
+
     MW = (np.log10(M_0) - 9.1)/1.5
 
     M_isotropic = 1/3 * np.trace(moment_tensor_matrix) * np.eye(3)
@@ -117,11 +153,36 @@ def get_MW_and_epsilon(moment_tensor_sol):
     
     return (MW, epsilon)
 
+# New: compute delta (Tape & Tape lune coordinate) from full tensor eigenvalues
+# delta is the angle from the deviatoric plane to the lune point (-90 <= delta <= 90)
+# Following TT2012 Eq. 21a and the reference lam2lune.m
+
+def get_delta(moment_tensor_sol: np.ndarray) -> float:
+    """
+    Compute Tape & Tape lune delta (in degrees) for a 6-component moment tensor.
+    Input ordering matches create_matrix: [Mxx, Myy, Mzz, Mxy, Mxz, Myz] in up-south-east.
+    """
+    M = create_matrix(moment_tensor_sol)
+    # For symmetric tensors, eigvalsh is faster and yields ordered real vals (ascending)
+    lam = np.linalg.eigvalsh(M)[::-1]  # descending: lam1 >= lam2 >= lam3
+    rho = float(np.sqrt(np.sum(lam**2)))
+    if rho == 0.0:
+        return 0.0
+    trM = float(np.sum(lam))
+    # numerical safety: if trace(M) == 0 => delta = 0
+    if np.isclose(trM, 0.0, atol=1e-12, rtol=0.0):
+        return 0.0
+    bdot = trM / (np.sqrt(3.0) * rho)
+    bdot = float(np.clip(bdot, -1.0, 1.0))
+    delta = 90.0 - np.degrees(np.arccos(bdot))
+    return float(delta)
+
 def compute_scalar_moment(moment_tensor_sol):
     moment_tensor_matrix = create_matrix(moment_tensor_sol)
     
     M_0 = (1/np.sqrt(2)) * np.sum(moment_tensor_matrix**2)**(1/2)
     return moment_tensor_matrix, M_0
+
 
 def create_matrix(moment_tensor_sol):
     moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
@@ -150,11 +211,15 @@ def get_nodal_planes(theta):
 
 class MomentTensorReparametrised:
 
-    parameters_info = [ParameterInformation("$strike$", '°'),
-                        ParameterInformation("$dip$", '°'),
-                        ParameterInformation("$rake$", '°'),
+                        
+    parameters_info = [
+                        ParameterInformation("$\gamma$", "°"),
+                        ParameterInformation("$\delta$", '°'),
                         ParameterInformation("$M_w$", ""),
-                        ParameterInformation("$\epsilon$", "")]
+                        ParameterInformation(r"$\textrm{strike}$", '°'),
+                        ParameterInformation(r"$\textrm{dip}$", '°'),
+                        ParameterInformation(r"$\textrm{rake}$", '°'),
+                        ]
     
     def __init__(self, data_scaler, parameters):
         # to convert samples from nde training scale
@@ -167,24 +232,29 @@ class MomentTensorReparametrised:
 
     def convert_samples(self, samples, theta0, custom_select):
         
-        nodal_planes = []
+        converted = []
         for sample in samples:
             inputs = self.parameters.vector_to_simulation_inputs(sample, only_theta_fiducial=True)
-            sample = inputs["moment_tensor"]
-            magnitude, epsilon = get_MW_and_epsilon(sample)
-            nodal_plane_pair = get_nodal_planes(sample)
+            mt = inputs["moment_tensor"]
+            # Use lune utilities to compute gamma and delta (in degrees)
+            g, d = mts6_to_gamma_delta(np.asarray(mt).reshape(1, -1))
+            # Keep Mw from scalar moment
+            MW, _ = get_MW_and_epsilon(mt)
+            # Choose nodal plane
+            nodal_plane_pair = get_nodal_planes(mt)
             nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
-            nodal_planes.append(np.array([nodal_plane[0], nodal_plane[1], nodal_plane[2], magnitude, epsilon]))
+            converted.append(np.array([float(d[0]), float(g[0]), MW, nodal_plane[0], nodal_plane[1], nodal_plane[2]]))
         if theta0 is not None:
             theta_inputs = self.parameters.vector_to_simulation_inputs(theta0, only_theta_fiducial=True)
-            theta0 = theta_inputs["moment_tensor"]
-            theta_MW, theta_epsilon = get_MW_and_epsilon(theta0)
-            nodal_plane_pair = get_nodal_planes(theta0)
+            theta_mt = theta_inputs["moment_tensor"]
+            tg, td = mts6_to_gamma_delta(np.asarray(theta_mt).reshape(1, -1))
+            theta_MW, _ = get_MW_and_epsilon(theta_mt)
+            nodal_plane_pair = get_nodal_planes(theta_mt)
             nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
-            theta0_converted = np.array([nodal_plane[0], nodal_plane[1], nodal_plane[2], theta_MW, theta_epsilon])
+            theta0_converted = np.array([float(td[0]), float(tg[0]), theta_MW, nodal_plane[0], nodal_plane[1], nodal_plane[2],])
         else:
             theta0_converted = None
-        return np.array(nodal_planes), theta0_converted
+        return np.array(converted), theta0_converted
 
 
 
@@ -461,6 +531,7 @@ class PosteriorPlotter:
                             
         i = 0
         c_plot = ChainConsumer()
+        shade_first = len(scaled_data_dict) < 3
         for name, (samples, theta0) in scaled_data_dict.items():
             if extents is not None:
                 for j in range(len(extents)):
@@ -469,14 +540,14 @@ class PosteriorPlotter:
 
             if i == 0:
                 truth = theta0
-                shade = True
+                shade = shade_first
             else:
                 shade = False
             c_plot.add_chain(samples, parameters=parameters_label, color=colors[i], name=name, shade=shade, linewidth=2.5)
             i+=1
-        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=True, usetex=True, bar_shade=True)
+        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=False, usetex=True, bar_shade=True)
         c_plot.configure_truth(lw=2)
-        scale = 3*self.num_dim
+        scale = 2.8*self.num_dim
 
         fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=extents)
         fig.align_labels() 
@@ -487,59 +558,171 @@ class PosteriorPlotter:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
         plt.close()
     
-    def plot_lunes(self, inversion_data, num_samples=250, figsave=None):
+    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None):
 
-        fig = plt.figure(figsize=(5, 5))
+        # New implementation: project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
+        fig, ax = plt.subplots(figsize=(14, 14))
+        bm = plot_lune_frame(ax)
 
         colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
         true_theta0 = None
+
+
+
         for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
             np.random.shuffle(samples)
             samples = samples[:num_samples]
-            samples_MT, theta0 = self.get_moment_tensors(samples, theta0)
+            samples_MT, theta0_mt = self.get_moment_tensors(samples, theta0)
             if i == 0:
-                true_theta0 = theta0
-        
-            kwargs = dict(color=colors[i], alpha=0.3, marker='o')
+                true_theta0 = theta0_mt
 
-            lune = _LunePlot(None, fig, samples_MT, fontsize=16, **kwargs)
-            lune._convert()
-            handle = lune._ax_plot(**kwargs)
-            lune._background(handle)
-            lune.ax.set_axis_off()
-            ax = lune.ax  # Get current axis from fig
-            ax.set_axis_off()  # Remove the entire axis
-            ax.set_xticks([])  # Remove x-ticks
-            ax.set_yticks([])  # Remove y-ticks
-            ax.spines['top'].set_visible(False)  # Hide top border
-            ax.spines['right'].set_visible(False)  # Hide right border
-            ax.spines['left'].set_visible(False)  # Hide left border
-            ax.spines['bottom'].set_visible(False)  # Hide bottom border
+            gamma, delta = mts6_to_gamma_delta(samples_MT)
+            x, y = bm(gamma, delta)
+            ax.scatter(x, y, color=colors[i % len(colors)], alpha=0.3, s=6, marker='o')
+            if i ==0 and plot_beachballs:
+                # if plot beachballs for true, plot 3 beachballs and truth
+                true_mt = true_theta0
+                percentile_mts = []
+                for q in [5, 50, 95]:
+                    d_q = np.percentile(delta, q)
+                    # find closest sample to this delta
+                    idx = np.argmin(np.abs(delta - d_q))
+                    percentile_mts.append(samples_MT[idx])
 
+                # add true beachball in gold
+                for idx, mt in enumerate([true_mt] + percentile_mts):
+                    if mt is None:
+                        continue
+                    facecolor = 'black' if idx == 0 else colors[i % len(colors)]
+                    mt = np.array(self.convert_mt_convention(mt))
+                    tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
+                    tx, ty = bm(tg, td)
+                    plot_beachball_on_axes(ax, mt, tx[0], ty[0], diameter=0.08, color_t=facecolor, edgecolor='black', zorder=10, linewidth=0.5)
+                    ax.scatter(tx, ty, color=facecolor, alpha=1.0, marker='o', s=20, zorder=11)
 
-        kwargs = dict(color='plum', alpha=1, marker='*', markersize=10)
-        if true_theta0 is not None:
-            lune_truth = _LunePlot(None, fig, true_theta0, fontsize=16, **kwargs)
-            lune_truth.ax = lune.ax
-            lune_truth._convert()
-            handle = lune_truth._ax_plot(**kwargs)
-            lune_truth.ax.set_axis_off()
-            lune_truth._background(handle)
-            ax = lune_truth.ax  # Get current axis from fig
-
-            ax.set_axis_off()  # Remove the entire axis
-            ax.set_xticks([])  # Remove x-ticks
-            ax.set_yticks([])  # Remove y-ticks
-            ax.spines['top'].set_visible(False)  # Hide top border
-            ax.spines['right'].set_visible(False)  # Hide right border
-            ax.spines['left'].set_visible(False)  # Hide left border
-            ax.spines['bottom'].set_visible(False)  # Hide bottom border
 
 
         if figsave is None:
             plt.show()
         else:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
+        plt.close()
+
+
+    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, figsave=None):
+        """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°."""
+        fig, ax = plt.subplots(figsize=(14, 14))
+        bm = plot_lune_frame(ax)
+
+        colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+        qs = [[5,50,95], [50], [5,50,95]]
+        gx = np.linspace(-30, 30, 200)
+        gy = np.linspace(-90, 90, 300)
+        GX, GY = np.meshgrid(gx, gy)
+        XX, YY = bm(GX, GY)
+
+        # Cache per-ensemble gamma/delta for reuse in inset and store truth from first ensemble
+        gd_list = []
+        true_theta0 = None
+
+        for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
+            np.random.shuffle(samples)
+            samples = samples[:num_samples]
+            samples_MT, theta0_mt = self.get_moment_tensors(samples, theta0)
+            if i == 0:
+                true_theta0 = theta0_mt
+            g, d = mts6_to_gamma_delta(samples_MT)
+            gd_list.append((g, d))
+            _, _, Z, _ = kde_on_grid(g, d, gx, gy)
+            thr68, thr95 = kde_hpd_contour_levels(Z, levels=(0.6827, 0.9545))
+            ax.contour(XX, YY, Z, levels=[thr95, thr68], colors=colors[i % len(colors)],
+                       linestyles=['--', '-'], linewidths=[1.5, 1.8])
+            if plot_beachballs:
+                # if plot beachballs for true, plot 3 beachballs and truth
+                true_mt = true_theta0
+                percentile_mts = []
+                for q in qs[i]:
+                    d_q = np.percentile(d, q)
+                    # find closest sample to this delta
+                    idx = np.argmin(np.abs(d - d_q))
+                    percentile_mts.append(samples_MT[idx])
+
+                # add true beachball in gold
+                fig.canvas.draw()
+
+                for idx, mt in enumerate([true_mt] + percentile_mts):
+                    if mt is None:
+                        continue
+                    mt = np.array(self.convert_mt_convention(mt))
+
+                    facecolor = 'black' if idx == 0 else colors[i % len(colors)]
+                    tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
+                    tx, ty = bm(tg, td)
+                    if idx ==0 and i !=0:
+                        pass
+                    else:
+                        plot_beachball_on_axes(ax, mt, tx[0], ty[0], diameter=0.08, color_t=facecolor, edgecolor='black', zorder=10, linewidth=1)
+                        ax.scatter(tx, ty, color=facecolor, alpha=1.0, marker='o', s=20, zorder=11)
+        # Add zoomed inset centered on truth ±8 degrees
+        # Determine center (truth). If not provided, use mean of first ensemble
+        if true_theta0 is not None:
+            tg, td = mts6_to_gamma_delta(true_theta0.reshape(1, -1))
+            tg = float(tg[0]); td = float(td[0])
+        else:
+            if len(gd_list) > 0:
+                tg = float(np.mean(gd_list[0][0]))
+                td = float(np.mean(gd_list[0][1]))
+            else:
+                tg, td = 0.0, 0.0
+
+        gmin, gmax = max(-30, tg - 8.0), min(30, tg + 8.0)
+        dmin, dmax = max(-90, td - 8.0), min(90, td + 8.0)
+
+        # Build inset axes
+        iax = inset_axes(ax, width="25%", height="40%", loc="upper right", borderpad=0.8)
+        iax.set_in_layout(True)           # ensure included in tight bbox
+        iax.set_zorder(ax.get_zorder()+1) # draw on top
+        iax.set_facecolor("white")        # optional: make inset visible over map
+
+        # Compute projected grid for the inset region
+        gx_i = np.linspace(gmin, gmax, 160)
+        gy_i = np.linspace(dmin, dmax, 240)
+        GX_i, GY_i = np.meshgrid(gx_i, gy_i)
+        XX_i, YY_i = bm(GX_i, GY_i)
+
+        # Plot KDE contours for each ensemble inside inset
+        for i, (g, d) in enumerate(gd_list):
+            _, _, Z_i, _ = kde_on_grid(g, d, gx_i, gy_i)
+            thr68, thr95 = kde_hpd_contour_levels(Z_i, levels=(0.6827, 0.9545))
+            iax.contour(XX_i, YY_i, Z_i, levels=[thr95, thr68], colors=colors[i % len(colors)],
+                        linestyles=['--', '-'], linewidths=[1.2, 1.5])
+
+        # Center the inset view on the projected bounds
+        xcorn, ycorn = bm([gmin, gmax, gmin, gmax], [dmin, dmin, dmax, dmax])
+        iax.set_xlim(min(xcorn), max(xcorn))
+        iax.set_ylim(min(ycorn), max(ycorn))
+
+        # Add ticks showing gamma (x) and delta (y) degrees
+        center_g = 0.5 * (gmin + gmax)
+        center_d = 0.5 * (dmin + dmax)
+        xtick_vals = np.linspace(gmin, gmax, 5)
+        ytick_vals = np.linspace(dmin, dmax, 5)
+        xtick_pos, _ = bm(xtick_vals, np.full_like(xtick_vals, center_d))
+        _, ytick_pos = bm(np.full_like(ytick_vals, center_g), ytick_vals)
+        iax.set_xticks(xtick_pos)
+        iax.set_xticklabels([f"{v:.0f}" for v in xtick_vals])
+        iax.set_yticks(ytick_pos)
+        iax.set_yticklabels([f"{v:.0f}" for v in ytick_vals])
+        iax.set_xlabel(r"$\\gamma$ (°)", fontsize=18)
+        iax.set_ylabel(r"$\\delta$ (°)", fontsize=18)
+        # Plot the truth marker in the inset
+        tx, ty = bm(tg, td)
+        iax.scatter(tx, ty, color='black', alpha=1.0, marker='x', s=120)
+
+        if figsave is None:
+            plt.show()
+        else:
+            fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight", bbox_extra_artists=[iax])
         plt.close()
 
     def get_moment_tensors(self, samples, theta0):
@@ -768,9 +951,9 @@ class PosteriorPlotter:
 
 
     def add_beachball_plot(self, ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):
-        mt = mtm.MomentTensor(m_up_south_east=create_matrix(moment_tensor_sol))
+        mt = mtm.MomentTensor(m_up_south_east=create_matrix(self.convert_mt_convention(moment_tensor_sol)))
         if add_text:
-            extra_text = f"\n $M_W=${M0_epsilon[0]:.3f},\n$\epsilon= {M0_epsilon[1]:.2f}$"
+            extra_text = f"\n $M_W=${M0_epsilon[0]:.3f},\n$\\epsilon= {M0_epsilon[1]:.2f}$"
         else:
             extra_text = ""
         ax.axis('off')
@@ -779,3 +962,50 @@ class PosteriorPlotter:
         ax.set_aspect("equal")
         ax.set_xlim((-0.1, 0.1))  
         ax.set_ylim((-0.1, 0.1))
+
+
+# -----------------------------
+# Standalone plotting: histories (trajectories) on the lune
+# -----------------------------
+
+def plot_lune_histories(histories, figsave=None, linewidth=2.0, mark_endpoints=True):
+    """
+    Plot trajectories of MT histories on the Tape & Tape lune (Hammer projection).
+
+    histories: dict mapping name -> sequence of MTs in 6-component form [Mxx, Myy, Mzz, Mxy, Mxz, Myz].
+               Each value can be an array of shape (T, 6) or an iterable of length T with 6-vectors.
+    figsave: optional path to save the figure; if None, shows the plot.
+    linewidth: line width for the trajectory.
+    mark_endpoints: if True, mark start (circle) and end (cross) points of each trajectory.
+    """
+    fig, ax = plt.subplots(figsize=(14, 14))
+    bm = plot_lune_frame(ax)
+
+    colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+
+    for i, (name, seq) in enumerate(histories.items()):
+        arr = np.asarray(seq)
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+        if arr.shape[-1] != 6:
+            raise ValueError(f"History '{name}' must be of shape (T, 6), got {arr.shape}.")
+        # Convert to gamma/delta and project
+        g, d = mts6_to_gamma_delta(arr)
+        x, y = bm(g, d)
+        col = colors[i % len(colors)]
+        ax.plot(x, y, color=col, lw=linewidth, alpha=0.95, label=name)
+        # Add small diamonds for intermediate points (exclude endpoints)
+        if len(x) > 2:
+            ax.scatter(x[1:-1], y[1:-1], color=col, s=18, marker='D', alpha=0.8, zorder=3)
+        if mark_endpoints and len(x) > 0:
+            ax.scatter(x[0], y[0], color=col, s=50, marker='o', zorder=4)
+            ax.scatter(x[-1], y[-1], color=col, s=70, marker='x', zorder=4)
+
+    if len(histories) > 0:
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.02), ncol=min(3, len(histories)), frameon=False)
+
+    if figsave is None:
+        plt.show()
+    else:
+        fig.savefig(figsave, dpi=200, transparent=True, bbox_inches='tight')
+    plt.close()

@@ -14,7 +14,7 @@ class TorchSimulationDataset(Dataset):
         data_folder: str,
         parameter_name_map: dict,
         synthetic_noise_model_sampler,
-        data_scaler,
+        data_scaler=None,
         random_shift_distribution=(0, 0),
         glob_pattern: str = "*.h5",
         return_tensors: bool = True,
@@ -40,33 +40,39 @@ class TorchSimulationDataset(Dataset):
         else:
             print(f"Found {len(self.paths)} simulations matching {glob_pattern} under {data_folder}")
 
-        # Preload all sims into memory
-        thetas, Ds = [], []
-        for sim_path in self.paths:
-            theta, D = self._load_sim(sim_path)
-            if self.data_scaler is not None and theta.size > 0:
-                theta = self.data_scaler.transform(theta[np.newaxis, :]).flatten()
-            thetas.append(theta)
-            Ds.append(D)
-        
-        self.thetas = torch.as_tensor(np.stack(thetas), dtype=self.torch_dtype)
-        self.Ds = torch.as_tensor(np.stack(Ds), dtype=self.torch_dtype)
-
     def __len__(self):
         return len(self.paths)
 
     def __getitem__(self, idx):
-        theta = self.thetas[idx]
-        D = self.Ds[idx]
+        # Load per-sample data on demand
+        sim_path = self.paths[idx]
+        theta, D = self._load_sim(sim_path)
+
+        # Apply scaler to parameters if provided (consistent with previous behavior)
+        if self.data_scaler is not None and theta.size > 0:
+            theta = self.data_scaler.transform(theta[np.newaxis, :]).flatten()
+
+        # Ensure types match prior behavior: use torch tensors for computations
+        theta = torch.as_tensor(theta, dtype=self.torch_dtype)
+        D = torch.as_tensor(D, dtype=self.torch_dtype)
 
         # Add synthetic noise on-the-fly
         noise = self.synthetic_noise_model_sampler()
         if isinstance(noise, tuple):
             noise, _ = noise
-        x = D + noise.reshape(*D.shape)
+        if not torch.is_tensor(noise):
+            noise = torch.as_tensor(noise, dtype=self.torch_dtype)
+        noise = self.data_loader.zero_fill_unused_components(noise.reshape(-1, D.shape[-1]), D.shape[-1])
+        noise_np = np.array([[comp.numpy() if torch.is_tensor(comp) else comp
+                      for comp in station]
+                     for station in noise])
+
+        x = D + torch.as_tensor(np.array(noise_np), dtype=self.torch_dtype).reshape(*D.shape)
+
         if self.return_tensors:
-            theta = torch.as_tensor(theta, dtype=self.torch_dtype)
+            # x is already torch; ensure dtype
             x = torch.as_tensor(x, dtype=self.torch_dtype)
+            theta = torch.as_tensor(theta, dtype=self.torch_dtype)
         return theta, x
 
     def _load_sim(self, sim_path):
@@ -87,7 +93,7 @@ class TorchSimulationDataset(Dataset):
         else:
             theta = np.array([])
         shift_dict = self.random_shift_sampler()
-        D = self.data_loader.load_simulation_data_array_with_shifts(sim_path, shift_dict, stacked=True)
+        D = self.data_loader.load_simulation_data_array_with_shifts(sim_path, shift_dict, stacked=True, fill_unused=True)
         return theta, D
 
 

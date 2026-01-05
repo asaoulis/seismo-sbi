@@ -9,6 +9,7 @@ from .axial_transformer import SeismogramAxialTransformer
 
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR, StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LambdaLR, CyclicLR
 
 import torch
 import torch.nn as nn
@@ -42,6 +43,10 @@ class SeismogramTransformer(nn.Module):
         mode = 'axial'
         self.L = self.CNN_feature_extractor.seismic_trace_CNN.output_length
         self.D = self.CNN_feature_extractor.seismic_trace_CNN.output_channels  
+        # New: allow configuring pooling and CLS from transformer_config
+        pool_method = transformer_config.get("pooling", "mean")  # supports: mean, first, attn, max, gem
+        use_cls = transformer_config.get("use_cls_token", False)
+        num_q = transformer_config.get("num_query_tokens", 8)
         self.all_station_transformer = SeismogramAxialTransformer(
             seismogram_locations,
             d_model=d_model,
@@ -50,7 +55,11 @@ class SeismogramTransformer(nn.Module):
             num_layers=transformer_config["layers"],
             time_steps=self.L,
             conv_length=self.D,
-            mode=mode
+            mode=mode,
+            pool_queries=pool_method,
+            use_cls_token=use_cls,
+            num_query_tokens=num_q,
+            temporal_pool_tokens=transformer_config.get("temporal_pool_tokens", 0),   # New
         )
 
         self.source_param_predictor = nn.Sequential(
@@ -77,9 +86,9 @@ class SeismogramTransformer(nn.Module):
         # reshape back to (B, N, L, D)
         feature_sequences = extracted_features.view(B, N, self.D, self.L).permute(0, 1, 3, 2).contiguous()
         # contextualize with transformer
-        transformer_output = self.all_station_transformer(feature_sequences)  # (B, N, D)
+        transformer_output = self.all_station_transformer(feature_sequences)  # (x, q, pooled)
         # Aggregate across stations based on selected operator
-        return transformer_output[2] # returned query
+        return transformer_output[2] # pooled embedding
 
 
 class LightningModel(pl.LightningModule):
@@ -166,6 +175,9 @@ class NPELightningModule(pl.LightningModule):
         self.flow = flow
         self.lr = lr
         self.weight_decay = weight_decay
+        # New: allow selecting second-stage scheduler ("cosine" or "cyclic")
+        self.lr_second_stage = "cosine"
+        self.cyclic_period_steps = 8000
 
     def forward(self, x, theta):
         # The flow contains the embedding_net; pass x as context to be embedded internally.
@@ -188,6 +200,74 @@ class NPELightningModule(pl.LightningModule):
         return val_loss
 
     def configure_optimizers(self):
+        # Optimizer
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
-        return [optimizer], []
+        # Default: 2-phase schedule → warmup → cosine or cyclic
+        max_epochs = getattr(self.trainer, "max_epochs", None) or 500
+
+        warmup_epochs = max(1, int(0.05 * max_epochs))
+        cosine_epochs = max_epochs - warmup_epochs  # remaining epochs
+
+        # If using cyclic LR, switch to step-based scheduling and compute warmup in steps
+        use_cyclic = (str(self.lr_second_stage).lower() == "cyclic")
+
+        if use_cyclic:
+            # Try to derive steps per epoch
+            total_steps = getattr(self.trainer, "estimated_stepping_batches", None)
+            if total_steps is not None and max_epochs > 0:
+                steps_per_epoch = max(1, total_steps // max_epochs)
+            else:
+                steps_per_epoch = getattr(self.trainer, "num_training_batches", None) or 1
+
+            warmup_steps = max(1, warmup_epochs * steps_per_epoch)
+
+            # Linear warmup to base LR over warmup_steps
+            def lr_lambda_warmup(step_idx):
+                return min(float(step_idx + 1) / float(max(1, warmup_steps)), 1.0)
+            warmup = LambdaLR(optimizer, lr_lambda=lr_lambda_warmup)
+
+            # Cyclic LR with given period (in steps)
+            half_period = max(1, self.cyclic_period_steps // 2)
+            cyclic = CyclicLR(
+                optimizer,
+                base_lr=self.lr * 0.05,
+                max_lr=self.lr,
+                step_size_up=half_period,
+                step_size_down=self.cyclic_period_steps - half_period,
+                mode="triangular",
+                cycle_momentum=False
+            )
+
+            scheduler = SequentialLR(
+                optimizer,
+                schedulers=[warmup, cyclic],
+                milestones=[warmup_steps],
+            )
+
+            return [optimizer], [{
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            }]
+
+        # Linear warmup to base LR (epoch-based)
+        def lr_lambda_warmup(epoch):
+            return float(epoch + 1) / float(max(1, warmup_epochs))
+        warmup = LambdaLR(optimizer, lr_lambda=lr_lambda_warmup)
+
+        # Cosine annealing down to 10% of base LR
+        cosine = CosineAnnealingLR(optimizer, T_max=cosine_epochs, eta_min=self.lr * 0.1)
+
+        # Combine: warmup → cosine
+        scheduler = SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[warmup_epochs],
+        )
+
+        return [optimizer], [{
+            "scheduler": scheduler,
+            "interval": "epoch",
+            "frequency": 1,
+        }]

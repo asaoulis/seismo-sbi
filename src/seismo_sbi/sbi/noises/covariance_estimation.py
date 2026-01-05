@@ -130,9 +130,10 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
         self.data_vector_length = data_vector_length
         self.station_component_covariances = station_component_covariances
         self.covariance_matrix = self.create_covariance_matrix(station_component_covariances, data_vector_length)
+        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances, data_vector_length, stack=True)
         self.set_C_inverse(1/self.covariance_matrix)
 
-    def create_covariance_matrix(self, station_component_covariances, data_vector_length):
+    def create_covariance_matrix(self, station_component_covariances, data_vector_length, stack=False):
 
         covariance_matrix_diagonals = []
 
@@ -149,8 +150,11 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
                     component_data = component_data[0]
                 covariance_matrix_diagonals.append(component_data * np.ones(data_vector_length))
         # if len(covariance_matrix_diagonals) > 1 add new axis at start
-        return np.concatenate(covariance_matrix_diagonals) if len(covariance_matrix_diagonals) > 1 else covariance_matrix_diagonals[0][np.newaxis]
-
+        if not stack:
+            return np.concatenate(covariance_matrix_diagonals) if len(covariance_matrix_diagonals) > 1 else covariance_matrix_diagonals[0][np.newaxis]
+        else:
+            STACKED = np.stack([np.diag(diag) for diag in covariance_matrix_diagonals], axis=0)
+            return STACKED
     @classmethod
     def generic_loss_callable(cls, residuals, reduce=True):
         if reduce:
@@ -335,12 +339,14 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
             return sigma_sqr * (np.sin(2*np.pi*fmax*tau) - np.sin(2*np.pi*fmin*tau)) / (np.pi * tau)
 
     def build_single_covariance_block(self, sigma_sqr, data_vector_length, freqs):
+        # sigma_sqr is actually 2*sigma^2*(fmax - fmin)
+        sigma_sqr_internal = sigma_sqr / (2 * (freqs[1] - freqs[0]))
         lags = np.arange(data_vector_length)
-        gamma_vals = np.array([self.gamma_bandpass(t,1.0, freqs) for t in lags])
-        cov_y = toeplitz(gamma_vals)   
+        gamma_vals = np.array([self.gamma_bandpass(t,sigma_sqr_internal, freqs) for t in lags])
         # now rescale such that variance at lag 0 is sigma_sqr
-        cov_y *= sigma_sqr / cov_y[0,0]
-        eps_diag = EPS * np.eye(cov_y.shape[0])
+        # and the prefactor for later gamma vals is sigma^2/(pi*(fmax - fmin))
+        cov_y = toeplitz(gamma_vals)   
+        eps_diag = 0.1*sigma_sqr_internal * np.eye(cov_y.shape[0])
         cov_y += eps_diag   
         return cov_y
     
@@ -385,7 +391,7 @@ class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
             # build full list with comphrension
             receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
             if self.block_exp_tapering:
-                station_component_covariances = EmpiricalCovarianceEstimator.taper_covariances(station_component_covariances, fit_length=25, ols_fit=False)
+                station_component_covariances = EmpiricalCovarianceEstimator.taper_covariances(station_component_covariances, fit_length=20, ols_fit=False)
             def compute_covariance(station_name_components):
                     station_name, component = station_name_components
                     try:

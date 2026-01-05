@@ -217,24 +217,42 @@ def truncated_gaussian_sampler(bounds, num_samples):
         yield sample
 
 from seismo_sbi.cps_simulator.CPS import perturb_model
+from seismo_sbi.cps_simulator.smooth_perturbations import perturb_cps_model
+
 class VelocityModelSampler:
+    perturbation_methods = {
+        "default": perturb_model,
+        "smooth": perturb_cps_model
+    }
     
-    def __init__(self, velocity_model, kappa, num_samples):
+    def __init__(self, velocity_model, kappa, num_samples, *args):
         self.velocity_model = velocity_model
         self.kappa = kappa
         self.num_samples = num_samples
+        # check of first arg is "smooth"
+        self.kwargs = {}
+        if len(args) > 0 and args[0] == "smooth":
+            self.perturbation_function = self.perturbation_methods["smooth"]
+            self.kwargs = {'corr_length_km': 5.0,
+                           'std_vp': kappa/100,
+                           'std_vs': kappa/100,}
+            print(f"Using smooth perturbations with kappa={kappa}")
+        else:
+            self.perturbation_function = self.perturbation_methods["default"]
+            self.kwargs['kappa'] = kappa
 
     def __iter__(self):
         for _ in range(self.num_samples):
-            yield perturb_model(self.velocity_model, self.kappa)
+            yield self.perturbation_function(self.velocity_model, **self.kwargs)
+            # yield self.per(self.velocity_model, **self.kwargs)
 
 def velocity_model_sampler(velocity_model_args, num_samples):
     """
     Returns a generator of perturbed velocity models.
     """
-    velocity_model_path, kappa = velocity_model_args
+    velocity_model_path, kappa, *options = velocity_model_args
     velocity_model = load_velocity_model(velocity_model_path)
-    sampler = iter(VelocityModelSampler(velocity_model, kappa, num_samples))
+    sampler = iter(VelocityModelSampler(velocity_model, kappa, num_samples, *options))
     return sampler
 
 

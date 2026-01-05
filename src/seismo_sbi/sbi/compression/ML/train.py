@@ -7,11 +7,13 @@ from glob import glob
 import numpy as np
 
 from .seismogram_transformer import SeismogramTransformer, NPELightningModule
-from .maf import build_nsf
+from .maf import build_nsf, build_maf
 from .dataloading import make_torch_dataloader, make_torch_dataloaders
 
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger  # added
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import LearningRateMonitor
+  # added
 # from lightning.pytorch.profiler import AdvancedProfiler, SimpleProfiler, PyTorchProfiler
 
 class CompressionTrainer:
@@ -47,7 +49,7 @@ class CompressionTrainer:
         self.flow = build_nsf(
             dim=self.num_dims,
             conditional_dim=latent_dim,
-            hidden_features=128,#256,
+            hidden_features=channels,#256,
             num_transforms=5,
             num_blocks=2,
             dropout_probability=0.0,
@@ -60,7 +62,7 @@ class CompressionTrainer:
             flow=self.flow,
             lr=1e-4,
             weight_decay=1e-4,
-        )
+                    )
 
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None):
         if dataloader_args is None or "train_max_index" not in dataloader_args:
@@ -72,12 +74,12 @@ class CompressionTrainer:
         checkpoint_cb = create_best_checkpoint_callback(output_path / run_name)
         output_path = Path(output_path) / run_name
         wandb_logger = WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)  # added
-
+        lr_monitor = LearningRateMonitor(logging_interval='epoch') 
         trainer = pl.Trainer(
             max_epochs=epochs,
             accelerator="auto",
             devices=1,
-            callbacks=[checkpoint_cb],
+            callbacks=[checkpoint_cb, lr_monitor],
             precision=32,
             logger=wandb_logger,  # added
         )
