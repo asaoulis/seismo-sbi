@@ -69,12 +69,19 @@ class ParallelSimulationRunner(ABC):
     def run_parallel_simulations(self, simulation_job_args_list):
 
         if self.num_parallel_jobs not in [0, 1]:
-            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))) as progress_bar:
-                with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
-                    joblib.Parallel()(
-                        joblib.delayed(self.simulator)(*simulation_job_args) for
-                            simulation_job_args in simulation_job_args_list
-                    )
+            try:
+                with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))) as progress_bar:
+                    with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
+                        joblib.Parallel()(
+                            joblib.delayed(self.simulator)(*simulation_job_args) for
+                                simulation_job_args in simulation_job_args_list
+                        )
+            except Exception as exc:
+                print("Parallel simulations failed. Exiting.")
+                raise exc
+            finally:
+                from joblib.externals.loky import get_reusable_executor
+                get_reusable_executor().shutdown(wait=True, kill_workers=True)
         else:
             for simulation_job_args in simulation_job_args_list:
                 self.simulator(*simulation_job_args)

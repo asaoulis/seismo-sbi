@@ -346,7 +346,6 @@ class ProcessedDataSlicer:
                 except Exception as e:
                     print(f"Station {receiver} not found in data")
                     continue
-            print(data)
             data = data.slice(obspy.UTCDateTime(datetime_window[0] - timedelta(seconds=2)), obspy.UTCDateTime(exact_end_time + timedelta(2)), nearest_sample=False)
             # data = data.merge(method=0, fill_value=0)
             # print('merging and backfilling method 0 0')

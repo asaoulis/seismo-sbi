@@ -67,15 +67,23 @@ class DatasetCompressor:
     
     def compress_dataset(self, simulation_data_paths, param_names):
         cov = self.compressor.C
-        matmul_callable = cov.create_matmul_inverse_covariance(cov.C_inverse, cov.data_vector_length)
+        matmul_callable = cov.create_matmul_inverse_covariance(cov.inverse_metadata, cov.data_vector_length)
         if self.num_parallel_jobs not in [0,1]:
-            with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))) as progress_bar:
+            try:
+                with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))) as progress_bar:
 
-                with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
-                    results = joblib.Parallel()(
-                        joblib.delayed(self._load_and_compress_sim)(sim_path, param_names, matmul_callable)
-                                for sim_path in simulation_data_paths
-                    )
+                    with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
+                        results = joblib.Parallel()(
+                            joblib.delayed(self._load_and_compress_sim)(sim_path, param_names, matmul_callable)
+                                    for sim_path in simulation_data_paths
+                        )
+            except Exception as e:
+                print("Error during parallel compression:", e)
+                raise e
+            finally:
+                from joblib.externals.loky import get_reusable_executor
+                get_reusable_executor().shutdown(wait=True, kill_workers=True)
+            
         else:
             results = []
             for sim_path in simulation_data_paths:

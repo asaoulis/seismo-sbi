@@ -4,7 +4,7 @@ import joblib
 import os
 import torch
 
-EPS = 1e-18
+EPS = 1e-20
 
 class RunningStandardDeviations:
     def __init__(self, data=None, track = False):
@@ -124,6 +124,7 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
         return sampling_object
 
 class DiagonalEmpiricalCovariance(EmpiricalCovariance):
+    inverse_metadata = None
 
     def __init__(self,station_component_covariances, receivers, data_vector_length):
         self.receivers = receivers
@@ -132,6 +133,8 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
         self.covariance_matrix = self.create_covariance_matrix(station_component_covariances, data_vector_length)
         self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances, data_vector_length, stack=True)
         self.set_C_inverse(1/self.covariance_matrix)
+        self.inverse_metadata = self.C_inverse
+    
 
     def create_covariance_matrix(self, station_component_covariances, data_vector_length, stack=False):
 
@@ -191,7 +194,7 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
         sampling_object = GaussianNoiseSampler(sampler)
         return sampling_object
 
-from scipy.linalg import toeplitz
+from scipy.linalg import toeplitz, solve_toeplitz
 
 def parallel_execution(inputs, func, num_jobs = 20):
     if num_jobs in [None, 0 , 1]:
@@ -214,6 +217,7 @@ class BlockGaussianSampler:
 
 
 class BlockDiagonalCovariance(EmpiricalCovariance):
+        inverse_metadata = None
 
         def __init__(self, receivers, data_vector_length, block_exp_tapering = True, covariance_gradients = None, num_jobs = 20):
 
@@ -224,38 +228,66 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             self.num_jobs = num_jobs
 
         @classmethod
+        def set_toeplitz_cols(cls, inverse_metadata):
+            cls.inverse_metadata = inverse_metadata
+
+        @classmethod
         def set_data_vector_length(cls, data_vector_length):
             cls.data_vector_length = data_vector_length
 
         @classmethod
         def generic_loss_callable(cls, residuals, reduce=True):
+            if cls.inverse_metadata is not None:
+                if reduce:
+                    return cls.quadratic_form(residuals, cls.inverse_metadata, cls.data_vector_length)
+                else:
+                    return cls.quadratic_form_per_block(residuals, cls.inverse_metadata, cls.data_vector_length)
+            
             if reduce:
-                loss = BlockDiagonalEmpiricalCovariance.loss_callable(residuals, cls.C_inverse, cls.data_vector_length)
+                 return cls.quadratic_form(residuals, cls.inverse_metadata, cls.data_vector_length)
             else:
-                reshaped_residuals = residuals.reshape(-1, cls.data_vector_length)
-                loss = -0.5 * np.einsum('ij,ij->i', reshaped_residuals, np.einsum('ijk,ik->ij', cls.C_inverse, reshaped_residuals))
-                loss = loss.repeat(cls.data_vector_length).reshape(-1)
-            return loss
+                 return cls.quadratic_form_per_block(residuals, cls.inverse_metadata, cls.data_vector_length)
+
+        @staticmethod
+        def quadratic_form(residuals, toeplitz_cols, block_size):
+            reshaped = residuals.reshape(-1, block_size)
+            total = 0.0
+            for c, x in zip(toeplitz_cols, reshaped):
+                y = solve_toeplitz((c, c), x)
+                total += x @ y
+            return -0.5 * total
+
+        @staticmethod
+        def quadratic_form_per_block(residuals, toeplitz_cols, block_size):
+            reshaped = residuals.reshape(-1, block_size)
+            vals = []
+            for c, x in zip(toeplitz_cols, reshaped):
+                y = solve_toeplitz((c, c), x)
+                vals.append(-0.5 * (x @ y))
+            return np.repeat(vals, block_size)
+
+        @staticmethod
+        def loss_callable(residuals, toeplitz_cols, data_vector_length):
+            # This static method was previously using C_inverse.
+            # Now it delegates to quadratic_form which uses toeplitz solves.
+            return BlockDiagonalCovariance.quadratic_form(residuals, toeplitz_cols, data_vector_length)
         
         @staticmethod
-        def loss_callable(residuals, C_inverse, data_vector_length):
-            reshaped_residuals = residuals.reshape(-1, data_vector_length)
-            loss = -0.5 * np.einsum('ij,ij->', reshaped_residuals, np.einsum('ijk,ik->ij', C_inverse, reshaped_residuals))
-            return loss
-        
-        @staticmethod
-        def create_loss_callable(C_inverse, data_vector_length):
-            return partial(BlockDiagonalEmpiricalCovariance.loss_callable,
-                            C_inverse = C_inverse, data_vector_length = data_vector_length)
+        def create_loss_callable(toeplitz_cols, data_vector_length):
+            return partial(BlockDiagonalCovariance.loss_callable,
+                            toeplitz_cols = toeplitz_cols, data_vector_length = data_vector_length)
         
         @classmethod
         def matmul_inverse_covariance(cls, data_vector):
-            return cls.callable_matmul_inverse_covariance(data_vector, cls.C_inverse, cls.data_vector_length)
+            return cls.callable_matmul_inverse_covariance_toeplitz(data_vector, cls.inverse_metadata, cls.data_vector_length)
         
         @staticmethod
-        def callable_matmul_inverse_covariance(data_vector, C_inverse, data_vector_length):
-            reshaped_vector = data_vector.reshape(-1, data_vector_length)
-            return np.matmul(C_inverse, reshaped_vector[..., None]).reshape(-1)
+        def callable_matmul_inverse_covariance_toeplitz(data_vector, toeplitz_cols, data_vector_length):
+            reshaped = data_vector.reshape(-1, data_vector_length)
+            out = []
+            for c, x in zip(toeplitz_cols, reshaped):
+                out.append(solve_toeplitz((c, c), x))
+            return np.concatenate(out)
 
         def matrix_vector_product(self, matrix, data_vector):
             reshaped_vector = data_vector.reshape(-1, self.data_vector_length)
@@ -276,14 +308,18 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             return np.trace(matrix, axis1=1, axis2=2).sum()
 
         @staticmethod
-        def create_matmul_inverse_covariance(C_inverse, data_vector_length):
-            return partial(BlockDiagonalEmpiricalCovariance.callable_matmul_inverse_covariance, 
-                           C_inverse = C_inverse, data_vector_length = data_vector_length)
+        def create_matmul_inverse_covariance(toeplitz, data_vector_length):
+            return partial(BlockDiagonalCovariance.callable_matmul_inverse_covariance_toeplitz, 
+                           toeplitz_cols = toeplitz, data_vector_length = data_vector_length)
         
         def create_sampler(self, scale=1e9):
 
-            # scaled_covs = [(block * (scale**2)) for block in self.covariance_matrix_arrays]
-            scaled_covs = [(block) for block in self.covariance_matrix_arrays]
+            if hasattr(self, 'covariance_matrix_arrays') and self.covariance_matrix_arrays is not None:
+                scaled_covs = [(block) for block in self.covariance_matrix_arrays]
+            elif self.toeplitz_cols is not None:
+                scaled_covs = [toeplitz(c) for c in self.toeplitz_cols]
+            else:
+                raise ValueError("No covariance matrix available for sampling")
 
             # Ls = [np.linalg.cholesky(block + np.eye(block.shape[0]) * EPS) for block in scaled_covs]
             Ls = [np.linalg.cholesky(block) for block in scaled_covs]
@@ -302,18 +338,6 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             return GaussianNoiseSampler(sampler)
 
 
-        # def create_sampler(self):
-        #     if not hasattr(self, "_Ls"):
-        #         eps = 1e-18
-        #         self._Ls = [np.linalg.cholesky(block + np.eye(block.shape[0]) * eps)
-        #                     for block in self.covariance_matrix_arrays]
-        #         self._block_sizes = [block.shape[0] for block in self.covariance_matrix_arrays]
-
-        #     return GaussianNoiseSampler(
-        #         BlockGaussianSampler(self._Ls, self._block_sizes, self.station_component_covariances)
-        #     )
-
-
 class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
     """
     Block diagonal covariance with filtered noise.
@@ -327,8 +351,9 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
         self.station_component_covariances = station_component_covariances
         self.freqs = filter['freqmin'], filter['freqmax']
 
-        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances)
-        self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
+        self.toeplitz_cols_list = self.create_toeplitz_cols(station_component_covariances)
+        self.set_toeplitz_cols(self.toeplitz_cols_list)
+        self.covariance_matrix_arrays = np.array([toeplitz(c) for c in self.toeplitz_cols_list])
 
     
     def gamma_bandpass(self, tau, sigma_sqr, freqs):
@@ -338,19 +363,18 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
         else:
             return sigma_sqr * (np.sin(2*np.pi*fmax*tau) - np.sin(2*np.pi*fmin*tau)) / (np.pi * tau)
 
-    def build_single_covariance_block(self, sigma_sqr, data_vector_length, freqs):
+    def build_single_covariance_column(self, sigma_sqr, data_vector_length, freqs):
         # sigma_sqr is actually 2*sigma^2*(fmax - fmin)
         sigma_sqr_internal = sigma_sqr / (2 * (freqs[1] - freqs[0]))
         lags = np.arange(data_vector_length)
         gamma_vals = np.array([self.gamma_bandpass(t,sigma_sqr_internal, freqs) for t in lags])
-        # now rescale such that variance at lag 0 is sigma_sqr
-        # and the prefactor for later gamma vals is sigma^2/(pi*(fmax - fmin))
-        cov_y = toeplitz(gamma_vals)   
-        eps_diag = 0.1*sigma_sqr_internal * np.eye(cov_y.shape[0])
-        cov_y += eps_diag   
-        return cov_y
+        
+        # Jitter
+        gamma_vals[0] += 0.01 * gamma_vals[0]
+        
+        return gamma_vals
     
-    def create_covariance_matrix(self, station_component_covariances):
+    def create_toeplitz_cols(self, station_component_covariances):
         # build full list with comphrension
         receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
         data_vector_length = self.data_vector_length
@@ -363,13 +387,70 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
                 except KeyError:
                     component = component.replace('E', '1').replace('N', '2')
                     sigma_sqr = station_component_covariances[station_name][component]
-                cov_y = self.build_single_covariance_block(sigma_sqr, data_vector_length, freqs)
+                cov_y = self.build_single_covariance_column(sigma_sqr, data_vector_length, freqs)
                 return cov_y
             covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
         else:
             sigma_sqr = station_component_covariances**2
-            builder = lambda _: self.build_single_covariance_block(sigma_sqr=sigma_sqr, data_vector_length=data_vector_length, freqs=freqs)
+            builder = lambda _: self.build_single_covariance_column(sigma_sqr=sigma_sqr, data_vector_length=data_vector_length, freqs=freqs)
             covariance_blocks = parallel_execution(receiver_components_list, builder, self.num_jobs)
+        return np.array(covariance_blocks)
+
+class BlockDiagonalKolbCovariance(BlockDiagonalCovariance):
+    """
+    Block diagonal covariance with Kolb structure:
+    C_ij = e^(-lambda * |t_j - t_i|) * cos(lambda * omega_0 * |t_j - t_i|)
+    """
+    def __init__(self, station_component_covariances, omega_0=4.4, lam=1./20, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.omega_0 = omega_0
+        self.lam = lam
+        self.station_component_covariances = station_component_covariances
+        
+        self.toeplitz_cols_list = self.create_toeplitz_cols(station_component_covariances)
+        self.set_toeplitz_cols(self.toeplitz_cols_list)
+        self.covariance_matrix_arrays = np.array([toeplitz(c) for c in self.toeplitz_cols_list])
+
+    def build_single_covariance_column(self, sigma_sqr, data_vector_length):
+        lags = np.arange(data_vector_length)
+        # C_ij = e^(-lambda * |tau|) * cos(lambda * omega_0 * |tau|)
+        # scaled by sigma_sqr (variance)
+        gamma_vals = sigma_sqr * np.exp(-self.lam * lags) * np.cos(self.lam * self.omega_0 * lags)
+        
+        # Jitter for stability
+        gamma_vals[0] += 1e-2 *  gamma_vals[0]
+        
+        return gamma_vals
+
+    def create_toeplitz_cols(self, station_component_covariances):
+        receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
+        data_vector_length = self.data_vector_length
+
+        if isinstance(station_component_covariances, dict):
+            def compute_covariance(station_name_components):
+                station_name, component = station_name_components
+                try:
+                    # We assume the value in the dict is the variance (sigma^2) or raw data from which we take variance
+                    val = station_component_covariances[station_name][component]
+                except KeyError:
+                    component = component.replace('E', '1').replace('N', '2')
+                    val = station_component_covariances[station_name][component]
+                
+                # If val is an array (like raw noise or autocorrelation), take its value at lag 0 as variance
+                if isinstance(val, np.ndarray):
+                    sigma_sqr = val[0] if val.ndim > 0 else val.item()
+                else:
+                    sigma_sqr = val
+
+                return self.build_single_covariance_column(sigma_sqr, data_vector_length)
+            
+            covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
+        else:
+            # If passed as a single scalar or array of scalars
+            sigma_sqr = station_component_covariances**2
+            builder = lambda _: self.build_single_covariance_column(sigma_sqr=sigma_sqr, data_vector_length=data_vector_length)
+            covariance_blocks = parallel_execution(receiver_components_list, builder, self.num_jobs)
+            
         return np.array(covariance_blocks)
 
 class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
@@ -384,14 +465,15 @@ class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
                 *args, **kwargs
             )
             self.station_component_covariances = deepcopy(station_component_covariances)
-            self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances)
-            self.set_C_inverse(np.array(parallel_execution(self.covariance_matrix_arrays, np.linalg.inv, self.num_jobs)))
+            self.toeplitz_cols_list = self.create_toeplitz_cols(station_component_covariances)
+            self.set_toeplitz_cols(self.toeplitz_cols_list)
+            self.covariance_matrix_arrays = np.array([toeplitz(c) for c in self.toeplitz_cols_list])
 
-        def create_covariance_matrix(self, station_component_covariances):
+        def create_toeplitz_cols(self, station_component_covariances):
             # build full list with comphrension
             receiver_components_list = [(receiver.station_name, component) for receiver in self.receivers.iterate() for component in receiver.components]
             if self.block_exp_tapering:
-                station_component_covariances = EmpiricalCovarianceEstimator.taper_covariances(station_component_covariances, fit_length=20, ols_fit=False)
+                station_component_covariances = EmpiricalCovarianceEstimator.taper_covariances(station_component_covariances, self.data_vector_length, fit_length=20, ols_fit=False)
             def compute_covariance(station_name_components):
                     station_name, component = station_name_components
                     try:
@@ -400,18 +482,12 @@ class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
                         component = component.replace('E', '1').replace('N', '2')
                         covar_data = station_component_covariances[station_name][component]
                     covar_data = covar_data[:self.data_vector_length]
-                    if self.block_exp_tapering:
-                        cov_matrix_block = toeplitz(covar_data)
-
-                    else:
-                        eigvals, eigvecs = np.linalg.eig(toeplitz(covar_data))
-                        eigvals[np.where(eigvals < 0)]=0
-                        cov_matrix_block = np.dot(eigvecs, np.dot(np.diag(eigvals), np.linalg.inv(eigvecs)))
                     
-                    if np.any(np.linalg.eigvals(cov_matrix_block) < 0):
-                        print("Warning: Covariance matrix block is not positive definite.", np.linalg.cond(cov_matrix_block))
-                        
-                    return cov_matrix_block
+                    # Jitter
+                    c = covar_data.copy()
+                    # c[0] += 1e-8 * max(1.0, c[0])
+                    
+                    return c
             covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
             return np.array(covariance_blocks)
     
@@ -429,35 +505,149 @@ def stable_inverse(C, eps=1e-18):
     # ensure symmetry
     return np.linalg.inv(C)
 
-class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
+import numpy as np
+from scipy.linalg import cho_factor, cho_solve
 
-    def __init__(self, station_component_covariances, data_covariance_arrays, *args, diag_regularisation=.001, **kwargs):
+class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
+    inverse_metadata = None
+    def __init__(
+        self,
+        station_component_covariances,
+        data_covariance_arrays,
+        *args,
+        diag_regularisation=0.001,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
-        self.kernels = None
-        self.traces = None
+
         self.station_component_covariances = station_component_covariances
         self.data_covariance_arrays = data_covariance_arrays
         self.diag_regularisation_magnitude = diag_regularisation
+
+        self.covariance_matrix_arrays = None
+        self.C_derivative = None
+        self.kernels = None
+        self.traces = None
+
         self.set_covariance(station_component_covariances)
 
+    # ------------------------------------------------------------------
+    # Covariance construction
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def set_cholesky_factors(cls, cholesky_factors):
+        cls.inverse_metadata = cholesky_factors
+
     def set_covariance(self, station_component_covariances):
-        self.covariance_matrix_arrays = self.create_covariance_matrix(station_component_covariances.data_fiducial)
-        self.set_C_inverse(
-            np.array(parallel_execution(self.covariance_matrix_arrays, stable_inverse, self.num_jobs))
+        covs = self.create_covariance_matrix(
+            station_component_covariances.data_fiducial
         )
-        # self.C_derivative = self.create_C_derivative(station_component_covariances)
-        # self.set_covariance_constants()
-    
+
+        def cholesky_block(C):
+            return cho_factor(C, check_finite=False)
+
+        self.covariance_matrix_arrays = covs
+        cholesky_factors = parallel_execution(
+            covs, cholesky_block, self.num_jobs
+        )
+        self.set_cholesky_factors(cholesky_factors)
+
+        # # Optional derivatives
+        # if hasattr(station_component_covariances, "data_parameter_gradients"):
+        #     self.C_derivative = self.create_C_derivative(
+        #         station_component_covariances
+        #     )
+        #     # self.set_covariance_constants()
+
     def create_covariance_matrix(self, station_component_covariances):
-        theory_covariances =  station_component_covariances.reshape(-1, self.data_vector_length, self.data_vector_length)
-        # take the max of each theory covariance diagonal and add diag regularisation
-        diag_reg_covariances = np.array([np.eye(self.data_vector_length) * (np.max(np.diag(theory_covariances[i])) * self.diag_regularisation_magnitude) 
-                                          for i in range(theory_covariances.shape[0])])
-        return theory_covariances + self.data_covariance_arrays + diag_reg_covariances 
+        theory_covs = station_component_covariances.reshape(
+            -1, self.data_vector_length, self.data_vector_length
+        )
+
+        diag_regs = np.array([
+            np.eye(self.data_vector_length)
+            * (np.max(np.diag(theory_covs[i])) * self.diag_regularisation_magnitude)
+            for i in range(theory_covs.shape[0])
+        ])
+
+        return theory_covs + self.data_covariance_arrays + diag_regs
 
     def create_C_derivative(self, station_component_covariances):
-        flattened_cov_derivatives = station_component_covariances.data_parameter_gradients
-        return flattened_cov_derivatives.reshape(-1, self.covariance_matrix_arrays.shape[0], self.data_vector_length, self.data_vector_length)
+        grads = station_component_covariances.data_parameter_gradients
+        return grads.reshape(
+            -1,
+            self.covariance_matrix_arrays.shape[0],
+            self.data_vector_length,
+            self.data_vector_length
+        )
+    @staticmethod
+    def create_matmul_inverse_covariance(cholesky_factors, data_vector_length):
+        return partial(TheoryBlockDiagonalEmpiricalCovariance.callable_matmul_inverse_covariance,
+                       cholesky_factors = cholesky_factors, block_size = data_vector_length)
+    # ------------------------------------------------------------------
+    # Quadratic forms
+    # ------------------------------------------------------------------
+    @staticmethod
+    def callable_matmul_inverse_covariance(data_vector, cholesky_factors, block_size):
+        reshaped = data_vector.reshape(-1, block_size)
+        out = []
+        for cf, x in zip(cholesky_factors, reshaped):
+            out.append(cho_solve(cf, x, check_finite=False))
+        return np.concatenate(out)
+    @staticmethod
+    def quadratic_form(residuals, cholesky_factors, block_size):
+        reshaped = residuals.reshape(-1, block_size)
+        total = 0.0
+        for cf, x in zip(cholesky_factors, reshaped):
+            y = cho_solve(cf, x, check_finite=False)
+            total += x @ y
+        return -0.5 * total
+
+    @staticmethod
+    def quadratic_form_per_block(residuals, cholesky_factors, block_size):
+        reshaped = residuals.reshape(-1, block_size)
+        vals = []
+        for cf, x in zip(cholesky_factors, reshaped):
+            y = cho_solve(cf, x, check_finite=False)
+            vals.append(-0.5 * (x @ y))
+        return np.repeat(vals, block_size)
+
+    @classmethod
+    def generic_loss_callable(cls, residuals, reduce=True):
+        if reduce:
+            return cls.quadratic_form(
+                residuals, cls.inverse_metadata, cls.data_vector_length
+            )
+        return cls.quadratic_form_per_block(
+            residuals, cls.inverse_metadata, cls.data_vector_length
+        )
+    
+    @staticmethod
+    def loss_callable(residuals, toeplitz_cols, data_vector_length):
+        # This static method was previously using C_inverse.
+        # Now it delegates to quadratic_form which uses toeplitz solves.
+        return TheoryBlockDiagonalEmpiricalCovariance.quadratic_form(residuals, toeplitz_cols, data_vector_length)
+
+    @staticmethod
+    def create_loss_callable(toeplitz_cols, data_vector_length):
+        return partial(TheoryBlockDiagonalEmpiricalCovariance.loss_callable,
+                        toeplitz_cols = toeplitz_cols, data_vector_length = data_vector_length)
+    # ------------------------------------------------------------------
+    # Inverse covariance × vector
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def matmul_inverse_covariance(cls, data_vector):
+        reshaped = data_vector.reshape(-1, cls.data_vector_length)
+        out = []
+        for cf, x in zip(cls.inverse_metadata, reshaped):
+            out.append(cho_solve(cf, x, check_finite=False))
+        return np.concatenate(out)
+
+    # ------------------------------------------------------------------
+    # Gradient kernels & traces
+    # ------------------------------------------------------------------
 
     def set_covariance_constants(self):
         self.kernels = []
@@ -538,11 +728,11 @@ class EmpiricalCovarianceEstimator:
 
         return station_component_covariances
     @staticmethod
-    def taper_covariances(station_component_covariances, fit_length=30, ols_fit=True, return_fit= False):
+    def taper_covariances(station_component_covariances, data_len, fit_length=30, ols_fit=True, return_fit= False):
         for receiver in station_component_covariances.keys():
             for component in station_component_covariances[receiver].keys():
                 covar_data = station_component_covariances[receiver][component]
-                x = np.arange(0, len(covar_data))
+                x = np.arange(0, data_len)
 
                 if ols_fit:
                     scaled_data = np.log(np.abs(covar_data))
@@ -553,7 +743,7 @@ class EmpiricalCovarianceEstimator:
                     gradient = results.params[0]
                 else:
                     gradient = -1/fit_length
-                covar_data = covar_data[0] * np.exp(gradient * x)
+                covar_data = covar_data * np.exp(gradient * x)
                 if not return_fit:
                     station_component_covariances[receiver][component] = covar_data
                 else:

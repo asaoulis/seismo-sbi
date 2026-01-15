@@ -64,7 +64,7 @@ class SBI_Configuration:
     def process_configuration_data(self, config):
         for name, parsing_callable in self._parsing_callables.items():
             if name == 'job_options':
-                subconfig = {key: value for key, value in config.items() if not isinstance(value, dict)}
+                subconfig = {key: value for key, value in config.items() if not(isinstance(value, dict) or isinstance(value, list))}
             else:
                 subconfig = config[name]
             parsing_callable(subconfig)
@@ -127,7 +127,15 @@ class SBI_Configuration:
 
         compression_config = config
         self.compression_methods = []
-        for compression_type, options in compression_config.items():
+        if isinstance(compression_config, dict):
+            compression_list = list(compression_config.items())
+        else:
+            compression_list = []
+            for full_dict in compression_config:
+                name = list(full_dict.keys())[0]
+                options = full_dict[name]
+                compression_list.append((name, options))
+        for compression_type, options in compression_list:
             if compression_type in SBI_Configuration.compression_types:
                 self.compression_methods.append((compression_type, options))
             else:

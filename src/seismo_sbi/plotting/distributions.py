@@ -609,9 +609,13 @@ class PosteriorPlotter:
         plt.close()
 
 
-    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, figsave=None):
+    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True):
         """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°."""
-        fig, ax = plt.subplots(figsize=(14, 14))
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(14, 14))
+        else:
+            fig = ax.get_figure()
+        
         bm = plot_lune_frame(ax)
 
         colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
@@ -637,93 +641,127 @@ class PosteriorPlotter:
             thr68, thr95 = kde_hpd_contour_levels(Z, levels=(0.6827, 0.9545))
             ax.contour(XX, YY, Z, levels=[thr95, thr68], colors=colors[i % len(colors)],
                        linestyles=['--', '-'], linewidths=[1.5, 1.8])
-            if plot_beachballs:
                 # if plot beachballs for true, plot 3 beachballs and truth
-                true_mt = true_theta0
-                percentile_mts = []
-                for q in qs[i]:
-                    d_q = np.percentile(d, q)
-                    # find closest sample to this delta
-                    idx = np.argmin(np.abs(d - d_q))
-                    percentile_mts.append(samples_MT[idx])
+            true_mt = true_theta0
+            percentile_mts = []
+            for q in qs[i]:
+                d_q = np.percentile(d, q)
+                # find closest sample to this delta
+                idx = np.argmin(np.abs(d - d_q))
+                percentile_mts.append(samples_MT[idx])
 
-                # add true beachball in gold
-                fig.canvas.draw()
+            # add true beachball in gold
+            fig.canvas.draw()
 
-                for idx, mt in enumerate([true_mt] + percentile_mts):
-                    if mt is None:
-                        continue
-                    mt = np.array(self.convert_mt_convention(mt))
+            for idx, mt in enumerate([true_mt] + percentile_mts):
+                if mt is None:
+                    continue
 
-                    facecolor = 'black' if idx == 0 else colors[i % len(colors)]
-                    tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
-                    tx, ty = bm(tg, td)
-                    if idx ==0 and i !=0:
-                        pass
-                    else:
-                        plot_beachball_on_axes(ax, mt, tx[0], ty[0], diameter=0.08, color_t=facecolor, edgecolor='black', zorder=10, linewidth=1)
-                        ax.scatter(tx, ty, color=facecolor, alpha=1.0, marker='o', s=20, zorder=11)
-        # Add zoomed inset centered on truth ±8 degrees
-        # Determine center (truth). If not provided, use mean of first ensemble
-        if true_theta0 is not None:
-            tg, td = mts6_to_gamma_delta(true_theta0.reshape(1, -1))
-            tg = float(tg[0]); td = float(td[0])
-        else:
-            if len(gd_list) > 0:
-                tg = float(np.mean(gd_list[0][0]))
-                td = float(np.mean(gd_list[0][1]))
+                is_true_mt = (idx == 0)
+
+                # If beachballs are OFF, only plot the true MT (scatter only)
+                if not plot_beachballs and not is_true_mt:
+                    continue
+
+                mt = np.array(self.convert_mt_convention(mt))
+
+                facecolor = 'peru' if is_true_mt else colors[i % len(colors)]
+                marker = 'd' if is_true_mt else 'o'
+
+                tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
+                tx, ty = bm(tg, td)
+
+                # Plot beachball only if enabled
+                if plot_beachballs:
+                    plot_beachball_on_axes(
+                        ax,
+                        mt,
+                        tx[0],
+                        ty[0],
+                        diameter=0.08,
+                        color_t=facecolor,
+                        edgecolor='black',
+                        zorder=10,
+                        linewidth=1
+                    )
+
+                ax.scatter(
+                    tx,
+                    ty,
+                    color=facecolor,
+                    alpha=1.0,
+                    marker=marker,
+                    s=320 if is_true_mt else 40,
+                    zorder=11
+                )
+        iax = None
+        if plot_inset:
+            # Add zoomed inset centered on truth ±8 degrees
+            # Determine center (truth). If not provided, use mean of first ensemble
+            if true_theta0 is not None:
+                tg, td = mts6_to_gamma_delta(true_theta0.reshape(1, -1))
+                tg = float(tg[0]); td = float(td[0])
             else:
-                tg, td = 0.0, 0.0
+                if len(gd_list) > 0:
+                    tg = float(np.mean(gd_list[0][0]))
+                    td = float(np.mean(gd_list[0][1]))
+                else:
+                    tg, td = 0.0, 0.0
 
-        gmin, gmax = max(-30, tg - 8.0), min(30, tg + 8.0)
-        dmin, dmax = max(-90, td - 8.0), min(90, td + 8.0)
+            gmin, gmax = max(-30, tg - 8.0), min(30, tg + 8.0)
+            dmin, dmax = max(-90, td - 8.0), min(90, td + 8.0)
 
-        # Build inset axes
-        iax = inset_axes(ax, width="25%", height="40%", loc="upper right", borderpad=0.8)
-        iax.set_in_layout(True)           # ensure included in tight bbox
-        iax.set_zorder(ax.get_zorder()+1) # draw on top
-        iax.set_facecolor("white")        # optional: make inset visible over map
+            # Build inset axes
+            iax = inset_axes(ax, width="25%", height="40%", loc="upper right", borderpad=0.8)
+            iax.set_in_layout(True)           # ensure included in tight bbox
+            iax.set_zorder(ax.get_zorder()+1) # draw on top
+            iax.set_facecolor("white")        # optional: make inset visible over map
 
-        # Compute projected grid for the inset region
-        gx_i = np.linspace(gmin, gmax, 160)
-        gy_i = np.linspace(dmin, dmax, 240)
-        GX_i, GY_i = np.meshgrid(gx_i, gy_i)
-        XX_i, YY_i = bm(GX_i, GY_i)
+            # Compute projected grid for the inset region
+            gx_i = np.linspace(gmin, gmax, 160)
+            gy_i = np.linspace(dmin, dmax, 240)
+            GX_i, GY_i = np.meshgrid(gx_i, gy_i)
+            XX_i, YY_i = bm(GX_i, GY_i)
 
-        # Plot KDE contours for each ensemble inside inset
-        for i, (g, d) in enumerate(gd_list):
-            _, _, Z_i, _ = kde_on_grid(g, d, gx_i, gy_i)
-            thr68, thr95 = kde_hpd_contour_levels(Z_i, levels=(0.6827, 0.9545))
-            iax.contour(XX_i, YY_i, Z_i, levels=[thr95, thr68], colors=colors[i % len(colors)],
-                        linestyles=['--', '-'], linewidths=[1.2, 1.5])
+            # Plot KDE contours for each ensemble inside inset
+            for i, (g, d) in enumerate(gd_list):
+                _, _, Z_i, _ = kde_on_grid(g, d, gx_i, gy_i)
+                thr68, thr95 = kde_hpd_contour_levels(Z_i, levels=(0.6827, 0.9545))
+                iax.contour(XX_i, YY_i, Z_i, levels=[thr95, thr68], colors=colors[i % len(colors)],
+                            linestyles=['--', '-'], linewidths=[1.2, 1.5])
 
-        # Center the inset view on the projected bounds
-        xcorn, ycorn = bm([gmin, gmax, gmin, gmax], [dmin, dmin, dmax, dmax])
-        iax.set_xlim(min(xcorn), max(xcorn))
-        iax.set_ylim(min(ycorn), max(ycorn))
+            # Center the inset view on the projected bounds
+            xcorn, ycorn = bm([gmin, gmax, gmin, gmax], [dmin, dmin, dmax, dmax])
+            iax.set_xlim(min(xcorn), max(xcorn))
+            iax.set_ylim(min(ycorn), max(ycorn))
 
-        # Add ticks showing gamma (x) and delta (y) degrees
-        center_g = 0.5 * (gmin + gmax)
-        center_d = 0.5 * (dmin + dmax)
-        xtick_vals = np.linspace(gmin, gmax, 5)
-        ytick_vals = np.linspace(dmin, dmax, 5)
-        xtick_pos, _ = bm(xtick_vals, np.full_like(xtick_vals, center_d))
-        _, ytick_pos = bm(np.full_like(ytick_vals, center_g), ytick_vals)
-        iax.set_xticks(xtick_pos)
-        iax.set_xticklabels([f"{v:.0f}" for v in xtick_vals])
-        iax.set_yticks(ytick_pos)
-        iax.set_yticklabels([f"{v:.0f}" for v in ytick_vals])
-        iax.set_xlabel(r"$\\gamma$ (°)", fontsize=18)
-        iax.set_ylabel(r"$\\delta$ (°)", fontsize=18)
-        # Plot the truth marker in the inset
-        tx, ty = bm(tg, td)
-        iax.scatter(tx, ty, color='black', alpha=1.0, marker='x', s=120)
+            # Add ticks showing gamma (x) and delta (y) degrees
+            center_g = 0.5 * (gmin + gmax)
+            center_d = 0.5 * (dmin + dmax)
+            xtick_vals = np.linspace(gmin, gmax, 5)
+            ytick_vals = np.linspace(dmin, dmax, 5)
+            xtick_pos, _ = bm(xtick_vals, np.full_like(xtick_vals, center_d))
+            _, ytick_pos = bm(np.full_like(ytick_vals, center_g), ytick_vals)
+            iax.set_xticks(xtick_pos)
+            iax.set_xticklabels([f"{v:.0f}" for v in xtick_vals])
+            iax.set_yticks(ytick_pos)
+            iax.set_yticklabels([f"{v:.0f}" for v in ytick_vals])
+            iax.set_xlabel(r"$\\gamma$ (°)", fontsize=18)
+            iax.set_ylabel(r"$\\delta$ (°)", fontsize=18)
+            # Plot the truth marker in the inset
+            tx, ty = bm(tg, td)
+            iax.scatter(tx, ty, color='black', alpha=1.0, marker='x', s=120)
 
         if figsave is None:
-            plt.show()
+            if show:
+                plt.show()
         else:
-            fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight", bbox_extra_artists=[iax])
-        plt.close()
+            kwargs = {} if iax is None else {"bbox_extra_artists": [iax]}
+            fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight", **kwargs)
+            plt.close()
+
+        if show:
+            plt.close()
 
     def get_moment_tensors(self, samples, theta0):
         sample_mts = []
