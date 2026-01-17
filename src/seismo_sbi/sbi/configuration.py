@@ -33,6 +33,8 @@ class SBI_Configuration:
 
         self.model_parameters = ModelParameters()
         self.sim_parameters = None
+        # compression_methods is a list of (full_key, options) where full_key is
+        # the final compressor name used everywhere, e.g. 'optimal_score_filtered_block'
         self.compression_methods = []
 
         self.dataset_parameters = None
@@ -125,8 +127,27 @@ class SBI_Configuration:
 
     def parse_compression_options(self, config):
 
+        """Parse compression section into fully-qualified compressor keys.
+
+        Example YAML:
+
+        compression:
+          - optimal_score:
+              filtered_block: '/path/to/noise'
+          - optimal_score:
+              empirical_diagonal: '/path/to/noise'
+
+        becomes
+
+        self.compression_methods = [
+            ("optimal_score_filtered_block", {"type": "optimal_score", "covariance": "filtered_block", "path": "/path/to/noise"}),
+            ("optimal_score_empirical_diagonal", {"type": "optimal_score", "covariance": "empirical_diagonal", "path": "/path/to/noise"}),
+        ]
+        """
         compression_config = config
         self.compression_methods = []
+
+        # Normalise YAML into a list of (raw_type, raw_options)
         if isinstance(compression_config, dict):
             compression_list = list(compression_config.items())
         else:
@@ -135,15 +156,31 @@ class SBI_Configuration:
                 name = list(full_dict.keys())[0]
                 options = full_dict[name]
                 compression_list.append((name, options))
-        for compression_type, options in compression_list:
-            if compression_type in SBI_Configuration.compression_types:
-                self.compression_methods.append((compression_type, options))
-            else:
+
+        for raw_type, raw_options in compression_list:
+            if raw_type not in SBI_Configuration.compression_types:
                 allowed_types = ', '.join(SBI_Configuration.compression_types)
-                raise InvalidConfiguration(f"Invalid compression type {compression_type}. Only [ {allowed_types} ] allowed")
-                
-    
-    
+                raise InvalidConfiguration(f"Invalid compression type {raw_type}. Only [ {allowed_types} ] allowed")
+
+            # For covariance-based compressors (e.g. optimal_score) we expect a
+            # single-entry dict giving the covariance option and its path.
+            if raw_type == "optimal_score":
+                if not isinstance(raw_options, dict) or len(raw_options) != 1:
+                    raise InvalidConfiguration(
+                        "optimal_score entries must be of the form:\n"
+                        "  - optimal_score:\n      <covariance_option>: <path>"
+                    )
+                cov_name, cov_path = list(raw_options.items())[0]
+                full_key = f"{raw_type}_{cov_name}"
+                options = {"type": raw_type, "covariance": cov_name, "path": cov_path}
+                self.compression_methods.append((full_key, options))
+            else:
+                # Non-covariance compressors keep their raw options and use the
+                # raw type as the full key.
+                full_key = raw_type
+                options = {"type": raw_type, **(raw_options or {})}
+                self.compression_methods.append((full_key, options))
+
     def parse_sbi_config(self, config):
         inference_config = config
         self.sbi_method = inference_config["sbi"]["method"]

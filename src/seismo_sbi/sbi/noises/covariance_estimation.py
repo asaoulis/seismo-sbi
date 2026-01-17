@@ -250,20 +250,33 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
 
         @staticmethod
         def quadratic_form(residuals, toeplitz_cols, block_size):
-            reshaped = residuals.reshape(-1, block_size)
-            total = 0.0
-            for c, x in zip(toeplitz_cols, reshaped):
-                y = solve_toeplitz((c, c), x)
-                total += x @ y
+            """
+            residuals: shape (n_blocks * block_size,)
+            toeplitz_cols: shape (n_blocks, block_size)
+            """
+            # reshape to (n_blocks, block_size)
+            reshaped = residuals.reshape(-1, block_size)          # (B, N)
+
+            # batched solve: T_i x_i = r_i for all i
+            # c_or_cr has shape (B, N); this uses batched Toeplitz solves
+            y = solve_toeplitz((toeplitz_cols, toeplitz_cols), reshaped)  # (B, N)
+
+            # sum x_i^T y_i over blocks
+            total = np.einsum("ij,ij->", reshaped, y)
             return -0.5 * total
 
         @staticmethod
         def quadratic_form_per_block(residuals, toeplitz_cols, block_size):
-            reshaped = residuals.reshape(-1, block_size)
-            vals = []
-            for c, x in zip(toeplitz_cols, reshaped):
-                y = solve_toeplitz((c, c), x)
-                vals.append(-0.5 * (x @ y))
+            """
+            Same as quadratic_form, but return per-sample value.
+            """
+            reshaped = residuals.reshape(-1, block_size)          # (B, N)
+            y = solve_toeplitz((toeplitz_cols, toeplitz_cols), reshaped)  # (B, N)
+
+            # value per block: -0.5 * x_i^T y_i, shape (B,)
+            vals = -0.5 * np.einsum("ij,ij->i", reshaped, y)
+
+            # repeat per element in the block, as before
             return np.repeat(vals, block_size)
 
         @staticmethod
@@ -354,7 +367,7 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
         self.toeplitz_cols_list = self.create_toeplitz_cols(station_component_covariances)
         self.set_toeplitz_cols(self.toeplitz_cols_list)
         self.covariance_matrix_arrays = np.array([toeplitz(c) for c in self.toeplitz_cols_list])
-
+        print([self.toeplitz_cols_list[i][0] for i in range(len(self.toeplitz_cols_list))], flush=True)
     
     def gamma_bandpass(self, tau, sigma_sqr, freqs):
         fmin, fmax = freqs
@@ -750,3 +763,20 @@ class EmpiricalCovarianceEstimator:
                     station_component_covariances[receiver][component] = (covar_data[0], -gradient)
 
         return station_component_covariances
+
+def build_cov_sigma2_dict(station_component_covariances):
+    """
+    For filtered covariance, BlockDiagonalFilteredCovariance expects either a dict with sigma^2
+    per station-component or a scalar. We pass the lag-0 variance.
+    """
+    sigma2_dict = {}
+    for station, comp_dict in station_component_covariances.items():
+        sigma2_dict[station] = {}
+        for component, cov_vec in comp_dict.items():
+            if hasattr(cov_vec, "__len__") and len(cov_vec) > 0:
+                sigma2 = float(cov_vec[0])
+            else:
+                sigma2 = float(cov_vec)
+            sigma2_dict[station][component] = sigma2
+    return sigma2_dict
+

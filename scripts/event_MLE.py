@@ -47,7 +47,7 @@ def main():
                                                                             config.model_parameters,  
                                                                             rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
 
-    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
+    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients, freeze=True)
     
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 

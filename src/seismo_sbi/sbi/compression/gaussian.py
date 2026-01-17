@@ -133,19 +133,25 @@ class GaussianCompressor(Compressor):
         else:
             covariance_residual_product = self.C.matmul_inverse_covariance(residual)
         if reduce:
-            dL_dtheta = np.zeros(self.num_params)
-            for a in range(self.num_params):
-                dL_dtheta[a] += np.dot(self.dD_Dtheta_gradients[a,:], covariance_residual_product)
-                if self.C.C_derivative is not None:
-                    # final terms of EQ18 https://arxiv.org/pdf/1712.00012
+            # first term: vectorised over parameters
+            dL_dtheta = self.dD_Dtheta_gradients @ covariance_residual_product
+
+            if self.C.C_derivative is not None:
+                # keep existing loop for the expensive derivative terms
+                for a in range(self.num_params):
                     covariance_products = self.C.kernels[a]
-                    first_cov_term = 0.5 * self.C.vector_vector_dot_product(residual, self.C.matrix_vector_product(covariance_products,residual)) 
-                    second_cov_term = -0.5* self.C.traces[a]
+                    first_cov_term = 0.5 * self.C.vector_vector_dot_product(
+                        residual,
+                        self.C.matrix_vector_product(covariance_products, residual)
+                    )
+                    second_cov_term = -0.5 * self.C.traces[a]
                     dL_dtheta[a] += first_cov_term + second_cov_term
         else:
-            dL_dtheta = np.zeros((self.dD_Dtheta_gradients[0,:].shape[0], self.num_params))
-            for a in range(self.num_params):
-                dL_dtheta[:,a] = np.multiply(self.dD_Dtheta_gradients[a,:], covariance_residual_product)
+            d = self.dD_Dtheta_gradients.shape[1]
+            dL_dtheta = np.empty((d, self.num_params))
+            # broadcast multiply and transpose instead of Python loop
+            # shape: (num_params, d) * (d,) -> (num_params, d) then transpose
+            dL_dtheta[:, :] = (self.dD_Dtheta_gradients * covariance_residual_product).T
         if self.prior_mean is not None:
             theta_diff = self.prior_mean - self.theta_fiducial
             # np.dot(np.linalg.inv(np.diag(self.prior_covariance)), theta_diff)

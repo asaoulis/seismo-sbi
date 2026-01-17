@@ -35,7 +35,7 @@ class IterativeLeastSquaresSolver:
 
     @error_handling_wrapper(num_attempts=3)
     def solve_least_squares(self, observation, compressor, single_step = True, return_history = False):
-        iterations = self.least_squares_configuration.max_iterations if not single_step else 1
+        iterations = self.least_squares_configuration.max_iterations if not single_step else 2
         damping = self.least_squares_configuration.damping_factor if not single_step else 0
         adaptive = self.least_squares_configuration.dynamic_damping
 
@@ -97,7 +97,6 @@ class IterativeLeastSquaresSolver:
         if self.least_squares_configuration.use_best_model and best_params_vec is not None:
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(best_params_vec, 'theta_fiducial')
             print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
-
         final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
         if not return_history:
             return final_score_compression_data, extra_gradients
