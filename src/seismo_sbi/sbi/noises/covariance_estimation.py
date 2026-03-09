@@ -185,7 +185,6 @@ class GaussianNoiseSampler:
 
         # Rebuild covariance blocks from scaled Toeplitz columns.
         self.cov_blocks = np.asarray([toeplitz(c) for c in self.toeplitz_cols], dtype=float)
-        print(self.toeplitz_cols)
         # Rebuild Cholesky factors to update the sampler dynamically.
         self._build_cholesky()
 
@@ -487,7 +486,6 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
         self.toeplitz_cols_list = self.create_toeplitz_cols(station_component_covariances)
         self.set_toeplitz_cols(self.toeplitz_cols_list)
         self.covariance_matrix_arrays = np.array([toeplitz(c) for c in self.toeplitz_cols_list])
-        print([self.toeplitz_cols_list[i][0] for i in range(len(self.toeplitz_cols_list))], flush=True)
     
     def gamma_bandpass(self, tau, sigma_sqr, freqs):
         fmin, fmax = freqs

@@ -1,0 +1,93 @@
+run_name: cps
+output_directory: '../examples/data/pipeline_outputs'
+job_name: synthetic_dc_wrong_model_plot_tests
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps' # 'instaseis' or 'cps'
+  components: 'ZEN'
+  stations_path: '../examples/configs/stations.txt'
+  station_components_path: '../examples/configs/components.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  cps_GFs_path: './cps_long_valley/tham_5pc_filter' #_fiducial'
+  cps_GFs_fiducial_path: './cps_long_valley/tham_fiducial'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+14, 1.e+14, 1.e+14, 1.e+14, 1.e+14, 1.e+14]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-5.e+14, -5.e+14, -5.e+14, -5.e+14, -5.e+14, -5.e+14],
+              [5.e+14, 5.e+14, 5.e+14, 5.e+14, 5.e+14, 5.e+14]]
+  nuisance: 
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 5, 0]
+      bounds: [37.636, -118.936, 5, 0]
+    velocity_model:
+      fiducial: '../examples/configs/SoCal.plain.txt'
+      bounds: ['../examples/configs/SoCal.plain.txt', 5]
+
+simulations:
+  num_simulations: 5000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 5
+    damping_factor: 0.1
+
+compression: 
+  theory_optimal_score:
+    noise_level:  0.1
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model: 
+      type: 'gaussian'
+      noise_level: 0.1
+
+  likelihood: 
+    run: True
+    ensemble: False
+    covariance: empirical
+    num_samples: 40000
+    walker_burn_in: 1000
+    move_size: [0.005, 0.001]
+
+
+jobs:
+  real_events: {}
+  simulations:
+    random_events: 100
+    fixed_events: []
+    custom_events: 
+      fiducial_model:
+        moment_tensor: [3.e+14, -3.e+14, 0,0,0,0]
+        source_location: [37.636, -118.936, 5, 0]
+        use_fiducial: True
+  noise_models:
+    # real_noise: './data/noise/azores_event_samples'
+    gaussian_noises: [0.1]
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [['theory_optimal_score', 'gaussian_noises_x0.1'], ['gaussian_likelihood', 'gaussian_noises_x0.1']]
+    disable_plotting: False

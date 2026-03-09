@@ -21,7 +21,10 @@ import shutil
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
     parser.add_argument('--config', '-c', type=str, help='Filepath of sbi_pipeline configuration file.', required = True)
-
+    # output dir
+    parser.add_argument('--output_dir', '-o', type=str, help='Directory to save generated CPS perturbations.', required = False, default = None)
+    # kappa levels to run
+    parser.add_argument('--kappa_levels', '-k', type=str, help='Comma-separated list of kappa levels to run (e.g., "0.1,0.5,1.0").', required = False, default = "0.1,0.5,1.0")
     args = parser.parse_args()
     return args
 
@@ -42,15 +45,17 @@ def main():
     # base_dir = Path('/data/alex/cps/cps_long_valley/LV2_perturbations')
     # base_dir = Path('/data/alex/cps/cps_long_valley/tham_3pc_200m_explosion')
     # base_dir = Path('/data/alex/cps/JAN/5pc_1km_explosion')
-    base_dir = Path('/data/alex/cps/cps_croatia/model_2_test')
-
+    
+    # base_dir = Path('/data/alex/cps/cps_croatia/model_2_test')
+    base_dir = Path(args.output_dir) if args.output_dir is not None else Path('/data/alex/cps/cps_croatia/model_2_test')
+    kappas = [float(k) for k in args.kappa_levels.split(',')]
     # base_dir = Path('/data/alex/cps/cps_long_valley/synthetic_arrangement')
     
     # rm -rf and recreate base directory
     if base_dir.exists():
         shutil.rmtree(base_dir)
     ### Start SBI Pipeline
-    for kappa in [0.1]:
+    for kappa in kappas:
         config = SBI_Configuration()
         config.parse_config_file(config_path)
         cps_output_base_dir = "kappa_" + str(kappa)
