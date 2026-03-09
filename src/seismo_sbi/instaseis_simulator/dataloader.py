@@ -150,4 +150,9 @@ class SimulationDataLoader():
 
     def _get_seismogram_array_length(self, simulation_data_file):
         dummy_receiver = self.receivers.receivers[0]
-        return len(simulation_data_file["outputs"][dummy_receiver.station_name][dummy_receiver.components[0]])
+        try:
+            first_component = dummy_receiver.components[0]
+            return len(simulation_data_file["outputs"][dummy_receiver.station_name][first_component])
+        except KeyError:
+            first_component = dummy_receiver.components[0].replace('E', '1').replace('N', '2')
+            return len(simulation_data_file["outputs"][dummy_receiver.station_name][first_component])

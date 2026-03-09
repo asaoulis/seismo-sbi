@@ -221,6 +221,7 @@ class SBIPipeline:
         priors=(None, None),
         covariance_data=None,
         dataset_details=None,
+        compression_data_extras=None
     ):
         """Compute compression data and (re)build a single compressor.
 
@@ -241,10 +242,13 @@ class SBIPipeline:
         options = methods_dict[compressor_name]
 
         # Compute compression data for this single compressor using the full key
-        compression_data, extra_gradients = self.compute_required_compression_data(
-            [(compressor_name, options)],
-            self.parameters,
-        )
+        if compression_data_extras is None:
+            compression_data, extra_gradients = self.compute_required_compression_data(
+                [(compressor_name, options)],
+                self.parameters,
+            )
+        else:
+            compression_data, extra_gradients = compression_data_extras
 
         # Build just this compressor with the same full key
         compressor, key = self._build_single_compressor(
@@ -275,7 +279,7 @@ class SBIPipeline:
             cov_mat = BlockDiagonalFilteredCovariance(noise_level, self.simulation_parameters.processing['filter'], self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "kolb":
             noise_level = stationwise_covariances
-            cov_mat = BlockDiagonalKolbCovariance(noise_level, receivers=self.simulation_parameters.receivers, data_vector_length=self.trace_length, num_jobs=self.num_parallel_jobs)
+            cov_mat = BlockDiagonalKolbCovariance(noise_level,receivers=self.simulation_parameters.receivers, data_vector_length=self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "empirical_diagonal":
             cov_mat = DiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length)
         elif cov_matrix_option == "noise_level":
@@ -536,13 +540,13 @@ class SingleEventPipeline(SBIPipeline):
     def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, priors, mle_start = None):
         MLE_likelihood_config = deepcopy(likelihood_config)
         use_best = MLE_likelihood_config.get('mle_use_best', False)
-
+        print("Finding MLE with MCMC, use_best:", use_best)
         if use_best:
             MLE_likelihood_config['walker_burn_in'] = 30
-            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 800
+            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 400
         else:
-            MLE_likelihood_config['walker_burn_in'] = 500
-            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 800
+            MLE_likelihood_config['walker_burn_in'] = 300
+            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 400
         MLE_likelihood_config['ensemble'] = False
         MLE_likelihood_config['return_log_prob'] = bool(use_best)
         compressor_name = "theory_optimal_score"
@@ -564,16 +568,34 @@ class SingleEventPipeline(SBIPipeline):
         if use_best and logps is not None:
             best_idx = int(np.argmax(logps))
             print("Best chi2 value:", -logps[best_idx])
+            print("Worst chi2 value:", -logps[np.argmin(logps)] )
             mcmc_MLE = samples[best_idx]
         else:
             mcmc_MLE = np.mean(samples, axis=0)
         print('MCMC MLE', mcmc_MLE)
+        # compute chi2 of MLE
+        
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(mcmc_MLE, 'theta_fiducial')
         _, _, compression_data, _ = self.prepare_single_compressor(
             compressor_name,
             priors=priors,
             covariance_data=covariance,
         )
+
+        score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(
+            self.parameters,
+            *self.least_squares_solver.stencil_args,
+        )
+        compression_data = score_compression_data
+        _, _, _, _ = self.prepare_single_compressor(
+            compressor_name,
+            priors=priors,
+            covariance_data=covariance,
+            compression_data_extras=(compression_data, extra_gradients)
+        )
+        D = single_job[2]
+        chi2_mle = self.compressors[compressor_name].compute_misfit(D)
+        print(f"chi^2 at MCMC MLE: {chi2_mle:.5f}", flush=True)
         return compression_data
 
     def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, priors, compressor_name: str = None):
@@ -583,12 +605,9 @@ class SingleEventPipeline(SBIPipeline):
         self.use_kernel_simulator_if_possible(compression_data, dataset_details.sampling_method)
 
         if dataset_details.use_fisher_to_constrain_bounds:
-            dataset_details = self.use_fisher_to_constrain_bounds(dataset_details, compression_data)
+            dataset_details = self.use_fisher_to_constrain_bounds(compressor_name, dataset_details, compression_data)
 
-        if compressor_name is not None:
-            compressor = self.compressors[compressor_name]
-        else:
-            compressor = list(self.compressors.values())[0]
+        compressor = self.compressors[compressor_name]
         x_0 = compression_data.theta_fiducial
         
         print('MLE', x_0)
@@ -674,17 +693,19 @@ class SingleEventPipeline(SBIPipeline):
             compressor,
             single_step=single_least_squares_step,
         )
+        self.parameters.theta_fiducial = self.parameters.vector_to_parameters(compression_data.theta_fiducial, 'theta_fiducial')
         _, _, _, _ = self.prepare_single_compressor(
             compressor_name,
             priors=priors,
             covariance_data=covariance_data,
             dataset_details=dataset_details,
+            compression_data_extras=(compression_data, extra_gradients)
         )
 
         return compression_data
 
-    def use_fisher_to_constrain_bounds(self, dataset_details, compression_data):
-        compressor = list(self.compressors.values())[0]
+    def use_fisher_to_constrain_bounds(self, compressor_name, dataset_details, compression_data):
+        compressor = self.compressors[compressor_name]
         prior_covariance_matrix = (compressor.Fisher_mat_inverse)
         marginals = np.sqrt(np.diag(prior_covariance_matrix))
         num_sigmas = dataset_details.use_fisher_to_constrain_bounds
@@ -835,7 +856,12 @@ class MultiEventPipeline(SingleEventPipeline):
                 # print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
 
                 # inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
-
+                self.prepare_single_compressor(
+                    compressor_name,
+                    priors=priors,
+                    covariance_data=covariance,
+                    dataset_details=dataset_details,
+                )
                 job_result = None
                 if likelihood_config["run"]:
                     print('Starting likelihood inversions.')
@@ -994,7 +1020,6 @@ class MLEEstimatePipeline(SingleEventPipeline):
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
                 self.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance)
-                print(list(covariance.keys()), covariance['BALJ'])
 
             plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
 

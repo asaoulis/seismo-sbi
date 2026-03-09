@@ -12,7 +12,7 @@ except Exception:
     hilbert = None
     welch = None
 
-from ..instaseis_simulator.utils import apply_station_time_shifts
+from seismo_sbi.instaseis_simulator.utils import apply_station_time_shifts
 
 
 @contextlib.contextmanager
@@ -123,6 +123,7 @@ class PosteriorPredictiveChecks:
         # add seismo-oriented metrics
         # self.add_metric("band_power_ratio", self._metric_band_power_ratio)
         self.add_metric("Envelope misfit", self._metric_envelope_misfit)
+        self.add_metric("MSE", self._metric_mse)
         # self.add_metric("autocorr_misfit", self._metric_autocorr_misfit)
 
     # -------------------
@@ -136,6 +137,8 @@ class PosteriorPredictiveChecks:
         if name in self.metrics:
             raise KeyError(f"Metric {name} already exists")
         self.metrics[name] = func
+    def _metric_mse(self, obs, synthetics, meta):
+        return np.mean((synthetics - obs) ** 2, axis=1)
 
     def simulate_ensemble(self, param_list: List[dict], num_samples: int = 100, *, ensemble_name: Optional[str] = None):
         """
@@ -155,18 +158,23 @@ class PosteriorPredictiveChecks:
                 # Apply per-sample random time shifts if receivers are known
                 if self.receivers is not None:
                     # derive distribution for this ensemble
-                    dist = (0, 0)
                     if ensemble_name is not None and ensemble_name in self.random_shift_distributions:
-                        dist = self.random_shift_distributions[ensemble_name]
-                    mu, half = dist
+                        print("Using random shift distribution for ensemble:", ensemble_name)
+                        shifts = self.random_shift_distributions[ensemble_name]
                     receiver_names = [rec.station_name for rec in self.receivers.iterate()]
                     shifted = []
                     for vec in results:
                         try:
                             # Build per-station shift dict
-                            base = int(round(np.random.normal(mu, mu if mu != 0 else 1))) if (mu != 0 or half != 0) else 0
-                            shift_dict = {name: base + int(np.random.uniform(-half, half)) for name in receiver_names}
+                            if isinstance(shifts, tuple) and len(shifts) == 2:
+                                random_shift_distribution= shifts
+                                shift = round(np.random.normal(0, random_shift_distribution[0]))
+                                shift_dict = {name: shift + int(np.random.uniform(-random_shift_distribution[1], random_shift_distribution[1])) for name in receiver_names}
                             # IMPORTANT: set shifts on receivers prior to applying
+                            elif isinstance(shifts, dict):
+                                shift_dict = shifts
+                            else:
+                                shift_dict = {name: 0 for name in receiver_names}
                             self.receivers.set_time_shifts(shift_dict)
                             # reshape vector -> outputs map, apply shifts, flatten back
                             outputs_map = self._vec_to_outputs_map(vec)
@@ -180,18 +188,66 @@ class PosteriorPredictiveChecks:
                     synthetics.extend(results) 
         return np.vstack(synthetics)
 
-    def run_posterior_predictive_metrics(self, observation: np.ndarray, ensemble_params_dict: Dict[str, List[dict]], num_samples: int = 1000):
-        """
-        For each ensemble (mapping name -> list of param dicts) simulate synthetics and compute registered metrics.
+    def simulate_ensembles(
+        self,
+        ensemble_params_dict: Dict[str, List[dict]],
+        num_samples: int = 1000,
+    ) -> Dict[str, np.ndarray]:
+        """Simulate synthetics for each ensemble without any selection or metrics.
 
-        Returns:
-            results: dict[name] -> dict[metric_name] -> {mean, var, raw (optional)}
-            ensembles_synthetics: dict[name] -> synthetics array (n_samples, data_len)
+        Parameters
+        ----------
+        ensemble_params_dict : Dict[str, List[dict]]
+            Mapping ensemble-name -> list-like container of parameter dicts.
+        num_samples : int, optional
+            Number of synthetics to simulate per ensemble.
+
+        Returns
+        -------
+        ensembles_synthetics : dict
+            ensembles_synthetics[name] -> np.ndarray, shape (num_samples, data_len)
+        """
+        ensembles_synthetics: Dict[str, np.ndarray] = {}
+        for name, params in ensemble_params_dict.items():
+            ensembles_synthetics[name] = self.simulate_ensemble(
+                params, num_samples=num_samples, ensemble_name=name
+            )
+        return ensembles_synthetics
+
+    def select_best_synthetics(
+        self,
+        observation: np.ndarray,
+        ensembles_synthetics: Dict[str, np.ndarray],
+        num_selected_samples: Optional[int] = None,
+        selection_metric: str = r"$\\chi^2$",
+    ):
+        """Select best-matching synthetics for each ensemble given precomputed synthetics.
+
+        This does **not** run any simulations or compute summary metrics, it just
+        applies the chosen selection metric on the raw synthetics and returns a
+        dictionary with the selected subsets.
+
+        Parameters
+        ----------
+        observation : np.ndarray
+            Observed data vector.
+        ensembles_synthetics : Dict[str, np.ndarray]
+            Mapping ensemble-name -> synthetics array of shape (n_samples, data_len).
+        num_selected_samples : int, optional
+            If provided and > 0, selects up to this many best-matching synthetics
+            per ensemble. If None or <= 0, returns the input unchanged.
+        selection_metric : str, optional
+            Name of the metric (registered via ``add_metric``) to minimize.
+
+        Returns
+        -------
+        selected_synthetics : dict
+            selected_synthetics[name] -> np.ndarray of shape (k, data_len)
+        selection_indices : dict
+            selection_indices[name] -> np.ndarray of indices into the original
+            synthetics array, or None if no selection was applied.
         """
         obs = np.asarray(observation).ravel()
-        results = {}
-        ensembles_synthetics = {}
-
         meta = {
             "sample_rate": self.sample_rate,
             "n_traces": self.n_traces,
@@ -199,27 +255,124 @@ class PosteriorPredictiveChecks:
             "dof_override": self.dof_override,
         }
 
-        for name, params in ensemble_params_dict.items():
-            synthetics = self.simulate_ensemble(params, num_samples=num_samples, ensemble_name=name)
-            ensembles_synthetics[name] = synthetics
+        selected_synthetics: Dict[str, np.ndarray] = {}
+        selection_indices: Dict[str, Optional[np.ndarray]] = {}
 
+        for name, synthetics_full in ensembles_synthetics.items():
+            if num_selected_samples is not None and num_selected_samples > 0:
+                syn_sel, idx = self._select_best_synthetics(
+                    obs,
+                    synthetics_full,
+                    meta,
+                    metric_name=selection_metric,
+                    k=num_selected_samples,
+                )
+            else:
+                syn_sel, idx = synthetics_full, None
+
+            selected_synthetics[name] = syn_sel
+            selection_indices[name] = idx
+
+        return selected_synthetics, selection_indices
+
+    def evaluate_metrics(
+        self,
+        observation: np.ndarray,
+        ensembles_synthetics: Dict[str, np.ndarray],
+    ) -> Dict[str, Dict[str, dict]]:
+        """Compute all registered metrics for each ensemble on given synthetics.
+
+        Parameters
+        ----------
+        observation : np.ndarray
+            Observed data vector.
+        ensembles_synthetics : Dict[str, np.ndarray]
+            Mapping ensemble-name -> synthetics array used for metric evaluation.
+
+        Returns
+        -------
+        results : dict
+            results[name] -> dict[metric_name] -> {"mean", "var", "raw"}
+        """
+        obs = np.asarray(observation).ravel()
+        meta = {
+            "sample_rate": self.sample_rate,
+            "n_traces": self.n_traces,
+            "covariance_matrix": self.covariance_matrix,
+            "dof_override": self.dof_override,
+        }
+
+        results: Dict[str, Dict[str, dict]] = {}
+        for name, synthetics in ensembles_synthetics.items():
             if synthetics.size == 0:
-                results[name] = {m: {"mean": np.nan, "var": np.nan, "raw": np.array([])} for m in self.metrics}
+                results[name] = {
+                    m: {"mean": np.nan, "var": np.nan, "raw": np.array([])}
+                    for m in self.metrics
+                }
                 continue
 
-            # compute each registered metric
-            metrics_out = {}
+            metrics_out: Dict[str, dict] = {}
             for mname, mfunc in self.metrics.items():
                 try:
                     vals = np.asarray(mfunc(obs, synthetics, meta), dtype=float)
                     if vals.ndim != 1 or vals.shape[0] != synthetics.shape[0]:
-                        raise ValueError(f"Metric {mname} must return 1D array length n_synthetics")
-                except Exception as e:
+                        raise ValueError(
+                            f"Metric {mname} must return 1D array length n_synthetics"
+                        )
+                except Exception:
                     vals = np.full((synthetics.shape[0],), np.nan, dtype=float)
-                metrics_out[mname] = {"mean": float(np.nanmean(vals)), "var": float(np.nanvar(vals)), "raw": vals}
+                metrics_out[mname] = {
+                    "mean": float(np.nanmean(vals)),
+                    "var": float(np.nanvar(vals)),
+                    "raw": vals,
+                }
+
             results[name] = metrics_out
 
-        return results, ensembles_synthetics
+        return results
+
+    def run_posterior_predictive_metrics(
+        self,
+        observation: np.ndarray,
+        ensemble_params_dict: Dict[str, List[dict]],
+        num_samples: int = 1000,
+        num_selected_samples: Optional[int] = None,
+        selection_metric: str = r"$\\chi^2$",
+    ):
+        """End-to-end PPC pipeline: simulate -> (optionally) select -> evaluate metrics.
+
+        This is a convenience wrapper around ``simulate_ensembles``,
+        ``select_best_synthetics`` and ``evaluate_metrics``. For experiments
+        where you want to reuse the same simulated synthetics across different
+        selection criteria or metrics, call those methods directly instead of
+        this wrapper.
+        """
+        # 1) simulate full ensembles
+        ensembles_synthetics_full = self.simulate_ensembles(
+            ensemble_params_dict, num_samples=num_samples
+        )
+
+        # 2) optionally select a subset of best-matching synthetics
+        ensembles_synthetics_sel, selection_indices = self.select_best_synthetics(
+            observation,
+            ensembles_synthetics_full,
+            num_selected_samples=num_selected_samples,
+            selection_metric=selection_metric,
+        )
+
+        # 3) evaluate metrics on the (possibly) selected synthetics
+        results = self.evaluate_metrics(observation, ensembles_synthetics_sel)
+
+        # Optionally attach selection indices for downstream inspection
+        for name, idx in selection_indices.items():
+            if idx is not None:
+                results[name]["_selection_indices"] = {
+                    "mean": np.nan,
+                    "var": np.nan,
+                    "raw": idx,
+                }
+
+        return results, ensembles_synthetics_sel
 
     # -----------------------
     # Built-in metric impls
@@ -423,6 +576,56 @@ class PosteriorPredictiveChecks:
                 parts.append(np.asarray(trace))
         return np.concatenate(parts)
 
+    # -----------------------
+    # Helpers for selecting best-matching synthetics
+    # -----------------------
+    def _select_best_synthetics(
+        self,
+        obs: np.ndarray,
+        synthetics: np.ndarray,
+        meta: dict,
+        metric_name: str,
+        k: int,
+    ):
+        """Select the k best-matching synthetics according to a registered metric.
+
+        The metric must be present in ``self.metrics`` and is interpreted as
+        "lower is better" for the purpose of selection.
+
+        Returns
+        -------
+        synthetics_subset : np.ndarray
+            Array of shape (k', data_len) where k' = min(k, n_synthetics).
+        indices : np.ndarray
+            Indices (into the original "synthetics" array) of the selected samples.
+        """
+        n_total = synthetics.shape[0]
+        if n_total == 0 or k <= 0:
+            return synthetics[:0], np.empty((0,), dtype=int)
+
+        k = min(k, n_total)
+
+        # fall back to no selection if the metric is not registered
+        if metric_name not in self.metrics:
+            print("Using fallback - something wrong with metric name or metric computation, returning first k samples. Metric name:", metric_name)
+            return synthetics[:k], np.arange(k, dtype=int)
+
+        metric_func = self.metrics[metric_name]
+        try:
+            vals = np.asarray(metric_func(obs, synthetics, meta), dtype=float)
+            if vals.ndim != 1 or vals.shape[0] != n_total:
+                raise ValueError("selection metric must return 1D array with length = n_synthetics")
+        except Exception:
+            # if metric computation fails, just return first k
+            print("Metric computation failed during selection, returning first k samples. Error:")
+            import traceback
+            traceback.print_exc()
+            return synthetics[:k], np.arange(k, dtype=int)
+        # lower is better
+        order = np.argsort(vals)
+        best_idx = order[:k]
+        return synthetics[best_idx], best_idx
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -435,7 +638,6 @@ def plot_metric_bars(
     figsize=(15, 8),
     annotate: bool = False,
     rotation: int = 20,
-    colors = ['cornflowerblue', 'red', 'plum'],
     include_substring: Optional[str] = None,
     exclude_substrings: Iterable[str] = ("var",),
 ):
@@ -496,7 +698,7 @@ def plot_metric_bars(
 
     for i, approach in enumerate(approaches):
         y = norm_df.loc[approach, metrics].values
-        ax.bar(x + offset_start + i * bar_width, y, width=bar_width, label=approach, alpha=0.9, color=colors[i % len(colors)])
+        ax.bar(x + offset_start + i * bar_width, y, width=bar_width, label=approach, alpha=0.9)
         if annotate:
             for xi, yi in zip(x + offset_start + i * bar_width, y):
                 ax.text(xi, yi + 0.01, f"{yi:.2f}", ha="center", va="bottom", fontsize=8)
@@ -522,8 +724,15 @@ def extract_means(metrics_dict):
     """
     out = {}
     for approach, metrics in metrics_dict.items():
+
         flat = {}
         for name, val in metrics.items():
+            # remove double backslashes from metric names (e.g. from LaTeX formatting)
+            name = name.replace(r'$', r'')
+            name = name.replace(r'\\', r'')
+            name = name.replace(r'^', r'')
+            if "selection" in name.lower():
+                continue
             if isinstance(val, dict):
                 # If it has a 'mean' entry, store it as 'metric_mean'
                 if "mean" in val:

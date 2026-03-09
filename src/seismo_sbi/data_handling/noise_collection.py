@@ -79,7 +79,7 @@ class NoiseCollector:
                 
                 filepath = self.evaluate_data_filepath(config['path_structure'], config['master_path'], event_datetime, station_code, config['network'], formatted_channel, config["location"])
                 new_st = obspy.read(filepath, starttime=obspy.UTCDateTime(datetime_window[0]), endtime=obspy.UTCDateTime(datetime_window[1]), format='MSEED', check_compression=False)
-                new_st = self.process_seismograms(new_st, max_frequency, instrument_response_path)
+                new_st = self.process_seismograms(new_st, max_frequency, instrument_response_path, config["instrument_correction"])
 
                 st_data_map[channel]  = new_st[0]
                 
@@ -102,26 +102,27 @@ class NoiseCollector:
 
         return st_data_map
 
-    def process_seismograms(self, new_st, max_frequency, instrument_response_path):
+    def process_seismograms(self, new_st, max_frequency, instrument_response_path, remove_response = True):
         # print(f"Sampling rate: {new_st[0].stats.sampling_rate}")
         # if new_st[0].stats.sampling_rate > 5/max_frequency:
         #     for i in range(new_st.count()):
         #         new_st[i] = resample_trace(new_st[i], 1/20, "decimate")
         print(f'Processing data from station {new_st[0].stats.station} ')
         new_st = new_st.merge(method=0, fill_value='latest')
-        inventory_response = obspy.read_inventory(instrument_response_path)
-        new_st = new_st.detrend('demean')
-        new_st = new_st.detrend('linear')
+        # new_st = new_st.detrend('demean')
+        # new_st = new_st.detrend('linear')
         # new_st = new_st.remove_response(inventory=inventory_response, output="DISP", pre_filt=[0.01, 0.02, 2.5, 5], taper=True, taper_fraction=0.1)
-        new_st = new_st.remove_response(inventory=inventory_response, output="DISP", **self.prefilter_kwargs)
+        if remove_response:
+            inventory_response = obspy.read_inventory(instrument_response_path)
+            new_st = new_st.remove_response(inventory=inventory_response, output="DISP", **self.prefilter_kwargs)
         # taper
-        new_st = new_st.taper(max_percentage=0.05, type='cosine')
+        new_st = new_st.taper(max_percentage=0.01, type='cosine')
         # new_st = new_st.filter('bandpass', freqmin=0.04, freqmax=0.07, corners=4, zerophase=False)
         new_st = new_st.filter('bandpass', **self.filter_kwargs)
 
         # # print(f"Decimation factor: {decimation_factor}")
         # new_st = new_st.resample(max_frequency, window="hann")
-        new_st = new_st.resample(max_frequency)
+        new_st = new_st.resample(max_frequency)#, window="hann")
         return new_st
     
     # def process_seismograms(self, new_st, max_frequency, instrument_response_path):
@@ -301,13 +302,14 @@ class EventNoiseAggregator:
 import obspy
 class ProcessedDataSlicer:
 
-        def __init__(self, data_folder, sampling_rate, covariance_estimation_window=None, full_auto_correlation=False,receivers=None):
+        def __init__(self, data_folder, sampling_rate, covariance_estimation_window=None, full_auto_correlation=False, noise_oracle=False,receivers=None):
 
             self.data_folder = data_folder
             self.sampling_rate = sampling_rate
             self.covariance_estimation_window = covariance_estimation_window
             self.full_auto_correlation = full_auto_correlation
             self.receivers = receivers  
+            self.noise_oracle = noise_oracle
 
         def rename_component(self, component):
             if 'Z' in component:
@@ -368,10 +370,14 @@ class ProcessedDataSlicer:
             #         pass
 
             try:
+                print("Interpolating data for window:", datetime_window[0], "to", exact_end_time)
                 interped_data = data.interpolate(self.sampling_rate, starttime=obspy.UTCDateTime(datetime_window[0]), npts=npts, method='lanczos', a=20)
             except Exception as e:
                 print(datetime_window[0])
-                # traceback.print_exc()
+                # print stats (start / end time of data trace)
+                for trace in data:
+                    print(f"Trace {trace.id}: starttime={trace.stats.starttime}, endtime={trace.stats.endtime}")
+                traceback.print_exc()
                 return station  + ' interp falied'
             interped_data = data.slice(obspy.UTCDateTime(datetime_window[0]), obspy.UTCDateTime(exact_end_time))
             # get all stations and the associated components
@@ -393,9 +399,15 @@ class ProcessedDataSlicer:
                     print(station, list(data_map[station].keys()), station_component_map[station])
             if self.covariance_estimation_window is not None:
                 try:
-                    cov_start_time = datetime_window[0] - self.covariance_estimation_window
-                    cov_estimation_data = data_copy.slice(obspy.UTCDateTime(cov_start_time), obspy.UTCDateTime(datetime_window[0]))
+                    if not self.noise_oracle:
+                        cov_start_time = datetime_window[0] - self.covariance_estimation_window
+                        cov_estimation_data = data_copy.slice(obspy.UTCDateTime(cov_start_time), obspy.UTCDateTime(datetime_window[0]))
+                    else:
+                        # just use the real data for noise estimation - assuming its noise only
+                        # this emulates an oracle that knows the noise level perfectly
+                        cov_estimation_data = data_copy.slice(obspy.UTCDateTime(datetime_window[0]), obspy.UTCDateTime(exact_end_time))
                     variance_dict = {}
+
                     for trace in cov_estimation_data:
                         station = trace.stats.station
                         component = trace.stats.channel

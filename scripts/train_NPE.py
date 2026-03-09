@@ -44,7 +44,12 @@ def main():
     sbi_pipeline.compression_methods = config.compression_methods
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
 
-    test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
+    if config.pipeline_parameters.generate_dataset:
+        test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
+    else:
+        path = sbi_pipeline.simulations_output_path
+        test_jobs_paths = list(Path(path).glob('*.h5'))
+
     # test_jobs_paths = [Path('/data/alex/cps/alex/sims/tham_filtered_shifts/synthetic_tests/random_event_0.h5'),]
 
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
@@ -56,10 +61,21 @@ def main():
     
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
+    # get real noise
+    real_noise_path = "./data/events/croatia_event1_filt_20_50_1hz.h5"
+    # real_noise_path = "./data/events/LV2_event_filt_20_50_1hz.h5"
+    covariance_data = sbi_pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
+    sbi_pipeline.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance_data)
+
     components = sbi_pipeline.data_manager.data_loader.components
     station_locations = sbi_pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(sbi_pipeline.parameters)
-    trainer = CompressionTrainer(components, station_locations)
+    model_dim = 256
+    
+
+    trainer = CompressionTrainer(components, station_locations, channels=model_dim, latent_dim=model_dim)
+    num_sims = len(test_jobs_paths)
+    train_max_index = int(0.90 * num_sims)
     dataloader_args = {
         'data_loader': sbi_pipeline.data_manager.data_loader,
         'data_folder': sbi_pipeline.simulations_output_path,
@@ -67,16 +83,16 @@ def main():
         'synthetic_noise_model_sampler': sbi_pipeline.training_noise_sampler,
         'random_shift_distribution': (2,3),
         'data_scaler': data_scaler,
-        'train_max_index': 19000,
+        'train_max_index': train_max_index,
         'train_batch_size': 128,
-        'val_batch_size': 128,
+        'val_batch_size': 256,
         'train_shuffle': True,
         'val_shuffle': False,
         'num_workers': 20,
     }
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    trainer.train(run_name, epochs=250, output_path=data_path, dataloader_args=dataloader_args)
+    trainer.train(run_name, epochs=300, output_path=data_path, dataloader_args=dataloader_args)
 
 if __name__ == '__main__':
     main()

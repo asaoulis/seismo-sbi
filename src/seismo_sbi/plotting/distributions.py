@@ -213,8 +213,8 @@ class MomentTensorReparametrised:
 
                         
     parameters_info = [
-                        ParameterInformation("$\gamma$", "°"),
-                        ParameterInformation("$\delta$", '°'),
+                        ParameterInformation("$\delta$", "°"),
+                        ParameterInformation("$\gamma$", '°'),
                         ParameterInformation("$M_w$", ""),
                         ParameterInformation(r"$\textrm{strike}$", '°'),
                         ParameterInformation(r"$\textrm{dip}$", '°'),
@@ -243,7 +243,7 @@ class MomentTensorReparametrised:
             # Choose nodal plane
             nodal_plane_pair = get_nodal_planes(mt)
             nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
-            converted.append(np.array([float(d[0]), float(g[0]), MW, nodal_plane[0], nodal_plane[1], nodal_plane[2]]))
+            converted.append(np.array([float(g[0]),float(d[0]), MW, nodal_plane[0], nodal_plane[1], nodal_plane[2]]))
         if theta0 is not None:
             theta_inputs = self.parameters.vector_to_simulation_inputs(theta0, only_theta_fiducial=True)
             theta_mt = theta_inputs["moment_tensor"]
@@ -251,7 +251,7 @@ class MomentTensorReparametrised:
             theta_MW, _ = get_MW_and_epsilon(theta_mt)
             nodal_plane_pair = get_nodal_planes(theta_mt)
             nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
-            theta0_converted = np.array([float(td[0]), float(tg[0]), theta_MW, nodal_plane[0], nodal_plane[1], nodal_plane[2],])
+            theta0_converted = np.array([float(tg[0]), float(td[0]), theta_MW, nodal_plane[0], nodal_plane[1], nodal_plane[2],])
         else:
             theta0_converted = None
         return np.array(converted), theta0_converted
@@ -597,6 +597,7 @@ class PosteriorPlotter:
                     mt = np.array(self.convert_mt_convention(mt))
                     tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
                     tx, ty = bm(tg, td)
+                    mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
                     plot_beachball_on_axes(ax, mt, tx[0], ty[0], diameter=0.08, color_t=facecolor, edgecolor='black', zorder=10, linewidth=0.5)
                     ax.scatter(tx, ty, color=facecolor, alpha=1.0, marker='o', s=20, zorder=11)
 
@@ -670,6 +671,7 @@ class PosteriorPlotter:
 
                 tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
                 tx, ty = bm(tg, td)
+                mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
 
                 # Plot beachball only if enabled
                 if plot_beachballs:

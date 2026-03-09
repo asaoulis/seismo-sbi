@@ -638,7 +638,6 @@ class MisfitsPlotting:
         for ax in axes:
             ax.set_ylabel('')
         # add a legend box with ensemble names and colors
-        print('trying to add legend')
         if len(ensembles) > 0:
             legend_elements = []
             legend_elements.insert(0, plt.Line2D([0], [0], color='black', lw=2, label='Observation'))
@@ -661,7 +660,162 @@ class MisfitsPlotting:
             plt.show()
         plt.close()
 
-# ...existing code...
+    def plot_posterior_predictive_stacked_traces_zoomin(
+        self,
+        observation,
+        ensembles,
+        event_location,
+        M=50,
+        colors=None,
+        max_samples=100,
+        alpha=0.08,
+        seed=None,
+        figname=None,
+    ):
+        """Posterior predictive stacked traces zoomed around per-trace peak.
+
+        Similar to plot_posterior_predictive_stacked_traces, but for each
+        station-component trace we select a window of length ``M`` samples
+        centered on the maximum absolute amplitude of the observation for
+        that trace. The x-axis is expressed as relative time to the peak
+        amplitude (seconds). Centering is done per-station, per-component.
+        """
+        rng = np.random.default_rng(seed)
+        arrivals = self._get_arrivals_dict(event_location)
+        ordered_stations = sorted(arrivals.keys(), key=lambda k: arrivals[k])
+
+        # Build flattened-trace index map following the data layout
+        all_components_list = [component for receiver in self.receivers.iterate() for component in receiver.components]
+        time_series_length = int(len(observation) // len(all_components_list))
+
+        trace_index_list = []
+        idx = 0
+        for receiver in self.receivers.iterate():
+            for comp in receiver.components:
+                trace_index_list.append((receiver.station_name, comp, idx))
+                idx += 1
+        trace_index_map = {(st, comp): i for (st, comp, i) in trace_index_list}
+
+        # Reshape observation and ensembles
+        obs_matrix = np.reshape(observation, (-1, time_series_length))
+        ens_matrices = {
+            name: np.reshape(arr, (arr.shape[0], -1, time_series_length))
+            for name, arr in ensembles.items()
+        }
+
+        # Global normalization based on observation
+        max_abs = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
+        if max_abs == 0:
+            max_abs = 1.0
+
+        components = ['Z', 'E', 'N']
+        ordered_by_comp = {
+            comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
+            for comp in components
+        }
+
+        # Colors per ensemble
+        if colors is None:
+            palette = ['blue', 'red', 'plum']
+            ens_names = list(ensembles.keys())
+            color_map = {name: palette[i % len(palette)] for i, name in enumerate(ens_names)}
+        elif isinstance(colors, dict):
+            color_map = colors
+        else:
+            ens_names = list(ensembles.keys())
+            color_map = {name: colors[i % len(colors)] for i, name in enumerate(ens_names)}
+
+        # Window half-width in samples
+        half_M = M // 2
+
+        spacing = 0.9
+        height = 0.7 * 8.0
+        width = 12.6 * 1.2
+        fig, axes = plt.subplots(1, 3, figsize=(width, height))
+        if not isinstance(axes, np.ndarray):
+            axes = np.array([axes])
+
+        for i, comp in enumerate(components):
+            ax = axes[i]
+            pairs = ordered_by_comp[comp]
+            n_traces = len(pairs)
+            if n_traces == 0:
+                ax.axis('off')
+                continue
+
+            offsets = np.arange(n_traces) * spacing
+
+            # Plot observation and ensembles for each trace
+            for k, (st, c) in enumerate(pairs):
+                flat_idx = trace_index_map[(st, c)]
+                obs_trace = obs_matrix[flat_idx]
+                # find index of max abs amplitude
+                peak_idx = int(np.argmax(np.abs(obs_trace)))
+                start = max(0, peak_idx - half_M)
+                end = min(time_series_length, start + M)
+                # adjust start if near end to keep window length M when possible
+                if end - start < M:
+                    start = max(0, end - M)
+                win_obs = obs_trace[start:end] / max_abs
+
+                # local time axis relative to peak (seconds)
+                local_len = end - start
+                t_local = (np.arange(local_len) - (peak_idx - start)) / float(self.sampling_rate)
+
+                y0 = offsets[k]
+                ax.plot(t_local, y0 + win_obs, color='black', linewidth=1.2, zorder=3,
+                        label='Observation' if (i == 0 and k == 0) else None)
+
+                # Ensembles
+                for name, sample_cube in ens_matrices.items():
+                    color = color_map.get(name, 'gray')
+                    N = sample_cube.shape[0]
+                    if N == 0:
+                        continue
+                    take = N if N <= max_samples else max_samples
+                    sel = rng.choice(N, size=take, replace=False) if N > take else np.arange(N)
+                    samples = sample_cube[sel, flat_idx, start:end] / max_abs
+                    for row in samples:
+                        ax.plot(t_local, y0 + row, color=color, alpha=alpha, linewidth=0.6, zorder=2,
+                                label=name if (i == 0 and k == 0) else None)
+
+            ax.set_yticks(offsets)
+            ax.set_yticklabels([st for (st, _) in pairs])
+            ax.set_xlabel('Time relative to peak [s]')
+            amp_pad = 1.1
+            ax.set_ylim([-amp_pad, (offsets[-1] + amp_pad) if n_traces > 0 else amp_pad])
+            ax.invert_yaxis()
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            ax.grid(False)
+            ax.set_title(f'{comp}')
+
+        # Build combined legend from labels set above
+        handles, labels = [], []
+        for ax in axes:
+            h, l = ax.get_legend_handles_labels()
+            handles += h
+            labels += l
+        if handles:
+            seen = set()
+            uniq = [(h, l) for h, l in zip(handles, labels) if not (l in seen or seen.add(l))]
+            axes[-1].legend([h for h, _ in uniq], [l for _, l in uniq], loc='upper right', fontsize='small', framealpha=0.85)
+
+        for i, ax in enumerate(axes):
+            if i == 0:
+                # keep both x and y labels
+                pass
+            else:
+                ax.tick_params(labelleft=False)
+            ax.set_ylabel('')
+
+        plt.tight_layout()
+        if figname is not None:
+            fig.savefig(figname, dpi=300, transparent=True)
+            fig.clear()
+        else:
+            plt.show()
+        plt.close()
 
     def plot_posterior_predictive_quantile_traces(
         self,

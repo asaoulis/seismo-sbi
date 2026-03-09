@@ -2,7 +2,7 @@
 """
 
 import numpy as np
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Optional
 from copy import deepcopy
 
 from seismo_sbi.instaseis_simulator.receivers import Receivers
@@ -31,6 +31,7 @@ class SimulationParameters(NamedTuple):
     simulation_type : str = "instaseis"
     cps_GFs_path : str = None
     cps_GFs_fiducial_path : str = None
+    cps_multi_models_path: Optional[str] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
 

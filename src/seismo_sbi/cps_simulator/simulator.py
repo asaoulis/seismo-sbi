@@ -233,3 +233,158 @@ class CPSPrecomputedSimulator(CPSSimulator):
         
         fiducial_model = np.genfromtxt(self.fiducial_model_path / 'vel.mod', skip_header=12)
         return fiducial_model, np.array(all_models)
+
+
+class MultiModelCPSSimulator(CPSSimulator):
+    """Dispatch different receiver subsets to different CPS precomputed models.
+
+    This wraps multiple :class:`CPSPrecomputedSimulator`-like simulators, each
+    responsible for a *subset* of the global receiver geometry. All
+    simulators share the same components and processing configuration, but
+    may use different CPS Green's function roots / fiducial models.
+
+    Parameters
+    ----------
+    models : list
+        A list of dictionaries specifying sub-model configuration. Each dict
+        must contain at least:
+
+        - ``receivers``: a :class:`Receivers` object describing the subset of
+          receivers handled by this model.
+        - either
+            * ``simulator``: an already-constructed CPSPrecomputedSimulator
+              (in which case ``cps_GFs_path`` / ``cps_GFs_fiducial_path`` are
+              ignored), or
+            * ``cps_GFs_path`` and ``cps_GFs_fiducial_path``: used to
+              construct a new :class:`CPSPrecomputedSimulator`.
+
+        Any additional keys are ignored.
+
+    Notes
+    -----
+    * ``components`` are assumed identical across all receiver groups.
+    * From the outside this behaves like a single :class:`CPSSimulator` over
+      the *union* of all receivers.
+    """
+
+    def __init__(self, models, *args, **kwargs):
+        # CPSSimulator takes: components, receivers, seismogram_duration_in_s,
+        # synthetics_processing, gf_storage_root (optional)
+        super().__init__(*args, **kwargs)
+
+        if not isinstance(models, (list, tuple)) or len(models) == 0:
+            raise ValueError(
+                "'models' must be a non-empty list/tuple of configuration dicts."
+            )
+
+        self.sub_sims = []
+        self.sub_receivers = []
+
+        for cfg in models:
+            if not isinstance(cfg, dict):
+                raise TypeError(
+                    "Each element of 'models' must be a dict with at least "
+                    "'receivers' and either 'simulator' or CPS GF paths."
+                )
+
+            sub_receivers = cfg.get("receivers")
+            if sub_receivers is None:
+                raise KeyError(
+                    "MultiModelCPSSimulator config dict missing required key 'receivers'."
+                )
+
+            existing_sim = cfg.get("simulator")
+            if existing_sim is not None:
+                if not isinstance(existing_sim, CPSPrecomputedSimulator):
+                    raise TypeError(
+                        "'simulator' must be a CPSPrecomputedSimulator instance if provided."
+                    )
+                sim = existing_sim
+            else:
+                try:
+                    fid_path = cfg["cps_GFs_fiducial_path"]
+                    root_path = cfg["cps_GFs_path"]
+                except KeyError as exc:
+                    raise KeyError(
+                        "Each MultiModelCPSSimulator config dict must contain either "
+                        "'simulator' or both 'cps_GFs_path' and 'cps_GFs_fiducial_path'."
+                    ) from exc
+
+                sim = CPSPrecomputedSimulator(
+                    fiducial_model_path=fid_path,
+                    components=self.components,
+                    receivers=sub_receivers,
+                    seismogram_duration_in_s=self.seismogram_length,
+                    synthetics_processing=self.synthetics_processing,
+                    gf_storage_root=root_path,
+                )
+
+            self.sub_sims.append(sim)
+            self.sub_receivers.append(sub_receivers)
+
+        # num_traces for the *global* simulator still corresponds to the
+        # full self.receivers object (inherited from CPSSimulator.__init__).
+        # CPSSimulator already set self.num_traces appropriately, so we
+        # simply retain it here.
+        self.num_models = self.sub_sims[0].num_models
+
+    def compute_or_load_greens_functions(
+        self,
+        objstats,
+        velocity_model,
+        delta=1.0,
+        force_calc=True,
+        verbose=False,
+        rootdir='.',
+        return_gf=True,
+        **kwargs,
+    ):
+        """Not used directly.
+
+        Each sub-simulator computes its own Green's functions; this method is
+        only present to satisfy the abstract interface.
+        """
+        raise NotImplementedError(
+            "MultiModelCPSSimulator does not expose a single global "
+            "compute_or_load_greens_functions; it delegates to its sub-simulators."
+        )
+
+    def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
+        """Run sub-simulators on their receiver subsets and merge outputs.
+
+        The returned dictionary has the same structure as for a single
+        :class:`CPSSimulator` with ``self.receivers``.
+        """
+        per_model_results = []
+        for sim, sub_rec in zip(self.sub_sims, self.sub_receivers):
+            sub_map = sim.generic_point_source_simulation(source, **kwargs)
+            per_model_results.append((sub_rec, sub_map))
+
+        all_seismograms_map = {}
+        # iterate over concrete receiver list to allow membership tests by station_name
+        for rec in self.receivers.receivers:
+            station_name = rec.station_name
+            all_seismograms_map[station_name] = {}
+
+            owning_map = None
+            for sub_rec, sub_map in per_model_results:
+                if any(r.station_name == station_name for r in sub_rec.receivers):
+                    owning_map = sub_map
+                    break
+
+            if owning_map is None:
+                raise KeyError(
+                    f"Station '{station_name}' in global receivers is not covered "
+                    "by any sub-model configuration."
+                )
+
+            for comp in rec.components:
+                try:
+                    all_seismograms_map[station_name][comp] = owning_map[station_name][comp]
+                except KeyError as exc:
+                    raise KeyError(
+                        f"Component '{comp}' for station '{station_name}' missing "
+                        "from sub-model output. Ensure components are consistent."
+                    ) from exc
+
+        return all_seismograms_map

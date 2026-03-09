@@ -2,6 +2,12 @@ from typing import NamedTuple, List
 import numpy as np
 import json
 
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+from matplotlib.patches import Rectangle
+from pyproj import Geod
 from ..data_handling.noise_collection import NoiseCollector, convert_channel_type
 
 class Receiver(NamedTuple):
@@ -104,7 +110,7 @@ class Receivers:
                 f.write("%s %s %s %s\n" % (rec.station_name, rec.network, rec.latitude, rec.longitude))
             
 
-    def plot(self, ax=None, projection=None, add_labels=True, add_scalebar=True, add_north=False):
+    def plot(self, ax=None, projection=None, add_labels=True, add_scalebar=True, add_north=False, add_receiver_icons=True):
         """
         Plot the receiver network on a map using Cartopy.
 
@@ -122,12 +128,6 @@ class Receivers:
             Whether to add a north arrow.
         """
 
-        import matplotlib.pyplot as plt
-        import cartopy.crs as ccrs
-        import cartopy.feature as cfeature
-        from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
-        from matplotlib.patches import Rectangle
-        from pyproj import Geod
 
         # Choose projection
         if projection is None:
@@ -167,23 +167,8 @@ class Receivers:
         ax.add_feature(states, edgecolor='black', linewidth=0.4, zorder=1)
 
         # Plot stations with boxed labels
-        for rec in self.iterate():
-            ax.plot(rec.longitude, rec.latitude, marker='v', color='darkred',
-                    markersize=7, transform=ccrs.PlateCarree(), zorder=5)
-            if add_labels:
-                ax.text(
-                    rec.longitude - 0.25, rec.latitude - 0.3,
-                    f"{rec.network}.{rec.station_name}",
-                    fontsize=8, color='black', transform=ccrs.PlateCarree(),
-                    ha='left', va='bottom', zorder=6,
-                    bbox=dict(
-                        boxstyle='round,pad=0.2',
-                        facecolor='white',
-                        edgecolor='black',
-                        alpha=0.8,
-                        linewidth=0.5
-                    )
-                )
+        if add_receiver_icons:
+            self.add_receiver_icons(ax, add_labels=add_labels)
 
         # Add clean gridlines (no labels inside plot)
         gl = ax.gridlines(draw_labels=False, linewidth=0.4, color='gray', alpha=0.5, linestyle='--', zorder=0)
@@ -251,7 +236,7 @@ class Receivers:
                         color='k', linewidth=linewidth, transform=ccrs.PlateCarree(),
                         path_effects=[patheffects.withStroke(linewidth=3, foreground="w")])
                 ax.text(x0 + deg_length / 2, y0 - 0.1, f'{length_km} km',
-                        ha='center', va='top', fontsize=8,
+                        ha='center', va='top', 
                         transform=ccrs.PlateCarree())
 
             scale_bar(ax)
@@ -259,6 +244,24 @@ class Receivers:
         if created_fig:
             plt.tight_layout()
             plt.show()
+
+    def add_receiver_icons(self, ax, add_labels=True, color='darkred'):
+        for rec in self.iterate():
+            ax.plot(rec.longitude, rec.latitude, marker='v', color=color,
+                    markersize=7, transform=ccrs.PlateCarree(), zorder=5)
+            if add_labels:
+                ax.text(
+                    rec.longitude - 0.25, rec.latitude - 0.3,
+                    f"{rec.network}.{rec.station_name}", color='black', transform=ccrs.PlateCarree(),
+                    ha='left', va='bottom', zorder=6,
+                    bbox=dict(
+                        boxstyle='round,pad=0.2',
+                        facecolor='white',
+                        edgecolor='black',
+                        alpha=0.8,
+                        linewidth=0.5
+                    )
+                )
 
         
     def get_station_locations_array(self):

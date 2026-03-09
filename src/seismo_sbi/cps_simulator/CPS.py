@@ -51,15 +51,6 @@ def write_Model96(vel_model, fname):
     fid.flush()
     fid.close()
 
-# def get_hashcode(dists_in_km,evdp_in_km,vmodel):
-#     '''
-#     Return the unique MD5 hash code of the parameter combination in single-station processing.
-#     '''
-#     ## make sure the number formats/dtypes in input do not produce different hashcodes
-#     tmp = dict(dists=list(np.round(dists_in_km, 1).astype(float)), 
-#             evdp=[evdp_in_km*1.], 
-#             vmodel=list(np.round(vmodel.flatten(), 1)))
-#     return hashlib.md5(json.dumps(tmp).encode('utf-8')).hexdigest()
 import uuid
 
 
@@ -180,10 +171,23 @@ def update_with_Gtensor(objstats,vmodel,delta=None,evdp_in_km=None, filter_param
 
         # compute offset for final window
         offset = s.t0 if s.vred <= 0 else (s.t0 + s.distance / s.vred)
-        t1 = gftmp[0].stats.starttime + offset
+
+        # handle optional time_shift in filter_params, defaulting to 0.0
+        local_filter_params = None
+        time_shift = 0.0
+        if filter_params:
+            # make a shallow copy so we don't mutate caller's dict
+            local_filter_params = dict(filter_params)
+            ts = local_filter_params.pop('time_shift', 0.0)
+            if ts is None:
+                ts = 0.0
+            time_shift = float(ts)
+
+        # apply time_shift by shifting the target window in time
+        t1 = gftmp[0].stats.starttime + offset + time_shift
         t2 = t1 + s.window
 
-        if filter_params:
+        if local_filter_params:
             pad = 0.1 * s.window
             t1_ext = t1 - pad
             t2_ext = t2 + pad
@@ -194,7 +198,7 @@ def update_with_Gtensor(objstats,vmodel,delta=None,evdp_in_km=None, filter_param
 
             tr.taper(max_percentage=0.05, type='cosine')
 
-            tr.filter(**filter_params)
+            tr.filter(**local_filter_params)
 
             tr = tr.slice(t1, t2, nearest_sample=False)
             if delta is not None:
@@ -270,4 +274,3 @@ def update_with_dGtensor(dep_array, objstats,vmodel,filter_params,delta=None,
     ## update the stats
     for _s in range(len(objstats)):
         objstats[_s].update({'dGtensor':np.array(dGtensor[:, _s, ...]), 'dep_array':dep_array})
-    

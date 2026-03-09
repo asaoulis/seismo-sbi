@@ -14,6 +14,8 @@ from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
 from seismo_sbi.sbi import utils as utils
+from seismo_sbi.cps_simulator.compatibility import load_velocity_model
+
 import shutil
 
 def parse_arguments():
@@ -35,14 +37,20 @@ def main():
     print("Parsing config file...")
 
     print("Successfully parsed config file.")
+    # base_dir = Path('/data/alex/cps/cps_long_valley/short_period_perturbations')
     # base_dir = Path('/data/alex/cps/cps_japan/perturbations')
-    base_dir = Path('/data/alex/cps/cps_long_valley/LV2_perturbations')
+    # base_dir = Path('/data/alex/cps/cps_long_valley/LV2_perturbations')
+    # base_dir = Path('/data/alex/cps/cps_long_valley/tham_3pc_200m_explosion')
+    # base_dir = Path('/data/alex/cps/JAN/5pc_1km_explosion')
+    base_dir = Path('/data/alex/cps/cps_croatia/model_2_test')
+
+    # base_dir = Path('/data/alex/cps/cps_long_valley/synthetic_arrangement')
     
     # rm -rf and recreate base directory
     if base_dir.exists():
         shutil.rmtree(base_dir)
     ### Start SBI Pipeline
-    for kappa in [0.1, 1, 3, 5]:
+    for kappa in [0.1]:
         config = SBI_Configuration()
         config.parse_config_file(config_path)
         cps_output_base_dir = "kappa_" + str(kappa)

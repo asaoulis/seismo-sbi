@@ -56,16 +56,139 @@ import h5py
 from abc import ABC, abstractmethod
 from functools import partial
 from copy import deepcopy
+from scipy.linalg import toeplitz, solve_toeplitz
 
 class GaussianNoiseSampler:
-    def __init__(self, sampler):
-        self.sampler = sampler
-    
-    def __call__(self, *args, **kwds):
-        return self.sampler(*args, **kwds)
-    
+    """Gaussian sampler that owns covariance and can be adapted.
+
+    This class is intended mainly for the block-diagonal covariances where each
+    block is Toeplitz. It keeps track of
+
+    - receivers: layout and component ordering
+    - toeplitz_cols: first column per block (shape [n_blocks, block_size])
+    - cov_blocks: full covariance blocks (shape [n_blocks, block_size, block_size])
+    - Ls: Cholesky factors for each block, recomputed when covariance changes
+
+    set_adaptive_covariance_with_misc_data(misc_data) expects misc_data to be a
+    nested dict misc_data[station][component] with *actual* variance per
+    station-component. It rescales each Toeplitz column so that col[0] matches
+    the new variance, and updates cov_blocks and Ls accordingly.
+    """
+
+    def __init__(self, receivers, data_vector_length,
+                 toeplitz_cols=None,
+                 cov_blocks=None,
+                 station_component_covariances=None):
+        self.receivers = receivers
+        self.data_vector_length = data_vector_length
+        self.station_component_covariances = station_component_covariances
+
+        # Build (station, component) list in the same order as BlockDiagonal*.
+        self.receiver_components = [
+            (receiver.station_name, component)
+            for receiver in self.receivers.iterate()
+            for component in receiver.components
+        ]
+
+        # Normalise internal representation.
+        if toeplitz_cols is not None:
+            self.toeplitz_cols = np.asarray(toeplitz_cols, dtype=float)
+            self.cov_blocks = np.asarray(
+                cov_blocks
+                if cov_blocks is not None
+                else [toeplitz(c) for c in self.toeplitz_cols],
+                dtype=float,
+            )
+        elif cov_blocks is not None:
+            self.cov_blocks = np.asarray(cov_blocks, dtype=float)
+            # Treat diagonal as Toeplitz first column if nothing else given.
+            self.toeplitz_cols = np.array(
+                [block[0, :].copy() for block in self.cov_blocks],
+                dtype=float,
+            )
+        else:
+            raise ValueError("Either toeplitz_cols or cov_blocks must be provided")
+
+        self._build_cholesky()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _build_cholesky(self):
+        """Build Cholesky factors for all covariance blocks."""
+        Ls = []
+        for block in self.cov_blocks:
+            # Assume blocks are already regularised / psd further up.
+            Ls.append(np.linalg.cholesky(block))
+        self.Ls = Ls
+        self.block_sizes = [L.shape[0] for L in self.Ls]
+
+    def _get_target_variance(self, misc_data, station, component):
+        """Extract scalar variance from misc_data[station][component]."""
+        try:
+            val = misc_data[station][component]
+        except KeyError:
+            # Handle "E"/"N" vs "1"/"2" naming.
+            mapped = component.replace("E", "1").replace("N", "2")
+            val = misc_data[station][mapped]
+        if hasattr(val, "size") and val.size > 1:
+            return float(val.ravel()[0])
+        return float(val)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def __call__(self, *args, **kwargs):
+        """Draw a sample from the current covariance.
+
+        Returns
+        -------
+        noise_vector : np.ndarray, shape (n_total,)
+        meta : any
+            For compatibility with previous interfaces we return
+            station_component_covariances as the second value,
+            if available, else None.
+        """
+        noise_vectors = []
+        for L, n in zip(self.Ls, self.block_sizes):
+            z = np.random.randn(n)
+            noise_vectors.append(L @ z)
+        noise_vector = np.concatenate(noise_vectors)
+        return noise_vector, self.station_component_covariances
+
     def set_adaptive_covariance_with_misc_data(self, misc_data):
-        pass
+        """Adapt Toeplitz columns and covariance blocks using misc_data.
+
+        For each block (station, component), let c be its Toeplitz first
+        column. We compute a scale factor s such that
+
+            (s * c)[0] == target_variance
+
+        where target_variance is read from misc_data[station][component]. The
+        entire Toeplitz column is scaled by s, which scales the full block and
+        hence preserves its correlation structure while adjusting its marginal
+        variance.
+        """
+        if self.toeplitz_cols is None or self.cov_blocks is None:
+            return
+
+        scaled_cols = []
+        for (station, comp), col in zip(self.receiver_components, self.toeplitz_cols):
+            c0 = col[0]
+            if c0 == 0:
+                scaled_cols.append(col)
+                continue
+            target_var = self._get_target_variance(misc_data, station, comp)
+            scale = target_var / c0
+            scaled_cols.append(col * scale)
+        self.toeplitz_cols = np.asarray(scaled_cols, dtype=float)
+
+        # Rebuild covariance blocks from scaled Toeplitz columns.
+        self.cov_blocks = np.asarray([toeplitz(c) for c in self.toeplitz_cols], dtype=float)
+        print(self.toeplitz_cols)
+        # Rebuild Cholesky factors to update the sampler dynamically.
+        self._build_cholesky()
+
 
 class EmpiricalCovariance(ABC):
     # emcee uses multiprocessing, which hates huge objects being passed around
@@ -120,7 +243,11 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
     def create_sampler(self):
         def sampler(*args, **kwargs):
             return np.random.randn(1) * self.noise_level, None
-        sampling_object = GaussianNoiseSampler(sampler)
+        sampling_object = GaussianNoiseSampler(  # type: ignore[arg-type]
+            receivers=None,  # not used in scalar case
+            data_vector_length=1,
+            cov_blocks=[np.array([[self.noise_level ** 2]])],
+        )
         return sampling_object
 
 class DiagonalEmpiricalCovariance(EmpiricalCovariance):
@@ -191,10 +318,15 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
     def create_sampler(self):
         def sampler(*args, **kwargs):
             return np.random.randn(self.covariance_matrix.shape[0]) * np.sqrt(self.covariance_matrix), self.station_component_covariances
-        sampling_object = GaussianNoiseSampler(sampler)
+        # Diagonal case keeps previous simple sampler behaviour.
+        sampling_object = GaussianNoiseSampler(  # type: ignore[arg-type]
+            receivers=None,
+            data_vector_length=self.covariance_matrix.shape[0],
+            cov_blocks=[np.diag(self.covariance_matrix)],
+            station_component_covariances=self.station_component_covariances,
+        )
+        sampling_object.sampler = sampler
         return sampling_object
-
-from scipy.linalg import toeplitz, solve_toeplitz
 
 def parallel_execution(inputs, func, num_jobs = 20):
     if num_jobs in [None, 0 , 1]:
@@ -250,33 +382,20 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
 
         @staticmethod
         def quadratic_form(residuals, toeplitz_cols, block_size):
-            """
-            residuals: shape (n_blocks * block_size,)
-            toeplitz_cols: shape (n_blocks, block_size)
-            """
-            # reshape to (n_blocks, block_size)
-            reshaped = residuals.reshape(-1, block_size)          # (B, N)
-
-            # batched solve: T_i x_i = r_i for all i
-            # c_or_cr has shape (B, N); this uses batched Toeplitz solves
-            y = solve_toeplitz((toeplitz_cols, toeplitz_cols), reshaped)  # (B, N)
-
-            # sum x_i^T y_i over blocks
-            total = np.einsum("ij,ij->", reshaped, y)
+            reshaped = residuals.reshape(-1, block_size)
+            total = 0.0
+            for c, x in zip(toeplitz_cols, reshaped):
+                y = solve_toeplitz((c, c), x)
+                total += x @ y
             return -0.5 * total
 
         @staticmethod
         def quadratic_form_per_block(residuals, toeplitz_cols, block_size):
-            """
-            Same as quadratic_form, but return per-sample value.
-            """
-            reshaped = residuals.reshape(-1, block_size)          # (B, N)
-            y = solve_toeplitz((toeplitz_cols, toeplitz_cols), reshaped)  # (B, N)
-
-            # value per block: -0.5 * x_i^T y_i, shape (B,)
-            vals = -0.5 * np.einsum("ij,ij->i", reshaped, y)
-
-            # repeat per element in the block, as before
+            reshaped = residuals.reshape(-1, block_size)
+            vals = []
+            for c, x in zip(toeplitz_cols, reshaped):
+                y = solve_toeplitz((c, c), x)
+                vals.append(-0.5 * (x @ y))
             return np.repeat(vals, block_size)
 
         @staticmethod
@@ -328,28 +447,29 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
         def create_sampler(self, scale=1e9):
 
             if hasattr(self, 'covariance_matrix_arrays') and self.covariance_matrix_arrays is not None:
-                scaled_covs = [(block) for block in self.covariance_matrix_arrays]
-            elif self.toeplitz_cols is not None:
-                scaled_covs = [toeplitz(c) for c in self.toeplitz_cols]
+                # Full covariance blocks already present (e.g. empirical/theory).
+                cov_blocks = [block for block in self.covariance_matrix_arrays]
+                sampler = GaussianNoiseSampler(
+                    receivers=self.receivers,
+                    data_vector_length=self.data_vector_length,
+                    cov_blocks=cov_blocks,
+                    station_component_covariances=getattr(self, 'station_component_covariances', None),
+                )
+            elif getattr(self, 'toeplitz_cols_list', None) is not None:
+                # Build from stored Toeplitz columns.
+                toeplitz_cols = self.toeplitz_cols_list
+                cov_blocks = [toeplitz(c) for c in toeplitz_cols]
+                sampler = GaussianNoiseSampler(
+                    receivers=self.receivers,
+                    data_vector_length=self.data_vector_length,
+                    toeplitz_cols=toeplitz_cols,
+                    cov_blocks=cov_blocks,
+                    station_component_covariances=getattr(self, 'station_component_covariances', None),
+                )
             else:
                 raise ValueError("No covariance matrix available for sampling")
 
-            # Ls = [np.linalg.cholesky(block + np.eye(block.shape[0]) * EPS) for block in scaled_covs]
-            Ls = [np.linalg.cholesky(block) for block in scaled_covs]
-            
-            block_sizes = [block.shape[0] for block in scaled_covs]
-
-            def sampler(*args, **kwargs):
-                noise_vectors = []
-                for L, n in zip(Ls, block_sizes):
-                    z = np.random.randn(n)
-                    noise_vectors.append(L @ z)
-                noise_vector = np.concatenate(noise_vectors)
-                # noise_vector /= scale   # rescale back to physical units
-                return noise_vector, None # self.station_component_covariances
-
-            return GaussianNoiseSampler(sampler)
-
+            return sampler
 
 class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
     """
@@ -382,7 +502,7 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
         lags = np.arange(data_vector_length)
         gamma_vals = np.array([self.gamma_bandpass(t,sigma_sqr_internal, freqs) for t in lags])
         
-        # Jitter
+        # Jitter / shrinkage
         gamma_vals[0] += 0.01 * gamma_vals[0]
         
         return gamma_vals
