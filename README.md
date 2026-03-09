@@ -1,6 +1,15 @@
 ## Full-waveform seismic source inversion using simulation-based inference
 
-This is the official repo used to produce the results in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238).
+Improving moment tensor solutions by accounting for non-Gaussian data and theory errors in full waveform data using machine learning. 
+
+This is the official repo used to produce the results in [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112) and Saoulis et al. 2026 (in prep.).
+
+
+### NEW: theory error example
+
+After installation (see below), try running the minimal example to perform SBI on the LV2 SoCal Long Valley Caldera event:
+
+[examples/theory_errors_LV2.ipynb](examples/theory_errors_LV2.ipynb)
 
 ## Table of Contents
 
@@ -13,9 +22,9 @@ This is the official repo used to produce the results in [Saoulis et al. (2024)]
 
 Simulation-based inference (SBI) uses machine learning (ML) to build empirical models of key quantities in Bayesian inference. For example, SBI can train neural density estimators (NDEs) to build probabilistic models of the likelihood (which encodes a model of the data errors) or the posterior distribution explicitly. 
 
-Seismic waveform data contains complicated noise that common Gaussian likelihood assumptions fail to adequately model. This package uses the [`sbi`](https://github.com/sbi-dev/sbi) library to build, train, and sample from NDEs, which then serve as empirical surrogates of the likelihood. 
+Seismic waveform data contains complicated noise and theory errors that common Gaussian likelihood assumptions fail to adequately model. This package uses the [`sbi`](https://github.com/sbi-dev/sbi) library to build, train, and sample from NDEs, which then serve as empirical surrogates of the likelihood. 
 
-Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/), though `seismo-sbi` is designed to be forward model agnostic.
+Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic.
 
 ### `seismo-sbi` workflow
 
