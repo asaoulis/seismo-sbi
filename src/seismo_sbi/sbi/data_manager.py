@@ -64,7 +64,7 @@ class DataManager:
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
                 priors = tuple(real_event_data['priors'])
-            self.data_loader.data_length = self.data_length
+            # self.data_loader.data_length = self.data_length
             D = self.load_simulation_vector(real_event_path)
             covariance_data = self.load_noise_parametrisation_data(real_event_path)
             # self.data_loader.data_length = None
@@ -80,15 +80,50 @@ class DataManager:
         return real_jobs
 
     @error_handling_wrapper(num_attempts=3)
-    def compute_compression_data_from_stencil(self, model_parameters : ModelParameters):
+    def compute_compression_data_from_stencil(self, model_parameters : ModelParameters, use_fiducial=True, **kwargs):
 
         with tempfile.TemporaryDirectory() as stencil_outputs_folder:
             
             score_compression_data = self.dataset_compressor.run_derivative_stencil_for_compression_data(
                                             model_parameters,
-                                            Path(stencil_outputs_folder)
+                                            Path(stencil_outputs_folder),
+                                            use_fiducial=use_fiducial,
+                                            **kwargs
                                         )
         return score_compression_data
+
+    def compute_required_compression_data(
+        self,
+        model_parameters: ModelParameters,
+        compression_methods,
+        simulator_wrapper,
+        simulation_parameters,
+        skip_cov_gradients=True,
+    ):
+        from copy import deepcopy
+        compression_method_details = [cm[0] for cm in compression_methods]
+        extra_gradients = None
+
+        score_compression_data = self.compute_compression_data_from_stencil(
+            model_parameters,
+        )
+
+        if "theory_optimal_score" in compression_method_details:
+            simulator_config = ("cps_covariance", simulator_wrapper.simulator)
+            covariance_simulator = simulator_wrapper.select_and_initialise_simulator(
+                simulator_config, simulation_parameters
+            )
+
+            dummy_datamanager = deepcopy(self)
+            dummy_datamanager.dataset_compressor.simulator = (
+                covariance_simulator.execute_sim_and_save_outputs
+            )
+            extra_gradients = dummy_datamanager.compute_compression_data_from_stencil(
+                model_parameters, use_fiducial=False, skip_gradients=skip_cov_gradients
+            )
+
+        return score_compression_data, extra_gradients
+
     
     @error_handling_wrapper(num_attempts=3)
     def compute_hessian(self, score_compression_data, model_parameters : ModelParameters):

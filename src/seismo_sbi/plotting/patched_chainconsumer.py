@@ -153,7 +153,7 @@ class CustomPlotter(Plotter):
 
         axl = axes.ravel().tolist()
         summary = self.parent.config["summary"]
-        summary=True
+        summary=False
         if summary is None:
             summary = len(parameters) < 5 and len(self.parent.chains) == 1
         if len(chains) == 1:

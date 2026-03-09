@@ -10,20 +10,21 @@ from seismo_sbi.plotting.parameters import ParameterInformation, DegreeKMConvert
 from seismo_sbi.instaseis_simulator.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
-
+from seismo_sbi.cps_simulator.compatibility import load_velocity_model
 class InvalidConfiguration(Exception):
     pass
 
 class SBI_Configuration:
 
-    parameter_types = ["source_location", "earthquake_magnitude", "moment_tensor"]
+    parameter_types = ["source_location", "earthquake_magnitude", "moment_tensor", "velocity_model"]
 
     param_names_map = {"source_location": ["latitude", "longitude", "depth", "time_shift"],
                         "moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"],
-                        "earthquake_magnitude": ["earthquake_magnitude"]}
+                        "earthquake_magnitude": ["earthquake_magnitude"],
+                        "velocity_model": ["velocity_model"]}
 
-    compression_types = ["optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
-    test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian']
+    compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
+    test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
 
     
     def __init__(self) -> None:
@@ -32,6 +33,8 @@ class SBI_Configuration:
 
         self.model_parameters = ModelParameters()
         self.sim_parameters = None
+        # compression_methods is a list of (full_key, options) where full_key is
+        # the final compressor name used everywhere, e.g. 'optimal_score_filtered_block'
         self.compression_methods = []
 
         self.dataset_parameters = None
@@ -63,7 +66,7 @@ class SBI_Configuration:
     def process_configuration_data(self, config):
         for name, parsing_callable in self._parsing_callables.items():
             if name == 'job_options':
-                subconfig = {key: value for key, value in config.items() if not isinstance(value, dict)}
+                subconfig = {key: value for key, value in config.items() if not(isinstance(value, dict) or isinstance(value, list))}
             else:
                 subconfig = config[name]
             parsing_callable(subconfig)
@@ -89,7 +92,10 @@ class SBI_Configuration:
         for parameter_type in nuisance_config.keys():
             if parameter_type in SBI_Configuration.parameter_types:
                 parameter_values = nuisance_config[parameter_type] 
-                self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
+                if parameter_type == 'velocity_model':
+                    self.model_parameters.nuisance[parameter_type] = load_velocity_model(parameter_values["fiducial"])
+                else:
+                    self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
                 self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
             else:
                 allowed_types = ', '.join(SBI_Configuration.parameter_types)
@@ -114,23 +120,67 @@ class SBI_Configuration:
         seismic_context_config = copy(config)
         receivers_details = seismic_context_config.pop("stations_path")
         receiver_component_details = seismic_context_config.pop("station_components_path")
-        seismic_context_config["receivers"] = Receivers(receivers_details, receiver_component_details)
+        receiver_time_shifts_details = seismic_context_config.pop("station_time_shifts_path", None)
+        seismic_context_config["receivers"] = Receivers(receivers_details, receiver_component_details, receiver_time_shifts_details)
 
         self.sim_parameters = SimulationParameters(**seismic_context_config)
 
     def parse_compression_options(self, config):
 
+        """Parse compression section into fully-qualified compressor keys.
+
+        Example YAML:
+
+        compression:
+          - optimal_score:
+              filtered_block: '/path/to/noise'
+          - optimal_score:
+              empirical_diagonal: '/path/to/noise'
+
+        becomes
+
+        self.compression_methods = [
+            ("optimal_score_filtered_block", {"type": "optimal_score", "covariance": "filtered_block", "path": "/path/to/noise"}),
+            ("optimal_score_empirical_diagonal", {"type": "optimal_score", "covariance": "empirical_diagonal", "path": "/path/to/noise"}),
+        ]
+        """
         compression_config = config
         self.compression_methods = []
-        for compression_type, options in compression_config.items():
-            if compression_type in SBI_Configuration.compression_types:
-                self.compression_methods.append((compression_type, options))
-            else:
+
+        # Normalise YAML into a list of (raw_type, raw_options)
+        if isinstance(compression_config, dict):
+            compression_list = list(compression_config.items())
+        else:
+            compression_list = []
+            for full_dict in compression_config:
+                name = list(full_dict.keys())[0]
+                options = full_dict[name]
+                compression_list.append((name, options))
+
+        for raw_type, raw_options in compression_list:
+            if raw_type not in SBI_Configuration.compression_types:
                 allowed_types = ', '.join(SBI_Configuration.compression_types)
-                raise InvalidConfiguration(f"Invalid compression type {compression_type}. Only [ {allowed_types} ] allowed")
-                
-    
-    
+                raise InvalidConfiguration(f"Invalid compression type {raw_type}. Only [ {allowed_types} ] allowed")
+
+            # For covariance-based compressors (e.g. optimal_score) we expect a
+            # single-entry dict giving the covariance option and its path.
+            if raw_type == "optimal_score":
+                if not isinstance(raw_options, dict) or len(raw_options) != 1:
+                    raise InvalidConfiguration(
+                        "optimal_score entries must be of the form:\n"
+                        "  - optimal_score:\n      <covariance_option>: <path>"
+                    )
+                cov_name, cov_path = list(raw_options.items())[0]
+                full_key = f"{raw_type}_{cov_name}"
+                options = {"type": raw_type, "covariance": cov_name, "path": cov_path}
+                self.compression_methods.append((full_key, options))
+            else:
+                # Non-covariance compressors keep their raw options and use the
+                # raw type as the full key.
+                full_key = raw_type
+                options = {"type": raw_type, **(raw_options or {})}
+                self.compression_methods.append((full_key, options))
+
     def parse_sbi_config(self, config):
         inference_config = config
         self.sbi_method = inference_config["sbi"]["method"]

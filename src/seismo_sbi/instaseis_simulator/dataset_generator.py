@@ -9,6 +9,7 @@ import numpy as np
 
 from seismo_sbi.sbi.configuration import InvalidConfiguration, ModelParameters
 from seismo_sbi.sbi.configuration import SBI_Configuration
+from ..cps_simulator.compatibility import load_velocity_model
 
 import contextlib
 from tqdm import tqdm
@@ -68,12 +69,19 @@ class ParallelSimulationRunner(ABC):
     def run_parallel_simulations(self, simulation_job_args_list):
 
         if self.num_parallel_jobs not in [0, 1]:
-            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))) as progress_bar:
-                with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
-                    joblib.Parallel()(
-                        joblib.delayed(self.simulator)(*simulation_job_args) for
-                            simulation_job_args in simulation_job_args_list
-                    )
+            try:
+                with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))) as progress_bar:
+                    with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
+                        joblib.Parallel()(
+                            joblib.delayed(self.simulator)(*simulation_job_args) for
+                                simulation_job_args in simulation_job_args_list
+                        )
+            except Exception as exc:
+                print("Parallel simulations failed. Exiting.")
+                raise exc
+            finally:
+                from joblib.externals.loky import get_reusable_executor
+                get_reusable_executor().shutdown(wait=True, kill_workers=True)
         else:
             for simulation_job_args in simulation_job_args_list:
                 self.simulator(*simulation_job_args)
@@ -110,8 +118,20 @@ def gaussian_sampler(bounds, num_samples):
 def transform_sampling_func(sampling_func, transform_func):
     def wrapper(*args, **kwargs):
         for value in sampling_func(*args, **kwargs):
-            value = [np.array([v]) if np.isscalar(v) else v for v in value]
-            yield transform_func(np.concatenate(value))
+            flat = []
+            for v in value:
+                if np.isscalar(v):
+                    flat.append(v)
+                elif isinstance(v, (list, tuple)):
+                    flat.extend(v)
+                elif isinstance(v, np.ndarray):
+                    if v.ndim == 1:
+                        flat.extend(v)
+                    else:
+                        flat.append(v)
+                else:
+                    flat.append(v)  # fallback for unknown types
+            yield transform_func(np.array(flat, dtype=object))
     return wrapper
 
 class MomentTensorLogScaleHomogeneous:
@@ -203,6 +223,45 @@ def truncated_gaussian_sampler(bounds, num_samples):
     for sample in sampler.sampler(num_samples):
         yield sample
 
+from seismo_sbi.cps_simulator.CPS import perturb_model
+from seismo_sbi.cps_simulator.smooth_perturbations import perturb_cps_model
+
+class VelocityModelSampler:
+    perturbation_methods = {
+        "default": perturb_model,
+        "smooth": perturb_cps_model
+    }
+    
+    def __init__(self, velocity_model, kappa, num_samples, *args):
+        self.velocity_model = velocity_model
+        self.kappa = kappa
+        self.num_samples = num_samples
+        # check of first arg is "smooth"
+        self.kwargs = {}
+        if len(args) > 0 and args[0] == "smooth":
+            self.perturbation_function = self.perturbation_methods["smooth"]
+            self.kwargs = {'corr_length_km': 5.0,
+                           'std_vp': kappa/100,
+                           'std_vs': kappa/100,}
+            print(f"Using smooth perturbations with kappa={kappa}")
+        else:
+            self.perturbation_function = self.perturbation_methods["default"]
+            self.kwargs['kappa'] = kappa
+
+    def __iter__(self):
+        for _ in range(self.num_samples):
+            yield self.perturbation_function(self.velocity_model, **self.kwargs)
+            # yield self.per(self.velocity_model, **self.kwargs)
+
+def velocity_model_sampler(velocity_model_args, num_samples):
+    """
+    Returns a generator of perturbed velocity models.
+    """
+    velocity_model_path, kappa, *options = velocity_model_args
+    velocity_model = load_velocity_model(velocity_model_path)
+    sampler = iter(VelocityModelSampler(velocity_model, kappa, num_samples, *options))
+    return sampler
+
 
 class DatasetGenerator(ParallelSimulationRunner):
 
@@ -212,7 +271,8 @@ class DatasetGenerator(ParallelSimulationRunner):
                           "gaussian"        : gaussian_sampler,                     
                           "moment tensor log prior"   : MomentTensorLogScaleHomogeneous.sampler,
                           "constant": constant_sampler,
-                          "truncated gaussian": truncated_gaussian_sampler}
+                          "truncated gaussian": truncated_gaussian_sampler,
+                          "velocity model": velocity_model_sampler}
 
     def __init__(self, simulator, output_base_path, num_parallel_jobs=1):
         super().__init__(simulator, num_parallel_jobs)
@@ -248,7 +308,7 @@ class DatasetGenerator(ParallelSimulationRunner):
 
 
         simulation_job_args_list = [input_config for input_config in input_generator]
-
+        # print(simulation_job_args_list[::25])
         self.run_parallel_simulations(simulation_job_args_list)
     
     def run_predefined_batch(self, thetas, indices, parameters : ModelParameters):

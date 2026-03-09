@@ -37,6 +37,7 @@ class NoiseDatabaseGenerator:
         else:
             noise_window_string_id = name
         output_path = base_output_path / f'{noise_window_string_id}.h5'
+        print(f"Processing noise window {noise_window_string_id}...", flush=True)
         try:
             noise_data = self.collect_noise_generator(noise_window)
         except Exception as e:

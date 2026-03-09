@@ -11,7 +11,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi.pipeline import MLEEstimatePipeline
 from seismo_sbi.sbi import utils as utils
 
 def parse_arguments():
@@ -36,8 +36,7 @@ def main():
 
     ### Start SBI Pipeline
 
-    Pipeline = SingleEventPipeline if config.pipeline_type == 'single_event' else MultiEventPipeline
-    Pipeline = VaryDatasetSizeEventPipeline if config.pipeline_type == 'vary_dataset_size' else Pipeline
+    Pipeline = MLEEstimatePipeline
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
     sbi_pipeline.compression_methods = config.compression_methods
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
@@ -56,23 +55,10 @@ def main():
     job_data = sbi_pipeline.create_job_data(test_jobs_paths, config.real_event_jobs)
 
     results_generator = sbi_pipeline.run_compressions_and_inversions(
-        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters, do_plots = not config.plotting_options['disable_plotting'])
+        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters)
     
-    output_path = Path(config.pipeline_parameters.output_directory) / 'jobs' / config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    if config.plotting_options['disable_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_results_saving(job_data, results_generator, output_path)
-    elif config.plotting_options['async_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_plotting(sbi_pipeline, results_generator)
-    else:
-        job_results, inversion_results = utils.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
-
-    with open(output_path / "inversion_results.pkl", 'wb') as f:
-        pickle.dump((job_data, job_results, inversion_results), f)
-            
-    sbi_pipeline.plot_comparisons(inversion_results, config.plotting_options['test_posteriors']['chain_consumer'])
-
-
+    for job_result, inversion_result in results_generator:
+        pass
+    
 if __name__ == '__main__':
     main()

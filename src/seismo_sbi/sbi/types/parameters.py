@@ -2,7 +2,7 @@
 """
 
 import numpy as np
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Optional
 from copy import deepcopy
 
 from seismo_sbi.instaseis_simulator.receivers import Receivers
@@ -28,11 +28,18 @@ class SimulationParameters(NamedTuple):
     syngine_address : str
     sampling_rate: float
     processing : dict
+    simulation_type : str = "instaseis"
+    cps_GFs_path : str = None
+    cps_GFs_fiducial_path : str = None
+    cps_multi_models_path: Optional[str] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
 
     max_iterations : int
     damping_factor : float
+    dynamic_damping : bool = True
+    mcmc_chain_for_mle : int = 0
+    use_best_model : bool = True  # Use the lowest-chi^2 model at the end
 
 class DatasetGenerationParameters(NamedTuple):
 
@@ -56,12 +63,19 @@ class ModelParameters:
         self.names = {}
         self.information = {}
 
-        self._parameters_register = {"theta_fiducial": self.theta_fiducial,
-                                    "stencil_deltas": self.stencil_deltas,
-                                    "bounds": self.bounds,
-                                    "nuisance": self.nuisance,
-                                    "names": self.names,
-                                    "information": self.information}
+        self._parameter_names = [
+            "theta_fiducial",
+            "stencil_deltas",
+            "bounds",
+            "nuisance",
+            "names",
+            "information",
+        ]
+
+    @property
+    def _parameters_register(self):
+        """Always return up-to-date mapping of parameter types → current attribute values."""
+        return {name: getattr(self, name) for name in self._parameter_names}
 
     def parameter_to_vector(self, parameter_type, only_theta_fiducial=False):
 
@@ -74,6 +88,14 @@ class ModelParameters:
         if parameter_type != "information":
             flattened_parameters = np.array(flattened_parameters)
         return flattened_parameters
+
+    def get_parameter_values(self, param_name):
+        """Return values for a specific parameter name, searching across dicts."""
+        for container_name in ("theta_fiducial", "nuisance"):
+            container = getattr(self, container_name)
+            if param_name in container:
+                return container[param_name]
+        raise KeyError(f"Parameter '{param_name}' not found in theta_fiducial or nuisance")
 
     def vector_to_parameters(self, vector, parameter_type):
         i = 0
@@ -91,15 +113,21 @@ class ModelParameters:
         for param, parameter_value in copied_map.items():
             inputs[param] = np.zeros(len(parameter_value))
             for j in range(len(parameter_value)):
-                inputs[param][j] = vector[i]
+                value = vector[i]
+                inputs[param][j] = value
                 i +=1
         if only_theta_fiducial:
             return inputs
         copied_map = deepcopy(self._parameters_register['nuisance'])
         for param, parameter_value in copied_map.items():
-            inputs[param] = np.zeros(len(parameter_value))
-            for j in range(len(parameter_value)):
-                inputs[param][j] = vector[i]
+            parameter_value = np.asarray(parameter_value)
+            if np.isscalar(parameter_value) or parameter_value.ndim < 2:
+                inputs[param] = np.zeros_like(parameter_value)
+                for j in range(len(parameter_value)):
+                    inputs[param][j] = vector[i]
+                    i +=1
+            else:
+                inputs[param] = vector[i]
                 i +=1
         return inputs
 

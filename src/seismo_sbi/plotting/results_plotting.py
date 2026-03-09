@@ -46,6 +46,8 @@ class SBIPipelinePlotter:
 
         plot_path = figure_path / f"./raw_{single_job.job_name}.png" if savefig else None
         misfits_plotter.raw_synthetic_misfits(data_vector, synthetics, figname=plot_path)
+        print("Plotting raw misfits... ordered stacked traces.")
+        misfits_plotter.plot_ordered_stacked_traces(data_vector, synthetics, (*event_location, 20), figname=f"{figure_path}/stacked_{single_job.job_name}.png" if savefig else None)
         try:
             if not only_raw:
                 plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
@@ -68,23 +70,32 @@ class SBIPipelinePlotter:
                 plot_path.parent.mkdir(parents=True, exist_ok=True)
             self.posterior_plotter.plot_beachball_samples(inversion_data, plot_path=plot_path)
 
-    def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True):
-        plot_path = self.base_output_path / f"./{base_figure_path}" / f"./{test_name}.png"  if savefig else None
+    def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True, **kwargs):
+        lune_kwargs, reparam_kwargs = kwargs.get("lune_kwargs", {}), kwargs.get("reparam_kwargs", {})
+        plot_path = self.base_output_path / f"./{base_figure_path}" / f"./{test_name}.svg"  if savefig else None
         if savefig:
             plot_path.parent.mkdir(parents=True, exist_ok=True)
+        print("Added lune kwargs")
 
         self.posterior_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, figsave=plot_path)
-
         if "moment_tensor" in self.parameters.names.keys():
-            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./nodal_params_{test_name}.png"  if savefig else None
-            self.reparametrised_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, inverse=True, figsave=plot_path)
+            # Scatter lune plot
+            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./lune_{test_name}.svg"  if savefig else None
+            self.posterior_plotter.plot_lunes(inversion_data_dict, figsave=plot_path, **lune_kwargs)
+            # KDE lune plot
+            plot_kde_path = self.base_output_path / f"./{base_figure_path}" / f"./lune_kde_{test_name}.svg"  if savefig else None
+            self.posterior_plotter.plot_lunes_kde(inversion_data_dict, figsave=plot_kde_path, **lune_kwargs)
+            # Nodal parameter corner plot
+            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./nodal_params_{test_name}.svg"  if savefig else None
+            self.reparametrised_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, inverse=False, figsave=plot_path, **reparam_kwargs)
 
     def plot_compression(self, raw_compressed_dataset, compressed_estimate = None, job_name=None):
         plotting_base_output_path = self.base_output_path
-        if job_name is not None:
+        figname = None
+        if job_name:
             plotting_base_output_path = plotting_base_output_path / 'compression'
-        plotting_base_output_path.mkdir(exist_ok=True, parents=True)
+            figname = (plotting_base_output_path / f"./{job_name}.png").resolve()
+            plotting_base_output_path.mkdir(exist_ok=True, parents=True)
 
-        figname = (plotting_base_output_path / f"./{job_name}.png").resolve()
         self.posterior_plotter.plot_compression_errors(raw_compressed_dataset[:, :2*self.num_dim], compressed_estimate, figname=figname)
-    
+

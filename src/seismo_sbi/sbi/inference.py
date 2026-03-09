@@ -32,7 +32,7 @@ class SBI_Inference:
         self.prior = utils.BoxUniform(low=np.zeros((self.num_dim)), high=np.ones((self.num_dim)))
 
         if self.inference_mode == 'posterior':
-            inference = SNPE(prior=self.prior)
+            inference = SNPE(prior=self.prior, density_estimator='maf')
         elif self.inference_mode == 'likelihood':
             inference = SNLE(density_estimator='maf')
         else:

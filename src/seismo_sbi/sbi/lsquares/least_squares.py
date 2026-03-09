@@ -1,9 +1,16 @@
-
 from pathlib import Path
 from copy import deepcopy
 import tempfile
 
-from tqdm import tqdm
+# Optional progress wrapper: use tqdm if available, else no-op
+try:
+    from tqdm import tqdm as _tqdm
+    def iter_progress(iterable, desc=None, total=None):
+        return _tqdm(iterable, desc=desc, total=total)
+except Exception:
+    def iter_progress(iterable, desc=None, total=None):
+        return iterable
+
 import numpy as np
 
 from ..compression.derivative_stencil import DerivativeStencil
@@ -13,53 +20,63 @@ from ..types.parameters import IterativeLeastSquaresParameters
 
 class IterativeLeastSquaresSolver:
 
-    def __init__(self, sim_parameters, model_parameters, dataloader, simulator, least_squares_configuration : IterativeLeastSquaresParameters, num_parallel_jobs = 1):
+    def __init__(self, sim_parameters, compression_methods, model_parameters, data_manager, simulator_wrapper, least_squares_configuration : IterativeLeastSquaresParameters, num_parallel_jobs = 1):
         self.sim_parameters = sim_parameters
         self.model_parameters = model_parameters
+        self.compression_methods = compression_methods
 
-        self.data_loader = dataloader
-        self.simulator = simulator
+        self.data_manager = data_manager
+        self.data_loader = data_manager.data_loader
+        self.stencil_args = (compression_methods, simulator_wrapper, self.sim_parameters)
+        self.simulator = simulator_wrapper.simulator
         self.least_squares_configuration = least_squares_configuration
 
         self.num_parallel_jobs = num_parallel_jobs
 
     @error_handling_wrapper(num_attempts=3)
-    def solve_least_squares(self, observation, compressor, single_step = True):
-        iterations = self.least_squares_configuration.max_iterations if not single_step else 1
+    def solve_least_squares(self, observation, compressor, single_step = True, return_history = False):
+        iterations = self.least_squares_configuration.max_iterations if not single_step else 2
         damping = self.least_squares_configuration.damping_factor if not single_step else 0
+        adaptive = self.least_squares_configuration.dynamic_damping
 
         misfit = np.inf
         new_parameters = deepcopy(self.model_parameters)
         model_params = new_parameters.parameter_to_vector('theta_fiducial', True)
         true_priors = deepcopy(compressor.prior_mean), deepcopy(compressor.prior_covariance)
+
+        # Track the best (lowest chi^2) model encountered during iterations
+        best_chi2 = np.inf
+        best_params_vec = None
+        best_iter = -1
+        all_steps = [model_params]
         
-        for _ in tqdm(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
+        for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             # Step 1: Compute gradients
 
-            score_compression_data = self._compute_gradients(new_parameters)
+            score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
             scaling_factors = self._create_scaling_vector(new_parameters)
+            scaling_factors = np.ones_like(scaling_factors)
 
-            # Step 2: Compute the synthetic vector
-            parameter_map = {**self.model_parameters.vector_to_parameters(model_params, 'theta_fiducial'),
-                             **self.model_parameters.nuisance}
-            synthetic = self.data_loader.convert_sim_data_to_array(
-                    {"outputs": self.simulator.run_simulation(parameter_map)[1]}
-                ).flatten()
-            scaled_gradients = score_compression_data.data_parameter_gradients / scaling_factors[:, np.newaxis] 
-            score_compression_data = score_compression_data._replace(data_parameter_gradients = scaled_gradients)
-            score_compression_data = score_compression_data._replace(data_fiducial = synthetic)
-            score_compression_data = score_compression_data._replace(theta_fiducial = model_params * scaling_factors)
             if true_priors[0] is not None:
                 scaled_priors = (true_priors[0] * scaling_factors, true_priors[1] * scaling_factors**2)
                 compressor.set_priors(scaled_priors)
+            if extra_gradients is not None:
+                compressor.C.set_covariance(extra_gradients)
             compressor.set_compression_variables(score_compression_data)
-
+            
             misfit_new = compressor.compute_misfit(observation)
-            if misfit_new > 0.99 * misfit:
-                damping *= 1.2
-            else:
-                damping /= 1.5
-            misfit = misfit_new
+            # Keep track of best model before applying update
+            if misfit_new < best_chi2:
+                best_chi2 = misfit_new
+                best_params_vec = np.copy(model_params)
+                best_iter = it
+            
+            if adaptive and not single_step:
+                if misfit_new > 0.99 * misfit:
+                    damping *= 1.2
+                else:
+                    damping /= 1.5
+                misfit = misfit_new
             print(f"chi^2: {misfit_new:.5f}, damping lambda: {damping:.3f}", flush=True)
             
             # Step 4: Compute the update step using the Gauss-Newton method
@@ -74,18 +91,17 @@ class IterativeLeastSquaresSolver:
             )
             print(update, flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
+            all_steps.append(deepcopy(model_params))
 
-        final_score_compression_data = self._compute_gradients(new_parameters)
-        theta_MLE = model_params
-        theta_MLE_map =  {**new_parameters.vector_to_parameters(model_params, 'theta_fiducial'),
-                          **self.model_parameters.nuisance}
-        D_MLE = self.data_loader.convert_sim_data_to_array(
-                    {"outputs": self.simulator.run_simulation(theta_MLE_map)[1]}
-                ).flatten()
-        final_score_compression_data = final_score_compression_data._replace(data_fiducial = D_MLE)
-        final_score_compression_data = final_score_compression_data._replace(theta_fiducial = theta_MLE)
-
-        return final_score_compression_data
+        # Optionally use the best (lowest chi^2) model found during the iterations
+        if self.least_squares_configuration.use_best_model and best_params_vec is not None:
+            new_parameters.theta_fiducial = new_parameters.vector_to_parameters(best_params_vec, 'theta_fiducial')
+            print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
+        final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
+        if not return_history:
+            return final_score_compression_data, extra_gradients
+        else:
+            return final_score_compression_data, extra_gradients, all_steps
 
     @error_handling_wrapper(num_attempts=3)
     def _compute_gradients(self, model_parameters):

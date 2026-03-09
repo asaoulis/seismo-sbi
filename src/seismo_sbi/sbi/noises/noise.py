@@ -10,6 +10,6 @@ class NoisySimulator:
     def simulate(self, simulation_args, noise_args, seed):
         return self.simulator_function(simulation_args) + self.noise_source(noise_args)
 
-def gaussian_noise(scale, size, seed):
+def gaussian_noise(scale, size, seed, **kwargs):
     np.random.seed(seed)
     return np.random.normal(loc=0, scale = scale, size=size)

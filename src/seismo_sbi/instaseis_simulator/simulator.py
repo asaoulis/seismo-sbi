@@ -11,8 +11,7 @@ from .wrapper import GenericPointSource, InstaseisDBQuerier, SimpleMomentTensor,
     GeneralMomentTensor, SourceLocation
 from seismo_sbi.sbi.configuration import InvalidConfiguration
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
-
-import instaseis
+from .utils import apply_station_time_shifts
 
 
 class Simulator(ABC):
@@ -25,12 +24,12 @@ class Simulator(ABC):
         self.synthetics_processing = synthetics_processing
 
     @abstractmethod
-    def generic_point_source_simulation(self, source: GenericPointSource):
+    def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
         pass
 
-    def execute_sim_and_save_outputs(self, source_params, output_path):
+    def execute_sim_and_save_outputs(self, source_params, output_path, **kwargs):
 
-        inputs, outputs = self.run_simulation(source_params)
+        inputs, outputs = self.run_simulation(source_params, **kwargs)
         self.save_simulation(inputs, outputs, output_path)
 
     def save_simulation(self, inputs: GenericPointSource, outputs, output_path: str):
@@ -48,11 +47,17 @@ class Simulator(ABC):
         source_location = SourceLocation(lat, long, depth, time_shift)
         return source_location
 
-    def run_simulation(self, source_parameters):
+    def run_simulation(self, source_parameters, **kwargs):
         ## combine source parameters and nuisance parameters dictionaries
         ## into one dictionary
         combined_params = source_parameters
         source_location_params = combined_params["source_location"]
+        velocity_model_params = combined_params.pop("velocity_model", None)
+        use_fiducial = combined_params.pop("use_fiducial", None)
+        # add use_fiducial to kwargs if it doesn't exist
+        if kwargs.get("use_fiducial") is None:
+            kwargs["use_fiducial"] = use_fiducial
+
 
         source_location = self._unpack_source_location_params(source_location_params)
 
@@ -64,7 +69,9 @@ class Simulator(ABC):
             raise InvalidConfiguration(f"Source mechanism specified incorrectly. No moment tensor or earthquake magnitude specified in {combined_params.keys()}.")
 
         source = GenericPointSource(source_location, moment)
-        return source, self.generic_point_source_simulation(source)
+        all_seismograms_map = self.generic_point_source_simulation(source, velocity_model=velocity_model_params, **kwargs)
+        shifted_seismograms_map = apply_station_time_shifts(self.receivers, all_seismograms_map)
+        return source, shifted_seismograms_map
 
 
 class InstaseisSourceSimulator(Simulator):
@@ -77,7 +84,7 @@ class InstaseisSourceSimulator(Simulator):
                                                       self.synthetics_processing,
                                                        self.seismogram_length).sampling_rate)
 
-    def generic_point_source_simulation(self,  source: GenericPointSource):
+    def generic_point_source_simulation(self,  source: GenericPointSource, **kwargs):
 
         instaseis_db_querier = InstaseisDBQuerier(self.instaseis_model_loc,
                                                   self.synthetics_processing,
@@ -103,7 +110,7 @@ class FixedLocationKernelSimulator(Simulator):
         num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.trace_length = self.sensitivity_kernels.shape[1] // num_traces
 
-    def generic_point_source_simulation(self, source: GenericPointSource):
+    def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
         
         all_seismograms_map = {}
 

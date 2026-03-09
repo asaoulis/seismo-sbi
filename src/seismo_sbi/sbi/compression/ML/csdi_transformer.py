@@ -6,7 +6,7 @@ import numpy as np
 
 def get_torch_trans(heads=8, layers=1, channels=64):
     encoder_layer = nn.TransformerEncoderLayer(
-        d_model=channels, nhead=heads, dim_feedforward=64, activation="gelu"
+        d_model=channels, nhead=heads, dim_feedforward=128, activation="gelu"
     )
     return nn.TransformerEncoder(encoder_layer, num_layers=layers)
 
@@ -117,13 +117,13 @@ class ConditionalTransformer(nn.Module):
     def __init__(self, seq_len_in, station_positions, config, device, *args, **kwargs):
         super().__init__()
         self.device = device
-        self.timepoints = torch.Tensor(np.arange(seq_len_in)).to(self.device)
-        self.station_positions = station_positions.to(self.device)
+        # self.timepoints = torch.Tensor(np.arange(seq_len_in)).to(self.device)
+        self.station_positions = torch.Tensor(station_positions).to(self.device)
 
-        self.emb_time_dim = config["timeemb"]
+        # self.emb_time_dim = config["timeemb"]
         self.emb_position_dim = config["posemb"]
 
-        self.emb_total_dim = self.emb_time_dim  + self.emb_position_dim
+        self.emb_total_dim = self.emb_position_dim
 
         config["side_dim"] = self.emb_total_dim
 
@@ -158,15 +158,15 @@ class ConditionalTransformer(nn.Module):
     def get_side_info(self, X):
         B, K, L = X.shape
 
-        timepoints = self.timepoints.repeat(B,1)
-        time_embed = self.time_embedding(timepoints, self.emb_time_dim)  # (B,L,emb)
-        time_embed = time_embed.unsqueeze(2).expand(-1, -1, K, -1)
+        # timepoints = self.timepoints.repeat(B,1)
+        # time_embed = self.time_embedding(timepoints, self.emb_time_dim)  # (B,L,emb)
+        # time_embed = time_embed.unsqueeze(2).expand(-1, -1, K, -1)
 
         station_positions = self.station_positions.repeat(B,1,1)
         pos_embed = self.station_position_embedding(station_positions, self.emb_position_dim)  # (B,K,emb)
         pos_embed = pos_embed.unsqueeze(1).expand(-1, L, -1, -1)
 
-        side_info = torch.cat([time_embed, pos_embed], dim=-1)  # (B,L,K,*)
+        side_info = pos_embed # torch.cat([time_embed, pos_embed], dim=-1)  # (B,L,K,*)
         side_info = side_info.permute(0, 3, 2, 1)  # (B,*,K,L)
 
         return side_info
