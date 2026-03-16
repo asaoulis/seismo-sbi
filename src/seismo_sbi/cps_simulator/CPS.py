@@ -14,8 +14,6 @@ functions for the inversion of moment tensor and depth.
 '''
 
 ## Absolute path to CPS programs
-CPS_RPATH = '/home/alex/work/cps/PROGRAMS.330/bin'
-## Conversion from degree to meters
 DEG2M = 111.195e3
 TEN = 10
 
@@ -74,42 +72,46 @@ def perturb_model(vmodel, kappa, random_seed=None):
     #     perturb[1:3, :] *= (1 + kappa/100)
     return perturb
 
-def calc_CPS_GFs(dists_in_km,evdp_in_km,vmodel,output='DISP',
-                 dt=1,npts=512,t0=0,vred=0,wdir='.',verbose=False):
+def calc_CPS_GFs(dists_in_km, evdp_in_km, vmodel, output='DISP',
+                 dt=1, npts=512, t0=0, vred=0, wdir='.', verbose=False, cps_path=None):
     """
     Wrapper of CPS programs to calculate Green's functions in a velocity model.
-    :param dist_in_km: list of epicentra distances in km
+    :param dist_in_km: list of epicentral distances in km
     :param evdp_in_km: event depth in km
     :param vmodel: stratified velocity model where columns are thickness, 
         P-wave velocity, S-wave velocity, density, qkappa, qmu
-    :param dt: desided time samping interval
+    :param dt: desired time sampling interval
     :param npts: length of seismograms
     :param t0: reference time with respect to origin time
-    :param vred: reduction velocity to determine caculated seismograms's starttime
+    :param vred: reduction velocity to determine calculated seismograms' start time
     :param wdir: working directory
     :param verbose: display intermediate messages
+    :param cps_path: path to CPS programs
     """
+    if cps_path is None:
+        raise ValueError("CPS path must be provided dynamically.")
+
     wdir_path = Path(wdir)
-    if verbose: print (' Calculate GFs using CPS programs in', wdir)
+    if verbose: print(' Calculate GFs using CPS programs in', wdir)
     ## prepare model96 and dfile before actual calculation
-    with open(wdir_path/'dfile', 'w') as fp:
-        if verbose: print ('  - Preparing dfile')
+    with open(wdir_path / 'dfile', 'w') as fp:
+        if verbose: print('  - Preparing dfile')
         for dist in dists_in_km:
             fp.write('%.1f %.2f %d %.1f %.1f\n' % (dist, dt, npts, t0, vred))
         fp.close()
     ## prepare mod96 velocity model
-    if verbose: print ('  - Preparing model96')
-    vmodel_fname = wdir_path/'vel.mod'
+    if verbose: print('  - Preparing model96')
+    vmodel_fname = wdir_path / 'vel.mod'
     write_Model96(vmodel, vmodel_fname)
     ## actual calculation of GFs
-    if verbose: print ('  - Calculating GFs with CPS programs')
-    cmd = '%s/hprep96 -M vel.mod -d dfile -HS %.1f -HR 0.0 -EQEX -R\n' % (CPS_RPATH, evdp_in_km)
-    cmd += '%s/hspec96 > hspec96.out\n' % CPS_RPATH
-    cmd += '%s/hpulse96 -%s -p -l 1 > hpulse96.out\n'  % (CPS_RPATH, output[0])
-    cmd += '%s/f96tosac -B hpulse96.out\n' % CPS_RPATH
+    if verbose: print('  - Calculating GFs with CPS programs')
+    cmd = f'{cps_path}/hprep96 -M vel.mod -d dfile -HS {evdp_in_km} -HR 0.0 -EQEX -R\n'
+    cmd += f'{cps_path}/hspec96 > hspec96.out\n'
+    cmd += f'{cps_path}/hpulse96 -{output[0]} -p -l 1 > hpulse96.out\n'
+    cmd += f'{cps_path}/f96tosac -B hpulse96.out\n'
     cmd += 'rm -f hpulse96.out hspec96.*'
-    out = subprocess.run(cmd,stdout=subprocess.PIPE, text=True,shell=True,cwd=wdir)
-    if verbose: print (out.stdout)
+    out = subprocess.run(cmd, stdout=subprocess.PIPE, text=True, shell=True, cwd=wdir)
+    if verbose: print(out.stdout)
     ## convert GF from SAC files into an MSEED file
     gfstream = Stream()
     for sacf in sorted(wdir_path.glob('B*.sac')):
@@ -117,52 +119,49 @@ def calc_CPS_GFs(dists_in_km,evdp_in_km,vmodel,output='DISP',
         tr.stats.station = sacf.name[1:4]
         tr.stats.location = sacf.name[4:6]
         gfstream.append(tr)
-    gfstream.write(wdir_path/'GF.mseed', format='MSEED')
+    gfstream.write(wdir_path / 'GF.mseed', format='MSEED')
     cmd = 'rm -f *.sac'
-    out = subprocess.run(cmd,stdout=subprocess.PIPE, text=True,shell=True,cwd=wdir)
-    if verbose: print ('  - Calculated GF written to',wdir_path/'GF.mseed')
+    out = subprocess.run(cmd, stdout=subprocess.PIPE, text=True, shell=True, cwd=wdir)
+    if verbose: print('  - Calculated GF written to', wdir_path / 'GF.mseed')
 
-def update_with_Gtensor(objstats,vmodel,delta=None,evdp_in_km=None, filter_params=None,
-                         force_calc=True,verbose=True,rootdir='.', return_gf=True, gf_directory=None):
+def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_params=None,
+                         force_calc=True, verbose=True, rootdir='.', return_gf=True, gf_directory=None,
+                         cps_path=None):
     """
     Get Green's functions calculated by Computer Programs in Seismology (CPS).
-    The GFs will be generated on the fly if pre-caculated seismograms doesnt 
-    exist on disk. If they are, they will be readed from disk.
-    
-    The actual information to be used are from the distance fields (in km) and 
-    in event depth in the SAC files. 
-    
-    :param dist_in_km: list of epicentra distances in km
-    :param evdp_in_km: event depth in km
-    :param vmodel: stratified velocity model where columns are thickness, 
-        P-wave velocity, S-wave velocity, density, qkappa, qmu
-    :param wdir: working directory
-    :param force_calc: True to recalculate the GFs if already exists.
-    :param verbose: display intermediate messages
-    
-    :return gf_str: Obspy stream of calculated Green's functions
+
+    cps_path: path to CPS programs (bin directory). 
     """
     ## unique list of distances to compute GF by CPS
     dists = np.unique(np.round(sorted([s.distance for s in objstats]), 1))
     evdp = evdp_in_km if evdp_in_km is not None else objstats[0].event_depth
     ## generate a unique hashcode for the combination
     if gf_directory is None:
-        hashcode = get_hashcode(dists,evdp,vmodel)
-        wdir_path = Path(rootdir)/hashcode
+        hashcode = get_hashcode(dists, evdp, vmodel)
+        wdir_path = Path(rootdir) / hashcode
         ## caclulate GFs if they haven't been calculated yet or re-calculation forced
         if not wdir_path.exists(): wdir_path.mkdir(parents=True)
-        if not (wdir_path/'GF.mseed').exists() or force_calc:
-            calc_CPS_GFs(dists,evdp,vmodel,npts=2*objstats[0].window,wdir=str(wdir_path),verbose=verbose,output='DISP')
-        
+        if not (wdir_path / 'GF.mseed').exists() or force_calc:
+            calc_CPS_GFs(
+                dists,
+                evdp,
+                vmodel,
+                npts=2 * objstats[0].window,
+                wdir=str(wdir_path),
+                verbose=verbose,
+                output='DISP',
+                cps_path=cps_path,
+            )
+
         ## read sac files into an Obspy stream
-        if verbose: print ('  - Reading GF from', wdir_path/'GF.mseed')
-        gfstream = read(wdir_path/'GF.mseed', format='MSEED')
+        if verbose: print('  - Reading GF from', wdir_path / 'GF.mseed')
+        gfstream = read(wdir_path / 'GF.mseed', format='MSEED')
     else:
         wdir_path = Path(gf_directory)
         if not wdir_path.exists():
             raise FileNotFoundError(f"GF directory {gf_directory} does not exist.")
-        if verbose: print ('  - Reading GF from', wdir_path/'GF.mseed')
-        gfstream = read(wdir_path/'GF.mseed', format='MSEED')
+        if verbose: print('  - Reading GF from', wdir_path / 'GF.mseed')
+        gfstream = read(wdir_path / 'GF.mseed', format='MSEED')
     gfstream_processed = Stream()
     ## preprocess GF and cut window
     for s in objstats:
@@ -218,10 +217,10 @@ def update_with_Gtensor(objstats,vmodel,delta=None,evdp_in_km=None, filter_param
         ns = len(objstats)
         nc = 3 # ZRT
         ne = 6 # mxx, myy, mzz, mxy, mxz, myz
-        nt = int(s.window/gfstream_processed[0].stats.delta)
+        nt = int(s.window / gfstream_processed[0].stats.delta)
         # print(nt, s.window, gfstream_processed[0].stats.delta, flush=True)
         # print(np.array([tr.data.shape for tr in gfstream_processed]), flush=True)
-        gfarr = np.array([tr.data[:nt] for tr in gfstream_processed]).reshape((ns,TEN,nt))
+        gfarr = np.array([tr.data[:nt] for tr in gfstream_processed]).reshape((ns, TEN, nt))
     except Exception as ex:
         print('The length of GF function might need to be longer!')
         ## TODO: fix with with meaningful control.
@@ -262,13 +261,13 @@ def update_with_Gtensor(objstats,vmodel,delta=None,evdp_in_km=None, filter_param
     else:
         for s, obj in enumerate(objstats): obj.update({'Gtensor':gf_tensor[s]})
 
-def update_with_dGtensor(dep_array, objstats,vmodel,filter_params,delta=None,
-                         force_calc=False,verbose=False,rootdir='.'):
+def update_with_dGtensor(dep_array, objstats, vmodel, filter_params, delta=None,
+                         force_calc=False, verbose=False, rootdir='.', cps_path=None):
     tmpstats = objstats.copy()
     dGtensor = []
     for evdp in dep_array:
-        update_with_Gtensor(tmpstats,vmodel,filter_params,delta=delta,evdp_in_km=evdp,
-                             force_calc=force_calc,verbose=verbose,rootdir=rootdir)
+        update_with_Gtensor(tmpstats, vmodel, filter_params, delta=delta, evdp_in_km=evdp,
+                             force_calc=force_calc, verbose=verbose, rootdir=rootdir, cps_path=cps_path)
         dGtensor.append([obj.Gtensor for obj in tmpstats])
     dGtensor = np.array(dGtensor)
     ## update the stats

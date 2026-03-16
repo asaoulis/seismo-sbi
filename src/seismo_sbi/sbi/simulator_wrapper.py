@@ -103,7 +103,8 @@ class GeneralSimulatorWrapper:
                             receivers = simulation_parameters.receivers,
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing,
-                            gf_storage_root=simulation_parameters.cps_GFs_path,)
+                            gf_storage_root=simulation_parameters.cps_GFs_path,
+                            cps_path=getattr(simulation_parameters, 'cps_path', None),)
         elif simulator_config[0] == 'cps_precomputed':
             simulator = CPSPrecomputedSimulator(
                             fiducial_model_path=simulation_parameters.cps_GFs_fiducial_path,
@@ -111,7 +112,8 @@ class GeneralSimulatorWrapper:
                             receivers = simulation_parameters.receivers,
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing,
-                            gf_storage_root=simulation_parameters.cps_GFs_path)
+                            gf_storage_root=simulation_parameters.cps_GFs_path,
+                            cps_path=getattr(simulation_parameters, 'cps_path', None))
         elif simulator_config[0] == 'cps_multi':
             # simulator_config[1] can override and directly provide model dicts.
             if simulator_config[1] is not None:
@@ -129,6 +131,7 @@ class GeneralSimulatorWrapper:
                             receivers = simulation_parameters.receivers,
                             seismogram_duration_in_s = simulation_parameters.seismogram_duration,
                             synthetics_processing = simulation_parameters.processing,
+                            cps_path=getattr(simulation_parameters, 'cps_path', None),
                         )
         elif simulator_config[0] == 'cps_covariance':
             cps_simulator = simulator_config[1]

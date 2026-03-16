@@ -29,6 +29,7 @@ class SimulationParameters(NamedTuple):
     sampling_rate: float
     processing : dict
     simulation_type : str = "instaseis"
+    cps_path: str = None
     cps_GFs_path : str = None
     cps_GFs_fiducial_path : str = None
     cps_multi_models_path: Optional[str] = None

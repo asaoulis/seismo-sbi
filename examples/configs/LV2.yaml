@@ -13,6 +13,7 @@ seismic_context:
   seismogram_duration: 200
   sampling_rate: 1
   syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  cps_path: "/home/alex/work/cps/PROGRAMS.330/bin"
   cps_GFs_path: './data/models/LV2_perturbations/kappa_5.0'
   cps_GFs_fiducial_path: './data/models/LV2_perturbations/kappa_5.0_fiducial'
   processing:

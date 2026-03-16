@@ -25,6 +25,8 @@ def parse_arguments():
     parser.add_argument('--output_dir', '-o', type=str, help='Directory to save generated CPS perturbations.', required = False, default = None)
     # kappa levels to run
     parser.add_argument('--kappa_levels', '-k', type=str, help='Comma-separated list of kappa levels to run (e.g., "0.1,0.5,1.0").', required = False, default = "0.1,0.5,1.0")
+    # cps binary path
+    parser.add_argument('--cps_path', type=str, help='Path to CPS bin directory (containing hprep96, hspec96, hpulse96, f96tosac).', required=False, default=None)
     args = parser.parse_args()
     return args
 
@@ -61,6 +63,8 @@ def main():
         cps_output_base_dir = "kappa_" + str(kappa)
         config.sim_parameters = config.sim_parameters._replace(cps_GFs_path = str(base_dir / cps_output_base_dir),
                                                                 cps_GFs_fiducial_path = str(base_dir / (cps_output_base_dir + "_fiducial")))
+        if args.cps_path is not None:
+            config.sim_parameters = config.sim_parameters._replace(cps_path=str(args.cps_path))
     
         velocity_mod_parameters = config.model_parameters.bounds['velocity_model']
         velocity_mod_parameters[1] = kappa

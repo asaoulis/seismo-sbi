@@ -75,11 +75,12 @@ def compute_stft(x, fs=1.0, win_length=20, hop_length=10, n_fft=256, fmin=0.025,
 
 class CPSSimulator(Simulator):
     
-    def __init__(self, gf_storage_root=None, *args, **kwargs):
+    def __init__(self, gf_storage_root=None, cps_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.sensitivity_kernels = None
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.gf_storage_root = gf_storage_root
+        self.cps_path = cps_path
         self.synthetics_summary = lambda x: x
         # self.synthetics_summary = self.compute_spectrograms
     
@@ -170,7 +171,7 @@ class CPSVariableKernelSimulator(CPSSimulator):
         super().__init__(*args, **kwargs)
 
         # delete everything in gf_storage_root
-        if Path(self.gf_storage_root).exists():
+        if self.gf_storage_root is not None and Path(self.gf_storage_root).exists():
             for item in Path(self.gf_storage_root).iterdir():
                 if item.is_file():
                     item.unlink()
@@ -184,7 +185,17 @@ class CPSVariableKernelSimulator(CPSSimulator):
         seed = kwargs.get('seed', None)
         use_fiducial = kwargs.pop('use_fiducial', False)
         return update_with_Gtensor(
-            objstats, velocity_model, delta=delta, force_calc=force_calc, verbose=verbose, rootdir=rootdir, return_gf=return_gf, filter_params=self.synthetics_processing['filter'], **kwargs)
+            objstats,
+            velocity_model,
+            delta=delta,
+            force_calc=force_calc,
+            verbose=verbose,
+            rootdir=rootdir,
+            return_gf=return_gf,
+            filter_params=self.synthetics_processing['filter'],
+            cps_path=self.cps_path,
+            **kwargs,
+        )
 
 from pathlib import Path
 class CPSPrecomputedSimulator(CPSSimulator):
@@ -218,7 +229,17 @@ class CPSPrecomputedSimulator(CPSSimulator):
         if verbose:
             print(f"Using CPS data folder: {cps_data_folder}")
         return update_with_Gtensor(
-            objstats, velocity_model, delta=delta, force_calc=False, verbose=verbose, gf_directory=cps_data_folder, return_gf=return_gf, filter_params=self.synthetics_processing['filter'], **kwargs)
+            objstats,
+            velocity_model,
+            delta=delta,
+            force_calc=False,
+            verbose=verbose,
+            gf_directory=cps_data_folder,
+            return_gf=return_gf,
+            filter_params=self.synthetics_processing['filter'],
+            cps_path=self.cps_path,
+            **kwargs,
+        )
 
     def get_all_models_array(self):
         """
@@ -317,6 +338,7 @@ class MultiModelCPSSimulator(CPSSimulator):
                     seismogram_duration_in_s=self.seismogram_length,
                     synthetics_processing=self.synthetics_processing,
                     gf_storage_root=root_path,
+                    cps_path=self.cps_path,
                 )
 
             self.sub_sims.append(sim)
