@@ -5,11 +5,17 @@ Improving moment tensor solutions by accounting for non-Gaussian data and theory
 This is the official repo used to produce the results in [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112) and Saoulis et al. 2026 (in prep.).
 
 
-### NEW: theory error example
+### NEW: Theory errors example
 
 After installation (see below), try running the minimal example to perform SBI on the LV2 SoCal Long Valley Caldera event:
 
 [examples/theory_errors_LV2.ipynb](examples/theory_errors_LV2.ipynb)
+
+### Data errors paper
+
+We are currently working on an updated, unified version of this repository. However, some example notebooks are not backware compatible yet. For the data errors paper [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112), revert to the earlier release to ensure all examples work correctly:
+
+https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
 
 ## Table of Contents
 
@@ -71,7 +77,3 @@ python download.py
 python generate_noise_database.py
 ```
 which downloads the nearby IPMA permanent land station data, and then processes the data to build an event file and a noise catalogue. 
-
-## Technical details <a name = "technical"></a>
-
-This section is under construction.
