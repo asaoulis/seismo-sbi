@@ -19,3 +19,15 @@ dynamic= ["dependencies"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
+
+[project.optional-dependencies]
+test = ["pytest>=7", "pytest-cov"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "unit: fast, isolated, no I/O",
+    "integration: loads data stubs or runs short pipelines",
+    "slow: end-to-end synthetic inversions (skipped by default; use -m slow to run)",
+]

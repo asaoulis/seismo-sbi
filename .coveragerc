@@ -1,0 +1,15 @@
+[run]
+source = src/seismo_sbi
+omit =
+    */plotting/*
+    */sbi/compression/ML/*
+    */utils/results_analysis.py
+    */sbi/noises/noise.py
+    */sbi/types/results.py
+    */sbi/types/fixed_jobs.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError

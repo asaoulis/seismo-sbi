@@ -228,17 +228,43 @@ class EmpiricalCovariance(ABC):
 
 class ScalarEmpiricalCovariance(EmpiricalCovariance):
 
+    inverse_metadata = None
+
     def __init__(self, sigma_noise_level):
         self.noise_level = sigma_noise_level
         self.set_C_inverse(1/sigma_noise_level**2)
+        self.inverse_metadata = self.C_inverse
+        self.data_vector_length = 1
 
     @classmethod
     def generic_loss_callable(cls, residuals):
         return -0.5 * np.sum(residuals**2) * cls.C_inverse
-        
+
+    @staticmethod
+    def create_loss_callable(C_inverse, data_vector_length):
+        """Compatible with the ensemble=False pipeline path.
+
+        Captures C_inverse in a closure so joblib/loky workers receive the
+        correct value via cloudpickle rather than reading the class attribute
+        (which would be None in freshly-imported worker processes).
+        """
+        c_inv = ScalarEmpiricalCovariance.C_inverse
+        def _loss(residuals):
+            return -0.5 * np.sum(residuals ** 2) * c_inv
+        return _loss
+
     def matmul_inverse_covariance(self, data_vector):
         return data_vector / self.noise_level**2
-    
+
+    @staticmethod
+    def callable_matmul_inverse_covariance(data_vector, C_inverse):
+        return data_vector * C_inverse
+
+    @staticmethod
+    def create_matmul_inverse_covariance(C_inverse, data_vector_length):
+        return partial(ScalarEmpiricalCovariance.callable_matmul_inverse_covariance,
+                       C_inverse=C_inverse)
+
     def create_sampler(self):
         def sampler(*args, **kwargs):
             return np.random.randn(1) * self.noise_level, None

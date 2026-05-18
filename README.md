@@ -22,6 +22,7 @@ https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
 - [About](#about)
 - [Getting Started](#getting_started)
 - [Usage](#usage)
+- [Testing](#testing)
 - [Technical Details](#technical)
 
 ## About <a name = "about"></a>
@@ -76,4 +77,79 @@ cd scripts
 python download.py
 python generate_noise_database.py
 ```
-which downloads the nearby IPMA permanent land station data, and then processes the data to build an event file and a noise catalogue. 
+which downloads the nearby IPMA permanent land station data, and then processes the data to build an event file and a noise catalogue.
+
+## Testing <a name = "testing"></a>
+
+The test suite lives in `tests/` and uses [pytest](https://docs.pytest.org/) with [pytest-cov](https://pytest-cov.readthedocs.io/) for coverage.
+
+### Test markers
+
+| Marker | Description | Default |
+|---|---|---|
+| `unit` | Fast, isolated, no file I/O | Always run |
+| `integration` | Loads data stubs (HDF5 fixtures built in `tmp_path`) | Always run |
+| `slow` | Full end-to-end synthetic inversions — require Instaseis DB or CPS binaries | Skipped |
+
+### Running the tests
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov
+
+# Fast suite (unit + integration) — recommended after any edit
+pytest tests/unit tests/integration -x -q
+
+# Include slow end-to-end tests (need Instaseis DB or CPS installed)
+pytest tests/ -x -q -m slow
+
+# Full suite with coverage report
+pytest tests/unit tests/integration \
+    --cov=src/seismo_sbi \
+    --cov-report=term-missing \
+    --cov-report=html:htmlcov \
+    -q
+# then open htmlcov/index.html
+```
+
+### Slow test requirements
+
+The `slow` end-to-end tests exercise the full stencil→compression→inference pipeline and require at least one forward model:
+
+- **Instaseis**: set `INSTASEIS_DB` to the path of a precomputed Green's function database (e.g. `PREM_10s`), or place it at `/data/shared/ROSA_PREM_10s_disc`.
+- **CPS** (Computer Programs in Seismology): install the CPS suite so that `hprep96`, `hspec96`, and `hpulse96` are on `PATH`, or set `CPS_PATH` to the directory containing these binaries.
+
+### GitHub Actions
+
+A minimal CI workflow runs the fast suite on every push.  Add `.github/workflows/tests.yml`:
+
+```yaml
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.8"
+          channels: conda-forge,defaults
+      - name: Install dependencies
+        run: |
+          conda install -y -c conda-forge instaseis
+          pip install -e ".[test]"
+      - name: Run fast tests
+        run: pytest tests/unit tests/integration -x -q --cov=src/seismo_sbi --cov-report=xml
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+```
+
+Add `[test]` extras to `pyproject.toml` if not already present:
+
+```toml
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov"]
+```
