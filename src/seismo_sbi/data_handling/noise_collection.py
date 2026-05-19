@@ -124,53 +124,7 @@ class NoiseCollector:
         # new_st = new_st.resample(max_frequency, window="hann")
         new_st = new_st.resample(max_frequency)#, window="hann")
         return new_st
-    
-    # def process_seismograms(self, new_st, max_frequency, instrument_response_path):
-    #     print(f"Processing data from station {new_st[0].stats.station} ")
-    #     new_st = new_st.merge(method=0, fill_value='latest')
 
-    #     # Read inventory
-    #     inv = obspy.read_inventory(instrument_response_path)
-
-    #     # Detrend
-    #     new_st.detrend('demean')
-    #     new_st.detrend('linear')
-
-    #     # Remove instrument response in DISP, using wider pre_filt
-    #     new_st.remove_response(inventory=inv, output="DISP", **self.prefilter_kwargs)
-
-    #     # Taper before pad/filter (minimize edge transients)
-    #     new_st.taper(max_percentage=0.05, type='cosine')
-
-    #     # Now do custom zero-phase filter with padding
-    #     for tr in new_st:
-    #         fs = tr.stats.sampling_rate
-    #         n_pad = int(self.pad_seconds * fs)
-
-    #         # Build Butterworth bandpass
-    #         low = self.filter_kwargs["freqmin"]
-    #         high = self.filter_kwargs["freqmax"]
-    #         corners = self.filter_kwargs["corners"]
-
-    #         nyq = 0.5 * fs
-    #         low_norm = low / nyq
-    #         high_norm = high / nyq
-
-    #         b, a = butter(corners, [low_norm, high_norm], btype='band')
-
-    #         # Reflect-pad the data
-    #         data = tr.data
-    #         data_padded = np.pad(data, (n_pad, n_pad), mode='reflect')
-
-    #         # Zero-phase filtering (acausal)
-    #         data_filt = filtfilt(b, a, data_padded)
-
-    #         # Remove padding
-    #         tr.data = data_filt[n_pad:-n_pad]
-
-    #     # Downsample
-    #     new_st.resample(max_frequency)
-    #     return new_st
 
 def resample_trace(tr, dt, method, lanczos_a=20):
     """

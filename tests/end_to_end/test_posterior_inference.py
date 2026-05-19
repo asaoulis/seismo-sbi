@@ -59,7 +59,7 @@ pytestmark = pytest.mark.slow
 # ---------------------------------------------------------------------------
 
 SNR_TARGET = 10.0    # σ chosen so RMS(D_fid) / σ = SNR_TARGET
-N_TRAIN = 400         # NPE training simulations
+N_TRAIN = 800         # NPE training simulations
 N_MCMC_SAMPLES = 8000 # total samples (= N_WALKERS × steps per walker)
 N_MCMC_BURN_IN = 500  # burn-in per chain; starting at MLE needs very few
 N_WALKERS = 20        # independent chains == num_jobs
@@ -208,7 +208,7 @@ def _run_sbi(pipeline, compressor, compression_data, D_obs, sigma, dataset_param
         num_simulations=N_TRAIN,
         sampling_method=deepcopy(dataset_params.sampling_method),
         iterative_least_squares=dataset_params.iterative_least_squares,
-        use_fisher_to_constrain_bounds=5,
+        use_fisher_to_constrain_bounds=None,
     )
 
     inversion_data, _, _ = pipeline.run_single_sbi_inversion(
