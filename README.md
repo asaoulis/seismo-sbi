@@ -22,6 +22,7 @@ https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
 - [About](#about)
 - [Getting Started](#getting_started)
 - [Usage](#usage)
+- [Data Preparation](#data)
 - [Testing](#testing)
 - [Technical Details](#technical)
 
@@ -71,13 +72,107 @@ pip install -e .
 
 An example notebook is provided under [examples/azores_inversion.ipynb](examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
 
-Before running the notebook, you will need to run the two provided scripts
-```
+Before running the notebook, download the data and build the catalogues:
+```bash
 cd scripts
-python download.py
-python generate_noise_database.py
+python custom_download.py --stations_file configs/indo_pacific/stations.txt \
+    --output_dir /data/azores --starttime 2022-01-13T00:00:00 --endtime 2022-01-14T00:00:00
+python build_catalogue.py --catalogue azores_events.xml \
+    --data_dir /data/azores --stationxml_dir /data/azores/stationxml \
+    --stations_file configs/indo_pacific/stations.txt \
+    --output_dir /data/azores/catalogue --duration 200 --sampling_rate 1.0 \
+    --noise_start 2022-01-13 --noise_end 2022-01-14
 ```
-which downloads the nearby IPMA permanent land station data, and then processes the data to build an event file and a noise catalogue.
+This downloads the nearby IPMA permanent land station data and builds event + noise h5 catalogues.
+
+## Data Preparation <a name = "data"></a>
+
+Preparing real seismic data for the SBI pipeline requires three steps: downloading raw waveforms and instrument responses, building event and noise h5 catalogues, and pointing the YAML config at the results.  All intermediate files are standard obspy formats (`.mseed` + StationXML); HDF5 is produced only at the final boundary step.
+
+### 1. Download
+
+Download BH? waveforms and StationXML for a time period long enough to include both your target events and a representative noise sample (weeks to months for a real study):
+
+```bash
+cd scripts
+python custom_download.py \
+    --stations_file configs/long_valley/stations.txt \
+    --output_dir    /data/project \
+    --starttime     2024-01-01T00:00:00 \
+    --endtime       2024-02-01T00:00:00
+```
+
+Data are written to `{output_dir}/{station}/{year}.{jday}/` and StationXML to `{output_dir}/stationxml/`.
+
+### 2. Build event + noise catalogues
+
+`build_catalogue.py` does everything in one command: it pre-processes the raw data in daily chunks (response removal → filter → resample), then slices each event window and each clean noise window into an h5 file.  Pass either a QuakeML file or query FDSN directly:
+
+```bash
+# From a QuakeML catalogue file
+python build_catalogue.py \
+    --catalogue     events.xml \
+    --data_dir      /data/project \
+    --stationxml_dir /data/project/stationxml \
+    --stations_file configs/long_valley/stations.txt \
+    --output_dir    /data/catalogue \
+    --duration      200 \
+    --sampling_rate 1.0 \
+    --noise_start   2024-01-01 \
+    --noise_end     2024-02-01 \
+    --n_jobs        8
+
+# Or query FDSN for events automatically
+python build_catalogue.py \
+    --fdsn_query_center 35.7,-117.5 \
+    --fdsn_min_magnitude 4.0 \
+    --data_dir      /data/project \
+    --stationxml_dir /data/project/stationxml \
+    --stations_file configs/long_valley/stations.txt \
+    --output_dir    /data/catalogue \
+    --duration      200 --sampling_rate 1.0 \
+    --noise_start   2024-01-01 --noise_end 2024-02-01 \
+    --n_jobs        8
+```
+
+This produces:
+```
+/data/catalogue/events/{YYYYMMDDTHHMMSS}.h5   — one per target event
+/data/catalogue/noise/{YYYY.MM.DD.HH.MM}.h5   — one per clean noise window
+/data/catalogue/_daily/{station}/{YYYY.DDD}/  — cached daily processed mseed (reusable)
+```
+
+Each run is resumable: existing h5 and daily files are skipped automatically.
+
+For a single event without a full noise catalogue, `custom_preprocess.py` is simpler:
+
+```bash
+python custom_preprocess.py \
+    --data_dir      /data/project \
+    --output_dir    /data/noise/long_valley \
+    --event_name    LV2 \
+    --event_starttime 1997-11-22T17:20:35 \
+    --event_endtime   1997-11-22T17:23:54
+```
+
+### 3. Run the SBI inversion
+
+Point `jobs.real_event_path` and `inference.noise_model_path` in your YAML config at the event and noise directories, then:
+
+```bash
+python event_inversion.py --config configs/long_valley/lv2.yaml
+```
+
+### HDF5 schema
+
+Every h5 file produced by the pipeline has this layout, read directly by `RealNoiseSampler` and `SimulationDataLoader`:
+
+```
+/outputs/{station}/{Z,1,2}   — waveform arrays  (npts = compute_data_vector_length + 1)
+/misc/{station}/{Z,1,2}      — autocorrelation from the pre-event noise window
+```
+
+Channel keys are always `Z`, `1`, `2` (never `E` or `N`).
 
 ## Testing <a name = "testing"></a>
 

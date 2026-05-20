@@ -1,145 +1,212 @@
-import argparse
-from pathlib import Path
-from datetime import datetime, timedelta, time
-from functools import partial
+"""Custom preprocessing script using the new obspy-centred pipeline.
 
-from seismo_sbi.data_handling.noise_collection import NoiseCollector, EventNoiseAggregator, ProcessedDataSlicer
-from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+Replaces the legacy NoiseCollector / EventNoiseAggregator / ProcessedDataSlicer
+pipeline.  The new flow:
+
+  1. find_mseed_files  — locate raw data on disk
+  2. load_waveforms    — read into a single obspy.Stream
+  3. load_inventory    — read StationXML from a directory
+  4. deconvolve_and_filter — remove response, bandpass, resample
+  5. write_window      — write preprocessed daily mseed (optional, for audit)
+  6. export_to_sbi_h5  — the ONLY h5 write; RealNoiseSampler reads this
+
+Usage:
+    python custom_preprocess.py \
+        --stations_file configs/long_valley/stations.txt \
+        --data_dir /data/alex/long_valley \
+        --output_dir /data/alex/noise/long_valley \
+        --event_name LV2 \
+        --event_starttime 1997-11-22T17:20:35 \
+        --event_endtime 1997-11-22T17:23:54
+"""
+
+import argparse
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import numpy as np
+import obspy
+from obspy import UTCDateTime
+
+from seismo_sbi.data_handling.preprocessing import (
+    find_mseed_files,
+    load_waveforms,
+    load_inventory,
+    write_window,
+    deconvolve_and_filter,
+    export_to_sbi_h5,
+)
+
+
 def get_arguments():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Generate a noise database from seismic data.")
-    
+    parser = argparse.ArgumentParser(
+        description="Preprocess seismic data for seismo-sbi using the new obspy API."
+    )
     parser.add_argument(
-        '--stations_file', type=Path,
+        "--stations_file", type=Path,
         default=Path(__file__).resolve().parent / "configs/long_valley/stations.txt",
-        help="Path to stations file with columns: STATION NETWORK LAT LON"
+        help="Path to stations file with columns: STATION NETWORK LAT LON",
     )
     parser.add_argument(
-        '--data_dir', type=Path, default=Path('/data/alex/long_valley'),
-        help="Directory where seismic data (mseed, stationxml) is stored."
+        "--data_dir", type=Path, default=Path("/data/alex/long_valley"),
+        help="Root directory containing {station}/{year}.{jday}/ mseed data.",
     )
     parser.add_argument(
-        '--output_dir', type=Path, default=Path('/data/alex/noise/long_valley'),
-        help="Base directory to save the generated noise database."
+        "--stationxml_dir", type=Path, default=None,
+        help="Directory containing StationXML files.  Defaults to <data_dir>/stationxml.",
     )
     parser.add_argument(
-        '--event_name', type=str, default='LV2',
-        help="Name for the noise database."
+        "--output_dir", type=Path, default=Path("/data/alex/noise/long_valley"),
+        help="Base directory for preprocessed output.",
+    )
+    parser.add_argument("--event_name", type=str, default="LV2")
+    parser.add_argument(
+        "--event_starttime", type=str, default="1997-11-22T17:20:35",
+        help="Event start time (ISO 8601).",
     )
     parser.add_argument(
-        '--event_starttime', type=str, default='1997-11-22T17:20:35',
-        help="Event start time in ISO format (e.g., '1997-11-22T17:20:35')."
+        "--event_endtime", type=str, default="1997-11-22T17:23:54",
+        help="Event end time (ISO 8601).",
     )
     parser.add_argument(
-        '--event_endtime', type=str, default='1997-11-22T17:23:54',
-        help="Event end time in ISO format (e.g., '1997-11-22T17:23:34')."
+        "--max_frequency", type=float, default=1.0,
+        help="Target sampling rate (Hz) after resampling.",
     )
     parser.add_argument(
-        '--num_jobs', type=int, default=20, help="Number of parallel jobs for noise collection."
+        "--duration", type=int, default=5,
+        help="Covariance estimation window (minutes) before event start.",
     )
     parser.add_argument(
-        '--max_frequency', type=float, default=1.0, help="Maximum frequency for processing."
+        "--channel_glob", type=str, default="BH?",
+        help="Glob pattern for channel selection (e.g. 'BH?' or 'HH?').",
     )
     parser.add_argument(
-        '--duration', type=int, default=5, help="Duration in minutes for covariance estimation window."
-    )
-    parser.add_argument(
-        '--data_vector_length', type=int, default=200, help="Length of the data vector."
+        "--no_instrument_correction", action="store_true",
+        help="Skip instrument response removal (useful for synthetic data).",
     )
     return parser.parse_args()
 
-def create_lv_data_format(data_path):
-    """Creates a data format configuration for Long Valley."""
-    def create_format(network):
-        return {
-            'call_key': 'OBS',
-            'master_path': '.',
-            'path_structure': f'{data_path}/{{sta}}/{{year}}.{{jday}}/{{net}}.{{sta}}..{{cha}}.{{year}}.{{jday}}.mseed',
-            'sta_cha': ['BHZ', 'BHE', 'BHN'],
-            'network': network,
-            'location': '',
-            'years': [1997], # Expanded to include 1997
-            'instrument_correction': True,
-            'response_seismometer': f'{data_path}/RESP/RESP.{{net}}.{{sta}}.{{loc}}.{{cha}}',
-        }
-    return {'BK': create_format('BK'), 'US': create_format('US')}
 
-def load_stations(stations_path):
-    """Load station codes from a file."""
+def load_stations(stations_path: Path) -> list:
+    """Load (station, network) pairs from a whitespace-delimited file.
+
+    Expects columns: STATION NETWORK [LAT LON ...]
+    """
     stations = []
     with stations_path.open() as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
             parts = line.split()
             if len(parts) >= 2:
-                sta, net = parts[0], parts[1]
-                stations.append((net, sta))
-    return {f'{sta}': f'{net}' for net, sta in stations}
+                stations.append((parts[0], parts[1]))  # (station, network)
+    return stations
+
 
 def main():
     args = get_arguments()
 
-    # Load station information
-    station_codes_paths = load_stations(args.stations_file)
+    event_start = datetime.fromisoformat(args.event_starttime)
+    event_end = datetime.fromisoformat(args.event_endtime)
+    cov_window = timedelta(minutes=args.duration)
+    remove_response = not args.no_instrument_correction
 
-    # Configure paths and data formats
-    station_config = create_lv_data_format(args.data_dir)
-    daily_output_directory = args.output_dir / f"{args.event_name}_daily"
-    daily_output_directory.mkdir(parents=True, exist_ok=True)
+    stationxml_dir = args.stationxml_dir or (args.data_dir / "stationxml")
 
-    # Define processing parameters
+    # Preprocessing parameters matching Long Valley defaults
     prefilter_kwargs = dict(pre_filt=[0.005, 0.01, 0.2, 0.4])
-    filter_kwargs = dict(freqmin=1/50, freqmax=1/20, corners=4, zerophase=False)
+    filter_kwargs = dict(freqmin=1 / 50, freqmax=1 / 20, corners=4, zerophase=False)
 
-    # Define event window and location
-    event_window = [datetime.fromisoformat(args.event_starttime), datetime.fromisoformat(args.event_endtime)]
-    event_location = (37.6, -117.0)
+    # Load stations list
+    station_pairs = load_stations(args.stations_file)
+    print(f"Loaded {len(station_pairs)} stations from {args.stations_file}")
 
-    # Initialize noise collection and aggregation
-    noise_collector = NoiseCollector(station_config, station_codes_paths, {}, prefilter_kwargs=prefilter_kwargs, filter_kwargs=filter_kwargs)
-    event_noise_aggregator = EventNoiseAggregator(noise_collector, station_codes_paths, sampling_rate=args.max_frequency)
-    
-    # Find available stations for the event
-    event_noise_aggregator.select_event_and_check_available_stations(event_window, event_location, buffer=timedelta(minutes=1), convert_to_numpy=True)
-    print(f"Found {len(event_noise_aggregator.available_stations_during_event)} available stations for the event.")
+    # Time window to load: event window + covariance pre-window + 2-min padding
+    t0_load = UTCDateTime(event_start) - cov_window.total_seconds() - 120
+    t1_load = UTCDateTime(event_end) + 120
 
-    # Define time windows for noise extraction
-    times = [time(17, 15, 0), time(17, 30, 0)]
-    windows = [[datetime.combine(event_window[0].date(), t) for t in times]]
+    # Find and load mseed files for all stations
+    combined_stream = obspy.Stream()
+    available_stations = []
 
-    # Set up the noise database generator
-    noise_collection_callable = partial(event_noise_aggregator.collect_noise_data, noise_window_length=timedelta(hours=1), convert_to_numpy=False)
-    noise_database_generator = NoiseDatabaseGenerator(noise_collection_callable, num_jobs=args.num_jobs, mseed_output=True)
+    for station, network in station_pairs:
+        paths = find_mseed_files(
+            args.data_dir, station, t0_load, t1_load,
+            network=network, channel_glob=args.channel_glob,
+        )
+        if not paths:
+            print(f"  No data for {network}.{station} — skipping")
+            continue
+        try:
+            st = load_waveforms(paths, starttime=t0_load, endtime=t1_load)
+            if len(st) == 0:
+                print(f"  Empty stream for {network}.{station} — skipping")
+                continue
+            combined_stream += st
+            available_stations.append(station)
+        except Exception as exc:
+            print(f"  Error loading {network}.{station}: {exc}")
+            continue
 
-    # Create the noise database
-    print(f"Generating database in {daily_output_directory}...")
-    noise_database_generator.create_database(daily_output_directory, windows)
-    print("Database generation complete.")
-    print("Slicing data and generating event file...")
-    data_slicer = ProcessedDataSlicer(
-        data_folder=daily_output_directory,
+    print(f"Available stations: {available_stations} ({len(available_stations)} total)")
+
+    if len(available_stations) == 0:
+        print("No stations available — aborting.")
+        sys.exit(1)
+
+    # Load inventory and process
+    inventory = None
+    if remove_response:
+        if not stationxml_dir.is_dir():
+            print(
+                f"WARNING: stationxml_dir {stationxml_dir} not found — "
+                "skipping response removal."
+            )
+            remove_response = False
+        else:
+            try:
+                inventory = load_inventory(stationxml_dir)
+                print(f"Loaded inventory from {stationxml_dir}")
+            except FileNotFoundError as exc:
+                print(f"WARNING: {exc} — skipping response removal.")
+                remove_response = False
+
+    print("Processing waveforms...")
+    processed_stream = deconvolve_and_filter(
+        combined_stream,
+        inventory=inventory,
+        remove_response=remove_response,
+        prefilter_kwargs=prefilter_kwargs,
+        filter_kwargs=filter_kwargs,
+        target_sr=args.max_frequency,
+    )
+
+    # Write preprocessed daily mseed (audit trail)
+    daily_output_dir = args.output_dir / f"{args.event_name}_daily"
+    daily_output_dir.mkdir(parents=True, exist_ok=True)
+    daily_mseed = daily_output_dir / "preprocessed.mseed"
+    write_window(processed_stream, daily_mseed)
+    print(f"Daily preprocessed mseed written to {daily_mseed}")
+
+    # Export event h5
+    event_output_dir = args.output_dir / "events"
+    event_output_dir.mkdir(parents=True, exist_ok=True)
+    h5_name = f"{args.event_name}_noise_filt_20_50_1hz"
+    h5_path = event_output_dir / f"{h5_name}.h5"
+
+    export_to_sbi_h5(
+        stream=processed_stream,
+        receivers=available_stations,
+        event_window=(event_start, event_end),
+        out_path=h5_path,
         sampling_rate=args.max_frequency,
-        covariance_estimation_window=timedelta(minutes=args.duration),
+        covariance_window=cov_window,
         full_auto_correlation=True,
-        receivers=event_noise_aggregator.available_stations_during_event
     )
+    print(f"Event h5 written to {h5_path}")
 
-    output_path = args.output_dir / 'events'
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    noise_window = [datetime.fromisoformat(args.event_starttime), datetime.fromisoformat(args.event_endtime)]
-
-    print(f"Data vector length: {args.data_vector_length}")
-    data_saver = NoiseDatabaseGenerator(data_slicer.load_noise_window_data, data_vector_length=args.data_vector_length, num_jobs=args.num_jobs)
-    data_saver._collect_and_save_noise(
-        output_path,
-        noise_window=noise_window,
-        name=f'{args.event_name}_noise_filt_20_50_1hz'
-    )
-    print("Final noise database saved.")
 
 if __name__ == "__main__":
     main()
