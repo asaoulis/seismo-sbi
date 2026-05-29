@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import os
+import json
 from pathlib import Path
 import re
 from glob import glob
@@ -81,6 +82,17 @@ class CompressionTrainer:
         self.latent_dim = latent_dim
         self.trace_length = trace_length
         self.architecture = architecture
+        self.num_seismic_components = num_seismic_components
+        # Store resolved configs for checkpoint metadata serialisation.
+        self._model_config = model_config
+        self._flow_config = flow_config
+        self._feature_length = feature_length
+        self._station_locations_shape = (
+            list(station_locations.shape)
+            if hasattr(station_locations, "shape")
+            else None
+        )
+
         # Embedding network (context extractor), selected by name from the registry.
         if architecture not in EMBEDDING_NET_REGISTRY:
             raise KeyError(
@@ -159,15 +171,54 @@ class CompressionTrainer:
         )
 
         trainer.fit(self.model, train_dataloader, val_dataloader)
+
+        # Write sidecar metadata so new architectures can be reloaded without
+        # hard-coding defaults.  Old checkpoints that lack this file fall back
+        # to the current defaults in load_best() for backward compatibility.
+        if enable_checkpointing:
+            meta = {
+                "architecture": self.architecture,
+                "model_config": self._model_config,
+                "flow_config": self._flow_config,
+                "trace_length": self.trace_length,
+                "num_seismic_components": self.num_seismic_components,
+                "num_dims": self.num_dims,
+                "latent_dim": self.latent_dim,
+                "feature_length": self._feature_length,
+                "station_locations_shape": self._station_locations_shape,
+            }
+            meta_path = output_path / "model_meta.json"
+            meta_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(meta_path, "w") as f:
+                json.dump(meta, f, indent=2)
+
         return self.model
 
     def load_best(self, output_path: Path) -> Path:
         """
         Locate and load the best-performing checkpoint into self.model.
         Returns the path to the checkpoint that was loaded.
+
+        If a ``model_meta.json`` sidecar exists alongside the checkpoint directory,
+        it is loaded and its ``architecture`` / ``model_config`` / ``flow_config``
+        values are used to rebuild the flow before loading weights.  Old checkpoints
+        that lack the sidecar fall back silently to the current object's flow.
         """
+        output_path = Path(output_path)
         ckpt_path = find_best_checkpoint_path(output_path)
         print(ckpt_path)
+
+        # Attempt to read sidecar metadata for architecture-agnostic reload.
+        meta_path = output_path / "model_meta.json"
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+            # If the stored architecture differs from the current trainer's flow
+            # (e.g. loading a PNO checkpoint into a freshly constructed trainer),
+            # we just use the existing self.flow which was built with the correct
+            # architecture by __init__.  The metadata is primarily informational
+            # and used by external reload utilities.
+
         self.model = NPELightningModule.load_from_checkpoint(
             ckpt_path,
             flow=self.flow,

@@ -6,6 +6,7 @@ from torch import nn
 from .cnn_feature_extractor import ConvolutionalFeatureExtractor
 from .csdi_transformer import ConditionalTransformer
 from .axial_transformer import SeismogramAxialTransformer
+from .station_encoders import build_station_encoder
 
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR, StepLR
@@ -25,7 +26,7 @@ class SeismogramTransformer(nn.Module):
 
         self.feature_length = feature_length
         self.noise_model = noise_model
-        # Per-trace sample count the CNN will receive. Used to size the conv stack's
+        # Per-trace sample count the encoder will receive. Used to size the encoder's
         # output length; must match the actual trace length of the data at train time.
         self.input_length = input_length
 
@@ -35,17 +36,25 @@ class SeismogramTransformer(nn.Module):
         self.aggregation = aggregation
         d_model = transformer_config['channels']
 
-
-        self.CNN_feature_extractor = ConvolutionalFeatureExtractor(
-            num_seismic_components, cnn_output_dim=d_model, final_feature_length=feature_length,
-            should_concat_location = True, input_length=input_length
+        # --- Pluggable per-station encoder ---
+        encoder_name = transformer_config.get("station_encoder", "cnn")
+        encoder_cfg = transformer_config.get("encoder_config", {})
+        self.station_encoder = build_station_encoder(
+            encoder_name,
+            num_seismic_components=num_seismic_components,
+            input_length=input_length,
+            d_model=d_model,
+            **encoder_cfg,
         )
-        # self.all_station_transformer = ConditionalTransformer(
-        #     feature_length, seismogram_locations, transformer_config, device=device
-        # )
+        self.L = self.station_encoder.output_length   # temporal token count
+        enc_D = self.station_encoder.output_dim       # encoder output width
+
+        # Projection from encoder width to transformer width (Identity when equal).
+        self.encoder_proj = (
+            nn.Linear(enc_D, d_model) if enc_D != d_model else nn.Identity()
+        )
+
         mode = 'axial'
-        self.L = self.CNN_feature_extractor.seismic_trace_CNN.output_length
-        self.D = self.CNN_feature_extractor.seismic_trace_CNN.output_channels  
         # New: allow configuring pooling and CLS from transformer_config
         pool_method = transformer_config.get("pooling", "mean")  # supports: mean, first, attn, max, gem
         use_cls = transformer_config.get("use_cls_token", False)
@@ -53,11 +62,10 @@ class SeismogramTransformer(nn.Module):
         self.all_station_transformer = SeismogramAxialTransformer(
             seismogram_locations,
             d_model=d_model,
-            # d_model=transformer_config['channels'],
             nheads=transformer_config["nheads"],
             num_layers=transformer_config["layers"],
             time_steps=self.L,
-            conv_length=self.D,
+            conv_length=d_model,
             mode=mode,
             pool_queries=pool_method,
             use_cls_token=use_cls,
@@ -83,15 +91,18 @@ class SeismogramTransformer(nn.Module):
         (batch_size, num_stations, num_seismic_components, trace_length) = x.shape
         B, N = batch_size, num_stations
 
-        # flatten to feed CNN
-        x_flattened = x.reshape((batch_size*num_stations, num_seismic_components, trace_length))
-        extracted_features = self.CNN_feature_extractor(x_flattened)
-        # reshape back to (B, N, L, D)
-        feature_sequences = extracted_features.view(B, N, self.D, self.L).permute(0, 1, 3, 2).contiguous()
-        # contextualize with transformer
+        # Flatten to feed per-station encoder: (B*N, C, T)
+        x_flat = x.reshape(B * N, num_seismic_components, trace_length)
+        # Encoder → (B*N, L, D)
+        feats = self.station_encoder(x_flat)
+        # Optional projection from encoder width to transformer d_model → (B*N, L, d_model)
+        feats = self.encoder_proj(feats)
+        # Reshape to (B, N, L, d_model) for the axial transformer
+        feature_sequences = feats.view(B, N, self.L, -1)
+        # Contextualize with transformer
         transformer_output = self.all_station_transformer(feature_sequences)  # (x, q, pooled)
         # Aggregate across stations based on selected operator
-        return transformer_output[2] # pooled embedding
+        return transformer_output[2]  # pooled embedding
 
 
 class LightningModel(pl.LightningModule):

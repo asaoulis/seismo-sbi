@@ -45,6 +45,14 @@ pytestmark = pytest.mark.slow
 # should be added here once registered in EMBEDDING_NET_REGISTRY.
 ARCHITECTURES = ["seismogram_transformer"]
 
+# Station encoders exercised by the encoder-gate parametrized test (Phase 2).
+# Each entry is (encoder_name, encoder_config) — tiny configs to keep CPU-fast.
+STATION_ENCODERS = [
+    ("cnn", {}),
+    ("pno", {"width": 8, "modes": 4, "n_blocks": 2, "downsample": 4}),
+    ("tcn", {"channels": 8, "n_blocks": 2, "kernel_size": 3, "downsample": 4}),
+]
+
 _DURATION = 200          # seconds; long enough that the CNN feature extractor does not
 _SAMPLING_RATE = 1.0     # collapse the trace under its stride-2 down-sampling.
 _NUM_SIMS = 24
@@ -181,3 +189,69 @@ def test_train_one_epoch_returns_finite_logprob(kernel_pipeline, tmp_path, archi
     with torch.no_grad():
         log_prob = model(x.to(model.device), theta.to(model.device))
     assert torch.isfinite(log_prob).all(), "flow produced non-finite log-prob"
+
+
+@pytest.mark.parametrize("encoder_name,encoder_cfg", STATION_ENCODERS, ids=[e[0] for e in STATION_ENCODERS])
+def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, encoder_cfg):
+    """Each registered station encoder trains for one epoch with the seismogram_transformer
+    architecture and yields a finite log-probability.
+
+    This is the gate for new per-station encoders (Phase 2+).  Keep encoder configs
+    tiny so the test runs quickly on CPU.
+    """
+    import torch
+    from seismo_sbi.sbi.compression.ML.station_encoders import PER_STATION_ENCODER_REGISTRY
+
+    assert encoder_name in PER_STATION_ENCODER_REGISTRY, (
+        f"Encoder '{encoder_name}' not registered in PER_STATION_ENCODER_REGISTRY"
+    )
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "random_shift_distribution": (0, 0),
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8,
+        "val_batch_size": 8,
+        "train_shuffle": True,
+        "val_shuffle": False,
+        "num_workers": 0,
+    }
+
+    trainer = CompressionTrainer(
+        components, station_locations,
+        channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer",
+        trace_length=trace_length,
+        model_config={"station_encoder": encoder_name, "encoder_config": encoder_cfg},
+    )
+    model = trainer.train(
+        f"test_encoder_{encoder_name}", epochs=1, output_path=tmp_path,
+        dataloader_args=dataloader_args,
+        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+    )
+
+    assert model is not None
+
+    # Pull one validation batch and check finite log-prob.
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), (
+        f"encoder '{encoder_name}' produced non-finite log-prob after one epoch"
+    )
