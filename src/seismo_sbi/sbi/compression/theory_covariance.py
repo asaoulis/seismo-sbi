@@ -2,7 +2,7 @@ import numpy as np
 import joblib
 
 from ...instaseis_simulator.simulator import Simulator
-from ...cps_simulator.simulator import CPSPrecomputedSimulator
+from ...instaseis_simulator.ensemble import GFEnsembleSimulator
 from ...instaseis_simulator.utils import apply_station_time_shifts
 
 def parallel_execution(inputs, func, num_jobs = 20):
@@ -10,15 +10,14 @@ def parallel_execution(inputs, func, num_jobs = 20):
         return [func(block) for block in inputs]
     return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
 
-class CPSTheoryCovarianceEstimationSimulator(Simulator):
-    """
-    A class to simulate the covariance matrix based on theoretical models.
-    This class is designed
-    to work with theoretical covariance models and can be extended
-    to include more complex models in the future.
+class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
+    """Estimate per-trace theory-error covariance from a GF ensemble simulator.
+
+    Runs num_models draws from the ensemble, forms demeaned residuals vs the
+    fiducial (or ensemble mean), and returns empirical block-diagonal covariance.
     """
 
-    def __init__(self, simulator : CPSPrecomputedSimulator, data_flattening, *args, internal_jobs=20, covariance_mean='fiducial', **kwargs):
+    def __init__(self, simulator: GFEnsembleSimulator, data_flattening, *args, internal_jobs=20, covariance_mean='fiducial', **kwargs):
         super().__init__(*args, **kwargs)
         self.simulator = simulator
         self.num_realisations = simulator.num_models
@@ -58,3 +57,8 @@ class CPSTheoryCovarianceEstimationSimulator(Simulator):
                 counter += 1
 
         return all_cov_blocks_map
+
+
+# Back-compat alias — existing code using CPSTheoryCovarianceEstimationSimulator
+# continues to work without modification.
+CPSTheoryCovarianceEstimationSimulator = EnsembleTheoryCovarianceEstimationSimulator

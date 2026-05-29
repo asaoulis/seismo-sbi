@@ -6,9 +6,13 @@ import json
 from pathlib import Path
 
 from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
+from seismo_sbi.instaseis_simulator.ensemble import InstaseisEnsembleSimulator
 from seismo_sbi.instaseis_simulator.post_processing import build_post_processing_chain
 from seismo_sbi.cps_simulator.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
-from seismo_sbi.sbi.compression.theory_covariance import CPSTheoryCovarianceEstimationSimulator
+from seismo_sbi.sbi.compression.theory_covariance import (
+    EnsembleTheoryCovarianceEstimationSimulator,
+    CPSTheoryCovarianceEstimationSimulator,
+)
 from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
 from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters
 from seismo_sbi.instaseis_simulator.receivers import Receivers
@@ -106,7 +110,16 @@ class GeneralSimulatorWrapper:
 
     def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
         pp_effects = post_processing_effects or []
-        if simulator_config[0] == 'instaseis':
+        if simulator_config[0] == 'instaseis_ensemble':
+            simulator = InstaseisEnsembleSimulator(
+                            instaseis_ensemble_dir=simulation_parameters.syngine_address,
+                            instaseis_fiducial_loc=simulation_parameters.syngine_fiducial_address,
+                            components=simulation_parameters.components,
+                            receivers=simulation_parameters.receivers,
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
+                            post_processing_effects=pp_effects)
+        elif simulator_config[0] == 'instaseis':
             simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address,
                                         components=simulation_parameters.components,
                                         receivers=simulation_parameters.receivers,
@@ -160,9 +173,9 @@ class GeneralSimulatorWrapper:
                             cps_path=getattr(simulation_parameters, 'cps_path', None),
                             post_processing_effects=pp_effects)
         elif simulator_config[0] == 'cps_covariance':
-            cps_simulator = simulator_config[1]
-            simulator = CPSTheoryCovarianceEstimationSimulator(
-                            simulator=cps_simulator,
+            ensemble_simulator = simulator_config[1]
+            simulator = EnsembleTheoryCovarianceEstimationSimulator(
+                            simulator=ensemble_simulator,
                             data_flattening=self.data_loader_callable,
                             components=simulation_parameters.components,
                             receivers=deepcopy(simulation_parameters.receivers),

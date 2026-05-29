@@ -10,6 +10,7 @@ from seismo_sbi.cps_simulator.compatibility import build_objstats
 from seismo_sbi.cps_simulator.CPS import update_with_Gtensor
 
 from seismo_sbi.instaseis_simulator.simulator import Simulator
+from seismo_sbi.instaseis_simulator.ensemble import GFEnsembleSimulator
 from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
 
 # convert newtons into dynes
@@ -198,34 +199,43 @@ class CPSVariableKernelSimulator(CPSSimulator):
         )
 
 from pathlib import Path
-class CPSPrecomputedSimulator(CPSSimulator):
-    
+class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
+
     def __init__(self, fiducial_model_path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.cps_data_path = self.gf_storage_root
         cps_data_path = Path(self.cps_data_path)
-        self.fiducial_model_path = Path(fiducial_model_path)
+        self._fiducial_model_path = Path(fiducial_model_path)
         # first check if GF.mseed file exists
         single_gf_path = Path(cps_data_path) / 'GF.mseed'
         if single_gf_path.exists():
-            self.cps_data_folders = [cps_data_path]
+            self._cps_data_folders = [cps_data_path]
         else:
-            self.cps_data_folders = [f for f in Path(cps_data_path).iterdir() if f.is_dir()]
-        if not self.cps_data_folders:
+            self._cps_data_folders = [f for f in Path(cps_data_path).iterdir() if f.is_dir()]
+        if not self._cps_data_folders:
             raise FileNotFoundError(f"No CPS data folders found in {cps_data_path}")
-        self.num_models = len(self.cps_data_folders)
+
+    @property
+    def members(self) -> list:
+        return self._cps_data_folders
+
+    @property
+    def fiducial_member(self):
+        return self._fiducial_model_path
+
+    # Back-compat aliases used in legacy code and tests
+    @property
+    def cps_data_folders(self):
+        return self._cps_data_folders
+
+    @property
+    def fiducial_model_path(self):
+        return self._fiducial_model_path
 
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
         seed = kwargs.get('seed', None)
         use_fiducial = kwargs.pop('use_fiducial', False)
-        if seed is not None:
-            np.random.seed(seed)
-        
-        if use_fiducial:
-            cps_data_folder = self.fiducial_model_path
-        else:
-            # randomly  choose a CPS data folder
-            cps_data_folder = np.random.choice(self.cps_data_folders)
+        cps_data_folder = self.select_member(use_fiducial=use_fiducial, seed=seed)
         if verbose:
             print(f"Using CPS data folder: {cps_data_folder}")
         return update_with_Gtensor(

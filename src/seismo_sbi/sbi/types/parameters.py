@@ -33,6 +33,7 @@ class SimulationParameters(NamedTuple):
     cps_GFs_path : str = None
     cps_GFs_fiducial_path : str = None
     cps_multi_models_path: Optional[str] = None
+    syngine_fiducial_address: Optional[str] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
 
