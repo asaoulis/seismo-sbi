@@ -95,6 +95,11 @@ class CPSSimulator(Simulator):
         
         all_seismograms_map = {}
         velocity_model = kwargs.pop('velocity_model', None)
+        # stf_duration is a Category-1 (simulator-level) nuisance for the Instaseis
+        # path; CPS precomputed Green's functions do not support STF convolution, so
+        # drop it here rather than forwarding it to update_with_Gtensor (which has a
+        # fixed signature and would raise on the unexpected kwarg).
+        kwargs.pop('stf_duration', None)
         self.sensitivity_kernels = self.compute_greens_functions(source, velocity_model, **kwargs)
 
         seismograms = self._compute_seismograms_from_kernels(source)
