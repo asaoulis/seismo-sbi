@@ -16,75 +16,150 @@ from pytorch_lightning.callbacks import LearningRateMonitor
   # added
 # from lightning.pytorch.profiler import AdvancedProfiler, SimpleProfiler, PyTorchProfiler
 
+def _build_seismogram_transformer(*, num_seismic_components, model_config,
+                                  feature_length, latent_dim, station_locations, device,
+                                  trace_length, **_unused):
+    """Default embedding net (context extractor). Output width must equal latent_dim.
+
+    ``trace_length`` is the per-trace sample count of the data; it sizes the CNN's
+    conv stack so the model matches the data instead of assuming a fixed length.
+    """
+    return SeismogramTransformer(
+        num_seismic_components,
+        model_config,
+        feature_length,
+        num_outputs=latent_dim,          # not used for embedding, but required by ctor
+        noise_model=None,                # not used in NPE; pass None
+        seismogram_locations=station_locations,
+        device=device,
+        input_length=trace_length,
+    )
+
+
+# Registry of embedding-net builders. Add new ML compression architectures here and they
+# become selectable by name from train_NPE.py and the e2e test. Each builder receives the
+# uniform kwargs bundle assembled in CompressionTrainer.__init__ (num_seismic_components,
+# model_config, feature_length, latent_dim, station_locations, device, trace_length) and
+# must return an nn.Module emitting a context of width `latent_dim` (the flow's conditional
+# dimension). Accept **_unused so the bundle can grow without breaking existing builders.
+EMBEDDING_NET_REGISTRY = {
+    "seismogram_transformer": _build_seismogram_transformer,
+}
+
+# Default hyperparameters, grouped so callers can override piecemeal instead of editing code.
+DEFAULT_MODEL_CONFIG = {"layers": 4, "nheads": 4, "timeemb": 64, "posemb": 64}
+DEFAULT_FLOW_CONFIG = {
+    "num_transforms": 5,
+    "num_blocks": 2,
+    "dropout_probability": 0.0,
+    "use_batch_norm": True,
+}
+
+
 class CompressionTrainer:
 
-    def __init__(self, components, station_locations, channels=128, latent_dim=128):
+    def __init__(self, components, station_locations, channels=128, latent_dim=128,
+                 architecture="seismogram_transformer", trace_length=200,
+                 num_dims=6, feature_length=128, lr=1e-4, weight_decay=1e-4,
+                 model_config=None, flow_config=None):
+        """Build the embedding net + conditional normalising flow.
+
+        trace_length: per-trace sample count of the data (CNN input length). Defaults to
+            200 for backward compatibility; pass the pipeline's real ``trace_length``.
+        model_config / flow_config: optional overrides merged over DEFAULT_MODEL_CONFIG /
+            DEFAULT_FLOW_CONFIG.
+        """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         num_seismic_components = len(components)
-        feature_length = 128  # context dimension for the flow
 
-        model_config = {"layers": 4,
-            "channels": channels,
-            "nheads": 4,
-            "timeemb": 64,
-            "posemb": 64}
+        model_config = {**DEFAULT_MODEL_CONFIG, "channels": channels, **(model_config or {})}
+        flow_config = {**DEFAULT_FLOW_CONFIG, **(flow_config or {})}
 
-        self.num_dims = 6  # dimensionality of theta
+        self.num_dims = num_dims
         self.latent_dim = latent_dim
-        # Embedding network (context extractor)
-        seismogram_transformer_model = SeismogramTransformer(
-            num_seismic_components,
-            model_config,
-            feature_length,
-            num_outputs=latent_dim,          # not used for embedding, but required by ctor
-            noise_model=None,              # not used in NPE; pass None
-            seismogram_locations=station_locations,
-            device=self.device
+        self.trace_length = trace_length
+        self.architecture = architecture
+        # Embedding network (context extractor), selected by name from the registry.
+        if architecture not in EMBEDDING_NET_REGISTRY:
+            raise KeyError(
+                f"unknown architecture '{architecture}'; "
+                f"registered: {sorted(EMBEDDING_NET_REGISTRY)}"
+            )
+        seismogram_transformer_model = EMBEDDING_NET_REGISTRY[architecture](
+            num_seismic_components=num_seismic_components,
+            model_config=model_config,
+            feature_length=feature_length,
+            latent_dim=latent_dim,
+            station_locations=station_locations,
+            device=self.device,
+            trace_length=trace_length,
         )
-
 
         # Conditional MAF over theta | x with embedding integrated in the flow
         self.flow = build_nsf(
             dim=self.num_dims,
             conditional_dim=latent_dim,
-            hidden_features=channels,#256,
-            num_transforms=5,
-            num_blocks=2,
-            dropout_probability=0.0,
-            use_batch_norm=True,
-            embedding_net=seismogram_transformer_model
+            hidden_features=channels,
+            embedding_net=seismogram_transformer_model,
+            **flow_config,
         )
 
         # Lightning module that maximizes log p_phi(theta | x)
         self.model = NPELightningModule(
             flow=self.flow,
-            lr=1e-4,
-            weight_decay=1e-4,
-                    )
+            lr=lr,
+            weight_decay=weight_decay,
+        )
 
-    def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None):
+    def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
+              logger="wandb", enable_checkpointing=True, enable_progress_bar=True):
+        """Train the flow.
+
+        Defaults preserve production behaviour (W&B logging + checkpointing). For headless
+        runs (tests/CI) pass ``logger=None`` (or ``False``) to disable logging entirely,
+        ``enable_checkpointing=False`` to skip writing .ckpt files, and
+        ``enable_progress_bar=False`` for clean output. Returns the trained model so callers
+        that disabled checkpointing can use it without reading a checkpoint from disk.
+        """
         if dataloader_args is None or "train_max_index" not in dataloader_args:
             raise ValueError("dataloader_args must include: data_loader, data_folder, parameter_name_map, synthetic_noise_model_sampler, and train_max_index.")
 
         # Build train/val dataloaders from a single split index
         train_dataloader, val_dataloader = make_torch_dataloaders(**dataloader_args)
 
-        checkpoint_cb = create_best_checkpoint_callback(output_path / run_name)
         output_path = Path(output_path) / run_name
-        wandb_logger = WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)  # added
-        lr_monitor = LearningRateMonitor(logging_interval='epoch') 
+
+        # Resolve the logger: "wandb" -> WandbLogger (production); None/False -> no logging;
+        # anything else is treated as an already-constructed Lightning logger.
+        if logger == "wandb":
+            pl_logger = WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)
+        elif logger in (None, False):
+            pl_logger = False
+        else:
+            pl_logger = logger
+
+        callbacks = []
+        if enable_checkpointing:
+            callbacks.append(create_best_checkpoint_callback(output_path))
+        # LearningRateMonitor requires a logger to write to; only add it when logging is on.
+        if pl_logger is not False:
+            callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+
         trainer = pl.Trainer(
             max_epochs=epochs,
             accelerator="auto",
             devices=1,
-            callbacks=[checkpoint_cb, lr_monitor],
+            callbacks=callbacks,
             precision=32,
-            logger=wandb_logger,  # added
+            logger=pl_logger,
+            enable_checkpointing=enable_checkpointing,
+            enable_progress_bar=enable_progress_bar,
         )
 
         trainer.fit(self.model, train_dataloader, val_dataloader)
+        return self.model
 
     def load_best(self, output_path: Path) -> Path:
         """
@@ -109,13 +184,14 @@ class CompressionTrainer:
         from sbi.inference.posteriors import DirectPosterior
         from sbi import utils as utils
 
-        prior = utils.BoxUniform(low=np.zeros((self.num_dims)), high=np.ones((self.num_dims)), device='cuda')
+        device = str(self.device)
+        prior = utils.BoxUniform(low=np.zeros((self.num_dims)), high=np.ones((self.num_dims)), device=device)
 
         posterior = DirectPosterior(
-                    posterior_estimator=self.model.flow.to('cuda'),
+                    posterior_estimator=self.model.flow.to(device),
                     prior=prior,
                     # x_shape=self._x_shape,
-                    device='cuda',
+                    device=device,
                 )
         return posterior
 from pytorch_lightning.callbacks import ModelCheckpoint

@@ -119,6 +119,257 @@ def test_parse_invalid_parameter_type_raises():
         })
 
 
+def test_parse_invalid_nuisance_type_raises():
+    """Unknown nuisance parameter types must raise InvalidConfiguration."""
+    cfg = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration, match="Invalid parameter type"):
+        cfg.parse_parameters({
+            "inference": {
+                "moment_tensor": {
+                    "fiducial": [1e13] * 6,
+                    "stencil_deltas": [1e10] * 6,
+                    "bounds": [[-5e13] * 6, [5e13] * 6],
+                }
+            },
+            "nuisance": {
+                "not_a_real_nuisance": {
+                    "fiducial": [1.0],
+                    "bounds": [0.5, 2.0],
+                }
+            },
+        })
+
+
+def test_parse_source_location_nuisance():
+    """source_location is the canonical constant nuisance — must parse cleanly."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [37.6, -118.9, 5.0, 0.0],
+                "bounds": [37.6, -118.9, 5.0, 0.0],
+            }
+        },
+    })
+    assert "source_location" in cfg.model_parameters.nuisance
+    assert cfg.model_parameters.nuisance["source_location"] == [37.6, -118.9, 5.0, 0.0]
+
+
+# ---------------------------------------------------------------------------
+# Nuisance parameters for new effects (will PASS once the whitelist in
+# SBI_Configuration.parameter_types is extended during the refactor).
+# ---------------------------------------------------------------------------
+
+def test_parse_stf_duration_nuisance():
+    """stf_duration must be parseable as a nuisance parameter after the refactor."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [37.6, -118.9, 5.0, 0.0],
+                "bounds": [37.6, -118.9, 5.0, 0.0],
+            },
+            "stf_duration": {
+                "fiducial": [0.0],
+                "bounds": [0.5, 5.0],
+            },
+        },
+    })
+    assert "stf_duration" in cfg.model_parameters.nuisance
+
+
+def test_parse_amplitude_error_nuisance():
+    """amplitude_error must be parseable as a nuisance parameter after the refactor."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [37.6, -118.9, 5.0, 0.0],
+                "bounds": [37.6, -118.9, 5.0, 0.0],
+            },
+            "amplitude_error": {
+                "fiducial": [1.0],
+                "bounds": [0.8, 1.2],
+            },
+        },
+    })
+    assert "amplitude_error" in cfg.model_parameters.nuisance
+
+
+def test_parse_instrument_dropout_nuisance():
+    """instrument_dropout must be parseable as a nuisance parameter after the refactor."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [37.6, -118.9, 5.0, 0.0],
+                "bounds": [37.6, -118.9, 5.0, 0.0],
+            },
+            "instrument_dropout": {
+                "fiducial": [0.0],
+                "bounds": [0.0, 0.3],
+            },
+        },
+    })
+    assert "instrument_dropout" in cfg.model_parameters.nuisance
+
+
+def test_parse_time_shift_error_nuisance():
+    """time_shift_error must be parseable as a nuisance parameter."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [37.6, -118.9, 5.0, 0.0],
+                "bounds": [37.6, -118.9, 5.0, 0.0],
+            },
+            "time_shift_error": {
+                "fiducial": [0.0],
+                "bounds": [0.0, 1.0],
+                "gaussian_sigma": 2.0,
+            },
+        },
+    })
+    assert "time_shift_error" in cfg.model_parameters.nuisance
+
+
+def test_parse_nuisance_effect_config_scale_range():
+    """Extra YAML keys (scale_range) must be stored in nuisance_effect_config."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "amplitude_error": {
+                "fiducial": [0.0],
+                "bounds": [0.0, 1.0],
+                "scale_range": [0.3, 1.7],
+            },
+        },
+    })
+    assert "amplitude_error" in cfg.model_parameters.nuisance_effect_config
+    assert cfg.model_parameters.nuisance_effect_config["amplitude_error"]["scale_range"] == [0.3, 1.7]
+
+
+def test_parse_nuisance_effect_config_gaussian_sigma():
+    """gaussian_sigma for time_shift_error must be stored in nuisance_effect_config."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "time_shift_error": {
+                "fiducial": [0.0],
+                "bounds": [0.0, 1.0],
+                "gaussian_sigma": 3.5,
+            },
+        },
+    })
+    assert "time_shift_error" in cfg.model_parameters.nuisance_effect_config
+    ec = cfg.model_parameters.nuisance_effect_config["time_shift_error"]
+    assert ec["gaussian_sigma"] == 3.5
+    # 'fiducial' and 'bounds' must NOT appear in effect_config
+    assert "fiducial" not in ec
+    assert "bounds" not in ec
+
+
+def test_parse_scattering_coda_nuisance():
+    """scattering_coda must parse cleanly and store alpha in nuisance_effect_config."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [37.6, -118.9, 5.0, 0.0],
+                "bounds": [37.6, -118.9, 5.0, 0.0],
+            },
+            "scattering_coda": {
+                "fiducial": [0.0],
+                "bounds": [0.0, 1.0],
+                "alpha": 0.4,
+            },
+        },
+    })
+    assert "scattering_coda" in cfg.model_parameters.nuisance
+    assert "scattering_coda" in cfg.model_parameters.nuisance_effect_config
+    ec = cfg.model_parameters.nuisance_effect_config["scattering_coda"]
+    assert ec["alpha"] == 0.4
+    assert "fiducial" not in ec
+    assert "bounds" not in ec
+
+
+def test_parse_nuisance_no_effect_config_when_only_standard_keys():
+    """No effect_config entry should be created when only fiducial+bounds are given."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "amplitude_error": {
+                "fiducial": [0.0],
+                "bounds": [0.0, 1.0],
+            },
+        },
+    })
+    assert "amplitude_error" not in cfg.model_parameters.nuisance_effect_config
+
+
 def test_parse_moment_tensor_parameters():
     cfg = SBI_Configuration()
     fiducial = [1e13] * 6

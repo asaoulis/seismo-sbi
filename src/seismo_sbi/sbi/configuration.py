@@ -16,12 +16,32 @@ class InvalidConfiguration(Exception):
 
 class SBI_Configuration:
 
-    parameter_types = ["source_location", "earthquake_magnitude", "moment_tensor", "velocity_model"]
+    parameter_types = [
+        # Core source parameters
+        "source_location", "earthquake_magnitude", "moment_tensor", "velocity_model",
+        # Simulator-level nuisance (Category 1 — modify forward model inputs)
+        "stf_duration",
+        # Post-processing nuisance (Category 2 — modify synthetic seismograms)
+        "amplitude_error", "instrument_dropout", "scattering_coda", "time_shift_error",
+    ]
 
-    param_names_map = {"source_location": ["latitude", "longitude", "depth", "time_shift"],
-                        "moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"],
-                        "earthquake_magnitude": ["earthquake_magnitude"],
-                        "velocity_model": ["velocity_model"]}
+    param_names_map = {
+        "source_location": ["latitude", "longitude", "depth", "time_shift"],
+        "moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"],
+        "earthquake_magnitude": ["earthquake_magnitude"],
+        "velocity_model": ["velocity_model"],
+        # New nuisance types — single scalar per entry
+        "stf_duration": ["stf_duration"],
+        "amplitude_error": ["amplitude_error"],
+        "instrument_dropout": ["instrument_dropout"],
+        "scattering_coda": ["scattering_coda"],
+        "time_shift_error": ["time_shift_error"],
+    }
+
+    #: YAML keys consumed by the parameter machinery — any other keys in a
+    #: nuisance config block are treated as effect-level constructor kwargs
+    #: and stored in ``ModelParameters.nuisance_effect_config``.
+    _STANDARD_NUISANCE_KEYS = frozenset({"fiducial", "bounds"})
 
     compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
     test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
@@ -91,12 +111,21 @@ class SBI_Configuration:
         nuisance_config = config["nuisance"]
         for parameter_type in nuisance_config.keys():
             if parameter_type in SBI_Configuration.parameter_types:
-                parameter_values = nuisance_config[parameter_type] 
+                parameter_values = nuisance_config[parameter_type]
                 if parameter_type == 'velocity_model':
                     self.model_parameters.nuisance[parameter_type] = load_velocity_model(parameter_values["fiducial"])
                 else:
                     self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
                 self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
+
+                # Any YAML key beyond 'fiducial' and 'bounds' is effect-level
+                # configuration forwarded to the SeismogramEffect constructor.
+                effect_cfg = {
+                    k: v for k, v in parameter_values.items()
+                    if k not in SBI_Configuration._STANDARD_NUISANCE_KEYS
+                }
+                if effect_cfg:
+                    self.model_parameters.nuisance_effect_config[parameter_type] = effect_cfg
             else:
                 allowed_types = ', '.join(SBI_Configuration.parameter_types)
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")

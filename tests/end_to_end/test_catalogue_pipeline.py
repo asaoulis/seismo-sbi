@@ -56,12 +56,12 @@ CHANNELS = ["BHZ", "BHE", "BHN"]
 SR_RAW = 20.0   # raw sampling rate
 SR_TARGET = 1.0  # SBI target
 
-# Data covers 4 hours so noise windows can be extracted
+# 45 minutes of data is enough for all tests and keeps the suite fast.
 DATA_T0 = datetime.datetime(2023, 6, 1, 0, 0, 0)
-DATA_T1 = DATA_T0 + timedelta(hours=4)
+DATA_T1 = DATA_T0 + timedelta(minutes=45)
 
-# A synthetic "event" in the middle of the data
-EVENT_ORIGIN_TIME = DATA_T0 + timedelta(hours=2)
+# Synthetic event near the centre of the data window
+EVENT_ORIGIN_TIME = DATA_T0 + timedelta(minutes=15)
 EVENT_LAT = 35.0
 EVENT_LON = -117.0
 EVENT_DEPTH_KM = 10.0
@@ -148,7 +148,7 @@ def _make_catalog(n=3) -> Catalog:
     """Return a Catalog with *n* events spread over the data period."""
     events = []
     for i in range(n):
-        t = EVENT_ORIGIN_TIME + timedelta(hours=i * 0.5)
+        t = EVENT_ORIGIN_TIME + timedelta(minutes=i * 3)
         events.append(_make_obspy_event(time=t, magnitude=5.0 + i * 0.5))
     return Catalog(events=events)
 
@@ -362,7 +362,8 @@ class TestCheckWindowQuality:
         assert ok is False
         assert "completeness" in reason.lower()
 
-    def test_zero_trace_fails_rms(self):
+    def test_zero_trace_fails(self):
+        """All-zero traces are rejected regardless of min_rms setting."""
         st = self._good_stream()
         for tr in st.select(station="STA1"):
             tr.data = np.zeros(len(tr.data))
@@ -371,7 +372,8 @@ class TestCheckWindowQuality:
             min_rms=0.0,
         )
         assert ok is False
-        assert "rms" in reason.lower() or "RMS" in reason
+        # Caught by the explicit all-zeros check or the RMS check
+        assert "zero" in reason.lower() or "rms" in reason.lower()
 
     def test_empty_stream_fails(self):
         ok, reason = check_window_quality(
@@ -400,6 +402,357 @@ class TestCheckWindowQuality:
         )
         assert ok_low is True
         assert ok_high is False
+
+    # --- new strict-quality checks ---
+
+    def test_nan_in_trace_fails(self):
+        """A single NaN anywhere in a trace causes rejection."""
+        st = self._good_stream()
+        # Inject one NaN into the middle of STA1's first component
+        for tr in st.select(station="STA1"):
+            tr.data[len(tr.data) // 2] = np.nan
+            break
+        ok, reason = check_window_quality(st, STATIONS[:2], SR_TARGET, DURATION)
+        assert ok is False
+        assert "nan" in reason.lower() or "non-finite" in reason.lower()
+
+    def test_inf_in_trace_fails(self):
+        """A single Inf anywhere in a trace causes rejection."""
+        st = self._good_stream()
+        for tr in st.select(station="STA1"):
+            tr.data[0] = np.inf
+            break
+        ok, reason = check_window_quality(st, STATIONS[:2], SR_TARGET, DURATION)
+        assert ok is False
+        assert "non-finite" in reason.lower() or "inf" in reason.lower()
+
+    def test_negative_inf_in_trace_fails(self):
+        st = self._good_stream()
+        for tr in st.select(station="STA1"):
+            tr.data[-1] = -np.inf
+            break
+        ok, reason = check_window_quality(st, STATIONS[:2], SR_TARGET, DURATION)
+        assert ok is False
+
+    def test_all_zeros_fails_explicitly(self):
+        """All-zero trace is rejected by the explicit zeros check, not just RMS."""
+        st = self._good_stream()
+        for tr in st.select(station="STA1"):
+            tr.data[:] = 0.0
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION, min_rms=0.0
+        )
+        assert ok is False
+        assert "zero" in reason.lower()
+
+    def test_constant_nonzero_trace_fails_flat_fraction(self):
+        """A trace stuck at a constant non-zero value has 100% flat fraction."""
+        st = self._good_stream()
+        for tr in st.select(station="STA1"):
+            tr.data[:] = 42.0
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION, max_flat_fraction=0.05
+        )
+        assert ok is False
+        assert "flat" in reason.lower()
+
+    def test_flat_period_exceeding_threshold_fails(self):
+        """A window with >5% of consecutive identical samples is rejected."""
+        st = self._good_stream()
+        npts = int(DURATION.total_seconds() * SR_TARGET)
+        # Overwrite 20% of STA1's first trace with a constant (dead-channel gap)
+        for tr in st.select(station="STA1"):
+            n_flat = int(npts * 0.20)
+            tr.data[npts // 4 : npts // 4 + n_flat] = 0.0
+            break
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION, max_flat_fraction=0.05
+        )
+        assert ok is False
+        assert "flat" in reason.lower()
+
+    def test_small_flat_segment_below_threshold_passes(self):
+        """A tiny constant segment (< threshold) is allowed."""
+        st = self._good_stream()
+        npts = int(DURATION.total_seconds() * SR_TARGET)
+        # Overwrite 2% of STA1's first trace with a constant
+        for tr in st.select(station="STA1"):
+            n_flat = max(1, int(npts * 0.02))
+            tr.data[0:n_flat] = 99.0
+            break
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION, max_flat_fraction=0.05
+        )
+        assert ok is True, f"Expected pass but got: {reason}"
+
+    def test_flat_fraction_threshold_is_tuneable(self):
+        """Raising max_flat_fraction accepts what the default rejects."""
+        st = self._good_stream()
+        npts = int(DURATION.total_seconds() * SR_TARGET)
+        # Inject 10% flat segment
+        for tr in st.select(station="STA1"):
+            n_flat = int(npts * 0.10)
+            tr.data[npts // 2 : npts // 2 + n_flat] = -5.0
+            break
+        ok_strict, _ = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION, max_flat_fraction=0.05
+        )
+        ok_lenient, _ = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION, max_flat_fraction=0.15
+        )
+        assert ok_strict is False
+        assert ok_lenient is True
+
+    def test_nan_blocked_before_flat_check(self):
+        """NaN injection is caught before the flat-fraction check runs."""
+        st = self._good_stream()
+        for tr in st.select(station="STA1"):
+            tr.data[:] = np.nan  # all NaN — would also be 0% flat fraction
+            break
+        ok, reason = check_window_quality(st, STATIONS[:2], SR_TARGET, DURATION)
+        assert ok is False
+        assert "non-finite" in reason.lower()
+
+    def test_good_stream_passes_all_strict_checks(self):
+        """A clean random stream passes all checks including the new ones."""
+        st = self._good_stream()
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION,
+            min_rms=0.0,
+            max_flat_fraction=0.05,
+        )
+        assert ok is True
+        assert reason == ""
+
+    def test_trace_below_sbi_min_npts_fails(self):
+        """A trace shorter than the SBI contract length is rejected when min_npts is set."""
+        from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+        sbi_min = compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
+        # Build a stream with sbi_min - 1 samples per trace
+        npts = sbi_min + 20  # start with enough, then truncate STA1
+        st = Stream()
+        rng = np.random.default_rng(7)
+        for sta in STATIONS[:2]:
+            for cha in CHANNELS:
+                tr = Trace()
+                tr.stats.station = sta
+                tr.stats.channel = cha
+                tr.stats.sampling_rate = SR_TARGET
+                tr.stats.starttime = UTCDateTime(DATA_T0)
+                tr.data = rng.standard_normal(npts).astype(np.float64)
+                st += tr
+        # Truncate STA1 to just below the minimum
+        for tr in st.select(station="STA1"):
+            tr.data = tr.data[:sbi_min - 1]
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION,
+            min_completeness=0.0,  # disable completeness gate so only min_npts fires
+            min_npts=sbi_min,
+        )
+        assert ok is False
+        assert "contract" in reason.lower() or "samples" in reason.lower()
+
+    def test_trace_at_exact_sbi_min_npts_passes(self):
+        """A trace with exactly the SBI contract minimum samples passes the length check."""
+        from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+        sbi_min = compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
+        st = Stream()
+        rng = np.random.default_rng(8)
+        for sta in STATIONS[:2]:
+            for cha in CHANNELS:
+                tr = Trace()
+                tr.stats.station = sta
+                tr.stats.channel = cha
+                tr.stats.sampling_rate = SR_TARGET
+                tr.stats.starttime = UTCDateTime(DATA_T0)
+                tr.data = rng.standard_normal(sbi_min).astype(np.float64)
+                st += tr
+        ok, reason = check_window_quality(
+            st, STATIONS[:2], SR_TARGET, DURATION,
+            min_completeness=0.0,
+            min_npts=sbi_min,
+        )
+        assert ok is True, f"Expected pass at SBI minimum length but got: {reason}"
+
+
+# ============================================================================
+# Noise catalogue quality-gate integration tests
+# ============================================================================
+
+class TestNoiseCatalogueQualityGate:
+    """Integration tests: verify that corrupted windows are excluded from the
+    noise catalogue by build_noise_catalogue's quality checks.
+
+    Strategy
+    --------
+    - All-zeros corruption survives the full mseed → filter → resample pipeline
+      (a zero signal filtered and resampled is still zero), so those tests run
+      end-to-end without mocking.
+    - NaN and flat-period corruption cannot survive an mseed integer round-trip,
+      so those tests patch ``_prepare_stream`` to inject the corruption *after*
+      loading and processing, simulating what would happen with e.g. a bad
+      response removal.  This still exercises the quality-gate wiring.
+    """
+
+    def _build_noise(self, data_dir, station_networks, tmp_path, label, **kwargs):
+        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        out_dir = tmp_path / label
+        # n_jobs=1 is intentional: patch.object() is only visible in the main
+        # process, so mock-based tests cannot use loky workers.
+        defaults = dict(
+            filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
+            n_jobs=1,
+        )
+        defaults.update(kwargs)
+        return build_noise_catalogue(
+            noise_start=DATA_T0 + timedelta(minutes=5),
+            noise_end=DATA_T1 - timedelta(minutes=5),
+            interfering_events=Catalog(),
+            data_dir=data_dir,
+            stationxml_dir=None,
+            station_networks=station_networks,
+            output_dir=out_dir,
+            duration_s=DURATION.total_seconds(),
+            sampling_rate=SR_TARGET,
+            buffer_minutes=5.0,
+            **defaults,
+        )
+
+    def _make_zero_data_dir(self, tmp_path):
+        """Create a data dir where STA1/BHZ is all zeros (survives filtering)."""
+        st_good = _make_stream(stations=["STA2", "STA3"])
+        st_bad = _make_stream(stations=["STA1"])
+        for tr in st_bad.select(channel="BHZ"):
+            tr.data[:] = 0.0
+        data_dir = tmp_path / "raw_zeros"
+        _write_stream_mseed(st_good + st_bad, data_dir)
+        return data_dir, {sta: NETWORK for sta in ["STA1", "STA2", "STA3"]}
+
+    def test_all_zero_channel_excluded_end_to_end(self, tmp_path):
+        """All-zero channel: zero input stays zero through filter+resample → rejected."""
+        data_dir, sn = self._make_zero_data_dir(tmp_path)
+        written = self._build_noise(
+            data_dir, sn, tmp_path, "noise_zeros",
+        )
+        assert len(written) == 0, (
+            f"Expected 0 files (all-zero channel), got {len(written)}"
+        )
+
+    def test_nan_windows_excluded_via_mock(self, synthetic_data, tmp_path):
+        """NaN injected post-processing (via mock) is caught by the quality gate."""
+        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+
+        original_prepare = cat_module._prepare_stream
+
+        def inject_nan(stream, *args, **kwargs):
+            result = original_prepare(stream, *args, **kwargs)
+            for tr in result.select(station="STA1", channel="BHZ"):
+                tr.data[len(tr.data) // 2] = np.nan
+            return result
+
+        with patch.object(cat_module, "_prepare_stream", side_effect=inject_nan):
+            written = self._build_noise(
+                synthetic_data["data_dir"],
+                synthetic_data["station_networks"],
+                tmp_path, "noise_nan",
+            )
+        assert len(written) == 0, (
+            f"Expected 0 files (NaN after processing), got {len(written)}"
+        )
+
+    def test_inf_windows_excluded_via_mock(self, synthetic_data, tmp_path):
+        """Inf injected post-processing is caught by the quality gate."""
+        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+
+        original_prepare = cat_module._prepare_stream
+
+        def inject_inf(stream, *args, **kwargs):
+            result = original_prepare(stream, *args, **kwargs)
+            for tr in result.select(station="STA1", channel="BHZ"):
+                tr.data[0] = np.inf
+            return result
+
+        with patch.object(cat_module, "_prepare_stream", side_effect=inject_inf):
+            written = self._build_noise(
+                synthetic_data["data_dir"],
+                synthetic_data["station_networks"],
+                tmp_path, "noise_inf",
+            )
+        assert len(written) == 0, (
+            f"Expected 0 files (Inf after processing), got {len(written)}"
+        )
+
+    def test_flat_period_excluded_via_mock(self, synthetic_data, tmp_path):
+        """Flat period injected post-processing is caught by the quality gate."""
+        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+
+        original_prepare = cat_module._prepare_stream
+
+        def inject_flat(stream, *args, **kwargs):
+            result = original_prepare(stream, *args, **kwargs)
+            for tr in result.select(station="STA1", channel="BHZ"):
+                n = len(tr.data)
+                # 30% consecutive identical samples — well above 5% threshold
+                tr.data[n // 4 : n // 4 + n // 3] = -99.0
+            return result
+
+        with patch.object(cat_module, "_prepare_stream", side_effect=inject_flat):
+            written = self._build_noise(
+                synthetic_data["data_dir"],
+                synthetic_data["station_networks"],
+                tmp_path, "noise_flat",
+                max_flat_fraction=0.05,
+            )
+        assert len(written) == 0, (
+            f"Expected 0 files (flat period after processing), got {len(written)}"
+        )
+
+    def test_lenient_flat_fraction_allows_borderline_via_mock(self, synthetic_data, tmp_path):
+        """Raising max_flat_fraction lets a borderline flat window through."""
+        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+
+        original_prepare = cat_module._prepare_stream
+
+        def inject_10pct_flat(stream, *args, **kwargs):
+            result = original_prepare(stream, *args, **kwargs)
+            for tr in result.select(station="STA1", channel="BHZ"):
+                n = len(tr.data)
+                tr.data[0 : max(1, n // 10)] = 50.0  # ~10% flat
+            return result
+
+        with patch.object(cat_module, "_prepare_stream", side_effect=inject_10pct_flat):
+            written_strict = self._build_noise(
+                synthetic_data["data_dir"],
+                synthetic_data["station_networks"],
+                tmp_path, "strict",
+                max_flat_fraction=0.05,
+            )
+
+        with patch.object(cat_module, "_prepare_stream", side_effect=inject_10pct_flat):
+            written_lenient = self._build_noise(
+                synthetic_data["data_dir"],
+                synthetic_data["station_networks"],
+                tmp_path, "lenient",
+                max_flat_fraction=0.15,
+            )
+
+        assert len(written_strict) == 0
+        assert len(written_lenient) > 0
+
+    def test_error_log_records_quality_failures(self, tmp_path):
+        """Quality failures (all-zero channel) are written to the error log."""
+        import csv as _csv
+        data_dir, sn = self._make_zero_data_dir(tmp_path)
+        error_log = tmp_path / "errors.csv"
+        self._build_noise(
+            data_dir, sn, tmp_path, "noise_err_log",
+            error_log=error_log,
+        )
+        assert error_log.exists()
+        rows = list(_csv.reader(open(error_log)))
+        assert len(rows) >= 1
+        reasons = [row[1] for row in rows if len(row) >= 2]
+        assert any("quality" in r.lower() for r in reasons)
 
 
 # ============================================================================
@@ -626,7 +979,7 @@ class TestProcessDailyFiles:
 
 class TestBuildEventCatalogueSynthetic:
 
-    def _run(self, synthetic_data, events, tmp_path, n_jobs=1, **kwargs):
+    def _run(self, synthetic_data, events, tmp_path, n_jobs=4, **kwargs):
         """Helper: call build_event_catalogue and return (output_dir, written)."""
         from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
 
@@ -727,7 +1080,7 @@ class TestBuildEventCatalogueSynthetic:
             output_dir=out_dir,
             duration_s=DURATION.total_seconds(),
             sampling_rate=SR_TARGET,
-            n_jobs=1,
+            n_jobs=4,
             error_log=error_log,
         )
         assert error_log.exists()
@@ -736,7 +1089,7 @@ class TestBuildEventCatalogueSynthetic:
 
     def test_parallel_gives_same_files_as_serial(self, synthetic_data, tmp_path):
         catalog = _make_catalog(n=2)
-        _, serial = self._run(synthetic_data, catalog, tmp_path / "serial")
+        _, serial = self._run(synthetic_data, catalog, tmp_path / "serial", n_jobs=1)
         _, parallel = self._run(
             synthetic_data, catalog, tmp_path / "parallel", n_jobs=2
         )
@@ -824,7 +1177,7 @@ class TestBuildEventCatalogueSynthetic:
 
 class TestBuildNoiseCatalogueSynthetic:
 
-    def _run(self, synthetic_data, interfering_events, tmp_path, n_jobs=1, **kwargs):
+    def _run(self, synthetic_data, interfering_events, tmp_path, n_jobs=4, **kwargs):
         from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
 
         out_dir = tmp_path / "noise"
@@ -966,7 +1319,7 @@ class TestBuildNoiseCatalogueSynthetic:
             sampling_rate=SR_TARGET,
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
             processed_dir=shared_daily,
-            n_jobs=1,
+            n_jobs=4,
         )
         daily_files_after_events = {p.name for p in shared_daily.rglob("*.mseed")}
         mtimes = {p: p.stat().st_mtime for p in shared_daily.rglob("*.mseed")}
@@ -985,13 +1338,307 @@ class TestBuildNoiseCatalogueSynthetic:
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
             buffer_minutes=5.0,
             processed_dir=shared_daily,
-            n_jobs=1,
+            n_jobs=4,
         )
         # No new files added; no existing files modified
         daily_files_after_noise = {p.name for p in shared_daily.rglob("*.mseed")}
         assert daily_files_after_events == daily_files_after_noise
         for p in shared_daily.rglob("*.mseed"):
             assert p.stat().st_mtime == mtimes[p]
+
+    def test_noise_h5_array_lengths_match_sbi_contract(self, synthetic_data, tmp_path):
+        """Every component array in every noise h5 has exactly the SBI contract length."""
+        out_dir, written = self._run(synthetic_data, Catalog(), tmp_path)
+        assert len(written) >= 1
+        expected_len = (
+            compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
+        )
+        for h5_path in written[:3]:  # check the first few to keep runtime short
+            with h5py.File(h5_path, "r") as f:
+                assert "outputs" in f, f"Missing 'outputs' group in {h5_path.name}"
+                for sta in f["outputs"].keys():
+                    for comp in ("Z", "1", "2"):
+                        assert comp in f["outputs"][sta], (
+                            f"Missing {comp} for {sta} in {h5_path.name}"
+                        )
+                        arr = f["outputs"][sta][comp][:]
+                        assert len(arr) == expected_len, (
+                            f"{h5_path.name}: {sta}/{comp} has {len(arr)} samples, "
+                            f"expected {expected_len}"
+                        )
+
+    def test_all_noise_h5_have_consistent_lengths(self, synthetic_data, tmp_path):
+        """All noise h5 files in the catalogue have the same array length."""
+        out_dir, written = self._run(synthetic_data, Catalog(), tmp_path)
+        assert len(written) >= 2
+        expected_len = (
+            compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
+        )
+        lengths_seen = set()
+        for h5_path in written[:5]:
+            with h5py.File(h5_path, "r") as f:
+                for sta in f["outputs"].keys():
+                    for comp in f["outputs"][sta].keys():
+                        lengths_seen.add(len(f["outputs"][sta][comp][:]))
+        assert lengths_seen == {expected_len}, (
+            f"Variable array lengths found: {lengths_seen} (expected {{{expected_len}}})"
+        )
+
+
+# ============================================================================
+# pre_event_window_s feature
+# ============================================================================
+
+class TestPreEventWindow:
+    """Tests for the pre_event_window_s parameter of build_event_catalogue."""
+
+    def _run(self, synthetic_data, tmp_path, pre_event_window_s=0.0, **kwargs):
+        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        out_dir = tmp_path / "events"
+        written = build_event_catalogue(
+            events=[_make_obspy_event(time=EVENT_ORIGIN_TIME)],
+            data_dir=synthetic_data["data_dir"],
+            stationxml_dir=None,
+            station_networks=synthetic_data["station_networks"],
+            output_dir=out_dir,
+            duration_s=DURATION.total_seconds(),
+            sampling_rate=SR_TARGET,
+            pre_event_window_s=pre_event_window_s,
+            filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
+            n_jobs=4,
+            **kwargs,
+        )
+        return out_dir, written
+
+    def test_zero_pre_event_produces_h5(self, synthetic_data, tmp_path):
+        """Default pre_event_window_s=0 behaves like the old code."""
+        _, written = self._run(synthetic_data, tmp_path, pre_event_window_s=0.0)
+        assert len(written) == 1
+        assert written[0].exists()
+
+    def test_nonzero_pre_event_produces_h5(self, synthetic_data, tmp_path):
+        """pre_event_window_s=30 still exports a valid h5 file."""
+        _, written = self._run(synthetic_data, tmp_path, pre_event_window_s=30.0)
+        assert len(written) == 1
+        assert written[0].exists()
+
+    def test_pre_event_shifts_window_start(self, synthetic_data, tmp_path):
+        """Window with pre_event_window_s=30 contains data 30 s before onset."""
+        import h5py
+        _, written_no_pre = self._run(
+            synthetic_data, tmp_path / "no_pre", pre_event_window_s=0.0
+        )
+        _, written_pre = self._run(
+            synthetic_data, tmp_path / "pre", pre_event_window_s=30.0
+        )
+        assert len(written_no_pre) == 1 and len(written_pre) == 1
+
+        with h5py.File(written_no_pre[0], "r") as f_no, h5py.File(written_pre[0], "r") as f_pre:
+            # Both windows have the same length (same duration_s)
+            for sta in f_no.get("outputs", {}).keys():
+                if sta in f_pre.get("outputs", {}):
+                    arr_no = f_no["outputs"][sta]["Z"][:]
+                    arr_pre = f_pre["outputs"][sta]["Z"][:]
+                    assert len(arr_no) == len(arr_pre), (
+                        "pre_event_window_s must not change array length"
+                    )
+                    # The data values differ because windows start at different times
+                    assert not np.array_equal(arr_no, arr_pre), (
+                        "pre_event and no-pre windows should have different data"
+                    )
+
+    def test_pre_event_h5_schema_intact(self, synthetic_data, tmp_path):
+        """pre_event_window_s does not corrupt the h5 schema."""
+        import h5py
+        _, written = self._run(synthetic_data, tmp_path, pre_event_window_s=30.0)
+        expected_len = (
+            compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
+        )
+        with h5py.File(written[0], "r") as f:
+            assert "outputs" in f
+            for sta in f["outputs"].keys():
+                for comp in ("Z", "1", "2"):
+                    assert comp in f["outputs"][sta]
+                    assert len(f["outputs"][sta][comp][:]) == expected_len
+
+
+# ============================================================================
+# use_taup / simple event-avoidance feature
+# ============================================================================
+
+class TestNoTaupEventAvoidance:
+    """Tests for use_taup=False (default) in build_noise_catalogue."""
+
+    def _run(self, synthetic_data, interfering_events, tmp_path, **kwargs):
+        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        out_dir = tmp_path / "noise"
+        written = build_noise_catalogue(
+            noise_start=DATA_T0 + timedelta(minutes=5),
+            noise_end=DATA_T1 - timedelta(minutes=5),
+            interfering_events=interfering_events,
+            data_dir=synthetic_data["data_dir"],
+            stationxml_dir=None,
+            station_networks=synthetic_data["station_networks"],
+            output_dir=out_dir,
+            duration_s=DURATION.total_seconds(),
+            sampling_rate=SR_TARGET,
+            filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
+            buffer_minutes=5.0,
+            n_jobs=4,
+            **kwargs,
+        )
+        return out_dir, written
+
+    def test_no_taup_default_produces_windows(self, synthetic_data, tmp_path):
+        """use_taup=False (default) produces noise windows without calling TauPy."""
+        _, written = self._run(synthetic_data, Catalog(), tmp_path)
+        assert len(written) >= 1
+
+    def test_no_taup_event_avoidance_reduces_windows(self, synthetic_data, tmp_path):
+        """Events are avoided even without TauPy."""
+        _, no_ev = self._run(synthetic_data, Catalog(), tmp_path / "no_ev", use_taup=False)
+        catalog = _make_catalog(n=4)
+        _, with_ev = self._run(synthetic_data, catalog, tmp_path / "with_ev", use_taup=False)
+        assert len(with_ev) <= len(no_ev)
+
+    def test_taup_and_no_taup_both_produce_valid_h5(self, synthetic_data, tmp_path):
+        """Both use_taup modes export valid h5 files."""
+        import h5py
+        _, no_taup = self._run(
+            synthetic_data, Catalog(), tmp_path / "no_taup", use_taup=False
+        )
+        _, with_taup = self._run(
+            synthetic_data, Catalog(), tmp_path / "with_taup", use_taup=True
+        )
+        for p in no_taup[:1] + with_taup[:1]:
+            with h5py.File(p, "r") as f:
+                assert "outputs" in f
+                for sta in f["outputs"].keys():
+                    for comp in ("Z", "1", "2"):
+                        assert comp in f["outputs"][sta]
+
+    def test_simple_event_windows_helper(self):
+        """_simple_event_windows returns one window per event at the onset time."""
+        from seismo_sbi.data_handling.preprocessing.catalogue import _simple_event_windows
+        catalog = _make_catalog(n=3)
+        windows = _simple_event_windows(catalog, duration_s=120.0)
+        assert len(windows) == 3
+        for (t0, t1), ev in zip(windows, catalog):
+            assert abs(float(t0 - ev.origins[0].time)) < 1e-6
+            assert abs(float(t1 - (ev.origins[0].time + 120.0))) < 1e-6
+
+
+# ============================================================================
+# Rolling window feature
+# ============================================================================
+
+class TestRollingNoiseWindows:
+    """Tests for the rolling_window_gap_s parameter and make_noise_windows step."""
+
+    def test_make_noise_windows_rolling_step(self):
+        """A small step produces more windows than a large step."""
+        from seismo_sbi.data_handling.preprocessing.windowing import make_noise_windows
+        from datetime import timedelta, datetime
+        region = [(datetime(2023, 1, 1, 0, 0), datetime(2023, 1, 1, 1, 0))]
+        window = timedelta(minutes=5)
+        buffer = timedelta(minutes=2)
+
+        large_step = list(make_noise_windows(region, window, buffer=buffer,
+                                             step=timedelta(minutes=5)))
+        small_step = list(make_noise_windows(region, window, buffer=buffer,
+                                             step=timedelta(seconds=30)))
+        assert len(small_step) > len(large_step)
+
+    def test_make_noise_windows_default_step_equals_buffer(self):
+        """step=None falls back to buffer (original behaviour)."""
+        from seismo_sbi.data_handling.preprocessing.windowing import make_noise_windows
+        from datetime import timedelta, datetime
+        region = [(datetime(2023, 1, 1, 0, 0), datetime(2023, 1, 1, 1, 0))]
+        window = timedelta(minutes=5)
+        buffer = timedelta(minutes=10)
+
+        default = list(make_noise_windows(region, window, buffer=buffer))
+        explicit = list(make_noise_windows(region, window, buffer=buffer, step=buffer))
+        assert default == explicit
+
+    def test_rolling_catalogue_has_more_windows_than_non_rolling(
+        self, synthetic_data, tmp_path
+    ):
+        """Smaller rolling_window_gap_s yields strictly more noise h5 files."""
+        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+
+        def _build(gap_s, label):
+            out = tmp_path / label
+            return build_noise_catalogue(
+                noise_start=DATA_T0 + timedelta(minutes=5),
+                noise_end=DATA_T1 - timedelta(minutes=5),
+                interfering_events=Catalog(),
+                data_dir=synthetic_data["data_dir"],
+                stationxml_dir=None,
+                station_networks=synthetic_data["station_networks"],
+                output_dir=out,
+                duration_s=DURATION.total_seconds(),
+                sampling_rate=SR_TARGET,
+                filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
+                buffer_minutes=5.0,
+                rolling_window_gap_s=gap_s,
+                n_jobs=4,
+            )
+
+        dense = _build(30.0, "dense")
+        sparse = _build(DURATION.total_seconds(), "sparse")
+        assert len(dense) > len(sparse)
+
+    def test_rolling_window_labels_include_seconds(self, synthetic_data, tmp_path):
+        """With sub-minute rolling gap, output filenames include seconds."""
+        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+
+        out_dir = tmp_path / "rolling"
+        written = build_noise_catalogue(
+            noise_start=DATA_T0 + timedelta(minutes=5),
+            noise_end=DATA_T1 - timedelta(minutes=5),
+            interfering_events=Catalog(),
+            data_dir=synthetic_data["data_dir"],
+            stationxml_dir=None,
+            station_networks=synthetic_data["station_networks"],
+            output_dir=out_dir,
+            duration_s=DURATION.total_seconds(),
+            sampling_rate=SR_TARGET,
+            filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
+            buffer_minutes=5.0,
+            rolling_window_gap_s=30.0,
+            n_jobs=4,
+        )
+        assert len(written) >= 1
+        # All names must be unique (second-level precision)
+        names = [p.name for p in written]
+        assert len(names) == len(set(names))
+
+    def test_rolling_windows_all_unique_and_valid(self, synthetic_data, tmp_path):
+        """Rolling windows produce distinct, valid h5 files."""
+        import h5py
+        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+
+        out_dir = tmp_path / "rolling_valid"
+        written = build_noise_catalogue(
+            noise_start=DATA_T0 + timedelta(minutes=5),
+            noise_end=DATA_T1 - timedelta(minutes=5),
+            interfering_events=Catalog(),
+            data_dir=synthetic_data["data_dir"],
+            stationxml_dir=None,
+            station_networks=synthetic_data["station_networks"],
+            output_dir=out_dir,
+            duration_s=DURATION.total_seconds(),
+            sampling_rate=SR_TARGET,
+            filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
+            buffer_minutes=5.0,
+            rolling_window_gap_s=60.0,
+            n_jobs=4,
+        )
+        assert len(written) >= 1
+        assert len({p.name for p in written}) == len(written)
+        with h5py.File(written[0], "r") as f:
+            assert "outputs" in f
 
 
 # ============================================================================
@@ -1016,7 +1663,7 @@ class TestCombinedCataloguePipeline:
             duration_s=DURATION.total_seconds(),
             sampling_rate=SR_TARGET,
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
-            n_jobs=1,
+            n_jobs=4,
         )
 
         noise_dir = tmp_path / "noise"
@@ -1032,7 +1679,7 @@ class TestCombinedCataloguePipeline:
             sampling_rate=SR_TARGET,
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
             buffer_minutes=5.0,
-            n_jobs=1,
+            n_jobs=4,
         )
 
         assert len(event_paths) >= 1
@@ -1056,7 +1703,7 @@ class TestCombinedCataloguePipeline:
             output_dir=events_dir,
             duration_s=DURATION.total_seconds(),
             sampling_rate=SR_TARGET,
-            n_jobs=1,
+            n_jobs=4,
         )
         build_noise_catalogue(
             noise_start=DATA_T0 + timedelta(minutes=5),
@@ -1069,7 +1716,7 @@ class TestCombinedCataloguePipeline:
             duration_s=DURATION.total_seconds(),
             sampling_rate=SR_TARGET,
             buffer_minutes=5.0,
-            n_jobs=1,
+            n_jobs=4,
         )
 
         event_names = {p.name for p in events_dir.glob("*.h5")}
@@ -1101,8 +1748,8 @@ class TestBuildCatalogueScriptImport:
         sfile = tmp_path / "stations.txt"
         sfile.write_text(
             "# comment\n"
-            "IU ANMO 34.9 -106.5 1839 BH\n"
-            "II BFO 48.3 8.3 589 BH\n"
+            "ANMO IU 34.9 -106.5 1839 BH\n"
+            "BFO II 48.3 8.3 589 BH\n"
         )
         mapping = read_stations_file(sfile)
         assert mapping == {"ANMO": "IU", "BFO": "II"}
@@ -1164,7 +1811,7 @@ class TestBuildEventCatalogueReal:
             covariance_window_s=60.0,
             prefilter_kwargs=dict(pre_filt=[0.005, 0.01, 0.1, 0.2]),
             filter_kwargs=dict(freqmin=0.02, freqmax=0.05, corners=4, zerophase=False),
-            n_jobs=1,
+            n_jobs=4,
             min_completeness=0.5,  # relax for short real-data window
         )
 
@@ -1213,7 +1860,7 @@ class TestBuildEventCatalogueReal:
             covariance_window_s=60.0,
             prefilter_kwargs=dict(pre_filt=[0.005, 0.01, 0.1, 0.2]),
             filter_kwargs=dict(freqmin=0.02, freqmax=0.05, corners=4, zerophase=False),
-            n_jobs=1,
+            n_jobs=4,
             min_completeness=0.5,
         )
 
@@ -1285,7 +1932,7 @@ class TestBuildNoiseCatalogueReal:
             filter_kwargs=dict(freqmin=0.02, freqmax=0.05, corners=4, zerophase=False),
             buffer_minutes=1.0,
             min_completeness=0.3,
-            n_jobs=1,
+            n_jobs=4,
         )
 
         # We may get 0 or more windows depending on data availability
@@ -1322,7 +1969,7 @@ class TestBuildNoiseCatalogueReal:
             filter_kwargs=dict(freqmin=0.02, freqmax=0.05, corners=4, zerophase=False),
             buffer_minutes=1.0,
             min_completeness=0.3,
-            n_jobs=1,
+            n_jobs=4,
         )
 
         if len(written) == 0:
@@ -1383,7 +2030,7 @@ class TestRealNoiseSamplerWithCatalogueNoise:
             sampling_rate=SR_TARGET,
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
             buffer_minutes=5.0,
-            n_jobs=1,
+            n_jobs=4,
         )
         return out_dir
 
@@ -1459,7 +2106,7 @@ class TestSimulationDataLoaderWithCatalogueEvent:
             duration_s=DURATION.total_seconds(),
             sampling_rate=SR_TARGET,
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
-            n_jobs=1,
+            n_jobs=4,
         )
         if not written:
             pytest.skip("No event h5 produced — check synthetic data setup")
@@ -1535,7 +2182,7 @@ class TestDataManagerWithCatalogueEvent:
             duration_s=DURATION.total_seconds(),
             sampling_rate=SR_TARGET,
             filter_kwargs=dict(freqmin=0.02, freqmax=0.1, corners=2, zerophase=False),
-            n_jobs=1,
+            n_jobs=4,
         )
         if not written:
             pytest.skip("No event h5 produced — check synthetic data setup")

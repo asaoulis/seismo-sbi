@@ -17,14 +17,17 @@ import torch.nn.functional as F
 
 class SeismogramTransformer(nn.Module):
 
-    def __init__(self, num_seismic_components, transformer_config, 
+    def __init__(self, num_seismic_components, transformer_config,
                         feature_length, num_outputs, noise_model,
-                        seismogram_locations : torch.Tensor, device, 
-                        aggregation: str = "mean") -> None:
+                        seismogram_locations : torch.Tensor, device,
+                        aggregation: str = "mean", input_length: int = 200) -> None:
         super().__init__()
 
         self.feature_length = feature_length
         self.noise_model = noise_model
+        # Per-trace sample count the CNN will receive. Used to size the conv stack's
+        # output length; must match the actual trace length of the data at train time.
+        self.input_length = input_length
 
         # Validate aggregation choice
         if aggregation not in ("mean", "query"):
@@ -35,7 +38,7 @@ class SeismogramTransformer(nn.Module):
 
         self.CNN_feature_extractor = ConvolutionalFeatureExtractor(
             num_seismic_components, cnn_output_dim=d_model, final_feature_length=feature_length,
-            should_concat_location = True
+            should_concat_location = True, input_length=input_length
         )
         # self.all_station_transformer = ConditionalTransformer(
         #     feature_length, seismogram_locations, transformer_config, device=device
@@ -207,7 +210,9 @@ class NPELightningModule(pl.LightningModule):
         max_epochs = getattr(self.trainer, "max_epochs", None) or 500
 
         warmup_epochs = max(1, int(0.05 * max_epochs))
-        cosine_epochs = max_epochs - warmup_epochs  # remaining epochs
+        # Guard against tiny max_epochs (e.g. 1 in tests) where warmup consumes all epochs:
+        # CosineAnnealingLR(T_max=0) divides by zero.
+        cosine_epochs = max(1, max_epochs - warmup_epochs)  # remaining epochs
 
         # If using cyclic LR, switch to step-based scheduling and compute warmup in steps
         use_cyclic = (str(self.lr_second_stage).lower() == "cyclic")

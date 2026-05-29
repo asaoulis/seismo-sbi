@@ -34,6 +34,7 @@ All parallelism is via joblib; set --n_jobs 1 for serial execution.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -97,8 +98,31 @@ def _parse_args():
                    help="Channel glob pattern (default 'BH?').")
     p.add_argument("--taup_model", default="prem",
                    help="TauPy earth model for arrival windows (default 'prem').")
+    p.add_argument("--use_taup", action="store_true", default=False,
+                   help="Use TauPy to compute precise arrival windows for event "
+                        "avoidance in the noise catalogue (default: off — use "
+                        "onset time directly, suitable for local/regional events).")
+    p.add_argument("--pre_event_window", type=float, default=0.0,
+                   help="Start event windows this many seconds before the origin "
+                        "time (default 0). Useful when filtering shifts the onset.")
+    p.add_argument("--rolling_window_gap", type=float, default=30.0,
+                   help="Step in seconds between consecutive noise windows "
+                        "(default 30). Use a larger value for sparser catalogues.")
     p.add_argument("--min_completeness", type=float, default=0.9,
                    help="Minimum per-trace completeness fraction (default 0.9).")
+
+    p.add_argument("--filter", dest="filter_kwargs", type=json.loads, default=None,
+                   metavar="JSON",
+                   help="JSON dict of bandpass filter overrides passed to "
+                        "deconvolve_and_filter (merged with defaults "
+                        "freqmin=0.02, freqmax=0.05, corners=4, zerophase=false). "
+                        "Example: '{\"freqmin\": 0.06, \"freqmax\": 0.2}'")
+    p.add_argument("--prefilter", dest="prefilter_kwargs", type=json.loads, default=None,
+                   metavar="JSON",
+                   help="JSON dict of instrument-response pre-filter overrides "
+                        "(merged with defaults pre_filt=[0.005,0.01,0.1,0.2], "
+                        "taper=true, taper_fraction=0.05). "
+                        "Example: '{\"pre_filt\": [0.01, 0.03, 1.0, 2.0]}'")
 
     return p.parse_args()
 
@@ -147,6 +171,9 @@ def main():
             duration_s=args.duration,
             sampling_rate=args.sampling_rate,
             covariance_window_s=args.covariance_window,
+            pre_event_window_s=args.pre_event_window,
+            prefilter_kwargs=args.prefilter_kwargs,
+            filter_kwargs=args.filter_kwargs,
             channel_glob=args.channel_glob,
             min_completeness=args.min_completeness,
             n_jobs=args.n_jobs,
@@ -173,10 +200,14 @@ def main():
             output_dir=noise_dir,
             duration_s=args.duration,
             sampling_rate=args.sampling_rate,
+            prefilter_kwargs=args.prefilter_kwargs,
+            filter_kwargs=args.filter_kwargs,
             channel_glob=args.channel_glob,
             buffer_minutes=args.buffer_minutes,
             min_completeness=args.min_completeness,
             taup_model=args.taup_model,
+            use_taup=args.use_taup,
+            rolling_window_gap_s=args.rolling_window_gap,
             n_jobs=args.n_jobs,
             error_log=error_log,
         )

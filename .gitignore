@@ -33,8 +33,12 @@ dfile
 wandb/
 
 # Claude Code
+# The agentic framework runs ONLY on the local machine (Claude never runs on the
+# cluster — it drives the cluster remotely via ssh/sbatch). So none of this needs to
+# be in git; the cluster only needs the tracked seismo-sbi code + cluster/ templates.
 .claude/
 CLAUDE.md
+cluster/
 
 # Test / coverage artefacts
 htmlcov/

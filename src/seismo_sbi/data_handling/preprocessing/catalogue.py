@@ -49,6 +49,7 @@ from seismo_sbi.data_handling.preprocessing.windowing import (
     make_noise_windows,
 )
 from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
+from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
 
 
 # ---------------------------------------------------------------------------
@@ -64,10 +65,12 @@ def build_event_catalogue(
     duration_s: float,
     sampling_rate: float,
     covariance_window_s: float = 200.0,
+    pre_event_window_s: float = 0.0,
     prefilter_kwargs: Optional[dict] = None,
     filter_kwargs: Optional[dict] = None,
     channel_glob: str = "BH?",
     min_completeness: float = 0.9,
+    max_flat_fraction: float = 0.05,
     n_jobs: int = 1,
     error_log: Optional[Path] = None,
     use_daily_processing: bool = True,
@@ -85,10 +88,15 @@ def build_event_catalogue(
         duration_s: Event window length in seconds.
         sampling_rate: Target sampling rate (Hz).
         covariance_window_s: Pre-event covariance window length (s).
+        pre_event_window_s: Start the event window this many seconds *before*
+            the origin time (default 0).  Useful for local/regional events
+            where filtering shifts the effective onset.
         prefilter_kwargs: Override for ``deconvolve_and_filter`` pre-filter.
         filter_kwargs: Override for ``deconvolve_and_filter`` bandpass.
         channel_glob: Glob for mseed channel codes (default ``'BH?'``).
         min_completeness: Minimum sample completeness fraction (0–1).
+        max_flat_fraction: Maximum fraction of consecutive identical samples
+            allowed per trace (0–1).  Default 0.05.
         n_jobs: Number of parallel workers.
         error_log: Path to append failures as CSV rows; None = no logging.
         use_daily_processing: Process raw data in daily chunks first, then
@@ -109,6 +117,7 @@ def build_event_catalogue(
 
     duration = timedelta(seconds=duration_s)
     cov_window = timedelta(seconds=covariance_window_s)
+    pre_event = timedelta(seconds=pre_event_window_s)
 
     eff_data_dir, inventory, remove_resp, eff_pre, eff_filt = _setup_data_source(
         events=events,
@@ -118,7 +127,7 @@ def build_event_catalogue(
         output_dir=output_dir,
         processed_dir=processed_dir,
         use_daily_processing=use_daily_processing,
-        t_start=min(ev.origins[0].time for ev in events) - covariance_window_s - 120,
+        t_start=min(ev.origins[0].time for ev in events) - covariance_window_s - 120 - pre_event_window_s,
         t_end=max(ev.origins[0].time for ev in events) + duration_s + 60,
         prefilter_kwargs=prefilter_kwargs,
         filter_kwargs=filter_kwargs,
@@ -134,7 +143,7 @@ def build_event_catalogue(
         if out_path.exists():
             return out_path, True, "already_exists"
 
-        t_start = origin.time.datetime
+        t_start = origin.time.datetime - pre_event
         t_end = t_start + duration
 
         try:
@@ -149,7 +158,10 @@ def build_event_catalogue(
                 eff_pre, eff_filt, sampling_rate,
             )
             ok, reason = check_window_quality(
-                proc, good_stations, sampling_rate, duration, min_completeness,
+                proc, good_stations, sampling_rate, duration,
+                min_completeness=min_completeness,
+                max_flat_fraction=max_flat_fraction,
+                min_npts=compute_data_vector_length(duration_s, sampling_rate) + 1,
             )
             if not ok:
                 return out_path, False, f"quality: {reason}"
@@ -190,7 +202,10 @@ def build_noise_catalogue(
     channel_glob: str = "BH?",
     buffer_minutes: float = 20.0,
     min_completeness: float = 0.9,
+    max_flat_fraction: float = 0.05,
     taup_model: str = "prem",
+    use_taup: bool = False,
+    rolling_window_gap_s: float = 30.0,
     n_jobs: int = 1,
     receivers=None,
     error_log: Optional[Path] = None,
@@ -211,11 +226,23 @@ def build_noise_catalogue(
         sampling_rate: Target sampling rate (Hz).
         prefilter_kwargs / filter_kwargs: Passed to ``deconvolve_and_filter``.
         channel_glob: Mseed channel glob.
-        buffer_minutes: Gap between windows and from event edges (minutes).
+        buffer_minutes: Gap to leave at the start/end of each event-free
+            continuous region (minutes).
         min_completeness: Minimum sample completeness per trace.
-        taup_model: TauPy model for computing arrival windows.
+        max_flat_fraction: Maximum fraction of consecutive identical samples
+            allowed per trace (0–1).  Default 0.05.
+        taup_model: TauPy model name; only used when ``use_taup=True``.
+        use_taup: If True, use TauPy to compute precise arrival windows for
+            event avoidance.  If False (default), use the event onset time
+            directly — suitable for local/regional catalogues where travel
+            times are negligible.
+        rolling_window_gap_s: Step (in seconds) between consecutive noise
+            windows.  Defaults to 30 s, producing a dense rolling/sliding
+            window catalogue.  Set equal to ``duration_s`` for non-overlapping
+            windows, or to ``buffer_minutes * 60`` to match the old behaviour.
         n_jobs: Parallel workers.
-        receivers: Receivers object with lat/lon for TauPy distance calc.
+        receivers: Receivers object with lat/lon for TauPy distance calc
+            (only used when ``use_taup=True``).
             If None, a zero-lat/lon dummy is used for each station.
         error_log: Path to append failures; None = no logging.
         use_daily_processing: Process raw data in daily chunks first (default
@@ -253,16 +280,19 @@ def build_noise_catalogue(
     continuous_regions = _compute_continuous_regions(
         interfering_events, noise_start, noise_end,
         station_networks, receivers, taup_model, n_jobs,
+        use_taup=use_taup, duration_s=duration_s,
+        buffer_minutes=buffer_minutes,
     )
 
     noise_windows = list(make_noise_windows(
         continuous_regions,
         window_length=duration,
         buffer=timedelta(minutes=buffer_minutes),
+        step=timedelta(seconds=rolling_window_gap_s),
     ))
 
     def _process_window(t_start, t_end):
-        label = t_start.strftime("%Y.%m.%d.%H.%M")
+        label = t_start.strftime("%Y.%m.%d.%H.%M.%S")
         out_path = output_dir / f"{label}.h5"
         if out_path.exists():
             return out_path, True, "already_exists"
@@ -279,7 +309,10 @@ def build_noise_catalogue(
                 eff_pre, eff_filt, sampling_rate,
             )
             ok, reason = check_window_quality(
-                proc, good_stations, sampling_rate, duration, min_completeness,
+                proc, good_stations, sampling_rate, duration,
+                min_completeness=min_completeness,
+                max_flat_fraction=max_flat_fraction,
+                min_npts=compute_data_vector_length(duration_s, sampling_rate) + 1,
             )
             if not ok:
                 return out_path, False, f"quality: {reason}"
@@ -388,21 +421,52 @@ def _prepare_stream(stream, use_daily_processing, inventory, remove_response,
 def _compute_continuous_regions(
     interfering_events, noise_start, noise_end,
     station_networks, receivers, taup_model, n_jobs,
+    use_taup: bool = False,
+    duration_s: float = 0.0,
+    buffer_minutes: float = 20.0,
 ):
-    """Return event-free continuous regions within [noise_start, noise_end]."""
+    """Return event-free continuous regions within [noise_start, noise_end].
+
+    When use_taup=False (default), builds unavailability windows from each
+    event's onset time directly — no TauPy model needed.  Each event occupies
+    [origin_time, origin_time + duration_s].  The buffer applied by
+    make_noise_windows ensures adequate separation from these windows.
+
+    When use_taup=True, uses TauPy to compute precise first/last arrival
+    times across all stations and adds the default 5-minute padding.
+    """
     if len(interfering_events) == 0:
         return [(noise_start, noise_end)]
 
-    _receivers = receivers if receivers is not None else _dummy_receivers(station_networks)
-    unavail = compute_event_arrival_windows(
-        interfering_events, _receivers,
-        taup_model=taup_model, n_jobs=n_jobs,
-    )
+    if use_taup:
+        _receivers = receivers if receivers is not None else _dummy_receivers(station_networks)
+        unavail = compute_event_arrival_windows(
+            interfering_events, _receivers,
+            taup_model=taup_model, n_jobs=n_jobs,
+        )
+    else:
+        unavail = _simple_event_windows(
+            interfering_events, duration_s=duration_s,
+        )
+
     if not unavail:
         return [(noise_start, noise_end)]
 
     continuous_regions, _ = get_continuous_regions(unavail, noise_start, noise_end)
     return continuous_regions
+
+
+def _simple_event_windows(interfering_events, duration_s: float) -> List[Tuple]:
+    """Build unavailability windows from onset times alone (no TauPy).
+
+    Each window spans [origin_time, origin_time + duration_s].
+    Suitable for local/regional events where travel times are negligible.
+    """
+    windows = []
+    for ev in interfering_events:
+        t0 = ev.origins[0].time
+        windows.append((t0, t0 + duration_s))
+    return windows
 
 
 def _load_inventory_safe(stationxml_dir):
@@ -472,7 +536,7 @@ def read_stations_file(stations_file: Path) -> dict:
     """Read a stations.txt file → {station: network} dict.
 
     Expected format: one station per line, whitespace-separated columns with
-    network and station code as the first two columns.
+    station code as the first column and network code as the second.
     Lines starting with '#' are ignored.
     """
     mapping = {}
@@ -483,6 +547,6 @@ def read_stations_file(stations_file: Path) -> dict:
                 continue
             parts = line.split()
             if len(parts) >= 2:
-                network, station = parts[0], parts[1]
+                station, network = parts[0], parts[1]
                 mapping[station] = network
     return mapping

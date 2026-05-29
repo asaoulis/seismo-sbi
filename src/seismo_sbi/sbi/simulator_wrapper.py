@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
+from seismo_sbi.instaseis_simulator.post_processing import build_post_processing_chain
 from seismo_sbi.cps_simulator.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
 from seismo_sbi.sbi.compression.theory_covariance import CPSTheoryCovarianceEstimationSimulator
 from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
@@ -26,7 +27,27 @@ class GeneralSimulatorWrapper:
 
     def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, samplers):
 
-        self.simulator = self.select_and_initialise_simulator(simulator_config, simulation_parameters)
+        # Start from any effect-level config parsed from YAML (e.g. scale_range,
+        # gaussian_sigma).  Make a shallow copy so we don't mutate the original.
+        effect_configs = dict(getattr(parameters, 'nuisance_effect_config', {}))
+
+        # TimeShiftErrorEffect needs the simulation sampling rate for Lanczos
+        # interpolation (seconds → samples).  Inject it automatically so it
+        # never needs to appear in the YAML.
+        if 'time_shift_error' in parameters.nuisance:
+            effect_configs['time_shift_error'] = dict(
+                effect_configs.get('time_shift_error', {})
+            )
+            effect_configs['time_shift_error']['sampling_rate'] = (
+                simulation_parameters.sampling_rate
+            )
+
+        post_processing_effects = list(
+            build_post_processing_chain(parameters.nuisance.keys(), effect_configs).effects
+        )
+        self.simulator = self.select_and_initialise_simulator(
+            simulator_config, simulation_parameters, post_processing_effects=post_processing_effects
+        )
 
         self.simulation_save_callable = self.simulator.execute_sim_and_save_outputs
 
@@ -83,37 +104,42 @@ class GeneralSimulatorWrapper:
             models.append(model_cfg)
         return models
 
-    def select_and_initialise_simulator(self, simulator_config, simulation_parameters):
+    def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
+        pp_effects = post_processing_effects or []
         if simulator_config[0] == 'instaseis':
-            simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address, 
-                                        components= simulation_parameters.components, 
-                                        receivers = simulation_parameters.receivers,
-                                        seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                                        synthetics_processing = simulation_parameters.processing)
+            simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address,
+                                        components=simulation_parameters.components,
+                                        receivers=simulation_parameters.receivers,
+                                        seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                                        synthetics_processing=simulation_parameters.processing,
+                                        post_processing_effects=pp_effects)
         elif simulator_config[0] == 'kernel':
             score_compression_data = simulator_config[1]
             simulator = FixedLocationKernelSimulator(score_compression_data,
-                            components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing)
+                            components=simulation_parameters.components,
+                            receivers=simulation_parameters.receivers,
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
+                            post_processing_effects=pp_effects)
         elif simulator_config[0] == 'cps':
             simulator = CPSVariableKernelSimulator(
-                            components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
+                            components=simulation_parameters.components,
+                            receivers=simulation_parameters.receivers,
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
                             gf_storage_root=simulation_parameters.cps_GFs_path,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None),)
+                            cps_path=getattr(simulation_parameters, 'cps_path', None),
+                            post_processing_effects=pp_effects)
         elif simulator_config[0] == 'cps_precomputed':
             simulator = CPSPrecomputedSimulator(
                             fiducial_model_path=simulation_parameters.cps_GFs_fiducial_path,
-                            components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
+                            components=simulation_parameters.components,
+                            receivers=simulation_parameters.receivers,
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
                             gf_storage_root=simulation_parameters.cps_GFs_path,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None))
+                            cps_path=getattr(simulation_parameters, 'cps_path', None),
+                            post_processing_effects=pp_effects)
         elif simulator_config[0] == 'cps_multi':
             # simulator_config[1] can override and directly provide model dicts.
             if simulator_config[1] is not None:
@@ -127,22 +153,22 @@ class GeneralSimulatorWrapper:
                 )
             simulator = MultiModelCPSSimulator(
                             models=models,
-                            components= simulation_parameters.components,
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
+                            components=simulation_parameters.components,
+                            receivers=simulation_parameters.receivers,
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
                             cps_path=getattr(simulation_parameters, 'cps_path', None),
-                        )
+                            post_processing_effects=pp_effects)
         elif simulator_config[0] == 'cps_covariance':
             cps_simulator = simulator_config[1]
             simulator = CPSTheoryCovarianceEstimationSimulator(
                             simulator=cps_simulator,
-                            data_flattening = self.data_loader_callable,
-                            components= simulation_parameters.components, 
-                            receivers = deepcopy(simulation_parameters.receivers),
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
-                            )
+                            data_flattening=self.data_loader_callable,
+                            components=simulation_parameters.components,
+                            receivers=deepcopy(simulation_parameters.receivers),
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
+                            post_processing_effects=pp_effects)
         else:
             raise NotImplementedError(f"Simulator {simulator_config[0]} not implemented")
         return simulator

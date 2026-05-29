@@ -161,7 +161,6 @@ class SBIPipeline:
             cov_mat_config = options["path"]
 
             # reset and build covariance
-            print("In build compressor", covariance_data, flush=True)
             self.empirical_cov_mat = None
             if covariance_data is not None:
                 cov_mat_config = covariance_data

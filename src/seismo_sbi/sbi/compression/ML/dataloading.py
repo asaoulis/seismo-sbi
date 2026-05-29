@@ -178,6 +178,10 @@ def make_torch_dataloaders(
     if persistent_workers is None:
         persistent_workers = num_workers > 0
 
+    # prefetch_factor is only valid for multiprocessing loaders (num_workers > 0);
+    # passing it with num_workers=0 raises in torch >= 2.0.
+    extra = {"prefetch_factor": 4} if num_workers > 0 else {}
+
     train_loader = DataLoader(
         train_subset,
         batch_size=train_batch_size,
@@ -185,7 +189,7 @@ def make_torch_dataloaders(
         num_workers=num_workers,
         pin_memory=pin_memory,
         persistent_workers=persistent_workers,
-        prefetch_factor=4
+        **extra,
     )
     val_loader = DataLoader(
         val_subset,
@@ -194,6 +198,6 @@ def make_torch_dataloaders(
         num_workers=num_workers,
         pin_memory=pin_memory,
         persistent_workers=persistent_workers,
-        prefetch_factor=4
+        **extra,
     )
     return train_loader, val_loader

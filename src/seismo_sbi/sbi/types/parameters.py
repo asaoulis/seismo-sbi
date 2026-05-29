@@ -64,6 +64,8 @@ class ModelParameters:
         self.names = {}
         self.information = {}
 
+        self.nuisance_effect_config: dict = {}
+
         self._parameter_names = [
             "theta_fiducial",
             "stencil_deltas",

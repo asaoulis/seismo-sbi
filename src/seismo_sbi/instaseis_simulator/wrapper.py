@@ -68,6 +68,172 @@ class GenericPointSource(NamedTuple):
     source_location : SourceLocation
     moment_tensor : MomentTensor
 
+# ---------------------------------------------------------------------------
+# Source time function helpers
+# ---------------------------------------------------------------------------
+
+#: Minimum sliprate array length expected by Instaseis.
+_MIN_STF_SAMPLES: int = 1000
+
+#: GCMT empirical constant: T_half (s) = GCMT_SCALE_FACTOR · M₀^(1/3), M₀ in N·m.
+#: Calibrated by Ekström & Dziewonski to fit the Global CMT catalogue.
+GCMT_SCALE_FACTOR: float = 2.262e-6
+
+
+def _scalar_moment(mt_components: np.ndarray) -> float:
+    """Scalar seismic moment M₀ (N·m) from a 6-component moment tensor.
+
+    Uses the Frobenius-norm convention
+    ``M₀ = (1/√2) · ‖m_ij‖_F = sqrt(0.5 · Σ mᵢⱼ²)``,
+    consistent with the Hanks-Kanamori moment-magnitude relation.
+
+    Parameters
+    ----------
+    mt_components:
+        ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N·m.
+
+    Returns
+    -------
+    float
+        Scalar moment in N·m.
+    """
+    return float(np.sqrt(0.5 * np.dot(mt_components, mt_components)))
+
+
+def _gcmt_half_duration(mt_components: np.ndarray) -> float:
+    """GCMT empirical half-duration (s) for an isosceles-triangle STF.
+
+    Applies the Ekström / Dziewonski relation used by the Global CMT routine:
+
+    .. math::
+
+        T_{\\text{half}} = 2.262 \\times 10^{-6} \\cdot M_0^{1/3}
+
+    where M₀ is in N·m and T_half is in seconds.  The relation encodes the
+    *mean* duration for a given magnitude; individual earthquakes scatter by
+    roughly a factor of 2 around this.
+
+    Parameters
+    ----------
+    mt_components:
+        ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N·m.
+
+    Returns
+    -------
+    float
+        Predicted STF half-duration in seconds.
+    """
+    m0 = _scalar_moment(mt_components)
+    return GCMT_SCALE_FACTOR * m0 ** (1.0 / 3.0)
+
+
+def _build_triangular_stf(half_duration: float, dt: float) -> np.ndarray:
+    """Build an isosceles-triangle sliprate with half-duration *half_duration*.
+
+    The triangle rises linearly from 0 at t = 0 to its peak at t = T_half,
+    then falls linearly back to 0 at t = 2·T_half:
+
+    .. code-block::
+
+        sliprate(t) = t / T_half²             for 0 ≤ t ≤ T_half
+        sliprate(t) = (2·T_half − t) / T_half²  for T_half < t ≤ 2·T_half
+
+    The analytical area equals 1 (unit moment), so Instaseis's
+    ``set_sliprate(..., normalize=True)`` call is a no-op in exact arithmetic.
+
+    Parameters
+    ----------
+    half_duration:
+        Half-duration T_half in seconds (rise-time = fall-time).
+    dt:
+        Sample interval in seconds matching the Instaseis database.
+
+    Returns
+    -------
+    np.ndarray
+        1-D float64 array covering [0, 2·T_half] (inclusive), non-negative.
+    """
+    half_duration = float(half_duration)
+    # Cover [0, 2·T_half] inclusive; the +0.5*dt tolerance absorbs floating-point
+    # rounding so the falling edge at t = 2·T_half is always included.
+    t = np.arange(0.0, 2.0 * half_duration + 0.5 * dt, dt)
+    sliprate = np.where(
+        t <= half_duration,
+        t / half_duration ** 2,
+        np.maximum(0.0, (2.0 * half_duration - t) / half_duration ** 2),
+    )
+    return sliprate.astype(np.float64)
+
+
+def build_stf_sliprate(
+    stf_duration,
+    dt: float,
+    gcmt_half_duration: float = 0.0,
+) -> np.ndarray:
+    """Return a sliprate array for use with Instaseis ``set_sliprate``.
+
+    Two modes
+    ---------
+    **Dirac delta** (``stf_duration is None``)
+        Returns a 1000-sample spike at index 0 — the original backward-compatible
+        behaviour that delegates all moment-rate shaping to the database Green's
+        function.
+
+    **Triangular STF** (``stf_duration`` is a scalar)
+        ``stf_duration`` is treated as a *multiplicative scatter factor* around
+        the GCMT-predicted half-duration:
+
+        .. math::
+
+            T_{\\text{eff}} = \\text{stf\\_duration} \\times \\text{gcmt\\_half\\_duration}
+
+        A value of 1.0 reproduces the scaling-law prediction exactly; 0.5 halves
+        it; 2.0 doubles it.  The sliprate is an isosceles triangle of half-duration
+        T_eff (see :func:`_build_triangular_stf`), zero-padded to at least
+        :data:`_MIN_STF_SAMPLES` samples.
+
+    Parameters
+    ----------
+    stf_duration:
+        ``None`` for a Dirac delta, or a multiplicative scale factor (float or
+        1-element array) applied to ``gcmt_half_duration``.
+    dt:
+        Sample interval in seconds (must match the Instaseis database).
+    gcmt_half_duration:
+        Baseline half-duration in seconds, typically computed via
+        :func:`_gcmt_half_duration` from the moment tensor.  Must be positive
+        when ``stf_duration`` is not ``None``.
+
+    Returns
+    -------
+    np.ndarray
+        1-D float64 array of length ≥ :data:`_MIN_STF_SAMPLES`.  Non-negative;
+        Instaseis normalises the area to 1 via ``set_sliprate(..., normalize=True)``.
+
+    Raises
+    ------
+    ValueError
+        If ``stf_duration`` is not ``None`` and ``gcmt_half_duration <= 0``.
+    """
+    if stf_duration is None:
+        sliprate = np.zeros(_MIN_STF_SAMPLES)
+        sliprate[0] = 1.0
+        return sliprate
+
+    scale = float(np.squeeze(stf_duration))
+    if gcmt_half_duration <= 0.0:
+        raise ValueError(
+            f"gcmt_half_duration must be positive when stf_duration is not None "
+            f"(got {gcmt_half_duration!r}).  Pass the M₀-derived half-duration from "
+            "_gcmt_half_duration()."
+        )
+    effective_half = scale * float(gcmt_half_duration)
+    sliprate = _build_triangular_stf(effective_half, dt)
+    if len(sliprate) < _MIN_STF_SAMPLES:
+        sliprate = np.concatenate([sliprate, np.zeros(_MIN_STF_SAMPLES - len(sliprate))])
+    return sliprate
+
+
 class InstaseisDBQuerier:
 
     def __init__(self, instaseis_model_loc, processing_config, seismogram_duration_in_s = None) -> None:
@@ -84,9 +250,9 @@ class InstaseisDBQuerier:
     def _get_db_attribute(self, key):
         return self.instaseis_database.info[key]
 
-    def get_seismograms(self, source : GenericPointSource, receiver : Receiver, components):
+    def get_seismograms(self, source: GenericPointSource, receiver: Receiver, components, stf_duration=None):
 
-        instaseis_source = self._create_source_object(source)
+        instaseis_source = self._create_source_object(source, stf_duration=stf_duration)
         instaseis_receiver = self._create_receiver_object(receiver)
 
         seismograms =  self.instaseis_database.get_seismograms(
@@ -117,40 +283,60 @@ class InstaseisDBQuerier:
 
 
 
-    def _create_source_object(self, source: GenericPointSource):
+    def _create_source_object(self, source: GenericPointSource, stf_duration=None):
+        """Build an Instaseis Source object.
 
+        Parameters
+        ----------
+        source:
+            Point source with location and moment tensor.
+        stf_duration:
+            If ``None`` (default), use a Dirac delta source time function
+            (original behaviour — backward compatible).
+
+            Otherwise, a multiplicative scatter factor applied to the GCMT
+            empirical half-duration derived from this source's scalar moment:
+
+            .. math::
+
+                T_{\\text{eff}} = \\text{stf\\_duration} \\times 2.4\\times10^{-6}
+                \\cdot M_0^{1/3}
+
+            A value of 1.0 reproduces the scaling-law prediction; 0.5 halves
+            it; 2.0 doubles it.  The STF is an isosceles triangle of
+            half-duration T_eff (see :func:`_gcmt_half_duration` and
+            :func:`build_stf_sliprate`).
+        """
         location = source.source_location
         m_tensor = source.moment_tensor.components
 
-
         if location.depth < 0:
             print('Warning: depth is negative. Setting depth to 0')
-            location = location._replace(depth = 0)
+            location = location._replace(depth=0)
             raise ValueError('Depth cannot be negative')
         custom_scale = 1
-        source = instaseis.Source(
+        instaseis_source = instaseis.Source(
             latitude=location.latitude,
             longitude=location.longitude,
-            depth_in_m = location.depth * 1e3,
-            time_shift = location.time_shift,
-            dt = self._dt,
-            m_rr = custom_scale*m_tensor[0],
-            m_tt = custom_scale*m_tensor[1],
-            m_pp = custom_scale*m_tensor[2],
-            m_rt = custom_scale*m_tensor[3],
-            m_rp = custom_scale*m_tensor[4],
-            m_tp = custom_scale*m_tensor[5]
+            depth_in_m=location.depth * 1e3,
+            time_shift=location.time_shift,
+            dt=self._dt,
+            m_rr=custom_scale * m_tensor[0],
+            m_tt=custom_scale * m_tensor[1],
+            m_pp=custom_scale * m_tensor[2],
+            m_rt=custom_scale * m_tensor[3],
+            m_rp=custom_scale * m_tensor[4],
+            m_tp=custom_scale * m_tensor[5],
         )
 
-        # Dirac source time function
-        sliprate = np.zeros(1000)
+        # Derive the GCMT baseline half-duration from M₀ when the STF nuisance
+        # is active.  This is the only place where the moment tensor feeds back
+        # into the STF — no upstream plumbing changes required.
+        gcmt_t_half = _gcmt_half_duration(m_tensor) if stf_duration is not None else 0.0
+        sliprate = build_stf_sliprate(stf_duration, self._dt, gcmt_half_duration=gcmt_t_half)
+        instaseis_source.set_sliprate(sliprate, self._dt, time_shift=location.time_shift, normalize=True)
 
-        # sliprate[0] = 1.0/self._dt
-        sliprate[0] = 1.0
-
-        source.set_sliprate(sliprate, self._dt, time_shift=location.time_shift, normalize=True)
-
-        return source
+        return instaseis_source
     
     def _create_receiver_object(self, receiver : Receiver):
 

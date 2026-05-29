@@ -51,6 +51,7 @@ def make_noise_windows(
     continuous_regions: List[Tuple],
     window_length: timedelta,
     buffer: timedelta = timedelta(minutes=15),
+    step: Optional[timedelta] = None,
 ) -> Iterator[Tuple[datetime, datetime]]:
     """Yield (start, end) noise windows from event-free continuous regions.
 
@@ -59,8 +60,13 @@ def make_noise_windows(
     Args:
         continuous_regions: List of (start, end) pairs marking event-free time.
         window_length: Length of each noise window.
-        buffer: Gap between consecutive windows and from region edges.
+        buffer: Gap to leave at the start and end of each continuous region.
+        step: How far to advance the window start between consecutive windows.
+            Defaults to ``buffer`` when None (original non-rolling behaviour).
+            Set to a small value (e.g. ``timedelta(seconds=30)``) for a
+            rolling/sliding window that densely covers the available time.
     """
+    advance = step if step is not None else buffer
     for start, end in continuous_regions:
         if isinstance(start, UTCDateTime):
             start = start.datetime
@@ -70,7 +76,7 @@ def make_noise_windows(
         buffered_end = end - buffer
         while buffered_start + window_length < buffered_end:
             yield buffered_start, buffered_start + window_length
-            buffered_start += buffer
+            buffered_start += advance
 
 
 def make_daily_overlapping_windows(

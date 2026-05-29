@@ -4,11 +4,13 @@ from torch import nn
 
 class ConvolutionalFeatureExtractor(nn.Module):
 
-    def __init__(self, num_seismic_components, cnn_output_dim, final_feature_length, 
-                     should_concat_location : bool, feedforward_layers = [512,512], **cnn_kwargs) -> None:
+    def __init__(self, num_seismic_components, cnn_output_dim, final_feature_length,
+                     should_concat_location : bool, feedforward_layers = [512,512],
+                     input_length=200, **cnn_kwargs) -> None:
         super().__init__()
 
-        self.seismic_trace_CNN = SeismicTraceCNN(num_seismic_components, final_layer=cnn_output_dim, **cnn_kwargs)
+        self.seismic_trace_CNN = SeismicTraceCNN(num_seismic_components, input_length=input_length,
+                                                 final_layer=cnn_output_dim, **cnn_kwargs)
         self.feature_combination_operation = ConcatLayer() if should_concat_location else None  # TODO: Implement sinusoidal embeddings option 
         ffd_input_dim = self.seismic_trace_CNN.output_channels
         self.feedforward_net = FeedForwardFeatureProcessing(ffd_input_dim, feedforward_layers, 
