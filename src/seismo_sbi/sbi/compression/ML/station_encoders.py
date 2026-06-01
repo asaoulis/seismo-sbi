@@ -381,6 +381,14 @@ class DilatedTCNEncoder(nn.Module):
         super().__init__()
         out_dim = out_dim if out_dim is not None else d_model
 
+        # Symmetric padding pad = dilation*(k-1)//2 only preserves the trace length for an
+        # ODD kernel; an even kernel produces length T-1 and breaks the residual add in
+        # _GLUBlock. Reject it up front with a clear message.
+        if kernel_size % 2 == 0:
+            raise ValueError(
+                f"DilatedTCNEncoder requires an odd kernel_size to preserve length; got {kernel_size}."
+            )
+
         # Lifting: C+1 → channels
         self.lift = nn.Conv1d(num_seismic_components + 1, channels, kernel_size=1)
 

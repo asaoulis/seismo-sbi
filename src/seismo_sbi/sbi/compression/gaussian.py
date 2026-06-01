@@ -27,17 +27,30 @@ class Compressor(ABC):
 
 class MachineLearningCompressor(Compressor):
 
-    def __init__(self, model_type, model_name, seismogram_preprocessor : Callable, scaler, **model_kwargs):
+    def __init__(self, model_type, model_name, seismogram_preprocessor : Callable, scaler,
+                 source_location=None, **model_kwargs):
 
         self.trained_ml_compressor = get_best_model(model_type, model_name, checkpoint_path="ml_models", **model_kwargs)
         self.seismogram_preprocessor = seismogram_preprocessor
 
         self.scaler = scaler
+        # Optional known/assumed source location for conditioned models. When set, it is
+        # packed into the context exactly as the training dataloader does (raw, unscaled),
+        # so the embedding net's unpack path recovers it. None ⇒ unconditioned 4-D context.
+        self.source_location = (
+            None if source_location is None
+            else torch.as_tensor(np.asarray(source_location, dtype=float), dtype=torch.float32)
+        )
 
     def compress_data_vector(self, D):
         with torch.no_grad():
             processed_seismogram = self.seismogram_preprocessor(D)
-            parameters_prediction = self.trained_ml_compressor.forward(processed_seismogram.unsqueeze(0)).detach()
+            model_input = processed_seismogram.unsqueeze(0)
+            if self.source_location is not None:
+                from seismo_sbi.sbi.compression.ML.source_conditioning import pack_context
+                source_vec = self.source_location.reshape(1, -1).to(model_input.device)
+                model_input = pack_context(model_input, source_vec)
+            parameters_prediction = self.trained_ml_compressor.forward(model_input).detach()
             parameters_prediction = self.scaler.inverse_transform(parameters_prediction).squeeze(0)
             return parameters_prediction
 

@@ -289,6 +289,36 @@ class SeismogramAxialTransformer(nn.Module):
 
         return out
 
+    def _station_position_embedding_batched(self, pos: torch.Tensor, d_model: int = 128):
+        """Per-batch variant of :meth:`station_position_embedding`.
+
+        pos: ``(B, N, 2)`` per-sample station coordinates (e.g. source-relative
+        ``(distance, azimuth)``). Returns ``(B, N, d_model)``. Uses the identical
+        sinusoidal scheme so it is consistent with the shared-coords path.
+        """
+        B, N, _ = pos.shape
+        device = pos.device
+        div_term = 1 / torch.pow(
+            10000.0, torch.arange(0, d_model // 2, 2, device=device) / (d_model // 2)
+        )  # (d_model//4,)
+        pes = []
+        for coord_index in range(2):
+            position = pos[:, :, coord_index].unsqueeze(-1)            # (B, N, 1)
+            pe = torch.zeros(B, N, d_model // 2, device=device, dtype=pos.dtype)
+            ang = position * div_term                                  # (B, N, d_model//4)
+            pe[..., 0::2] = torch.sin(ang)
+            pe[..., 1::2] = torch.cos(ang)
+            pes.append(pe)
+        return torch.cat(pes, dim=-1)                                  # (B, N, d_model)
+
+    def _station_embedding(self, d_model: int, B: int, override):
+        """Station embedding from either the shared coords or a per-batch override."""
+        if override is not None:
+            return self._station_position_embedding_batched(
+                override.to(self.station_coords.dtype), d_model
+            )
+        return self.station_position_embedding(self.station_coords, d_model=d_model, batch_size=B)
+
     def _masked_mean(self, x: torch.Tensor, mask: Optional[torch.Tensor]):
         # x: (B, T, D); mask: (B, T) True means keep/valid
         if mask is None:
@@ -346,19 +376,18 @@ class SeismogramAxialTransformer(nn.Module):
             # fallback to mean
             return self._masked_mean(seq, mask)
 
-    def forward(self, x: torch.Tensor, key_padding_mask=None):
+    def forward(self, x: torch.Tensor, key_padding_mask=None, station_coords_override=None):
         """
         x: (B, N, L, D)
         station_coords: (B, N, 2) or (1, N, 2) fixed coordinates
+        station_coords_override: optional (B, N, 2) per-sample coordinates (e.g.
+            source-relative distance/azimuth) used instead of the shared station
+            coords. ``None`` reproduces the original shared-coords behaviour.
         key_padding_mask: axial mode -> (B, N, L) booleans (True=pad), full mode -> same input is accepted
         """
         B, N, L, D = x.shape
         # if D != self.d_model:
         #     raise ValueError(f"Expected input dim {self.d_model}, got {D}")
-
-        # Station embeddings from coords
-        sta_e = self.station_position_embedding(self.station_coords, d_model=self.conv_length, batch_size=B)
-        # sta_e: (B, N, D)
 
         # Time embeddings
         # t_ids = torch.arange(L, device=x.device).unsqueeze(0).expand(B, -1)  # (B, L)
@@ -367,11 +396,11 @@ class SeismogramAxialTransformer(nn.Module):
         x = x + t_e.unsqueeze(0).unsqueeze(1)  # (B, N, L, D)
 
         if self.mode == "axial":
-            sta_e = self.station_position_embedding(self.station_coords, d_model=self.conv_length, batch_size=B)
+            sta_e = self._station_embedding(self.conv_length, B, station_coords_override)
             x = x + sta_e.unsqueeze(2)
         elif self.mode == "full":
             x = x.reshape(B, N, L * D)
-            sta_e = self.station_position_embedding(self.station_coords, d_model=L*D, batch_size=B)
+            sta_e = self._station_embedding(L * D, B, station_coords_override)
             x = x + sta_e
 
         # Optionally add CLS token (as extra station)

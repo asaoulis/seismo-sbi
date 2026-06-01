@@ -83,39 +83,31 @@ class CompressionTrainer:
         self.trace_length = trace_length
         self.architecture = architecture
         self.num_seismic_components = num_seismic_components
-        # Store resolved configs for checkpoint metadata serialisation.
+        self.lr = lr
+        self.weight_decay = weight_decay
+        # Store resolved configs + station locations for checkpoint metadata and rebuild.
         self._model_config = model_config
         self._flow_config = flow_config
         self._feature_length = feature_length
+        self._station_locations = station_locations
         self._station_locations_shape = (
             list(station_locations.shape)
             if hasattr(station_locations, "shape")
             else None
         )
 
-        # Embedding network (context extractor), selected by name from the registry.
-        if architecture not in EMBEDDING_NET_REGISTRY:
-            raise KeyError(
-                f"unknown architecture '{architecture}'; "
-                f"registered: {sorted(EMBEDDING_NET_REGISTRY)}"
-            )
-        seismogram_transformer_model = EMBEDDING_NET_REGISTRY[architecture](
+        # Conditional MAF over theta | x with embedding integrated in the flow.
+        self.flow = self._assemble_flow(
+            architecture=architecture,
             num_seismic_components=num_seismic_components,
             model_config=model_config,
+            flow_config=flow_config,
             feature_length=feature_length,
             latent_dim=latent_dim,
+            num_dims=num_dims,
             station_locations=station_locations,
-            device=self.device,
             trace_length=trace_length,
-        )
-
-        # Conditional MAF over theta | x with embedding integrated in the flow
-        self.flow = build_nsf(
-            dim=self.num_dims,
-            conditional_dim=latent_dim,
-            hidden_features=channels,
-            embedding_net=seismogram_transformer_model,
-            **flow_config,
+            device=self.device,
         )
 
         # Lightning module that maximizes log p_phi(theta | x)
@@ -123,6 +115,39 @@ class CompressionTrainer:
             flow=self.flow,
             lr=lr,
             weight_decay=weight_decay,
+        )
+
+    @staticmethod
+    def _assemble_flow(*, architecture, num_seismic_components, model_config, flow_config,
+                       feature_length, latent_dim, num_dims, station_locations, trace_length,
+                       device):
+        """Build the embedding net (by registry name) + conditional NSF flow.
+
+        Shared by ``__init__`` and ``load_best`` so a checkpoint can be rebuilt from its
+        sidecar metadata (architecture / model_config / flow_config) rather than whatever
+        configuration the loading trainer happened to be constructed with.
+        """
+        if architecture not in EMBEDDING_NET_REGISTRY:
+            raise KeyError(
+                f"unknown architecture '{architecture}'; "
+                f"registered: {sorted(EMBEDDING_NET_REGISTRY)}"
+            )
+        embedding_net = EMBEDDING_NET_REGISTRY[architecture](
+            num_seismic_components=num_seismic_components,
+            model_config=model_config,
+            feature_length=feature_length,
+            latent_dim=latent_dim,
+            station_locations=station_locations,
+            device=device,
+            trace_length=trace_length,
+        )
+        # hidden_features matches the resolved model channels (model_config carries it).
+        return build_nsf(
+            dim=num_dims,
+            conditional_dim=latent_dim,
+            hidden_features=model_config["channels"],
+            embedding_net=embedding_net,
+            **flow_config,
         )
 
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
@@ -186,11 +211,16 @@ class CompressionTrainer:
                 "latent_dim": self.latent_dim,
                 "feature_length": self._feature_length,
                 "station_locations_shape": self._station_locations_shape,
+                # Store the actual coordinates so the sidecar is self-describing and
+                # load_best can rebuild the embedding net without re-supplying them.
+                "station_locations": np.asarray(self._station_locations).tolist(),
             }
             meta_path = output_path / "model_meta.json"
             meta_path.parent.mkdir(parents=True, exist_ok=True)
             with open(meta_path, "w") as f:
-                json.dump(meta, f, indent=2)
+                # default=str guards against a non-JSON value sneaking into a config dict
+                # aborting the dump after a (possibly long) successful training run.
+                json.dump(meta, f, indent=2, default=str)
 
         return self.model
 
@@ -208,22 +238,46 @@ class CompressionTrainer:
         ckpt_path = find_best_checkpoint_path(output_path)
         print(ckpt_path)
 
-        # Attempt to read sidecar metadata for architecture-agnostic reload.
+        # Rebuild the flow from sidecar metadata so a checkpoint trained with a different
+        # architecture / model_config / flow_config (e.g. a PNO or conditioned model) loads
+        # into a structurally matching flow even when this trainer was constructed with
+        # different/default settings. Old checkpoints lacking the sidecar fall back to the
+        # flow built in __init__.
         meta_path = output_path / "model_meta.json"
         if meta_path.exists():
             with open(meta_path) as f:
                 meta = json.load(f)
-            # If the stored architecture differs from the current trainer's flow
-            # (e.g. loading a PNO checkpoint into a freshly constructed trainer),
-            # we just use the existing self.flow which was built with the correct
-            # architecture by __init__.  The metadata is primarily informational
-            # and used by external reload utilities.
+            station_locations = (
+                np.asarray(meta["station_locations"])
+                if meta.get("station_locations") is not None
+                else self._station_locations
+            )
+            self.architecture = meta.get("architecture", self.architecture)
+            self.num_dims = meta.get("num_dims", self.num_dims)
+            self.latent_dim = meta.get("latent_dim", self.latent_dim)
+            self.trace_length = meta.get("trace_length", self.trace_length)
+            self.num_seismic_components = meta.get("num_seismic_components", self.num_seismic_components)
+            self._model_config = meta.get("model_config", self._model_config)
+            self._flow_config = meta.get("flow_config", self._flow_config)
+            self._feature_length = meta.get("feature_length", self._feature_length)
+            self.flow = self._assemble_flow(
+                architecture=self.architecture,
+                num_seismic_components=self.num_seismic_components,
+                model_config=self._model_config,
+                flow_config=self._flow_config,
+                feature_length=self._feature_length,
+                latent_dim=self.latent_dim,
+                num_dims=self.num_dims,
+                station_locations=station_locations,
+                trace_length=self.trace_length,
+                device=self.device,
+            )
 
         self.model = NPELightningModule.load_from_checkpoint(
             ckpt_path,
             flow=self.flow,
-            lr=1e-4,
-            weight_decay=1e-4,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
         )
         self.model.eval()
         self.model.freeze()

@@ -7,6 +7,12 @@ from .cnn_feature_extractor import ConvolutionalFeatureExtractor
 from .csdi_transformer import ConditionalTransformer
 from .axial_transformer import SeismogramAxialTransformer
 from .station_encoders import build_station_encoder
+from .source_conditioning import (
+    SourceConditioner,
+    FiLM,
+    relative_station_geometry,
+    unpack_context,
+)
 
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR, StepLR
@@ -66,6 +72,10 @@ class SeismogramTransformer(nn.Module):
             num_layers=transformer_config["layers"],
             time_steps=self.L,
             conv_length=d_model,
+            # Size the sinusoidal time-embedding buffer to the encoder's token count.
+            # Encoders (e.g. PNO/TCN with light downsampling) can emit L > the old default
+            # of 60; without this the time_embed[:L] add would fail to broadcast.
+            max_time_steps=max(self.L, 60),
             mode=mode,
             pool_queries=pool_method,
             use_cls_token=use_cls,
@@ -78,7 +88,46 @@ class SeismogramTransformer(nn.Module):
             nn.ReLU(),
             nn.Linear(d_model, num_outputs)
         )
-    
+
+        # --- Optional source-location conditioning (opt-in; see source_conditioning.py) ---
+        # Absent ⇒ self._n_cond == 0 and embed() takes the unchanged 4-D context path.
+        self.d_model = d_model
+        self._n_components = num_seismic_components
+        self._n_stations = int(seismogram_locations.shape[0])
+        self._configure_conditioning(transformer_config.get("conditioning", None), d_model)
+
+    def _configure_conditioning(self, cond_cfg, d_model):
+        self._n_cond = 0
+        self._inject = ()
+        self._coord_mode = "geographic"
+        self.source_conditioner = None
+        self.film = None
+        self.token_proj = None
+        self.concat_proj = None
+        if not cond_cfg:
+            return
+        valid = {"relative_posemb", "token_add", "film", "concat_context"}
+        inject = tuple(cond_cfg.get("inject", []))
+        unknown = set(inject) - valid
+        if unknown:
+            raise ValueError(f"Unknown conditioning.inject options {sorted(unknown)}; valid: {sorted(valid)}")
+        n_cond = int(cond_cfg["n_cond"])
+        d_cond = int(cond_cfg.get("d_cond", d_model))
+        self._n_cond = n_cond
+        self._inject = inject
+        self._coord_mode = cond_cfg.get("coord_mode", "geographic")
+        self.source_conditioner = SourceConditioner(
+            n_cond=n_cond, d_cond=d_cond, coord_mode=self._coord_mode,
+            n_fourier=int(cond_cfg.get("n_fourier", 0)),
+        )
+        if "film" in inject:
+            self.film = FiLM(d_cond=d_cond, d_model=d_model)
+        if "token_add" in inject:
+            self.token_proj = nn.Linear(d_cond, d_model)
+        if "concat_context" in inject:
+            # Project back to d_model so the flow's conditional_dim is unchanged.
+            self.concat_proj = nn.Linear(d_model + d_cond, d_model)
+
     def sample_noise_model(self, batch_size):
         return torch.stack([self.noise_model() for _ in range(batch_size)], dim =0)
     
@@ -88,8 +137,28 @@ class SeismogramTransformer(nn.Module):
         return outputs
 
     def embed(self, x: torch.Tensor):
+        # Unpack source conditioning if the context is packed (2-D). With no conditioning
+        # configured, x stays 4-D and source_vec is None → original behaviour.
+        source_vec = None
+        if self._n_cond > 0 and x.dim() == 2:
+            x, source_vec = unpack_context(
+                x, self._n_stations, self._n_components, self.input_length, self._n_cond
+            )
+        elif self._n_cond == 0 and x.dim() == 2:
+            # A packed context reached a model with no conditioning configured — almost
+            # certainly a source_location set on an unconditioned checkpoint. Fail clearly
+            # instead of the cryptic "not enough values to unpack" from x.shape below.
+            raise ValueError(
+                "Received a packed 2-D context but this model has no conditioning configured "
+                "(n_cond == 0). Did you set source_location on an unconditioned model, or load "
+                "a conditioned checkpoint into a default-constructed trainer?"
+            )
+
         (batch_size, num_stations, num_seismic_components, trace_length) = x.shape
         B, N = batch_size, num_stations
+
+        # Source embedding (shared across stations/time) — only when conditioning is active.
+        source_emb = self.source_conditioner(source_vec) if (source_vec is not None) else None
 
         # Flatten to feed per-station encoder: (B*N, C, T)
         x_flat = x.reshape(B * N, num_seismic_components, trace_length)
@@ -99,10 +168,31 @@ class SeismogramTransformer(nn.Module):
         feats = self.encoder_proj(feats)
         # Reshape to (B, N, L, d_model) for the axial transformer
         feature_sequences = feats.view(B, N, self.L, -1)
+
+        # --- Conditioning injections on the per-station activations (B, N, L, d_model) ---
+        if source_emb is not None and self.film is not None:
+            feature_sequences = self.film(feature_sequences, source_emb)
+        if source_emb is not None and self.token_proj is not None:
+            # Add a projected source embedding to every token (broadcast over N and L).
+            feature_sequences = feature_sequences + self.token_proj(source_emb)[:, None, None, :]
+
+        # Source-relative station positional embedding (distance, azimuth) override.
+        station_override = None
+        if source_vec is not None and ("relative_posemb" in self._inject):
+            station_override = relative_station_geometry(
+                source_vec, self.all_station_transformer.station_coords, self._coord_mode
+            )
+
         # Contextualize with transformer
-        transformer_output = self.all_station_transformer(feature_sequences)  # (x, q, pooled)
-        # Aggregate across stations based on selected operator
-        return transformer_output[2]  # pooled embedding
+        transformer_output = self.all_station_transformer(
+            feature_sequences, station_coords_override=station_override
+        )  # (x, q, pooled)
+        pooled = transformer_output[2]  # pooled embedding (B, d_model)
+
+        # Global concat-conditioning, projected back to d_model.
+        if source_emb is not None and self.concat_proj is not None:
+            pooled = self.concat_proj(torch.cat([pooled, source_emb], dim=-1))
+        return pooled
 
 
 class LightningModel(pl.LightningModule):

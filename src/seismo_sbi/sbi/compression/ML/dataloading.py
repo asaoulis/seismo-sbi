@@ -19,9 +19,16 @@ class TorchSimulationDataset(Dataset):
         glob_pattern: str = "*.h5",
         return_tensors: bool = True,
         torch_dtype=torch.float32,
+        conditioning_param_map: dict = None,
     ):
         self.data_loader = data_loader
         receiver_names = [rec.station_name for rec in self.data_loader.receivers.iterate()]
+
+        # Optional source-location conditioning: map of {input_type: [attr_names]} extracted
+        # from each sim's stored inputs as a RAW (unscaled) conditioning vector. When set,
+        # __getitem__ returns a packed context concat(flatten(x), source_vec); the embedding
+        # net unpacks it. Absent ⇒ unchanged (N, C, T) data return.
+        self.conditioning_param_map = conditioning_param_map or {}
 
         self.parameter_name_map = parameter_name_map or {}
         self.synthetic_noise_model_sampler = synthetic_noise_model_sampler
@@ -73,7 +80,21 @@ class TorchSimulationDataset(Dataset):
             # x is already torch; ensure dtype
             x = torch.as_tensor(x, dtype=self.torch_dtype)
             theta = torch.as_tensor(theta, dtype=self.torch_dtype)
+
+        # Source-location conditioning: append the RAW conditioning vector → packed context.
+        if self.conditioning_param_map:
+            source_vec = self._load_conditioning(sim_path)
+            from .source_conditioning import pack_context
+            x = pack_context(x, torch.as_tensor(source_vec, dtype=self.torch_dtype))
         return theta, x
+
+    def _load_conditioning(self, sim_path):
+        """Extract the raw (unscaled) source-conditioning vector from a sim's stored inputs."""
+        inputs_dict = self.data_loader.load_input_data(sim_path)
+        return np.concatenate([
+            [inputs_dict[input_type][attr] for attr in attrs]
+            for input_type, attrs in self.conditioning_param_map.items()
+        ]).astype(float)
 
     def _load_sim(self, sim_path):
         if len(self.parameter_name_map) > 0:
@@ -112,6 +133,7 @@ def make_torch_dataloader(
     glob_pattern: str = "*.h5",
     return_tensors: bool = True,
     torch_dtype=torch.float32,
+    conditioning_param_map: dict = None,
 ) -> DataLoader:
     dataset = TorchSimulationDataset(
         data_loader=data_loader,
@@ -122,6 +144,7 @@ def make_torch_dataloader(
         glob_pattern=glob_pattern,
         return_tensors=return_tensors,
         torch_dtype=torch_dtype,
+        conditioning_param_map=conditioning_param_map,
     )
     if persistent_workers is None:
         persistent_workers = num_workers > 0
@@ -154,6 +177,7 @@ def make_torch_dataloaders(
     glob_pattern: str = "*.h5",
     return_tensors: bool = True,
     torch_dtype= torch.float32,
+    conditioning_param_map: dict = None,
 ):
     if val_batch_size is None:
         val_batch_size = train_batch_size
@@ -168,6 +192,7 @@ def make_torch_dataloaders(
         glob_pattern=glob_pattern,
         return_tensors=return_tensors,
         torch_dtype=torch_dtype,
+        conditioning_param_map=conditioning_param_map,
     )
     n = len(full_dataset)
     end = max(0, min(train_max_index, n))

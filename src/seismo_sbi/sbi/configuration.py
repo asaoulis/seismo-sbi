@@ -92,9 +92,11 @@ class SBI_Configuration:
             parsing_callable(subconfig)
     
     def parse_main_options(self, config):
-        # parse top level options 
-
-        self.pipeline_parameters = PipelineParameters(**config)
+        # parse top level options. Filter to PipelineParameters' known fields so that
+        # extra top-level scalar keys (e.g. `ml_architecture`, read separately from the
+        # raw YAML by train_NPE.py) do not break construction.
+        known = {k: v for k, v in config.items() if k in PipelineParameters._fields}
+        self.pipeline_parameters = PipelineParameters(**known)
 
     def parse_parameters(self, config):
 

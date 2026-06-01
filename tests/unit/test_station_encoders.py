@@ -89,3 +89,43 @@ def test_encoder_handles_zero_input(enc_name, enc_cfg, T):
     with torch.no_grad():
         out = encoder(x)
     assert torch.isfinite(out).all(), f"{enc_name}: non-finite output on zero-valued input"
+
+
+def test_transformer_handles_long_token_sequence():
+    """Regression: an encoder emitting L > 60 tokens must not break the transformer's
+    time-embedding add (max_time_steps used to default to 60). PNO with downsample=2 on a
+    200-sample trace yields L=100, which pre-fix overflowed the fixed time_embed buffer.
+    """
+    from seismo_sbi.sbi.compression.ML.seismogram_transformer import SeismogramTransformer
+
+    T, N, B = 200, 2, 3
+    model = SeismogramTransformer(
+        num_seismic_components=1,
+        transformer_config={
+            "channels": _D_MODEL, "nheads": 2, "layers": 1,
+            "station_encoder": "pno",
+            "encoder_config": {"width": 8, "modes": 4, "n_blocks": 1, "downsample": 2},
+        },
+        feature_length=_D_MODEL,
+        num_outputs=6,
+        noise_model=None,
+        seismogram_locations=torch.tensor([[10.0, 20.0], [11.0, 21.0]]),
+        device=torch.device("cpu"),
+        input_length=T,
+    )
+    assert model.L > 60, f"expected long token sequence to exercise the fix, got L={model.L}"
+    model.eval()
+    with torch.no_grad():
+        out = model.embed(torch.randn(B, N, 1, T))
+    assert out.shape == (B, _D_MODEL)
+    assert torch.isfinite(out).all()
+
+
+def test_tcn_even_kernel_size_rejected():
+    """DilatedTCNEncoder only preserves length for odd kernels; an even kernel must raise
+    a clear error at construction rather than failing the residual add at forward time."""
+    with pytest.raises(ValueError, match="odd"):
+        build_station_encoder(
+            "tcn", num_seismic_components=_C, input_length=201, d_model=_D_MODEL,
+            kernel_size=4,
+        )
