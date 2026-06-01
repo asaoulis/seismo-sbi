@@ -321,6 +321,97 @@ class TestRunSimulationWithNuisance:
 # ===========================================================================
 
 
+class TestNuisanceStageRouting:
+    """set_simulation_objects must bake in ONLY simulation-staged nuisances.
+
+    Effects staged ``training_augmentation`` are folded in by the ML dataloader and
+    must be excluded from the per-simulation post-processing chain.
+    """
+
+    def _build_wrapper(self, receivers, nuisance, nuisance_stage):
+        """Run set_simulation_objects with a kernel sim and return the wrapper."""
+        from types import SimpleNamespace
+
+        n_traces = sum(len(r.components) for r in receivers.iterate())
+        rng = np.random.default_rng(RNG_SEED)
+        gradients = rng.standard_normal((6, TRACE_LEN * n_traces))
+        scd = ScoreCompressionData(
+            theta_fiducial=np.ones(6),
+            data_fiducial=gradients.T @ np.ones(6),
+            data_parameter_gradients=gradients,
+            second_order_gradients=None,
+        )
+        mp = ModelParameters()
+        mp.names["moment_tensor"] = ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"]
+        mp.theta_fiducial["moment_tensor"] = [1e14] * 6
+        mp.nuisance.update(nuisance)
+        mp.bounds.update(nuisance)
+        mp.nuisance_stage.update(nuisance_stage)
+
+        sim_params = SimpleNamespace(
+            components=["Z"],
+            receivers=receivers,
+            seismogram_duration=TRACE_LEN,
+            sampling_rate=1.0,
+            processing={
+                "sampling_rate": 1.0,
+                "filter": {"type": "bandpass", "freqmin": 0.01, "freqmax": 0.1},
+            },
+        )
+        wrapper = object.__new__(GeneralSimulatorWrapper)
+        wrapper.set_simulation_objects(
+            ("kernel", scd), sim_params, mp, SimulationDataLoader(components=["Z"], receivers=receivers), {}
+        )
+        return wrapper
+
+    def _build_wrapper_chain(self, receivers, nuisance, nuisance_stage):
+        """Convenience: the baked per-sim effects for a given staging."""
+        return self._build_wrapper(receivers, nuisance, nuisance_stage).simulator.post_processing_chain.effects
+
+    def test_only_simulation_staged_effects_are_baked(self, two_stations):
+        effects = self._build_wrapper_chain(
+            two_stations,
+            nuisance={"amplitude_error": 1.0, "instrument_dropout": 1.0},
+            nuisance_stage={
+                "amplitude_error": "simulation",
+                "instrument_dropout": "training_augmentation",
+            },
+        )
+        types = {type(e) for e in effects}
+        assert AmplitudeErrorEffect in types, "simulation-staged effect must be baked in"
+        assert InstrumentDropoutEffect not in types, (
+            "training_augmentation-staged effect must NOT be baked into the simulation chain"
+        )
+
+    def test_default_stage_bakes_effect(self, one_station):
+        """Absent stage defaults to simulation → effect is baked in."""
+        effects = self._build_wrapper_chain(
+            one_station, nuisance={"amplitude_error": 1.0}, nuisance_stage={}
+        )
+        assert any(isinstance(e, AmplitudeErrorEffect) for e in effects)
+
+    def test_augmentation_staged_effect_has_no_effect_on_simulation_output(self, two_stations):
+        """Functional check: a training_augmentation-staged dropout=1.0 must NOT zero any
+        station at simulation time, whereas a simulation-staged one does."""
+        params = {**_MT_PARAMS, "instrument_dropout": 1.0}
+
+        aug = self._build_wrapper(
+            two_stations, {"instrument_dropout": 1.0}, {"instrument_dropout": "training_augmentation"}
+        )
+        _, seis_aug = aug.simulator.run_simulation(dict(params))
+        assert not np.allclose(seis_aug["STA1"]["Z"], 0.0), (
+            "augmentation-staged dropout must NOT be applied during simulation"
+        )
+
+        sim = self._build_wrapper(
+            two_stations, {"instrument_dropout": 1.0}, {"instrument_dropout": "simulation"}
+        )
+        _, seis_sim = sim.simulator.run_simulation(dict(params))
+        assert np.allclose(seis_sim["STA1"]["Z"], 0.0), (
+            "simulation-staged dropout=1.0 must zero every station during simulation"
+        )
+
+
 class TestKernelSimulatorWithNuisanceChain:
     """Post-processing chain wired into FixedLocationKernelSimulator.
 

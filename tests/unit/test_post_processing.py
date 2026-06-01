@@ -473,18 +473,21 @@ class TestApplyLanczosShift:
 
 
 class TestTimeShiftErrorEffect:
-    """Tests for the two-stage stochastic per-station time shift effect.
+    """Tests for the common-offset + per-station-Gaussian time shift effect.
 
-    ``time_shift_error`` is a **probability**: each station is independently
-    shifted with this probability.  When shifted, the magnitude is drawn from
-    N(0, gaussian_sigma).  Lanczos interpolation is used for sub-sample accuracy.
+    ``time_shift_error`` is an **on/off switch** (NOT a probability): ``0.0`` (or
+    absent) ⇒ identity; any non-zero value ⇒ active.  When active, every station
+    receives a shared ``uniform(-uniform_offset, +uniform_offset)`` common offset
+    plus an independent ``N(0, gaussian_sigma)`` draw.  Lanczos interpolation is
+    used for sub-sample accuracy.
     """
 
     SR = 10.0  # low sampling rate keeps traces short in tests
 
-    def _effect(self, sigma=0.5, order=5):
+    def _effect(self, sigma=0.5, order=5, uniform_offset=0.0):
         return TimeShiftErrorEffect(
             sampling_rate=self.SR,
+            uniform_offset=uniform_offset,
             gaussian_sigma=sigma,
             lanczos_order=order,
         )
@@ -567,6 +570,47 @@ class TestTimeShiftErrorEffect:
             "Per-station time shifts must be drawn independently; "
             "over 30 seeds at least one pair should differ"
         )
+
+    # ------------------------------------------------------------------
+    # Common offset (uniform) + per-station Gaussian parametrisation
+    # ------------------------------------------------------------------
+
+    def test_common_offset_is_identical_across_stations(self, two_stations):
+        """uniform_offset>0, sigma=0 → every station shifted by the SAME amount."""
+        # sigma effectively zero removes the per-station component, leaving only
+        # the shared common offset → identical traces for identical input.
+        effect = self._effect(sigma=1e-30, uniform_offset=2.0)
+        trace = np.arange(TRACE_LEN, dtype=float)
+        seismo = {"STA1": {"Z": trace.copy()}, "STA2": {"Z": trace.copy()}}
+        np.random.seed(3)
+        out = effect(seismo, two_stations, time_shift_error=1.0)
+        assert np.allclose(out["STA1"]["Z"], out["STA2"]["Z"]), (
+            "With only a common offset, all stations must be shifted identically"
+        )
+
+    def test_per_station_gaussian_differs_without_common_offset(self, two_stations):
+        """uniform_offset=0, sigma>0 → stations get independent (differing) shifts."""
+        effect = self._effect(sigma=2.0, uniform_offset=0.0)
+        trace = np.arange(TRACE_LEN, dtype=float)
+        seismo = {"STA1": {"Z": trace.copy()}, "STA2": {"Z": trace.copy()}}
+        found_different = False
+        for seed in range(30):
+            np.random.seed(seed)
+            out = effect(seismo, two_stations, time_shift_error=1.0)
+            if not np.allclose(out["STA1"]["Z"], out["STA2"]["Z"]):
+                found_different = True
+                break
+        assert found_different
+
+    def test_zero_switch_is_identity_with_offsets_configured(self, two_stations):
+        """time_shift_error=0.0 ⇒ identity even with large uniform_offset/sigma set."""
+        effect = self._effect(sigma=5.0, uniform_offset=5.0)
+        seismo = _make_seismo_map(two_stations, amplitude=3.0)
+        for seed in range(10):
+            np.random.seed(seed)
+            out = effect(seismo, two_stations, time_shift_error=0.0)
+            assert np.allclose(out["STA1"]["Z"], 3.0)
+            assert np.allclose(out["STA2"]["Z"], 3.0)
 
     # ------------------------------------------------------------------
     # Non-mutation and dtype
@@ -869,7 +913,7 @@ class TestScatteringCodaEffect:
         assert EFFECT_REGISTRY["scattering_coda"] is ScatteringCodaEffect
 
     def test_build_via_effect_configs(self):
-        """build_post_processing_chain forwards alpha via effect_configs."""
+        """build_post_processing_chain forwards a fixed alpha via effect_configs."""
         chain = build_post_processing_chain(
             ["scattering_coda"],
             effect_configs={"scattering_coda": {"alpha": 0.9}},
@@ -877,12 +921,36 @@ class TestScatteringCodaEffect:
         assert len(chain.effects) == 1
         effect = chain.effects[0]
         assert isinstance(effect, ScatteringCodaEffect)
-        assert effect._alpha == 0.9
+        # Fixed alpha → degenerate sampling range.
+        assert effect._alpha_low == 0.9 and effect._alpha_high == 0.9
 
-    def test_default_alpha(self):
-        """Constructing without alpha uses the class default."""
+    def test_default_alpha_range_is_unit_interval(self):
+        """Constructing without args samples alpha per station from (0, 1)."""
         effect = ScatteringCodaEffect()
-        assert effect._alpha == ScatteringCodaEffect.DEFAULT_ALPHA
+        assert (effect._alpha_low, effect._alpha_high) == ScatteringCodaEffect.DEFAULT_ALPHA_RANGE
+
+    def test_alpha_range_forwarded_via_effect_configs(self):
+        chain = build_post_processing_chain(
+            ["scattering_coda"],
+            effect_configs={"scattering_coda": {"alpha_range": [0.2, 0.6]}},
+        )
+        effect = chain.effects[0]
+        assert effect._alpha_low == 0.2 and effect._alpha_high == 0.6
+
+    def test_alpha_and_alpha_range_mutually_exclusive(self):
+        with pytest.raises(ValueError):
+            ScatteringCodaEffect(alpha=0.5, alpha_range=(0.0, 1.0))
+
+    def test_per_station_alpha_sampled_in_range(self, two_stations):
+        """Each station draws its own alpha; a narrow non-zero range perturbs both."""
+        # Range well above 0 so both stations are reliably perturbed (alpha>0).
+        effect = ScatteringCodaEffect(alpha_range=(0.7, 0.9), mode="causal")
+        trace = np.sin(np.linspace(0, 4 * np.pi, TRACE_LEN))
+        seismo = {"STA1": {"Z": trace.copy()}, "STA2": {"Z": trace.copy()}}
+        np.random.seed(0)
+        out = effect(seismo, two_stations, scattering_coda=1.0)
+        assert not np.allclose(out["STA1"]["Z"], trace)
+        assert not np.allclose(out["STA2"]["Z"], trace)
 
     def test_default_mode_is_causal(self):
         assert ScatteringCodaEffect()._mode == "causal"
@@ -924,4 +992,296 @@ class TestScatteringCodaEffect:
         )
         effect = chain.effects[0]
         assert effect._mode == "stahler"
-        assert effect._alpha == 0.9
+        assert effect._alpha_low == 0.9 and effect._alpha_high == 0.9
+
+
+# ===========================================================================
+# apply_chain_to_array — map<->array adapter (training-time augmentation bridge)
+# ===========================================================================
+
+apply_chain_to_array = post_processing.apply_chain_to_array
+build_augmentation_chain = post_processing.build_augmentation_chain
+
+
+class TestBuildAugmentationChain:
+    """build_augmentation_chain selects training-staged effects and uses fiducials."""
+
+    def test_only_training_augmentation_keys_selected(self):
+        nuisance = {"amplitude_error": [0.3], "instrument_dropout": [0.5], "stf_duration": [1.0]}
+        stage = {
+            "amplitude_error": "training_augmentation",
+            "instrument_dropout": "simulation",
+            "stf_duration": "training_augmentation",  # Category-1 → never augmentable
+        }
+        chain, params = build_augmentation_chain(nuisance, stage)
+        assert [type(e).__name__ for e in chain.effects] == ["AmplitudeErrorEffect"]
+        assert params == {"amplitude_error": 0.3}
+
+    def test_activation_uses_fiducial_not_hardcoded_one(self):
+        """Regression: probability comes from the fiducial, not a hardcoded 1.0."""
+        nuisance = {"instrument_dropout": [0.3]}
+        stage = {"instrument_dropout": "training_augmentation"}
+        _, params = build_augmentation_chain(nuisance, stage)
+        assert params["instrument_dropout"] == 0.3
+
+    def test_sampling_rate_injected_for_time_shift(self):
+        nuisance = {"time_shift_error": [1.0]}
+        stage = {"time_shift_error": "training_augmentation"}
+        chain, params = build_augmentation_chain(
+            nuisance, stage,
+            effect_configs={"time_shift_error": {"uniform_offset": 2.0, "gaussian_sigma": 1.0}},
+            sampling_rate=4.0,
+        )
+        assert isinstance(chain.effects[0], TimeShiftErrorEffect)
+        assert chain.effects[0]._sampling_rate == 4.0
+        assert params == {"time_shift_error": 1.0}
+
+    def test_empty_when_nothing_staged_for_augmentation(self):
+        nuisance = {"amplitude_error": [0.3]}
+        chain, params = build_augmentation_chain(nuisance, {"amplitude_error": "simulation"})
+        assert chain.effects == [] and params == {}
+
+
+class TestApplyChainToArray:
+    """The same effects must run on the stacked (N_stations, N_components, T) array."""
+
+    COMPONENTS = "ZNE"
+
+    def _multi_comp_receivers(self):
+        # STA1 has all three components; STA2 only Z (rows N,E zero-filled in D).
+        recs = [
+            Receiver(0.0, 0.0, "XX", "STA1", ["Z", "N", "E"]),
+            Receiver(1.0, 1.0, "XX", "STA2", ["Z"]),
+        ]
+        return Receivers(receivers=recs)
+
+    def _stacked(self, receivers):
+        """Build a stacked D matching convert_sim_data_to_array(stacked, fill_unused)."""
+        n_stations = len(list(receivers.iterate()))
+        D = np.zeros((n_stations, len(self.COMPONENTS), TRACE_LEN), dtype=np.float64)
+        for i, rec in enumerate(receivers.iterate()):
+            for j, comp in enumerate(self.COMPONENTS):
+                if comp in rec.components:
+                    D[i, j] = np.arange(TRACE_LEN, dtype=float) + 10 * i + j
+        return D
+
+    def test_empty_chain_roundtrips_unchanged(self, two_stations):
+        D = self._stacked(self._multi_comp_receivers())
+        out = apply_chain_to_array(PostProcessingChain([]), D, self._multi_comp_receivers(),
+                                   self.COMPONENTS, {})
+        assert np.array_equal(out, D)
+
+    def test_amplitude_scale_doubles_all(self):
+        recs = self._multi_comp_receivers()
+        D = self._stacked(recs)
+        chain = PostProcessingChain([AmplitudeErrorEffect(scale_range=(2.0, 2.0))])
+        np.random.seed(0)
+        out = apply_chain_to_array(chain, D, recs, self.COMPONENTS, {"amplitude_error": 1.0})
+        assert np.allclose(out, 2.0 * D)
+
+    def test_dropout_zeros_all(self):
+        recs = self._multi_comp_receivers()
+        D = self._stacked(recs)
+        chain = PostProcessingChain([InstrumentDropoutEffect()])
+        np.random.seed(0)
+        out = apply_chain_to_array(chain, D, recs, self.COMPONENTS, {"instrument_dropout": 1.0})
+        assert np.allclose(out, 0.0)
+
+    def test_zero_filled_components_stay_zero(self):
+        recs = self._multi_comp_receivers()
+        D = self._stacked(recs)
+        # STA2 (index 1) rows N(1) and E(2) are zero-filled and must remain zero.
+        chain = PostProcessingChain([AmplitudeErrorEffect(scale_range=(3.0, 3.0))])
+        np.random.seed(1)
+        out = apply_chain_to_array(chain, D, recs, self.COMPONENTS, {"amplitude_error": 1.0})
+        assert np.allclose(out[1, 1], 0.0)
+        assert np.allclose(out[1, 2], 0.0)
+
+    def test_array_path_matches_dict_path_under_same_seed(self):
+        """apply_chain_to_array == hand-built dict path under identical RNG."""
+        recs = self._multi_comp_receivers()
+        D = self._stacked(recs)
+        chain = PostProcessingChain([AmplitudeErrorEffect(scale_range=(0.3, 1.9))])
+
+        np.random.seed(7)
+        out_array = apply_chain_to_array(chain, D, recs, self.COMPONENTS, {"amplitude_error": 0.6})
+
+        # Reconstruct the equivalent dict path with the SAME seed and ordering.
+        station_names = [r.station_name for r in recs.iterate()]
+        seismo = {s: {c: D[i, j] for j, c in enumerate(self.COMPONENTS)}
+                  for i, s in enumerate(station_names)}
+        np.random.seed(7)
+        processed = chain(seismo, recs, {"amplitude_error": 0.6})
+        expected = np.zeros_like(D)
+        for i, s in enumerate(station_names):
+            for j, c in enumerate(self.COMPONENTS):
+                expected[i, j] = processed[s][c]
+        assert np.allclose(out_array, expected)
+
+    def test_time_shift_via_adapter(self):
+        recs = self._multi_comp_receivers()
+        D = self._stacked(recs)
+        chain = PostProcessingChain([
+            TimeShiftErrorEffect(sampling_rate=10.0, uniform_offset=0.0, gaussian_sigma=2.0)
+        ])
+        np.random.seed(0)
+        out = apply_chain_to_array(chain, D, recs, self.COMPONENTS, {"time_shift_error": 1.0})
+        assert out.shape == D.shape
+        # STA1 Z row (non-constant ramp) should change under a shift.
+        assert not np.allclose(out[0, 0], D[0, 0])
+
+
+# ===========================================================================
+# ComponentDropoutEffect — per-channel zeroing of PRESENT components
+# ===========================================================================
+
+ComponentDropoutEffect = post_processing.ComponentDropoutEffect
+
+
+def _multi_comp_map_and_receivers():
+    """A seismograms_map (global-component keyed, absent components zero-filled, mirroring
+    the array adapter) plus Receivers whose per-station `.components` mark the PRESENT set.
+
+    STA1: present Z, N, E (3 present);  STA2: present Z, N (E zero-filled);  STA3: present Z only.
+    """
+    components = "ZNE"
+    recs = Receivers(receivers=[
+        Receiver(0.0, 0.0, "XX", "STA1", ["Z", "N", "E"]),
+        Receiver(1.0, 1.0, "XX", "STA2", ["Z", "N"]),
+        Receiver(2.0, 2.0, "XX", "STA3", ["Z"]),
+    ])
+    seismo = {}
+    for rec in recs.iterate():
+        seismo[rec.station_name] = {
+            comp: (np.full(TRACE_LEN, 5.0) if comp in rec.components else np.zeros(TRACE_LEN))
+            for comp in components
+        }
+    return seismo, recs, components
+
+
+class TestComponentDropoutEffect:
+    """Per-channel Bernoulli dropout that zeros PRESENT components, keeping >=1 per station."""
+
+    def test_absent_key_is_noop(self):
+        seismo, recs, _ = _multi_comp_map_and_receivers()
+        out = ComponentDropoutEffect()(seismo, recs)  # component_dropout not passed
+        assert out is seismo
+
+    def test_zero_probability_is_identity(self):
+        seismo, recs, comps = _multi_comp_map_and_receivers()
+        np.random.seed(0)
+        out = ComponentDropoutEffect()(seismo, recs, component_dropout=0.0)
+        for station, channels in seismo.items():
+            for comp in comps:
+                assert np.array_equal(out[station][comp], channels[comp])
+
+    def test_full_probability_keeps_exactly_one_per_station(self):
+        """p=1: every station with >=2 present channels keeps exactly ONE present channel."""
+        seismo, recs, comps = _multi_comp_map_and_receivers()
+        present = {rec.station_name: list(rec.components) for rec in recs.iterate()}
+        for seed in range(25):
+            np.random.seed(seed)
+            out = ComponentDropoutEffect()(seismo, recs, component_dropout=1.0)
+            # STA1 (3 present) and STA2 (2 present): exactly one present channel survives non-zero.
+            for sta in ("STA1", "STA2"):
+                kept = [c for c in present[sta] if not np.allclose(out[sta][c], 0.0)]
+                assert len(kept) == 1, f"{sta} seed={seed} kept={kept}"
+            # STA3 has a single present channel → never dropped.
+            assert np.allclose(out["STA3"]["Z"], 5.0)
+
+    def test_single_present_channel_station_never_dropped(self):
+        seismo, recs, _ = _multi_comp_map_and_receivers()
+        for seed in range(25):
+            np.random.seed(seed)
+            out = ComponentDropoutEffect()(seismo, recs, component_dropout=1.0)
+            assert np.allclose(out["STA3"]["Z"], 5.0)
+
+    def test_absent_components_untouched(self):
+        """Zero-filled absent components (STA2 E, STA3 N/E) stay exactly zero and are not
+        counted as droppable present channels."""
+        seismo, recs, _ = _multi_comp_map_and_receivers()
+        for seed in range(15):
+            np.random.seed(seed)
+            out = ComponentDropoutEffect()(seismo, recs, component_dropout=1.0)
+            assert np.allclose(out["STA2"]["E"], 0.0)
+            assert np.allclose(out["STA3"]["N"], 0.0)
+            assert np.allclose(out["STA3"]["E"], 0.0)
+
+    def test_dropped_channels_are_exactly_zero(self):
+        seismo, recs, _ = _multi_comp_map_and_receivers()
+        np.random.seed(3)
+        out = ComponentDropoutEffect()(seismo, recs, component_dropout=1.0)
+        # Whatever is dropped in STA1 is EXACTLY zero (not merely small).
+        dropped = [c for c in ("Z", "N", "E") if np.all(out["STA1"][c] == 0.0)]
+        assert len(dropped) == 2  # 3 present, keep 1
+
+    def test_does_not_modify_input_in_place(self):
+        seismo, recs, _ = _multi_comp_map_and_receivers()
+        original = {s: {c: t.copy() for c, t in ch.items()} for s, ch in seismo.items()}
+        np.random.seed(0)
+        ComponentDropoutEffect()(seismo, recs, component_dropout=1.0)
+        for s, ch in original.items():
+            for c, t in ch.items():
+                assert np.array_equal(seismo[s][c], t), "input map mutated in place"
+
+    def test_reproducible_under_fixed_seed(self):
+        seismo, recs, comps = _multi_comp_map_and_receivers()
+        np.random.seed(42)
+        a = ComponentDropoutEffect()(seismo, recs, component_dropout=0.5)
+        np.random.seed(42)
+        b = ComponentDropoutEffect()(seismo, recs, component_dropout=0.5)
+        for s in seismo:
+            for c in comps:
+                assert np.array_equal(a[s][c], b[s][c])
+
+    def test_via_apply_chain_to_array(self):
+        """The effect runs through the stacked-array adapter and zeros present rows only."""
+        seismo, recs, comps = _multi_comp_map_and_receivers()
+        D = np.zeros((3, len(comps), TRACE_LEN), dtype=np.float64)
+        for i, rec in enumerate(recs.iterate()):
+            for j, comp in enumerate(comps):
+                if comp in rec.components:
+                    D[i, j] = 5.0
+        chain = PostProcessingChain([ComponentDropoutEffect()])
+        np.random.seed(0)
+        out = apply_chain_to_array(chain, D, recs, comps, {"component_dropout": 1.0})
+        assert out.shape == D.shape
+        # STA1 keeps exactly one present (Z/N/E) row non-zero.
+        kept = [j for j in range(3) if not np.allclose(out[0, j], 0.0)]
+        assert len(kept) == 1
+        # STA3 (index 2) single present Z stays; its absent N/E rows stay zero.
+        assert np.allclose(out[2, 0], 5.0)
+        assert np.allclose(out[2, 1], 0.0) and np.allclose(out[2, 2], 0.0)
+
+
+# ===========================================================================
+# Stage routing — pre-noise vs post-noise augmentation chains
+# ===========================================================================
+
+class TestPostNoiseStageRouting:
+
+    def test_post_noise_stage_selects_only_component_dropout(self):
+        nuisance = {"component_dropout": [0.2], "amplitude_error": [0.3]}
+        stage = {
+            "component_dropout": "training_augmentation_post_noise",
+            "amplitude_error": "training_augmentation",
+        }
+        chain, params = build_augmentation_chain(
+            nuisance, stage, stage="training_augmentation_post_noise"
+        )
+        assert [type(e).__name__ for e in chain.effects] == ["ComponentDropoutEffect"]
+        assert params == {"component_dropout": 0.2}
+
+    def test_pre_noise_stage_excludes_component_dropout(self):
+        nuisance = {"component_dropout": [0.2], "amplitude_error": [0.3]}
+        stage = {
+            "component_dropout": "training_augmentation_post_noise",
+            "amplitude_error": "training_augmentation",
+        }
+        chain, params = build_augmentation_chain(nuisance, stage)  # default pre-noise stage
+        assert [type(e).__name__ for e in chain.effects] == ["AmplitudeErrorEffect"]
+        assert "component_dropout" not in params
+
+    def test_component_dropout_in_post_noise_keys(self):
+        assert "component_dropout" in post_processing.POST_NOISE_EFFECT_KEYS
+        assert "component_dropout" not in post_processing.AUGMENTABLE_EFFECT_KEYS

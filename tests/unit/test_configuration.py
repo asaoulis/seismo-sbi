@@ -370,6 +370,147 @@ def test_parse_nuisance_no_effect_config_when_only_standard_keys():
     assert "amplitude_error" not in cfg.model_parameters.nuisance_effect_config
 
 
+def test_parse_nuisance_stage_defaults_to_simulation():
+    """A nuisance block without a `stage` key defaults to 'simulation'."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "amplitude_error": {"fiducial": [0.0], "bounds": [0.0, 1.0]},
+        },
+    })
+    assert cfg.model_parameters.nuisance_stage["amplitude_error"] == "simulation"
+
+
+def test_parse_nuisance_stage_training_augmentation():
+    """`stage: training_augmentation` is parsed and not leaked into effect_config."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6,
+                "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "time_shift_error": {
+                "fiducial": [1.0],
+                "bounds": [0.0, 1.0],
+                "gaussian_sigma": 2.0,
+                "uniform_offset": 1.5,
+                "stage": "training_augmentation",
+            },
+        },
+    })
+    assert cfg.model_parameters.nuisance_stage["time_shift_error"] == "training_augmentation"
+    ec = cfg.model_parameters.nuisance_effect_config["time_shift_error"]
+    assert ec["gaussian_sigma"] == 2.0 and ec["uniform_offset"] == 1.5
+    assert "stage" not in ec
+
+
+def test_parse_invalid_stage_value_raises():
+    cfg = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration):
+        cfg.parse_parameters({
+            "inference": {
+                "moment_tensor": {
+                    "fiducial": [1e13] * 6,
+                    "stencil_deltas": [1e10] * 6,
+                    "bounds": [[-5e13] * 6, [5e13] * 6],
+                }
+            },
+            "nuisance": {
+                "amplitude_error": {"fiducial": [0.0], "bounds": [0.0, 1.0], "stage": "bogus"},
+            },
+        })
+
+
+def test_parse_training_augmentation_on_category1_raises():
+    """Simulator-level (Category-1) nuisances cannot be training-augmented."""
+    cfg = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration):
+        cfg.parse_parameters({
+            "inference": {
+                "moment_tensor": {
+                    "fiducial": [1e13] * 6,
+                    "stencil_deltas": [1e10] * 6,
+                    "bounds": [[-5e13] * 6, [5e13] * 6],
+                }
+            },
+            "nuisance": {
+                "stf_duration": {
+                    "fiducial": [1.0],
+                    "bounds": [0.5, 2.0],
+                    "stage": "training_augmentation",
+                },
+            },
+        })
+
+
+def _inference_block():
+    return {
+        "moment_tensor": {
+            "fiducial": [1e13] * 6,
+            "stencil_deltas": [1e10] * 6,
+            "bounds": [[-5e13] * 6, [5e13] * 6],
+        }
+    }
+
+
+def test_parse_component_dropout_post_noise_stage():
+    """`component_dropout` with the post-noise stage parses and records its stage/fiducial."""
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": _inference_block(),
+        "nuisance": {
+            "component_dropout": {
+                "fiducial": [0.15],
+                "bounds": [0.0, 1.0],
+                "stage": "training_augmentation_post_noise",
+            },
+        },
+    })
+    assert cfg.model_parameters.nuisance_stage["component_dropout"] == "training_augmentation_post_noise"
+    assert cfg.model_parameters.nuisance["component_dropout"] == [0.15]
+
+
+@pytest.mark.parametrize("bad_stage", ["simulation", "training_augmentation"])
+def test_parse_component_dropout_requires_post_noise_stage(bad_stage):
+    """component_dropout must run post-noise; default/pre-noise stages must raise."""
+    cfg = SBI_Configuration()
+    block = {"fiducial": [0.2], "bounds": [0.0, 1.0]}
+    if bad_stage != "simulation":  # 'simulation' is the implicit default → omit stage to test it
+        block["stage"] = bad_stage
+    with pytest.raises(InvalidConfiguration):
+        cfg.parse_parameters({
+            "inference": _inference_block(),
+            "nuisance": {"component_dropout": block},
+        })
+
+
+def test_parse_post_noise_stage_on_non_post_noise_effect_raises():
+    """A non-post-noise effect (amplitude_error) cannot use the post-noise stage."""
+    cfg = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration):
+        cfg.parse_parameters({
+            "inference": _inference_block(),
+            "nuisance": {
+                "amplitude_error": {
+                    "fiducial": [0.3],
+                    "bounds": [0.0, 1.0],
+                    "stage": "training_augmentation_post_noise",
+                },
+            },
+        })
+
+
 def test_parse_moment_tensor_parameters():
     cfg = SBI_Configuration()
     fiducial = [1e13] * 6

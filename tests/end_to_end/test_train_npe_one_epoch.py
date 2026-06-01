@@ -59,12 +59,17 @@ _NUM_SIMS = 24
 _MODEL_DIM = 16          # tiny channels/latent dim to keep the test fast.
 
 
-def _build_kernel_pipeline(tmp_path):
-    """A SingleEventPipeline backed by the fabricated-kernel simulator (no Instaseis/CPS)."""
-    receivers = _build_receivers()
+def _build_kernel_pipeline(tmp_path, receivers=None, components="Z"):
+    """A SingleEventPipeline backed by the fabricated-kernel simulator (no Instaseis/CPS).
+
+    ``receivers`` / ``components`` default to the shared single-Z setup; pass a
+    multi-component receivers + components string to exercise per-channel behaviour
+    (e.g. component dropout).
+    """
+    receivers = receivers if receivers is not None else _build_receivers()
     sim_params = SimulationParameters(
         receivers=receivers,
-        components="Z",
+        components=components,
         seismogram_duration=_DURATION,
         syngine_address=None,
         sampling_rate=_SAMPLING_RATE,
@@ -113,6 +118,18 @@ def kernel_pipeline(tmp_path_factory):
     return _build_kernel_pipeline(tmp_path)
 
 
+@pytest.fixture(scope="module")
+def multicomp_kernel_pipeline(tmp_path_factory):
+    """Two stations, two components (Z,N) — lets component dropout actually zero channels."""
+    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+    receivers = Receivers(receivers=[
+        Receiver(35.945, -120.541, "BK", "PKD", ["Z", "N"]),
+        Receiver(39.554, -121.500, "BK", "ORV", ["Z", "N"]),
+    ])
+    tmp_path = tmp_path_factory.mktemp("train_npe_one_epoch_multicomp")
+    return _build_kernel_pipeline(tmp_path, receivers=receivers, components="ZN")
+
+
 def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path):
     """Run a single headless training epoch and return the trained model."""
     components = pipeline.data_manager.data_loader.components
@@ -127,7 +144,6 @@ def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path):
         "data_folder": pipeline.simulations_output_path + "/train",
         "parameter_name_map": pipeline.parameters.names,
         "synthetic_noise_model_sampler": synthetic_noise_sampler,
-        "random_shift_distribution": (0, 0),
         "data_scaler": data_scaler,
         "train_max_index": train_max_index,
         "train_batch_size": 8,
@@ -223,7 +239,6 @@ def test_conditioned_one_epoch(kernel_pipeline, tmp_path, inject):
         "data_folder": pipeline.simulations_output_path + "/train",
         "parameter_name_map": pipeline.parameters.names,
         "synthetic_noise_model_sampler": synthetic_noise_sampler,
-        "random_shift_distribution": (0, 0),
         "data_scaler": data_scaler,
         "train_max_index": train_max_index,
         "train_batch_size": 8,
@@ -263,6 +278,131 @@ def test_conditioned_one_epoch(kernel_pipeline, tmp_path, inject):
     )
 
 
+@pytest.mark.parametrize("coords_mode", ["absolute", "relative"])
+def test_variable_stations_one_epoch(kernel_pipeline, tmp_path, coords_mode):
+    """Variable-station training (random subsampling + ragged pad/mask batching) runs one
+    epoch and yields a finite log-prob, for both absolute and source-relative coords.
+
+    Exercises the StationSubsampler, the variable_station_collate (ragged batches → padded
+    context + mask), the fully-padded-station NaN guard, and per-sample coordinate encoding.
+    Relative mode additionally requires source-location conditioning so a source vector is
+    packed alongside the seismograms.
+    """
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import (
+        make_torch_dataloaders, StationSubsampler,
+    )
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+
+    # keep_fraction 0.5–1.0 over 2 stations ⇒ N ∈ {1, 2} ⇒ ragged batches + fully-padded rows.
+    subsampler = StationSubsampler(keep_fraction=(0.5, 1.0), min_stations=1)
+    model_config = {"variable_stations": True, "station_coords_mode": coords_mode}
+    conditioning_param_map = None
+    if coords_mode == "relative":
+        conditioning_param_map = {"source_location": ["latitude", "longitude", "depth"]}
+        model_config["conditioning"] = {
+            "n_cond": 3, "d_cond": 8, "coord_mode": "geographic", "inject": [],
+        }
+
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+        "conditioning_param_map": conditioning_param_map,
+        "station_subsampler": subsampler,
+    }
+
+    trainer = CompressionTrainer(
+        components, station_locations,
+        channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+        model_config=model_config,
+    )
+    model = trainer.train(
+        f"test_varstations_{coords_mode}", epochs=1, output_path=tmp_path,
+        dataloader_args=dataloader_args,
+        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+    )
+    assert model is not None
+
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    assert x.dim() == 2  # packed variable-station context
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), (
+        f"variable-station model (coords_mode={coords_mode}) produced non-finite log-prob"
+    )
+
+
+def test_component_dropout_one_epoch(multicomp_kernel_pipeline, tmp_path):
+    """A one-epoch run with a post-noise component_dropout chain stays finite while channels
+    are actually being zeroed (2-component data, keep >=1/station). Exercises the full real
+    training path: build post-noise chain -> dataloader applies it after noise -> flow."""
+    import torch
+    from seismo_sbi.instaseis_simulator.post_processing import (
+        PostProcessingChain, ComponentDropoutEffect,
+    )
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = multicomp_kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+
+    # Aggressive drop probability so channels are frequently zeroed during the epoch.
+    post_chain = PostProcessingChain([ComponentDropoutEffect()])
+    assert post_chain.effects, "post-noise chain should be non-empty"
+
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+        "post_noise_augmentation_chain": post_chain,
+        "post_noise_nuisance_params": {"component_dropout": 0.5},
+    }
+
+    trainer = CompressionTrainer(
+        components, station_locations,
+        channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+    )
+    model = trainer.train(
+        "test_component_dropout", epochs=1, output_path=tmp_path,
+        dataloader_args=dataloader_args,
+        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+    )
+    assert model is not None
+
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), "component-dropout training produced non-finite log-prob"
+
+
 def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
     """Regression: train a non-default (PNO) checkpoint with checkpointing on, then reload it
     into a freshly DEFAULT-constructed trainer. load_best must rebuild the flow from the
@@ -284,7 +424,6 @@ def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
         "data_folder": pipeline.simulations_output_path + "/train",
         "parameter_name_map": pipeline.parameters.names,
         "synthetic_noise_model_sampler": synthetic_noise_sampler,
-        "random_shift_distribution": (0, 0),
         "data_scaler": data_scaler,
         "train_max_index": train_max_index,
         "train_batch_size": 8, "val_batch_size": 8,
@@ -350,7 +489,6 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
         "data_folder": pipeline.simulations_output_path + "/train",
         "parameter_name_map": pipeline.parameters.names,
         "synthetic_noise_model_sampler": synthetic_noise_sampler,
-        "random_shift_distribution": (0, 0),
         "data_scaler": data_scaler,
         "train_max_index": train_max_index,
         "train_batch_size": 8,
