@@ -54,6 +54,56 @@ class MachineLearningCompressor(Compressor):
             parameters_prediction = self.scaler.inverse_transform(parameters_prediction).squeeze(0)
             return parameters_prediction
 
+    def _embedding_net(self):
+        """The SeismogramTransformer carrying the variable-station flags, unwrapping the
+        LightningModel wrapper (``.model``) when present."""
+        m = self.trained_ml_compressor
+        if getattr(m, "_variable_stations", None) is None and hasattr(m, "model"):
+            m = m.model
+        return m
+
+    def compress_variable_station_data(self, stacked_data, station_coords, present_mask=None):
+        """Compress an arbitrary station SUBSET with a variable-station model.
+
+        Unlike :meth:`compress_data_vector` (which assumes the fixed master geometry the
+        model was constructed with), this packs an explicit per-station coordinate set and
+        validity mask, so any subset of the trained master stations can be inverted. The
+        model must have been trained with ``variable_stations=True``
+        (``ml_variable_stations.enabled`` in the training config).
+
+        Parameters
+        ----------
+        stacked_data : array-like ``(N, C, T)`` — seismograms for the N selected stations.
+        station_coords : array-like ``(N, 2)`` — ``(lat, lon)`` in the same order.
+        present_mask : array-like ``(N,)`` bool, optional — ``False`` marks an absent station.
+
+        Returns
+        -------
+        np.ndarray — the inverse-scaled compressed parameter vector.
+        """
+        from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
+
+        net = self._embedding_net()
+        if not getattr(net, "_variable_stations", False):
+            raise ValueError(
+                "compress_variable_station_data requires a model trained with "
+                "variable_stations=True (set ml_variable_stations.enabled in the training "
+                "config). Use compress_data_vector for fixed-geometry models."
+            )
+
+        with torch.no_grad():
+            try:
+                device = next(self.trained_ml_compressor.parameters()).device
+            except (StopIteration, AttributeError):
+                device = torch.device("cpu")
+            source_vec = None if self.source_location is None else self.source_location
+            model_input = pack_subset_observation(
+                stacked_data, station_coords, present_mask=present_mask, source_vec=source_vec
+            ).to(device)
+            parameters_prediction = self.trained_ml_compressor.forward(model_input).detach()
+            parameters_prediction = self.scaler.inverse_transform(parameters_prediction).squeeze(0)
+            return parameters_prediction
+
 class GaussianCompressor(Compressor):
 
     def __init__(self, score_compression_data : ScoreCompressionData, covariance_matrix : EmpiricalCovariance, prior = (None, None)):

@@ -56,6 +56,38 @@ class SimulationDataLoader():
             shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}
             return self.convert_sim_data_to_array(shifted_map, *args, **kwargs)
 
+    def load_event_subset(self, sim_name, subset_station_names, stacked=True):
+        """Load an event/simulation H5 restricted to a SUBSET of stations.
+
+        Because the H5 ``outputs`` group is keyed by station name, selecting a subset is a
+        load-time operation: we temporarily restrict ``self.receivers`` to the requested
+        stations (preserving the order of ``subset_station_names``) and read only those.
+        Used for variable-station inference, where a trained model is applied to a subset of
+        its master station set.
+
+        Returns
+        -------
+        (data, coords) : data is ``(N, C, T)`` when ``stacked`` else a flat vector; coords is
+        ``(N, 2)`` of ``(latitude, longitude)``, ordered to match ``subset_station_names``.
+        """
+        name_to_rec = {rec.station_name: rec for rec in self.receivers.iterate()}
+        missing = [n for n in subset_station_names if n not in name_to_rec]
+        if missing:
+            raise KeyError(
+                f"Requested stations not in the master receiver set: {missing}. "
+                f"Available: {list(name_to_rec)}"
+            )
+        subset = [name_to_rec[n] for n in subset_station_names]
+        coords = np.array([[rec.latitude, rec.longitude] for rec in subset], dtype=float)
+
+        saved = self.receivers.receivers
+        try:
+            self.receivers.receivers = subset
+            data = self.load_simulation_data_array(sim_name, stacked=stacked)
+        finally:
+            self.receivers.receivers = saved
+        return data, coords
+
     def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False, fill_unused=False):
         """Convert simulation data map into seismogram array.
 

@@ -12,6 +12,7 @@ from .source_conditioning import (
     FiLM,
     relative_station_geometry,
     unpack_context,
+    unpack_variable_context,
 )
 
 import pytorch_lightning as pl
@@ -96,6 +97,27 @@ class SeismogramTransformer(nn.Module):
         self._n_stations = int(seismogram_locations.shape[0])
         self._configure_conditioning(transformer_config.get("conditioning", None), d_model)
 
+        # --- Variable-station support (opt-in) ---
+        # When enabled, embed() expects the packed variable-station context (padded
+        # seismograms + per-sample coords + validity mask + optional source vec) produced by
+        # variable_station_collate, builds a key_padding_mask, and feeds per-sample station
+        # coordinates to the transformer instead of the fixed station_coords buffer.
+        self._variable_stations = bool(transformer_config.get("variable_stations", False))
+        # How station position is encoded for variable configs: "absolute" feeds the raw
+        # (lat, lon) coords; "relative" feeds source-relative (distance, azimuth) and requires
+        # source conditioning (n_cond > 0) so a source vector is present to measure against.
+        self._station_coords_mode = transformer_config.get("station_coords_mode", "absolute")
+        if self._variable_stations and self._station_coords_mode not in ("absolute", "relative"):
+            raise ValueError(
+                f"station_coords_mode must be 'absolute' or 'relative', "
+                f"got '{self._station_coords_mode}'."
+            )
+        if self._variable_stations and self._station_coords_mode == "relative" and self._n_cond == 0:
+            raise ValueError(
+                "station_coords_mode='relative' needs source conditioning (n_cond > 0) so a "
+                "source location is available; configure `conditioning` or use 'absolute'."
+            )
+
     def _configure_conditioning(self, cond_cfg, d_model):
         self._n_cond = 0
         self._inject = ()
@@ -140,7 +162,32 @@ class SeismogramTransformer(nn.Module):
         # Unpack source conditioning if the context is packed (2-D). With no conditioning
         # configured, x stays 4-D and source_vec is None → original behaviour.
         source_vec = None
-        if self._n_cond > 0 and x.dim() == 2:
+        # Per-sample station coords + validity mask, only set on the variable-station path.
+        var_coords = None
+        var_mask = None
+        if self._variable_stations and x.dim() == 2:
+            # Variable-station packed context: recover padded seismograms, per-sample coords,
+            # the validity mask, and (optionally) the source vector. max_N is inferred inside.
+            x, var_coords, var_mask, source_vec = unpack_variable_context(
+                x, self._n_components, self.input_length, self._n_cond
+            )
+        elif self._variable_stations and x.dim() == 4:
+            # Inference convenience: a 4-D (B, N, C, T) tensor for the full master station set.
+            # Treat every station as valid and take coordinates from the fixed buffer, so
+            # callers can run the full configuration without explicit packing. (Subsets or
+            # relative-coord inference must supply a packed 2-D context with per-sample coords.)
+            if self._station_coords_mode == "relative":
+                raise ValueError(
+                    "Variable-station model with station_coords_mode='relative' needs a packed "
+                    "2-D context carrying the source vector and per-sample coords; a bare 4-D "
+                    "tensor has no source location to measure against."
+                )
+            B_, N_ = x.shape[0], x.shape[1]
+            var_mask = torch.ones(B_, N_, dtype=torch.bool, device=x.device)
+            var_coords = self.all_station_transformer.station_coords.to(x.dtype)
+            if var_coords.dim() == 2:
+                var_coords = var_coords.unsqueeze(0).expand(B_, N_, 2)
+        elif self._n_cond > 0 and x.dim() == 2:
             x, source_vec = unpack_context(
                 x, self._n_stations, self._n_components, self.input_length, self._n_cond
             )
@@ -183,9 +230,27 @@ class SeismogramTransformer(nn.Module):
                 source_vec, self.all_station_transformer.station_coords, self._coord_mode
             )
 
+        # --- Variable-station coords + key-padding mask ---
+        key_padding_mask = None
+        if self._variable_stations:
+            # Per-sample station position: absolute (lat, lon) coords fed directly, or
+            # source-relative (distance, azimuth) computed from this sample's coords.
+            if self._station_coords_mode == "relative":
+                station_override = relative_station_geometry(
+                    source_vec, var_coords, self._coord_mode
+                )
+            else:
+                station_override = var_coords
+            # Transformer mask is (B, N, L) with True = pad: invert the station validity
+            # mask and broadcast over the encoder token axis L. Keep it as an expanded view —
+            # the transformer's reshape/permute consumers materialise only where needed.
+            key_padding_mask = (~var_mask).unsqueeze(-1).expand(B, N, self.L)
+
         # Contextualize with transformer
         transformer_output = self.all_station_transformer(
-            feature_sequences, station_coords_override=station_override
+            feature_sequences,
+            key_padding_mask=key_padding_mask,
+            station_coords_override=station_override,
         )  # (x, q, pooled)
         pooled = transformer_output[2]  # pooled embedding (B, d_model)
 

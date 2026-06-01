@@ -35,10 +35,21 @@ class GeneralSimulatorWrapper:
         # gaussian_sigma).  Make a shallow copy so we don't mutate the original.
         effect_configs = dict(getattr(parameters, 'nuisance_effect_config', {}))
 
+        # Only nuisances staged at "simulation" (the default) are baked into each
+        # simulation here.  Effects staged "training_augmentation" are folded in
+        # per-batch by the ML dataloader instead, so they must NOT be applied at
+        # simulation time.  This keeps the theory-error EnsembleSimulator path —
+        # which relies on baked effects — fully intact for simulation-staged keys.
+        nuisance_stage = getattr(parameters, 'nuisance_stage', {})
+        sim_staged_keys = [
+            key for key in parameters.nuisance.keys()
+            if nuisance_stage.get(key, "simulation") == "simulation"
+        ]
+
         # TimeShiftErrorEffect needs the simulation sampling rate for Lanczos
         # interpolation (seconds → samples).  Inject it automatically so it
         # never needs to appear in the YAML.
-        if 'time_shift_error' in parameters.nuisance:
+        if 'time_shift_error' in sim_staged_keys:
             effect_configs['time_shift_error'] = dict(
                 effect_configs.get('time_shift_error', {})
             )
@@ -47,7 +58,7 @@ class GeneralSimulatorWrapper:
             )
 
         post_processing_effects = list(
-            build_post_processing_chain(parameters.nuisance.keys(), effect_configs).effects
+            build_post_processing_chain(sim_staged_keys, effect_configs).effects
         )
         self.simulator = self.select_and_initialise_simulator(
             simulator_config, simulation_parameters, post_processing_effects=post_processing_effects

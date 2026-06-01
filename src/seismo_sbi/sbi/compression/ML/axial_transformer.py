@@ -15,6 +15,28 @@ def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     pe[:, 1::2] = torch.cos(position * div_term)
     return pe  # (L, d_model)
 
+def _time_key_padding_mask(key_padding_mask: Optional[torch.Tensor], rows: int, L: int):
+    """Build the per-station time-attention key-padding mask, guarding fully-masked rows.
+
+    Reshapes the ``(B, N, L)`` station mask to the time-attention ``(rows=B*N, L)`` layout and
+    unmasks any fully-padded station. ``nn.MultiheadAttention`` returns ``NaN`` for a query
+    whose entire key set is masked (all-True), which is exactly a fully-padded station's time
+    row. Such stations are discarded by the masked pooling / station-level mask downstream, so
+    unmasking their rows (set all-False) is safe and purely keeps attention finite. Returns
+    ``None`` for a ``None`` input (fixed-N path) and leaves the mask unchanged when no row is
+    fully masked (no copy on the fixed-N path).
+    """
+    if key_padding_mask is None:
+        return None
+    mask = key_padding_mask.reshape(rows, L)
+    fully_padded = mask.all(dim=-1)  # (rows,)
+    if not bool(fully_padded.any()):
+        return mask
+    mask = mask.clone()
+    mask[fully_padded] = False
+    return mask
+
+
 # ----------------------------
 # Utility: simple position-wise FFN
 # ----------------------------
@@ -114,7 +136,7 @@ class AxialOrFullBlock(nn.Module):
                 # -------- temporal PMA per station --------
                 # shape inputs as (B*N, L, D)
                 xt = x.reshape(B * N, L, D)
-                tim_mask = key_padding_mask.reshape(B * N, L) if key_padding_mask is not None else None
+                tim_mask = _time_key_padding_mask(key_padding_mask, B * N, L)
 
                 # learned queries attend to time tokens (Set Transformer PMA / Perceiver-style)
                 q_lat = self.pma_queries.expand(B * N, -1, -1)              # (B*N, K, D)
@@ -166,9 +188,7 @@ class AxialOrFullBlock(nn.Module):
                 # time-wise across L for each station
                 xt = x.reshape(B * N, L, D)
                 xt_in = self.ln_tim(xt)
-                tim_mask = None
-                if key_padding_mask is not None:
-                    tim_mask = key_padding_mask.reshape(B * N, L)
+                tim_mask = _time_key_padding_mask(key_padding_mask, B * N, L)
                 xt_out, _ = self.attn_tim(xt_in, xt_in, xt_in, key_padding_mask=tim_mask, need_weights=False)
                 xt = xt + xt_out
                 x = xt.reshape(B, N, L, D)
@@ -446,8 +466,11 @@ class SeismogramAxialTransformer(nn.Module):
                 cls_seq = x[:, 0, :, :]  # (B, L, D)
                 time_keep = None
                 if key_padding_mask is not None:
-                    # valid if any station has valid at that time -> we pool over valid times
-                    time_keep = ~key_padding_mask.any(dim=1)  # (B, L)
+                    # A time step is only padded when EVERY station is padded there (true time
+                    # padding); station padding alone (a whole padded station, masked at all
+                    # times) must NOT mark the time step invalid — otherwise adding padded
+                    # stations would mask out all times. Use .all over the station axis.
+                    time_keep = ~key_padding_mask.all(dim=1)  # (B, L)
                 pooled = self._apply_pool(cls_seq, time_keep)
             elif self.mode == "full":
                 # single CLS token after station-level attention

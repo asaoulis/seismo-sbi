@@ -11,6 +11,10 @@ from seismo_sbi.instaseis_simulator.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 from seismo_sbi.cps_simulator.compatibility import load_velocity_model
+from seismo_sbi.instaseis_simulator.post_processing import (
+    AUGMENTABLE_EFFECT_KEYS,
+    POST_NOISE_EFFECT_KEYS,
+)
 class InvalidConfiguration(Exception):
     pass
 
@@ -23,6 +27,8 @@ class SBI_Configuration:
         "stf_duration",
         # Post-processing nuisance (Category 2 — modify synthetic seismograms)
         "amplitude_error", "instrument_dropout", "scattering_coda", "time_shift_error",
+        # Post-noise augmentation (applied after sensor noise; see ComponentDropoutEffect)
+        "component_dropout",
     ]
 
     param_names_map = {
@@ -36,12 +42,18 @@ class SBI_Configuration:
         "instrument_dropout": ["instrument_dropout"],
         "scattering_coda": ["scattering_coda"],
         "time_shift_error": ["time_shift_error"],
+        "component_dropout": ["component_dropout"],
     }
 
     #: YAML keys consumed by the parameter machinery — any other keys in a
     #: nuisance config block are treated as effect-level constructor kwargs
     #: and stored in ``ModelParameters.nuisance_effect_config``.
-    _STANDARD_NUISANCE_KEYS = frozenset({"fiducial", "bounds"})
+    _STANDARD_NUISANCE_KEYS = frozenset({"fiducial", "bounds", "stage"})
+
+    #: Valid values for a nuisance block's optional ``stage`` key.
+    _NUISANCE_STAGES = frozenset({
+        "simulation", "training_augmentation", "training_augmentation_post_noise",
+    })
 
     compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
     test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
@@ -120,7 +132,42 @@ class SBI_Configuration:
                     self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
                 self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
 
-                # Any YAML key beyond 'fiducial' and 'bounds' is effect-level
+                # Optional `stage` key selects where the nuisance is injected:
+                # "simulation" (default — baked into the simulation dataset) or
+                # "training_augmentation" (folded in per-batch in the ML dataloader).
+                stage = parameter_values.get("stage", "simulation")
+                if stage not in SBI_Configuration._NUISANCE_STAGES:
+                    allowed = ', '.join(sorted(SBI_Configuration._NUISANCE_STAGES))
+                    raise InvalidConfiguration(
+                        f"Invalid stage {stage!r} for nuisance {parameter_type}. "
+                        f"Only [ {allowed} ] allowed"
+                    )
+                if stage == "training_augmentation" and parameter_type not in AUGMENTABLE_EFFECT_KEYS:
+                    allowed = ', '.join(AUGMENTABLE_EFFECT_KEYS)
+                    raise InvalidConfiguration(
+                        f"Nuisance {parameter_type} cannot use stage 'training_augmentation' "
+                        f"(only Category-2 post-processing effects [ {allowed} ] are "
+                        f"augmentation-eligible; simulator-level nuisances must be baked in)."
+                    )
+                if stage == "training_augmentation_post_noise" and parameter_type not in POST_NOISE_EFFECT_KEYS:
+                    allowed = ', '.join(POST_NOISE_EFFECT_KEYS)
+                    raise InvalidConfiguration(
+                        f"Nuisance {parameter_type} cannot use stage "
+                        f"'training_augmentation_post_noise' (only post-noise effects "
+                        f"[ {allowed} ] are eligible)."
+                    )
+                # component_dropout zeros channels to mimic genuinely-absent components, which
+                # must be EXACTLY zero — a pre-noise/simulation stage would leave `0 + noise`.
+                # So it is only valid post-noise.
+                if parameter_type in POST_NOISE_EFFECT_KEYS and stage != "training_augmentation_post_noise":
+                    raise InvalidConfiguration(
+                        f"Nuisance {parameter_type} must use stage "
+                        f"'training_augmentation_post_noise' (it zeros channels after noise so "
+                        f"they are exactly zero); got stage {stage!r}."
+                    )
+                self.model_parameters.nuisance_stage[parameter_type] = stage
+
+                # Any YAML key beyond the standard keys is effect-level
                 # configuration forwarded to the SeismogramEffect constructor.
                 effect_cfg = {
                     k: v for k, v in parameter_values.items()

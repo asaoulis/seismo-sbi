@@ -1,5 +1,6 @@
 import numpy as np
 import contextlib
+import warnings
 import joblib
 from tqdm import tqdm
 from typing import Callable, Dict, List, Optional
@@ -12,7 +13,7 @@ except Exception:
     hilbert = None
     welch = None
 
-from seismo_sbi.instaseis_simulator.utils import apply_station_time_shifts
+from seismo_sbi.instaseis_simulator.post_processing import PostProcessingChain
 
 
 @contextlib.contextmanager
@@ -76,11 +77,16 @@ class PosteriorPredictiveChecks:
         Number of parallel jobs for simulation.
     dof_override : optional int
         If provided, use as degree-of-freedom for reduced chi^2 calculation.
-    random_shift_distributions : optional dict
-        If provided, enables per-ensemble station time shifts using the same
-        convention as TorchSimulationDataset: a global integer shift drawn
-        from N(mean, std=mean) rounded, plus a per-station uniform integer
-        jitter in [-half_range, half_range].
+    augmentation_chains : optional dict
+        Maps ``ensemble_name -> PostProcessingChain`` of Category-2 nuisance
+        effects (the SAME effects used in training-time augmentation) to fold
+        into each synthetic of that ensemble.  Replaces the legacy
+        ``random_shift_distributions`` integer-shift mechanism; time shifts are
+        now expressed via a ``TimeShiftErrorEffect`` in the chain.
+    augmentation_nuisance_params : optional dict
+        Maps ``ensemble_name -> {nuisance_key: value}`` activating the effects
+        in that ensemble's chain (e.g. ``{"time_shift_error": 1.0}``).  Missing
+        entries default to ``{}`` (effects inactive / identity).
     """
 
     def __init__(
@@ -92,7 +98,8 @@ class PosteriorPredictiveChecks:
         sample_rate: Optional[float] = 1.0,
         n_jobs: int = 20,
         dof_override: Optional[int] = None,
-        random_shift_distributions: Optional[Dict[str, tuple]] = None,
+        augmentation_chains: Optional[Dict[str, PostProcessingChain]] = None,
+        augmentation_nuisance_params: Optional[Dict[str, dict]] = None,
     ):
         self.simulator = simulator
         self.covariance_matrix = covariance_matrix
@@ -110,9 +117,10 @@ class PosteriorPredictiveChecks:
         else:
             self.n_traces = None
 
-        # store per-ensemble random shift distributions dict
-        # mapping ensemble_name -> (mean, half_range)
-        self.random_shift_distributions = random_shift_distributions or {}
+        # store per-ensemble nuisance augmentation chains + their activation params
+        # mapping ensemble_name -> PostProcessingChain / {nuisance_key: value}
+        self.augmentation_chains = augmentation_chains or {}
+        self.augmentation_nuisance_params = augmentation_nuisance_params or {}
 
         # metric registry: name -> callable(obs, synthetics, meta) -> per-sample np.array
         self.metrics = OrderedDict()
@@ -155,38 +163,37 @@ class PosteriorPredictiveChecks:
                 results = joblib.Parallel()( 
                      joblib.delayed(self.simulator)(param_dict) for param_dict in samples 
                 )
-                # Apply per-sample random time shifts if receivers are known
-                if self.receivers is not None:
-                    # derive distribution for this ensemble
-                    if ensemble_name is not None and ensemble_name in self.random_shift_distributions:
-                        print("Using random shift distribution for ensemble:", ensemble_name)
-                        shifts = self.random_shift_distributions[ensemble_name]
-                    receiver_names = [rec.station_name for rec in self.receivers.iterate()]
-                    shifted = []
-                    for vec in results:
-                        try:
-                            # Build per-station shift dict
-                            if isinstance(shifts, tuple) and len(shifts) == 2:
-                                random_shift_distribution= shifts
-                                shift = round(np.random.normal(0, random_shift_distribution[0]))
-                                shift_dict = {name: shift + int(np.random.uniform(-random_shift_distribution[1], random_shift_distribution[1])) for name in receiver_names}
-                            # IMPORTANT: set shifts on receivers prior to applying
-                            elif isinstance(shifts, dict):
-                                shift_dict = shifts
-                            else:
-                                shift_dict = {name: 0 for name in receiver_names}
-                            self.receivers.set_time_shifts(shift_dict)
-                            # reshape vector -> outputs map, apply shifts, flatten back
-                            outputs_map = self._vec_to_outputs_map(vec)
-                            shifted_outputs = apply_station_time_shifts(self.receivers, outputs_map)
-                            shifted_vec = self._outputs_map_to_vec(shifted_outputs)
-                            shifted.append(shifted_vec)
-                        except Exception:
-                            shifted.append(vec)
-                    synthetics.extend(shifted)
-                else:
-                    synthetics.extend(results) 
+                # Fold in per-ensemble nuisance augmentation (same effects as training).
+                synthetics.extend(self._apply_augmentation(results, ensemble_name))
         return np.vstack(synthetics)
+
+    def _apply_augmentation(self, results, ensemble_name):
+        """Apply the per-ensemble nuisance augmentation chain to a list of flat synthetics.
+
+        Returns the (possibly augmented) list of 1-D vectors. A no-op when no chain is
+        configured for ``ensemble_name`` (or no receivers). If a chain raises on a given
+        vector the original (un-augmented) vector is kept, but the failure is surfaced via
+        a warning rather than silently swallowed.
+        """
+        chain = self.augmentation_chains.get(ensemble_name) if ensemble_name is not None else None
+        if self.receivers is None or chain is None or not chain.effects:
+            return list(results)
+
+        print("Applying nuisance augmentation chain for ensemble:", ensemble_name)
+        nuisance_params = self.augmentation_nuisance_params.get(ensemble_name, {})
+        augmented = []
+        for vec in results:
+            try:
+                outputs_map = self._vec_to_outputs_map(vec)
+                processed = chain(outputs_map, self.receivers, nuisance_params)
+                augmented.append(self._outputs_map_to_vec(processed))
+            except Exception as exc:
+                warnings.warn(
+                    f"PPC nuisance augmentation failed for ensemble {ensemble_name!r}; "
+                    f"using the un-augmented synthetic instead: {exc!r}"
+                )
+                augmented.append(vec)
+        return augmented
 
     def simulate_ensembles(
         self,

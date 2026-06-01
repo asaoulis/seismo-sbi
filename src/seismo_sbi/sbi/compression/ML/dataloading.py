@@ -4,7 +4,44 @@ import os
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.instaseis_simulator.post_processing import apply_chain_to_array
 import numpy as np
+
+from .source_conditioning import pack_variable_context
+
+
+class StationSubsampler:
+    """Randomly select a subset of station indices to emulate variable station configs.
+
+    Each draw samples a *keep fraction* from a configurable distribution and keeps that
+    fraction of the master station set (with a ``min_stations`` floor), returning the
+    sorted kept indices so the canonical station ordering is preserved.  Uses the global
+    numpy RNG, which the DataLoader's ``_seed_worker`` re-seeds per worker for
+    reproducible, per-worker-distinct augmentation.
+
+    Parameters
+    ----------
+    keep_fraction:
+        A fixed fraction (``float``) or a ``(low, high)`` range drawn uniformly per sample.
+        Default ``(0.5, 1.0)``.
+    min_stations:
+        Lower bound on the number of kept stations (also clamped to the available count).
+    """
+
+    def __init__(self, keep_fraction=(0.5, 1.0), min_stations: int = 1):
+        self.keep_fraction = keep_fraction if keep_fraction is not None else (0.5, 1.0)
+        self.min_stations = int(min_stations)
+
+    def _draw_fraction(self) -> float:
+        kf = self.keep_fraction
+        if isinstance(kf, (int, float)):
+            return float(kf)
+        return float(np.random.uniform(*kf))
+
+    def __call__(self, num_stations: int) -> np.ndarray:
+        n_keep = int(round(self._draw_fraction() * num_stations))
+        n_keep = min(num_stations, max(min(self.min_stations, num_stations), n_keep))
+        return np.sort(np.random.choice(num_stations, size=n_keep, replace=False))
 
 # New: Torch dataset that returns (theta, x) where x = D + noise
 class TorchSimulationDataset(Dataset):
@@ -15,14 +52,26 @@ class TorchSimulationDataset(Dataset):
         parameter_name_map: dict,
         synthetic_noise_model_sampler,
         data_scaler=None,
-        random_shift_distribution=(0, 0),
+        augmentation_chain=None,
+        augmentation_nuisance_params=None,
         glob_pattern: str = "*.h5",
         return_tensors: bool = True,
         torch_dtype=torch.float32,
         conditioning_param_map: dict = None,
+        station_subsampler: "StationSubsampler" = None,
+        post_noise_augmentation_chain=None,
+        post_noise_nuisance_params=None,
     ):
         self.data_loader = data_loader
-        receiver_names = [rec.station_name for rec in self.data_loader.receivers.iterate()]
+
+        # Variable-station augmentation: when a subsampler is supplied, __getitem__ draws a
+        # (possibly partial) subset of stations per sample and returns a tuple
+        # (theta, (x_sub, coords_sub, source_vec|None)) that variable_station_collate packs
+        # into a ragged-aware batch. Absent ⇒ the legacy fixed-N return path is unchanged.
+        self.station_subsampler = station_subsampler
+        # Master station coordinates (N, 2) in canonical receiver-iteration order — matches
+        # the station axis of the (N, C, T) data array, so subsampling indexes both alike.
+        self.station_coords = data_loader.receivers.get_station_locations_array()
 
         # Optional source-location conditioning: map of {input_type: [attr_names]} extracted
         # from each sim's stored inputs as a RAW (unscaled) conditioning vector. When set,
@@ -35,11 +84,20 @@ class TorchSimulationDataset(Dataset):
         self.data_scaler = data_scaler
         self.return_tensors = return_tensors
         self.torch_dtype = torch_dtype
-        def random_shift_sampler():
-            # gaussian array-wide random shift
-            shift = round(np.random.normal(0, random_shift_distribution[0]))
-            return {name: shift + int(np.random.uniform(-random_shift_distribution[1], random_shift_distribution[1])) for name in receiver_names}
-        self.random_shift_sampler = random_shift_sampler
+
+        # Training-time nuisance augmentation: a PostProcessingChain of Category-2
+        # effects (amplitude/dropout/time-shift/coda) folded into the CLEAN loaded
+        # data on the fly, BEFORE noise is added. None / empty chain ⇒ no augmentation
+        # (back-compat with the retired `random_shift_distribution` path at (0,0)).
+        self.augmentation_chain = augmentation_chain
+        self.augmentation_nuisance_params = augmentation_nuisance_params or {}
+
+        # Post-noise augmentation: a PostProcessingChain applied to the NOISY data
+        # ``x = D + noise`` (e.g. component_dropout, which zeros channels to mimic
+        # genuinely-absent components and so must run after noise to be exactly zero).
+        # None / empty chain ⇒ no post-noise augmentation.
+        self.post_noise_augmentation_chain = post_noise_augmentation_chain
+        self.post_noise_nuisance_params = post_noise_nuisance_params or {}
 
         self.paths = sorted(glob.glob(os.path.join(data_folder, glob_pattern)))
         if len(self.paths) == 0:
@@ -54,6 +112,17 @@ class TorchSimulationDataset(Dataset):
         # Load per-sample data on demand
         sim_path = self.paths[idx]
         theta, D = self._load_sim(sim_path)
+
+        # Fold in nuisance augmentation on the CLEAN data, before noise is added
+        # (physical semantics: amplitude/dropout/shift act on signal, then noise).
+        if self.augmentation_chain is not None and self.augmentation_chain.effects:
+            D = apply_chain_to_array(
+                self.augmentation_chain,
+                D,
+                self.data_loader.receivers,
+                self.data_loader.components,
+                self.augmentation_nuisance_params,
+            )
 
         # Apply scaler to parameters if provided (consistent with previous behavior)
         if self.data_scaler is not None and theta.size > 0:
@@ -76,16 +145,48 @@ class TorchSimulationDataset(Dataset):
 
         x = D + torch.as_tensor(np.array(noise_np), dtype=self.torch_dtype).reshape(*D.shape)
 
+        # Post-noise augmentation (e.g. component_dropout): applied to the NOISY x so a
+        # dropped channel is EXACTLY zero (matching a genuinely-absent channel). Applied on the
+        # full station set BEFORE any variable-station subsampling, keeping the array aligned
+        # with the full `receivers` the adapter expects.
+        post_chain = getattr(self, "post_noise_augmentation_chain", None)
+        if post_chain is not None and post_chain.effects:
+            x_aug = apply_chain_to_array(
+                post_chain,
+                x.numpy(),
+                self.data_loader.receivers,
+                self.data_loader.components,
+                self.post_noise_nuisance_params,
+            )
+            x = torch.as_tensor(x_aug, dtype=self.torch_dtype).reshape(*x.shape)
+
         if self.return_tensors:
             # x is already torch; ensure dtype
             x = torch.as_tensor(x, dtype=self.torch_dtype)
             theta = torch.as_tensor(theta, dtype=self.torch_dtype)
 
-        # Source-location conditioning: append the RAW conditioning vector → packed context.
+        # Optional raw source-conditioning vector (shared by both return paths).
+        source_vec = None
         if self.conditioning_param_map:
-            source_vec = self._load_conditioning(sim_path)
+            source_vec = torch.as_tensor(self._load_conditioning(sim_path), dtype=self.torch_dtype)
+
+        # --- Variable-station path: subsample stations, carry per-sample coords ---
+        # getattr keeps datasets built via __new__ (test stubs) working without this attr.
+        station_subsampler = getattr(self, "station_subsampler", None)
+        if station_subsampler is not None:
+            num_stations = x.shape[0]
+            keep = station_subsampler(num_stations)
+            x_sub = x[keep]                                            # (N_sub, C, T)
+            coords_sub = torch.as_tensor(
+                self.station_coords[keep], dtype=self.torch_dtype
+            )                                                          # (N_sub, 2)
+            return theta, (x_sub, coords_sub, source_vec)
+
+        # --- Legacy fixed-N path (unchanged) ---
+        # Source-location conditioning: append the RAW conditioning vector → packed context.
+        if source_vec is not None:
             from .source_conditioning import pack_context
-            x = pack_context(x, torch.as_tensor(source_vec, dtype=self.torch_dtype))
+            x = pack_context(x, source_vec)
         return theta, x
 
     def _load_conditioning(self, sim_path):
@@ -113,9 +214,53 @@ class TorchSimulationDataset(Dataset):
             )
         else:
             theta = np.array([])
-        shift_dict = self.random_shift_sampler()
-        D = self.data_loader.load_simulation_data_array_with_shifts(sim_path, shift_dict, stacked=True, fill_unused=True)
+        # Load the CLEAN, un-shifted data array. Time shifts (and other nuisance
+        # effects) are now applied as augmentation in __getitem__ via the
+        # augmentation_chain, not baked into the load.
+        D = self.data_loader.load_simulation_data_array(sim_path, stacked=True, fill_unused=True)
         return theta, D
+
+
+def variable_station_collate(batch):
+    """Collate variable-station samples into a ragged-aware batch.
+
+    Each item is ``(theta (D,), (x (N_i,C,T), coords (N_i,2), source_vec|None))``.  Pads
+    every sample to the batch's ``max_N`` with zeros, builds a boolean validity mask
+    ``(B, max_N)`` (True=real station), and packs each into the single flat context tensor
+    the embedding net unpacks. Returns ``(theta (B,D), context (B,W))``.
+    """
+    thetas, samples = zip(*batch)
+    xs, coords, source_vecs = zip(*samples)
+
+    max_N = max(x.shape[0] for x in xs)
+    C, T = xs[0].shape[1], xs[0].shape[2]
+    dtype = xs[0].dtype
+    has_source = source_vecs[0] is not None
+
+    packed = []
+    for x, crd, sv in zip(xs, coords, source_vecs):
+        n = x.shape[0]
+        x_pad = x.new_zeros((max_N, C, T)); x_pad[:n] = x
+        crd_pad = crd.new_zeros((max_N, 2)); crd_pad[:n] = crd
+        mask = torch.zeros(max_N, dtype=torch.bool); mask[:n] = True
+        packed.append(pack_variable_context(x_pad, crd_pad, mask, sv if has_source else None))
+
+    # packed vectors are already in xs[0].dtype (built from x.new_zeros / cast in
+    # pack_variable_context), so no further dtype cast is needed here.
+    context = torch.stack(packed, dim=0)
+    theta = torch.stack([torch.as_tensor(t, dtype=dtype) for t in thetas], dim=0)
+    return theta, context
+
+
+def _seed_worker(worker_id):
+    """Seed numpy per DataLoader worker so stochastic augmentation is reproducible.
+
+    Each worker process inherits the same numpy global RNG state on fork; without
+    re-seeding, all workers would draw the SAME augmentation sequence. Derive a
+    distinct seed per worker from torch's per-worker initial seed.
+    """
+    seed = (torch.initial_seed() + worker_id) % (2 ** 32)
+    np.random.seed(seed)
 
 
 # Convenience factory to create a torch DataLoader for a dataset (no splitting)
@@ -124,7 +269,8 @@ def make_torch_dataloader(
     data_folder: str,
     parameter_name_map: dict,
     synthetic_noise_model_sampler,
-    random_shift_distribution=(0, 0),
+    augmentation_chain=None,
+    augmentation_nuisance_params=None,
     batch_size: int = 32,
     shuffle: bool = True,
     num_workers: int = 0,
@@ -134,20 +280,29 @@ def make_torch_dataloader(
     return_tensors: bool = True,
     torch_dtype=torch.float32,
     conditioning_param_map: dict = None,
+    station_subsampler: "StationSubsampler" = None,
+    post_noise_augmentation_chain=None,
+    post_noise_nuisance_params=None,
 ) -> DataLoader:
     dataset = TorchSimulationDataset(
         data_loader=data_loader,
         data_folder=data_folder,
         parameter_name_map=parameter_name_map,
         synthetic_noise_model_sampler=synthetic_noise_model_sampler,
-        random_shift_distribution=random_shift_distribution,
+        augmentation_chain=augmentation_chain,
+        augmentation_nuisance_params=augmentation_nuisance_params,
         glob_pattern=glob_pattern,
         return_tensors=return_tensors,
         torch_dtype=torch_dtype,
         conditioning_param_map=conditioning_param_map,
+        station_subsampler=station_subsampler,
+        post_noise_augmentation_chain=post_noise_augmentation_chain,
+        post_noise_nuisance_params=post_noise_nuisance_params,
     )
     if persistent_workers is None:
         persistent_workers = num_workers > 0
+    # Variable-station samples are ragged ⇒ the default collate cannot stack them.
+    collate_fn = variable_station_collate if station_subsampler is not None else None
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -155,6 +310,8 @@ def make_torch_dataloader(
         num_workers=num_workers,
         pin_memory=pin_memory,
         persistent_workers=persistent_workers,
+        worker_init_fn=_seed_worker if num_workers > 0 else None,
+        collate_fn=collate_fn,
     )
 
 # Build both train and val DataLoaders using a single split parameter train_max_index
@@ -164,7 +321,8 @@ def make_torch_dataloaders(
     data_folder: str,
     parameter_name_map: dict,
     synthetic_noise_model_sampler,
-    random_shift_distribution=(0, 0),
+    augmentation_chain=None,
+    augmentation_nuisance_params=None,
     data_scaler=None,
     train_max_index: int,
     train_batch_size: int = 32,
@@ -178,21 +336,30 @@ def make_torch_dataloaders(
     return_tensors: bool = True,
     torch_dtype= torch.float32,
     conditioning_param_map: dict = None,
+    station_subsampler: "StationSubsampler" = None,
+    post_noise_augmentation_chain=None,
+    post_noise_nuisance_params=None,
 ):
     if val_batch_size is None:
         val_batch_size = train_batch_size
 
+    # Train and val share one dataset, so nuisance augmentation is applied to BOTH
+    # (val augmentation ON by design — val loss reflects the augmented distribution).
     full_dataset = TorchSimulationDataset(
         data_loader=data_loader,
         data_folder=data_folder,
         parameter_name_map=parameter_name_map,
         synthetic_noise_model_sampler=synthetic_noise_model_sampler,
-        random_shift_distribution=random_shift_distribution,
+        augmentation_chain=augmentation_chain,
+        augmentation_nuisance_params=augmentation_nuisance_params,
         data_scaler=data_scaler,
         glob_pattern=glob_pattern,
         return_tensors=return_tensors,
         torch_dtype=torch_dtype,
         conditioning_param_map=conditioning_param_map,
+        station_subsampler=station_subsampler,
+        post_noise_augmentation_chain=post_noise_augmentation_chain,
+        post_noise_nuisance_params=post_noise_nuisance_params,
     )
     n = len(full_dataset)
     end = max(0, min(train_max_index, n))
@@ -206,6 +373,11 @@ def make_torch_dataloaders(
     # prefetch_factor is only valid for multiprocessing loaders (num_workers > 0);
     # passing it with num_workers=0 raises in torch >= 2.0.
     extra = {"prefetch_factor": 4} if num_workers > 0 else {}
+    if num_workers > 0:
+        extra["worker_init_fn"] = _seed_worker
+    # Variable-station samples are ragged ⇒ pad+pack via the custom collate.
+    if station_subsampler is not None:
+        extra["collate_fn"] = variable_station_collate
 
     train_loader = DataLoader(
         train_subset,

@@ -67,6 +67,12 @@ class ModelParameters:
 
         self.nuisance_effect_config: dict = {}
 
+        # Maps nuisance key -> injection stage: "simulation" (baked into sims, the
+        # default / current behaviour) or "training_augmentation" (folded in per-batch
+        # in the ML dataloader). Deliberately NOT a `_parameter_names` entry: it is not
+        # part of the theta/fiducial vector and must not affect MOPED semantics.
+        self.nuisance_stage: dict = {}
+
         self._parameter_names = [
             "theta_fiducial",
             "stencil_deltas",
