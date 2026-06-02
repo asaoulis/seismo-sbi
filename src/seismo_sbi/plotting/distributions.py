@@ -280,6 +280,13 @@ class MomentTensorReparametrised:
         return converted_chain_dict
 
 
+# Shared lune-overlay palette (one colour per overlaid ensemble, in dict order).
+# Exposed at module scope so external legend builders (e.g.
+# seismo_sbi.plotting.evaluation.plot_ensemble_lune_kde) stay in sync with the
+# contour colours plot_lunes / plot_lunes_kde draw.
+LUNE_ENSEMBLE_COLORS = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+
+
 class PosteriorPlotter:
 
     def __init__(self, data_scaler, parameters_info : List[ParameterInformation], parameters = None, num_jobs = 0):
@@ -543,7 +550,7 @@ class PosteriorPlotter:
                 shade = shade_first
             else:
                 shade = False
-            c_plot.add_chain(samples, parameters=parameters_label, color=colors[i], name=name, shade=shade, linewidth=2.5)
+            c_plot.add_chain(samples, parameters=parameters_label, color=colors[i % len(colors)], name=name, shade=shade, linewidth=2.5)
             i+=1
         c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=False, usetex=True, bar_shade=True)
         c_plot.configure_truth(lw=2)
@@ -564,7 +571,7 @@ class PosteriorPlotter:
         fig, ax = plt.subplots(figsize=(14, 14))
         bm = plot_lune_frame(ax)
 
-        colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+        colors = LUNE_ENSEMBLE_COLORS
         true_theta0 = None
 
 
@@ -619,7 +626,7 @@ class PosteriorPlotter:
         
         bm = plot_lune_frame(ax)
 
-        colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+        colors = LUNE_ENSEMBLE_COLORS
         qs = [[5,50,95], [50], [5,50,95]]
         gx = np.linspace(-30, 30, 200)
         gy = np.linspace(-90, 90, 300)
@@ -645,7 +652,9 @@ class PosteriorPlotter:
                 # if plot beachballs for true, plot 3 beachballs and truth
             true_mt = true_theta0
             percentile_mts = []
-            for q in qs[i]:
+            # qs holds per-ensemble percentile sets; cycle it so >3 overlaid
+            # ensembles (e.g. station-dropout comparisons) don't IndexError.
+            for q in qs[i % len(qs)]:
                 d_q = np.percentile(d, q)
                 # find closest sample to this delta
                 idx = np.argmin(np.abs(d - d_q))

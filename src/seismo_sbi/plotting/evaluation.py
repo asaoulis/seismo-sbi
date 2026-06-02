@@ -242,6 +242,105 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
 
 
 # --------------------------------------------------------------------------- #
+# Station-config ensemble overlay (variable-station dropout evaluation)
+# --------------------------------------------------------------------------- #
+def spread_stats(mt_samples) -> Dict[str, float]:
+    """Median + 68% interval width of gamma/delta/Mw for an (N, 6) MT sample set."""
+    gamma, delta, mw = _gamma_delta_mw(np.asarray(mt_samples))
+
+    def med_width(a):
+        a = np.asarray(a, dtype=float)
+        return float(np.median(a)), float(np.percentile(a, 84) - np.percentile(a, 16))
+
+    g_med, g_w = med_width(gamma)
+    d_med, d_w = med_width(delta)
+    m_med, m_w = med_width(mw)
+    return {
+        "gamma_deg_median": g_med, "gamma_deg_width68": g_w,
+        "delta_deg_median": d_med, "delta_deg_width68": d_w,
+        "Mw_median": m_med, "Mw_width68": m_w,
+    }
+
+
+def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
+                           plot_beachballs=False, legend=True, num_samples=2500):
+    """Full-lune KDE overlay of several labelled posteriors, with a per-config legend.
+
+    Wraps the house ``plotter.posterior_plotter.plot_lunes_kde`` (whole lune in shot, no
+    crop) and adds the legend it lacks. ``ensemble_dict`` maps ``label -> InversionData``;
+    contour colours follow dict order (matched by the legend).
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from seismo_sbi.plotting.distributions import LUNE_ENSEMBLE_COLORS
+
+    pp = plotter.posterior_plotter
+    fig, ax = plt.subplots(figsize=(12, 12))
+    pp.plot_lunes_kde(ensemble_dict, ax=ax, plot_beachballs=plot_beachballs,
+                      num_samples=num_samples, plot_inset=False, show=False)
+    if legend:
+        handles = [Line2D([0], [0], lw=2.2, label=lab,
+                          color=LUNE_ENSEMBLE_COLORS[i % len(LUNE_ENSEMBLE_COLORS)])
+                   for i, lab in enumerate(ensemble_dict.keys())]
+        ax.legend(handles=handles, loc="upper right", fontsize=13,
+                  title="config\n(solid 68%, dashed 95% HPD)", framealpha=0.9)
+    if figsave is not None:
+        Path(figsave).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(figsave, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return figsave
+
+
+def plot_ensemble_spread_summary(configs, ensemble_dict, figsave=None):
+    """Posterior spread vs station config / count for a station-dropout ensemble.
+
+    ``configs`` is a sequence of ``StationConfig`` (provides ``.label`` / ``.n``);
+    ``ensemble_dict`` maps ``label -> InversionData``. Left panel: per-config 68%
+    gamma/delta widths (bars); right panel: the same widths vs station count.
+    """
+    import matplotlib
+    matplotlib.rcParams["text.usetex"] = False  # ChainConsumer may have left usetex on
+    import matplotlib.pyplot as plt
+
+    labels = [c.label for c in configs]
+    ns = np.array([c.n for c in configs], dtype=float)
+    stats = {c.label: spread_stats(ensemble_dict[c.label].samples) for c in configs}
+    g_w = np.array([stats[c.label]["gamma_deg_width68"] for c in configs])
+    d_w = np.array([stats[c.label]["delta_deg_width68"] for c in configs])
+
+    fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(15, 5.5))
+    x = np.arange(len(configs))
+    w = 0.38
+    ax0.bar(x - w / 2, g_w, w, label=r"$\gamma$ 68% width", color="cornflowerblue")
+    ax0.bar(x + w / 2, d_w, w, label=r"$\delta$ 68% width", color="indianred")
+    ax0.set_xticks(x)
+    ax0.set_xticklabels(labels, rotation=30, ha="right")
+    ax0.set_ylabel("posterior 68% interval width (deg)")
+    ax0.set_title("Posterior spread per station config")
+    for xi, c in zip(x, configs):
+        ax0.annotate(f"N={c.n}", (xi, 0), xytext=(0, 2), textcoords="offset points",
+                     ha="center", va="bottom", fontsize=8, color="dimgray")
+    ax0.legend()
+
+    ax1.scatter(ns, g_w, color="cornflowerblue", label=r"$\gamma$", s=60, zorder=3)
+    ax1.scatter(ns, d_w, color="indianred", label=r"$\delta$", s=60, zorder=3)
+    for xi, gi, di, lab in zip(ns, g_w, d_w, labels):
+        ax1.annotate(lab, (xi, max(gi, di)), xytext=(4, 4),
+                     textcoords="offset points", fontsize=7, color="dimgray")
+    ax1.set_xlabel("number of stations used")
+    ax1.set_ylabel("posterior 68% interval width (deg)")
+    ax1.set_title("Spread vs station count")
+    ax1.legend()
+
+    fig.tight_layout()
+    if figsave is not None:
+        Path(figsave).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(figsave, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return figsave
+
+
+# --------------------------------------------------------------------------- #
 # TARP coverage
 # --------------------------------------------------------------------------- #
 def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
