@@ -38,6 +38,7 @@ InstrumentDropoutEffect = post_processing.InstrumentDropoutEffect
 TimeShiftErrorEffect = post_processing.TimeShiftErrorEffect
 ScatteringCodaEffect = post_processing.ScatteringCodaEffect
 _apply_lanczos_shift = post_processing._apply_lanczos_shift
+_apply_lanczos_shift_batch = post_processing._apply_lanczos_shift_batch
 _apply_random_coda_filter = post_processing._apply_random_coda_filter
 _apply_stahler_phase_filter = post_processing._apply_stahler_phase_filter
 _lanczos_kernel_values = post_processing._lanczos_kernel_values
@@ -465,6 +466,39 @@ class TestApplyLanczosShift:
         assert np.allclose(out[margin:-margin], expected[margin:-margin], atol=1e-3), (
             "Lanczos shift of a 1 Hz sinusoid should match analytic phase shift to 1e-3"
         )
+
+    def test_batch_equals_per_trace_loop(self):
+        """Batched shift must be IDENTICAL to looping the 1-D shift row by row.
+
+        ``_apply_lanczos_shift_batch`` applies one shared shift to every row of a
+        ``(C, T)`` block (all components of a station get one per-station shift);
+        the TimeShiftErrorEffect now uses it instead of a per-component Python loop.
+        Each output element is the same weighted sum of the same inputs, so the
+        result must match the per-trace path bitwise (not just to a tolerance).
+        """
+        rng = np.random.default_rng(7)
+        for _ in range(50):
+            C = int(rng.integers(1, 5))
+            T = int(rng.integers(40, 300))
+            block = rng.standard_normal((C, T))
+            tau = float(rng.uniform(-9.0, 9.0))
+            order = int(rng.integers(3, 9))
+            batched = _apply_lanczos_shift_batch(block, tau, order=order)
+            per_trace = np.stack(
+                [_apply_lanczos_shift(block[j], tau, order=order) for j in range(C)]
+            )
+            assert batched.shape == (C, T)
+            np.testing.assert_array_equal(batched, per_trace)
+
+    def test_batch_tiny_shift_is_identity_copy(self):
+        """|tau| < 1e-10 returns a float64 copy of every row (no aliasing)."""
+        block = np.arange(12, dtype=np.float64).reshape(3, 4)
+        out = _apply_lanczos_shift_batch(block, 1e-12)
+        np.testing.assert_array_equal(out, block)
+        assert out.dtype == np.float64
+        assert out is not block
+        out[0, 0] = -999.0
+        assert block[0, 0] == 0.0  # mutation did not leak back
 
 
 # ===========================================================================

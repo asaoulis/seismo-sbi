@@ -369,6 +369,65 @@ def _lanczos_kernel_values(x: np.ndarray, order: int) -> np.ndarray:
     return kernel
 
 
+def _apply_lanczos_shift_batch(
+    traces: np.ndarray,
+    tau_samples: float,
+    order: int = 5,
+) -> np.ndarray:
+    """Shift every row of a ``(n_traces, T)`` array by the SAME ``tau_samples``.
+
+    Vectorised form of :func:`_apply_lanczos_shift`: the Lanczos kernel weights
+    depend only on ``tau_samples`` (not on the trace), so for a set of traces that
+    share a shift (e.g. all components of one station, which get one per-station
+    shift) the kernel is built **once** and the tap-additions are applied to all
+    rows at once.  Each output element is the same weighted sum of the same input
+    samples as the per-trace loop, so the result is numerically identical (no
+    reassociation across rows).
+
+    Parameters
+    ----------
+    traces:
+        ``(n_traces, T)`` array of input signals sharing one shift.
+    tau_samples, order:
+        As in :func:`_apply_lanczos_shift`.
+
+    Returns
+    -------
+    np.ndarray
+        ``(n_traces, T)`` shifted traces, dtype ``float64``.
+    """
+    traces_f = np.asarray(traces, dtype=np.float64)
+    n = traces_f.shape[-1]
+    if abs(tau_samples) < 1e-10:
+        return traces_f.copy()
+
+    result = np.zeros_like(traces_f)
+
+    tau_floor = int(np.floor(tau_samples))
+    tau_frac = tau_samples - tau_floor  # in [0, 1)
+
+    # Kernel support: 2*order taps centred at the fractional shift
+    offsets = np.arange(-order + 1, order + 1, dtype=np.float64)
+    weights = _lanczos_kernel_values(offsets - tau_frac, order)
+    w_sum = weights.sum()
+    if abs(w_sum) > 1e-10:
+        weights /= w_sum  # normalise to unit gain
+
+    for k_int, w in zip(offsets.astype(int), weights):
+        if abs(w) < 1e-12:
+            continue
+        shift = tau_floor + k_int  # total integer displacement for this tap
+        # y[:, i] += w * x[:, i - shift] for valid i
+        dst_lo = max(0, shift)
+        dst_hi = min(n, n + shift)
+        src_lo = max(0, -shift)
+        src_hi = min(n, n - shift)
+        if dst_lo < dst_hi and src_lo < src_hi:
+            result[:, dst_lo:dst_hi] += w * traces_f[:, src_lo:src_hi]
+
+    return result
+
+
 def _apply_lanczos_shift(
     trace: np.ndarray,
     tau_samples: float,
@@ -382,6 +441,8 @@ def _apply_lanczos_shift(
 
     Boundary handling: samples that fall outside the original trace contribute
     zero (zero-padding).  The output length equals the input length.
+
+    Thin wrapper over :func:`_apply_lanczos_shift_batch` for a single trace.
 
     Parameters
     ----------
@@ -399,38 +460,7 @@ def _apply_lanczos_shift(
     np.ndarray
         Shifted trace of the same length, dtype ``float64``.
     """
-    n = len(trace)
-    if abs(tau_samples) < 1e-10:
-        return trace.astype(np.float64).copy()
-
-    trace_f = trace.astype(np.float64)
-    result = np.zeros(n, dtype=np.float64)
-
-    tau_floor = int(np.floor(tau_samples))
-    tau_frac = tau_samples - tau_floor  # in [0, 1)
-
-    # Kernel support: 2*order taps centred at the fractional shift
-    offsets = np.arange(-order + 1, order + 1, dtype=np.float64)
-    weights = _lanczos_kernel_values(offsets - tau_frac, order)
-    w_sum = weights.sum()
-    if abs(w_sum) > 1e-10:
-        weights /= w_sum  # normalise to unit gain
-
-    for k_int, w in zip(offsets.astype(int), weights):
-        if abs(w) < 1e-12:
-            continue
-        shift = tau_floor + k_int  # total integer displacement for this tap
-        # y[i] += w * x[i - shift] for valid i
-        # dst range: max(0, shift) … min(n, n+shift)
-        # src range: max(0,-shift) … min(n, n-shift)
-        dst_lo = max(0, shift)
-        dst_hi = min(n, n + shift)
-        src_lo = max(0, -shift)
-        src_hi = min(n, n - shift)
-        if dst_lo < dst_hi and src_lo < src_hi:
-            result[dst_lo:dst_hi] += w * trace_f[src_lo:src_hi]
-
-    return result
+    return _apply_lanczos_shift_batch(np.asarray(trace)[np.newaxis, :], tau_samples, order)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -553,12 +583,18 @@ class TimeShiftErrorEffect(SeismogramEffect):
         )
         result = {}
         for station, components in seismograms_map.items():
+            # One per-station Normal draw, in map order (RNG order preserved).
             station_shift_s = common_offset_s + np.random.normal(0.0, self._sigma)
             shift_samples = station_shift_s * self._sampling_rate
-            result[station] = {
-                comp: _apply_lanczos_shift(trace, shift_samples, self._order)
-                for comp, trace in components.items()
-            }
+            comps = list(components)
+            if not comps:
+                result[station] = {}
+                continue
+            # All components of a station share this shift, so build the Lanczos
+            # kernel once and apply it to the stacked (C, T) traces at once.
+            traces = np.stack([components[c] for c in comps])
+            shifted = _apply_lanczos_shift_batch(traces, shift_samples, self._order)
+            result[station] = {c: shifted[j] for j, c in enumerate(comps)}
         return result
 
 
@@ -887,14 +923,16 @@ def _array_to_map(D: np.ndarray, receivers, components):
     return seismograms_map, station_names
 
 
-def _map_to_array(seismograms_map: dict, station_names, components, trace_length: int) -> np.ndarray:
-    """Inverse of :func:`_array_to_map` — stack back to ``(n_stations, n_components, T)``."""
-    D = np.zeros((len(station_names), len(components), trace_length), dtype=np.float64)
-    for i, station in enumerate(station_names):
-        comps = seismograms_map[station]
-        for j, comp in enumerate(components):
-            D[i, j] = comps[comp]
-    return D
+def _map_to_array(seismograms_map: dict, station_names, components) -> np.ndarray:
+    """Inverse of :func:`_array_to_map` — stack back to ``(n_stations, n_components, T)``.
+
+    Builds the array in one allocation from the nested map rather than pre-zeroing
+    and copying cell by cell; the shape follows from the traces.
+    """
+    return np.array(
+        [[seismograms_map[station][comp] for comp in components] for station in station_names],
+        dtype=np.float64,
+    )
 
 
 def apply_chain_to_array(
@@ -946,10 +984,9 @@ def apply_chain_to_array(
             f"{n_stations} receivers x {len(components)} components "
             f"(expected ({n_stations}, {len(components)}, T))."
         )
-    trace_length = D.shape[-1]
     seismograms_map, station_names = _array_to_map(D, receivers, components)
     processed = chain(seismograms_map, receivers, nuisance_params)
-    return _map_to_array(processed, station_names, components, trace_length)
+    return _map_to_array(processed, station_names, components)
 
 
 def _fiducial_scalar(value) -> float:

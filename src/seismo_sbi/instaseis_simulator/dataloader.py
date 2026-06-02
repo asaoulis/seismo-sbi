@@ -27,18 +27,18 @@ class SimulationDataLoader():
         self.receivers = receivers
         self.data_length = data_length
 
+    @staticmethod
+    def _read_input_dict(simulation_data_file):
+        """Read the ``inputs`` group of an open h5 file into ``{input_type: {attr: val}}``."""
+        inputs = simulation_data_file["inputs"]
+        return {
+            input_type: dict(inputs[input_type].attrs)
+            for input_type in GenericPointSource._fields
+        }
+
     def load_input_data(self, sim_name):
-        
-        input_data = {}
         with h5py.File(sim_name, 'r') as simulation_data_file:
-            simulation_data_file = h5py.File(sim_name, 'r')
-
-            inputs = simulation_data_file["inputs"]
-            for input_type in GenericPointSource._fields:
-
-                input_data[input_type] = dict(inputs[input_type].attrs)
-            
-        return input_data
+            return self._read_input_dict(simulation_data_file)
 
     def load_flattened_simulation_vector(self, sim_name, *args, **kwargs):
         # make sure this is returning things in the order we want
@@ -48,6 +48,20 @@ class SimulationDataLoader():
         # context manager to close file
         with h5py.File(sim_name, 'r') as simulation_data_map:
             return self.convert_sim_data_to_array(simulation_data_map, *args, **kwargs)
+
+    def load_input_and_data_array(self, sim_name, *args, **kwargs):
+        """Open the h5 file ONCE and return ``(input_data_dict, data_array)``.
+
+        Equivalent to calling :meth:`load_input_data` followed by
+        :meth:`load_simulation_data_array`, but with a single ``h5py.File`` open
+        instead of two — the per-sample hot path in the ML dataloader needs both
+        theta (from ``inputs``) and the seismogram array (from ``outputs``), and
+        opening the file twice per ``__getitem__`` is a measurable cost.
+        """
+        with h5py.File(sim_name, 'r') as simulation_data_file:
+            input_data = self._read_input_dict(simulation_data_file)
+            data = self.convert_sim_data_to_array(simulation_data_file, *args, **kwargs)
+        return input_data, data
 
     def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *args, **kwargs):
         # context manager to close file
@@ -107,31 +121,38 @@ class SimulationDataLoader():
 
         station_data = []
 
+        # Fetch the outputs group once (not once per (station, component)); reading
+        # each per-component dataset is the per-sample dataloader hot path.
+        outputs_group = simulation_data_map["outputs"]
         for receiver in self.receivers.iterate():
             receiver_name = receiver.station_name
-            rec_components = receiver.components 
+            rec_components = receiver.components
+            station_outputs = outputs_group[receiver_name]
             comp_data = []
             for component in rec_components:
                 # Handle component name remapping
                 alt_component = component.replace('E', '1').replace('N', '2')
 
-                # Get scale factor
-                factor = 1.0
-                if scale_dict is not None:
-                    factor = scale_dict.get(receiver_name, {}).get(component)
-                    if factor is None:
-                        factor = scale_dict.get(receiver_name, {}).get(alt_component, 1.0)
-
                 # Get trace data
-                outputs = simulation_data_map["outputs"][receiver_name]
-                trace_data = outputs.get(component)
+                trace_data = station_outputs.get(component)
                 if trace_data is None:
-                    trace_data = outputs.get(alt_component)
+                    trace_data = station_outputs.get(alt_component)
 
                 if trace_data is None:
                     raise KeyError(f"No data found for {receiver_name}:{component}")
 
-                trace_data_vector = trace_data[:seismogram_array_length] / np.sqrt(factor)
+                trace_data_vector = trace_data[:seismogram_array_length]
+
+                # Apply the scale factor only when a scale_dict is supplied. With no
+                # scale_dict every factor is 1.0, so the old `/ np.sqrt(1.0)` just
+                # allocated a redundant copy of every trace — skip it.
+                if scale_dict is not None:
+                    factor = scale_dict.get(receiver_name, {}).get(component)
+                    if factor is None:
+                        factor = scale_dict.get(receiver_name, {}).get(alt_component, 1.0)
+                    if factor != 1.0:
+                        trace_data_vector = trace_data_vector / np.sqrt(factor)
+
                 comp_data.append(trace_data_vector)
 
             station_data.append(comp_data)

@@ -132,18 +132,19 @@ class TorchSimulationDataset(Dataset):
         theta = torch.as_tensor(theta, dtype=self.torch_dtype)
         D = torch.as_tensor(D, dtype=self.torch_dtype)
 
-        # Add synthetic noise on-the-fly
+        # Add synthetic noise on-the-fly. Keep the sampled noise as numpy through
+        # zero-fill so the (N, C, T) block builds in one `np.asarray` (no per-row
+        # conversion) and a single tensor cast — avoiding the old numpy->torch->numpy
+        # ->torch round-trip. Same noise values and station/component placement.
         noise = self.synthetic_noise_model_sampler()
         if isinstance(noise, tuple):
             noise, _ = noise
-        if not torch.is_tensor(noise):
-            noise = torch.as_tensor(noise, dtype=self.torch_dtype)
-        noise = self.data_loader.zero_fill_unused_components(noise.reshape(-1, D.shape[-1]), D.shape[-1])
-        noise_np = np.array([[comp.numpy() if torch.is_tensor(comp) else comp
-                      for comp in station]
-                     for station in noise])
-
-        x = D + torch.as_tensor(np.array(noise_np), dtype=self.torch_dtype).reshape(*D.shape)
+        noise = np.asarray(noise)
+        noise_rows = self.data_loader.zero_fill_unused_components(
+            noise.reshape(-1, D.shape[-1]), D.shape[-1]
+        )
+        noise_arr = np.asarray(noise_rows)
+        x = D + torch.as_tensor(noise_arr, dtype=self.torch_dtype).reshape(*D.shape)
 
         # Post-noise augmentation (e.g. component_dropout): applied to the NOISY x so a
         # dropped channel is EXACTLY zero (matching a genuinely-absent channel). Applied on the
@@ -198,8 +199,15 @@ class TorchSimulationDataset(Dataset):
         ]).astype(float)
 
     def _load_sim(self, sim_path):
+        # Load the CLEAN, un-shifted data array. Time shifts (and other nuisance
+        # effects) are now applied as augmentation in __getitem__ via the
+        # augmentation_chain, not baked into the load.
         if len(self.parameter_name_map) > 0:
-            inputs_dict = self.data_loader.load_input_data(sim_path)
+            # Single h5 open for BOTH theta (inputs) and the data array (outputs);
+            # opening the file twice per sample is a measurable per-epoch cost.
+            inputs_dict, D = self.data_loader.load_input_and_data_array(
+                sim_path, stacked=True, fill_unused=True
+            )
             fixed_keys = dict(
                 (param_type, param_names)
                 if param_names != ["earthquake_magnitude"]
@@ -214,10 +222,7 @@ class TorchSimulationDataset(Dataset):
             )
         else:
             theta = np.array([])
-        # Load the CLEAN, un-shifted data array. Time shifts (and other nuisance
-        # effects) are now applied as augmentation in __getitem__ via the
-        # augmentation_chain, not baked into the load.
-        D = self.data_loader.load_simulation_data_array(sim_path, stacked=True, fill_unused=True)
+            D = self.data_loader.load_simulation_data_array(sim_path, stacked=True, fill_unused=True)
         return theta, D
 
 
@@ -276,6 +281,7 @@ def make_torch_dataloader(
     num_workers: int = 0,
     pin_memory: bool = False,
     persistent_workers: bool = None,
+    prefetch_factor: int = 4,
     glob_pattern: str = "*.h5",
     return_tensors: bool = True,
     torch_dtype=torch.float32,
@@ -303,6 +309,8 @@ def make_torch_dataloader(
         persistent_workers = num_workers > 0
     # Variable-station samples are ragged ⇒ the default collate cannot stack them.
     collate_fn = variable_station_collate if station_subsampler is not None else None
+    # prefetch_factor is only valid for multiprocessing loaders (num_workers > 0).
+    extra = {"prefetch_factor": prefetch_factor} if num_workers > 0 else {}
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -312,6 +320,7 @@ def make_torch_dataloader(
         persistent_workers=persistent_workers,
         worker_init_fn=_seed_worker if num_workers > 0 else None,
         collate_fn=collate_fn,
+        **extra,
     )
 
 # Build both train and val DataLoaders using a single split parameter train_max_index
@@ -332,6 +341,7 @@ def make_torch_dataloaders(
     num_workers: int = 0,
     pin_memory: bool = False,
     persistent_workers: bool = None,
+    prefetch_factor: int = 4,
     glob_pattern: str = "*.h5",
     return_tensors: bool = True,
     torch_dtype= torch.float32,
@@ -371,8 +381,10 @@ def make_torch_dataloaders(
         persistent_workers = num_workers > 0
 
     # prefetch_factor is only valid for multiprocessing loaders (num_workers > 0);
-    # passing it with num_workers=0 raises in torch >= 2.0.
-    extra = {"prefetch_factor": 4} if num_workers > 0 else {}
+    # passing it with num_workers=0 raises in torch >= 2.0. A larger prefetch keeps
+    # more augmented batches queued ahead of the GPU so per-sample CPU augmentation
+    # is hidden behind compute.
+    extra = {"prefetch_factor": prefetch_factor} if num_workers > 0 else {}
     if num_workers > 0:
         extra["worker_init_fn"] = _seed_worker
     # Variable-station samples are ragged ⇒ pad+pack via the custom collate.
