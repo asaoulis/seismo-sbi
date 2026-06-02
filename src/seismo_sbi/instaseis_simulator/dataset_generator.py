@@ -319,9 +319,22 @@ class DatasetGenerator(ParallelSimulationRunner):
         self.run_parallel_simulations(simulation_job_args_list)
     
     @staticmethod
+    def _resolve_sampler(entry):
+        """Resolve a ``sampling_method`` entry to a ``(args, num_samples)`` sampler.
+
+        An entry is either a string naming a built-in sampler (looked up in
+        :attr:`sampler_lookup_map`) or an already-built closure produced by a
+        catalogue-prior factory at config-parse time (see
+        ``SBI_Configuration._normalise_sampling_method``).
+        """
+        if callable(entry):
+            return entry
+        return DatasetGenerator.sampler_lookup_map[entry]
+
+    @staticmethod
     def _create_sampler_generator_dict(parameters : ModelParameters, sampler_details, priors = (None, None)):
         if priors[0] is None:
-            samplers = {key : DatasetGenerator.sampler_lookup_map[sampler_details[key]] for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
+            samplers = {key : DatasetGenerator._resolve_sampler(sampler_details[key]) for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
         else:
             samplers = {key : DatasetGenerator.sampler_lookup_map['truncated gaussian'] for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
 

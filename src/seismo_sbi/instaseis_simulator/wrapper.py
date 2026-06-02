@@ -231,6 +231,14 @@ def build_stf_sliprate(
     sliprate = _build_triangular_stf(effective_half, dt)
     if len(sliprate) < _MIN_STF_SAMPLES:
         sliprate = np.concatenate([sliprate, np.zeros(_MIN_STF_SAMPLES - len(sliprate))])
+    # A half-duration at or below ~dt/2 discretises to a (near-)zero-area triangle, which
+    # Instaseis set_sliprate(..., normalize=True) would divide by ~0 -> NaN seismograms. Such
+    # an STF is unresolvable at this sample interval (physically a delta), so fall back to the
+    # Dirac impulse. This keeps stf_duration sampling numerically safe at coarse dt / long
+    # periods, where a sub-sample STF has no effect on the band-limited waveform anyway.
+    if not np.trapz(sliprate, dx=dt) > 0.0:
+        sliprate = np.zeros(_MIN_STF_SAMPLES)
+        sliprate[0] = 1.0
     return sliprate
 
 
