@@ -89,6 +89,41 @@ def test_perturb_is_seed_reproducible(fiducial):
     assert not np.array_equal(a.data, c.data)
 
 
+def test_max_depth_perturbs_only_crust(fiducial):
+    # Only nodes shallower than max_depth move; deeper nodes are identical.
+    R = fiducial.radius.max()
+    depth = (R - fiducial.radius) / 1000.0
+    md = 50.0
+    p = perturb_background_model(
+        fiducial, vp_sigma=0.05, vs_sigma=0.05, width_sigma=0.05,
+        rho_mode="brocher", max_depth_km=md, seed=5,
+    )
+    deep = depth >= md
+    crust = ~deep
+    np.testing.assert_array_equal(p.data[deep], fiducial.data[deep])   # deep fixed
+    assert not np.allclose(p.column("vpv")[crust], fiducial.column("vpv")[crust])
+    assert p.discontinuity_rows() == fiducial.discontinuity_rows()
+    assert np.all(np.diff(p.radius) <= 0)
+
+
+def test_perturbation_preserves_monotonicity(fiducial):
+    # The fiducial crust is non-decreasing in Vp/Vs with depth; the increment-
+    # based perturbation must never introduce a reversal (backward bending),
+    # across many seeds and strong perturbations.
+    R = fiducial.radius.max()
+    depth = (R - fiducial.radius) / 1000.0
+    md = 35.0
+    k = int((depth < md).sum())
+    for seed in range(50):
+        p = perturb_background_model(
+            fiducial, vp_sigma=0.08, vs_sigma=0.08, width_sigma=0.05,
+            rho_mode="brocher", max_depth_km=md, seed=seed,
+        )
+        # crust + splice region (indices 0..k) must stay non-decreasing
+        assert np.all(np.diff(p.column("vpv")[:k + 1]) >= -1e-6), f"Vp reversal seed {seed}"
+        assert np.all(np.diff(p.column("vsv")[:k + 1]) >= -1e-6), f"Vs reversal seed {seed}"
+
+
 def test_width_perturbation_disabled_keeps_radii(fiducial):
     p = perturb_background_model(fiducial, vp_sigma=0.0, vs_sigma=0.0,
                                  width_sigma=0.0, seed=3)

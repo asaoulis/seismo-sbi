@@ -230,3 +230,39 @@ def test_plot_cross_run_comparison_writes(tmp_path):
     out = tmp_path / "out"
     bars = ev.plot_cross_run_comparison("runA", scanned, out)
     assert bars and all(os.path.exists(p) for p in bars.values())
+
+
+# --------------------------------------------------------------------------- #
+# Station-config ensemble overlay (variable-station dropout evaluation)
+# --------------------------------------------------------------------------- #
+def _mt_cluster(n=200, seed=0):
+    """A near-double-couple MT sample cluster (no model needed)."""
+    rng = np.random.default_rng(seed)
+    fid = np.array([1e15, -1e15, 1e15, 1e15, 1e15, 1e15])
+    return rng.normal(scale=1e14, size=(n, 6)) + fid
+
+
+def test_spread_stats_keys_and_nonneg():
+    pytest.importorskip("pyrocko")
+    s = ev.spread_stats(_mt_cluster())
+    assert set(s) == {
+        "gamma_deg_median", "gamma_deg_width68", "delta_deg_median",
+        "delta_deg_width68", "Mw_median", "Mw_width68"}
+    assert s["gamma_deg_width68"] >= 0 and s["delta_deg_width68"] >= 0
+    assert all(np.isfinite(v) for v in s.values())
+
+
+def test_plot_ensemble_spread_summary_writes(tmp_path):
+    pytest.importorskip("pyrocko")
+    import matplotlib
+    matplotlib.use("Agg")
+    from seismo_sbi.sbi.compression.ML.station_dropout import make_dropout_configs
+
+    names = [f"ST{i:02d}" for i in range(8)]
+    cfgs = make_dropout_configs(names, keep_fraction=0.6, n_subsets=3,
+                                min_stations=2, seed=0)
+    ensemble = {c.label: FakeData(None, _mt_cluster(seed=i), None, None)
+                for i, c in enumerate(cfgs)}
+    out = tmp_path / "spread.png"
+    p = ev.plot_ensemble_spread_summary(cfgs, ensemble, figsave=out)
+    assert os.path.exists(p)

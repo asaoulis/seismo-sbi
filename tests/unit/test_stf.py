@@ -319,6 +319,24 @@ class TestBuildStfSliprateWithGcmt:
         s = build_stf_sliprate(1.0, dt=0.1, gcmt_half_duration=1.0)
         assert s.dtype == np.float64
 
+    def test_subsample_half_duration_falls_back_to_dirac(self):
+        """A half-duration at/below ~dt/2 is unresolvable and would discretise to a
+        zero-area triangle (NaN under Instaseis set_sliprate(normalize=True)); it must fall
+        back to a Dirac impulse instead."""
+        s = build_stf_sliprate(1.0, dt=1.0, gcmt_half_duration=0.1)
+        assert s[0] == pytest.approx(1.0)
+        assert np.all(s[1:] == 0.0)
+
+    def test_always_positive_finite_area_at_1hz(self):
+        """Across the small-Mw regime the sliprate must have positive, finite area at the
+        1 Hz sampling used by the Santorini config, so normalisation never produces NaN.
+        This is the regression guard for the STF-sampling NaN found in the first smoke run."""
+        for gcmt_half in (0.02, 0.1, 0.2, 0.4, 0.6, 1.0, 2.0):
+            for scale in (0.5, 1.0, 2.0):
+                s = build_stf_sliprate(scale, dt=1.0, gcmt_half_duration=gcmt_half)
+                area = np.trapz(s, dx=1.0)
+                assert np.isfinite(area) and area > 0.0, (gcmt_half, scale, area)
+
 
 # ===========================================================================
 # Section 3: Dirac delta backward-compat path

@@ -1,0 +1,122 @@
+"""Unit tests for MomentTensorScaler and its FlexibleScaler integration."""
+
+import numpy as np
+import pytest
+
+from seismo_sbi.sbi.scalers import (
+    FlexibleScaler,
+    MomentTensorScaler,
+    ZeroOneScaler,
+    build_flexible_scaler,
+)
+from seismo_sbi.sbi.types.parameters import ModelParameters
+from seismo_sbi.priors.moment_tensor import uniform_moment_tensor_on_sphere, scalar_moment
+from seismo_sbi.priors.gutenberg_richter import magnitude_to_m0
+
+# bounds = +/- 2e18 per component -> M0_max = 2e18/sqrt(2) ~ 1.41e18 (Mw ~ 6.1)
+MT_BOUNDS = np.array([[-2e18] * 6, [2e18] * 6])
+
+
+def _gr_like_tensors(n, mw_min=1.0, mw_max=6.0, seed=0):
+    rng = np.random.default_rng(seed)
+    mws = rng.uniform(mw_min, mw_max, n)
+    m0s = magnitude_to_m0(mws)
+    return np.array([uniform_moment_tensor_on_sphere(m0, rng) for m0 in m0s])
+
+
+def test_round_trip_over_many_orders_of_magnitude():
+    scaler = MomentTensorScaler(MT_BOUNDS, n_decades=9.0)
+    mts = _gr_like_tensors(5000)
+    scaled = scaler.transform(mts)
+    recovered = scaler.inverse_transform(scaled)
+    assert np.allclose(recovered, mts, rtol=1e-6, atol=1e-3 * np.abs(mts).max())
+
+
+def test_scaled_output_within_unit_cube():
+    scaler = MomentTensorScaler(MT_BOUNDS, n_decades=9.0)
+    mts = _gr_like_tensors(5000)
+    scaled = scaler.transform(mts)
+    assert scaled.min() >= 0.0 and scaled.max() <= 1.0
+    assert scaled.shape == mts.shape  # dimension-preserving (6 -> 6)
+
+
+def test_radius_encodes_log_magnitude_monotonically():
+    """The packed radius u = ||2*scaled - 1|| must increase monotonically with log10 M0."""
+    scaler = MomentTensorScaler(MT_BOUNDS, n_decades=9.0)
+    mts = _gr_like_tensors(4000)
+    scaled = scaler.transform(mts)
+    u = np.linalg.norm(2 * scaled - 1, axis=1)
+    log_m0 = np.log10(np.array([scalar_moment(m) for m in mts]))
+    # strong positive rank correlation between radius and log-magnitude
+    order = np.argsort(log_m0)
+    assert np.corrcoef(log_m0[order], u[order])[0, 1] > 0.99
+
+
+def test_better_conditioned_than_linear_for_small_events():
+    """Small-magnitude events should NOT all collapse to ~0.5 the way linear min-max does."""
+    small = _gr_like_tensors(2000, mw_min=2.0, mw_max=3.0, seed=1)
+    lin = ZeroOneScaler(MT_BOUNDS)
+    ss = MomentTensorScaler(MT_BOUNDS, n_decades=9.0)
+    spread_lin = ZeroOneScaler(MT_BOUNDS).transform(small).std()
+    spread_ss = ss.transform(small).std()
+    # linear scaling crushes small events into a near-delta at 0.5
+    assert spread_lin < 1e-3
+    assert spread_ss > 20 * spread_lin
+
+
+def _mt_and_location_params():
+    p = ModelParameters()
+    p.names = {
+        "source_location": ["latitude", "longitude", "depth", "time_shift"],
+        "moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"],
+    }
+    p.theta_fiducial = {
+        "source_location": [36.5, 25.5, 10.0, 0.0],
+        "moment_tensor": [1e15] * 6,
+    }
+    p.bounds = {
+        "source_location": [[36.0, 25.0, 0.0, -2.0], [37.0, 26.0, 55.0, 2.0]],
+        "moment_tensor": MT_BOUNDS.tolist(),
+    }
+    return p
+
+
+def test_flexible_scaler_scale_shape_round_trips_and_keeps_location_linear():
+    p = _mt_and_location_params()
+    scaler = FlexibleScaler(p, moment_tensor_scaling="scale_shape")
+    assert isinstance(scaler.scalers[0], ZeroOneScaler)        # source_location block
+    assert isinstance(scaler.scalers[1], MomentTensorScaler)   # moment_tensor block
+
+    rng = np.random.default_rng(0)
+    mts = _gr_like_tensors(500)
+    locs = rng.uniform([36.1, 25.1, 1.0, -1.0], [36.9, 25.9, 50.0, 1.0], size=(500, 4))
+    theta = np.hstack([locs, mts])
+    scaled = scaler.transform(theta)
+    assert scaled.shape == theta.shape
+    assert scaled.min() >= 0.0 and scaled.max() <= 1.0
+    recovered = scaler.inverse_transform(scaled)
+    assert np.allclose(recovered, theta, rtol=1e-6, atol=1e3)
+
+
+def test_default_is_linear_backward_compatible():
+    p = _mt_and_location_params()
+    default = FlexibleScaler(p)
+    assert default.moment_tensor_scaling == "linear"
+    assert all(isinstance(s, ZeroOneScaler) for s in default.scalers)
+
+
+def test_build_flexible_scaler_reads_config_block():
+    p = _mt_and_location_params()
+    linear = build_flexible_scaler(p, None)
+    assert linear.moment_tensor_scaling == "linear"
+
+    ss = build_flexible_scaler(p, {"ml_scaler": {"moment_tensor": "scale_shape",
+                                                 "mt_log_decades": 8.0}})
+    assert ss.moment_tensor_scaling == "scale_shape"
+    assert isinstance(ss.scalers[1], MomentTensorScaler)
+
+
+def test_invalid_scaling_option_raises():
+    p = _mt_and_location_params()
+    with pytest.raises(ValueError):
+        FlexibleScaler(p, moment_tensor_scaling="nonsense")

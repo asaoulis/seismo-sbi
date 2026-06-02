@@ -644,3 +644,34 @@ def test_full_config_parsing_pipeline_parameters(tmp_path):
     cfg.process_configuration_data(_minimal_config(tmp_path))
     assert cfg.pipeline_parameters.run_name == "test_run"
     assert cfg.pipeline_parameters.num_jobs == 1
+
+
+# ---------------------------------------------------------------------------
+# Catalogue-prior sampling_method normalisation (dict-form entries)
+# ---------------------------------------------------------------------------
+
+def test_normalise_sampling_method_string_passthrough():
+    sm = {"moment_tensor": "uniform", "source_location": "constant"}
+    out = SBI_Configuration._normalise_sampling_method(sm)
+    assert out == sm  # strings unchanged
+
+
+def test_normalise_sampling_method_builds_gr_closure():
+    sm = {"moment_tensor": {"type": "gutenberg_richter", "b_value": 1.0,
+                            "mw_min": 1.0, "mw_max": 5.0}}
+    out = SBI_Configuration._normalise_sampling_method(sm)
+    assert callable(out["moment_tensor"])
+    # the built closure honours the (args, num_samples) contract
+    import numpy as np
+    samples = list(out["moment_tensor"](np.array([[-1e18] * 6, [1e18] * 6]), 3))
+    assert len(samples) == 3 and samples[0].shape == (6,)
+
+
+def test_normalise_sampling_method_bad_type_raises():
+    with pytest.raises(InvalidConfiguration):
+        SBI_Configuration._normalise_sampling_method({"moment_tensor": {"type": "nope"}})
+
+
+def test_normalise_sampling_method_rejects_non_str_non_dict():
+    with pytest.raises(InvalidConfiguration):
+        SBI_Configuration._normalise_sampling_method({"moment_tensor": 5})

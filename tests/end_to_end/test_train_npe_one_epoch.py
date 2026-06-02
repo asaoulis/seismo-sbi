@@ -59,12 +59,15 @@ _NUM_SIMS = 24
 _MODEL_DIM = 16          # tiny channels/latent dim to keep the test fast.
 
 
-def _build_kernel_pipeline(tmp_path, receivers=None, components="Z"):
+def _build_kernel_pipeline(tmp_path, receivers=None, components="Z", sampling_method=None):
     """A SingleEventPipeline backed by the fabricated-kernel simulator (no Instaseis/CPS).
 
     ``receivers`` / ``components`` default to the shared single-Z setup; pass a
     multi-component receivers + components string to exercise per-channel behaviour
-    (e.g. component dropout).
+    (e.g. component dropout). ``sampling_method`` overrides the per-parameter sampler
+    selection (e.g. to route ``moment_tensor`` through a catalogue-prior closure);
+    it must keep every non-``moment_tensor`` parameter ``constant`` so the kernel
+    simulator is still selected.
     """
     receivers = receivers if receivers is not None else _build_receivers()
     sim_params = SimulationParameters(
@@ -80,9 +83,11 @@ def _build_kernel_pipeline(tmp_path, receivers=None, components="Z"):
         simulation_type="kernel",
     )
     model_params = _build_mt_model_parameters()
+    if sampling_method is None:
+        sampling_method = {"moment_tensor": "uniform", "source_location": "constant"}
     dataset_params = DatasetGenerationParameters(
         num_simulations=_NUM_SIMS,
-        sampling_method={"moment_tensor": "uniform", "source_location": "constant"},
+        sampling_method=sampling_method,
         iterative_least_squares=IterativeLeastSquaresParameters(
             max_iterations=1, damping_factor=0.01,
         ),
@@ -130,11 +135,12 @@ def multicomp_kernel_pipeline(tmp_path_factory):
     return _build_kernel_pipeline(tmp_path, receivers=receivers, components="ZN")
 
 
-def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path):
+def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_scaler=None):
     """Run a single headless training epoch and return the trained model."""
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
-    data_scaler = FlexibleScaler(pipeline.parameters)
+    if data_scaler is None:
+        data_scaler = FlexibleScaler(pipeline.parameters)
 
     synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
 
@@ -458,6 +464,56 @@ def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
     with torch.no_grad():
         log_prob = reloader.model(x.to(reloader.device), theta.to(reloader.device))
     assert torch.isfinite(log_prob).all()
+
+
+def test_gutenberg_richter_mt_prior_one_epoch(tmp_path):
+    """A Gutenberg-Richter moment-tensor prior closure flows through dataset generation,
+    keeps the kernel simulator engaged (source_location stays 'constant'), and trains one
+    epoch to a finite log-prob.
+
+    The magnitude range (Mw 2.0–3.5) is chosen so the truncated-GR M0 stays inside the
+    model's ±5e14 component bounds, so FlexibleScaler maps the sampled tensors into [0,1].
+    This is the dataset-generation gate for the catalogue moment-tensor prior.
+    """
+    import torch
+    from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    gr_closure = make_gutenberg_richter_mt_sampler(
+        b_value=1.0, mw_min=2.0, mw_max=3.5, seed=0,
+    )
+    sampling_method = {"moment_tensor": gr_closure, "source_location": "constant"}
+
+    pipeline, _, data_vector_length = _build_kernel_pipeline(
+        tmp_path, sampling_method=sampling_method,
+    )
+    # kernel simulator must still be the active forward model (locations are constant)
+    from seismo_sbi.instaseis_simulator.simulator import FixedLocationKernelSimulator
+    assert isinstance(pipeline.simulator_wrapper.simulator, FixedLocationKernelSimulator)
+
+    from pathlib import Path
+    h5_files = list(Path(pipeline.simulations_output_path + "/train").glob("*.h5"))
+    assert len(h5_files) >= _NUM_SIMS - 1
+
+    # Train through the scale_shape MomentTensorScaler (the parametrisation motivated by
+    # the GR prior's many-orders-of-magnitude M0 range), and confirm it round-trips.
+    mt_scaler = FlexibleScaler(pipeline.parameters, moment_tensor_scaling="scale_shape")
+    full = np.array(
+        pipeline.parameters.parameter_to_vector("theta_fiducial"), dtype=float
+    ).reshape(1, -1)
+    assert np.allclose(mt_scaler.inverse_transform(mt_scaler.transform(full)), full, rtol=1e-6)
+
+    trainer, model, dataloader_args = _train_one_epoch(
+        pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+        data_scaler=mt_scaler,
+    )
+    assert model is not None
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), "GR-MT-prior training produced non-finite log-prob"
 
 
 @pytest.mark.parametrize("encoder_name,encoder_cfg", STATION_ENCODERS, ids=[e[0] for e in STATION_ENCODERS])

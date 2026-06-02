@@ -3,6 +3,7 @@ axisem-1.3/
 __pycache__/
 axisem/
 .ipynb_checkpoints/
+santorini_pathbreaker/
 .Trash-0/
 *.h5
 *.npy

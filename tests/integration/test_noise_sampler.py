@@ -80,3 +80,39 @@ class TestRealNoiseSampler:
         n0 = self.sampler(noise_index=0)
         n1 = self.sampler(noise_index=1)
         assert not np.allclose(n0, n1)
+
+
+class TestRealNoiseSamplerFreezeScale:
+    """freeze_scale=True is the generic-event mode: set_adaptive_covariance_with_misc_data is a
+    no-op so draws are never rescaled to a single event's pre-event variance."""
+
+    def _sampler(self, receivers, noise_catalogue_dir, freeze_scale):
+        return RealNoiseSampler(
+            simulation_parameters=_make_sim_params(receivers),
+            directory=noise_catalogue_dir,
+            freeze_scale=freeze_scale,
+        )
+
+    def test_default_is_unfrozen(self, receivers, noise_catalogue_dir):
+        sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
+        assert sampler.freeze_scale is False
+
+    def test_frozen_ignores_set_adaptive_covariance(self, receivers, noise_catalogue_dir):
+        sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=True)
+        _, misc = sampler(no_rescale=True)
+        sampler.set_adaptive_covariance_with_misc_data(misc)
+        # No-op: adaptive_covariance stays None, so __call__ takes the un-rescaled branch and
+        # returns a plain array (not the rescaled (noise, misc) tuple).
+        assert sampler.adaptive_covariance is None
+        result = sampler()
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (TRACE_LEN,)
+
+    def test_unfrozen_sets_adaptive_covariance(self, receivers, noise_catalogue_dir):
+        sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
+        _, misc = sampler(no_rescale=True)
+        sampler.set_adaptive_covariance_with_misc_data(misc)
+        # Legacy single-event behaviour: covariance is set and __call__ returns the rescaled tuple.
+        assert sampler.adaptive_covariance is not None
+        result = sampler()
+        assert isinstance(result, tuple)
