@@ -46,7 +46,11 @@ class IterativeLeastSquaresParameters(NamedTuple):
 class DatasetGenerationParameters(NamedTuple):
 
     num_simulations : int
-    sampling_method : str
+    # Per-parameter sampler selection. Each value is either a string naming a
+    # built-in sampler (DatasetGenerator.sampler_lookup_map) or, for catalogue-
+    # driven priors, a pre-built (args, num_samples) closure resolved at config
+    # parse time from a dict-form YAML entry (see SBI_Configuration).
+    sampling_method : dict
     use_fisher_to_constrain_bounds : int = 5
     iterative_least_squares : IterativeLeastSquaresParameters = IterativeLeastSquaresParameters(10, 0.01)
 

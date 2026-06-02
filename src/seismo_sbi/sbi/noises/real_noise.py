@@ -11,7 +11,8 @@ class RealNoiseSampler:
 
     # TODO: add components implementation
 
-    def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None, adaptive_covariance= None):
+    def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None, adaptive_covariance= None,
+                 freeze_scale: bool = False):
         receivers = simulation_parameters.receivers
         self.num_stations = len(receivers.receivers)
         self.components = simulation_parameters.components
@@ -23,6 +24,11 @@ class RealNoiseSampler:
         self.noise_paths = self._find_noise_paths(directory)
         np.random.shuffle(self.noise_paths)
 
+        # When True the sampler draws generic noise windows verbatim and never rescales them to
+        # a single event's pre-event variance: set_adaptive_covariance_with_misc_data becomes a
+        # no-op so adaptive_covariance stays None. Use for generic-event ("amortised over
+        # events") training where rescaling to one event would defeat the purpose.
+        self.freeze_scale = freeze_scale
         self.adaptive_covariance = adaptive_covariance
         if self.adaptive_covariance is not None:
             for receiver in self.adaptive_covariance.keys():
@@ -40,14 +46,18 @@ class RealNoiseSampler:
         #     self.noise_index_counter = 0
         #     np.random.shuffle(self.noise_paths)
         if noise_index is not None:
-            noise_path = self.noise_paths[noise_index]
+            # wrap: the KeyError retry below increments noise_index, which would
+            # otherwise run off the end when the last window is hit (IndexError
+            # 'index N out of bounds for axis 0 with size N').
+            noise_path = self.noise_paths[noise_index % len(self.noise_paths)]
         if noise_path is None:
             noise_index = np.random.randint(0, len(self.noise_paths))
             noise_path = self.noise_paths[noise_index]
         try:
             noise_realisations = self._load_noise_file(noise_path)
         except KeyError:
-            return self.__call__(noise_path = None, no_rescale = no_rescale, noise_index=noise_index +1)
+            # this window lacks one of the event's stations; try the next one.
+            return self.__call__(noise_path = None, no_rescale = no_rescale, noise_index=noise_index + 1)
         # self.noise_index_counter += 1
 
         if no_rescale:
@@ -87,6 +97,10 @@ class RealNoiseSampler:
         return scales
     
     def set_adaptive_covariance_with_misc_data(self, misc_data):
+        if self.freeze_scale:
+            # Generic-event mode: ignore any attempt to rescale noise to one event's variance
+            # (train_NPE.py and a few pipeline score-compression spots call this unconditionally).
+            return
         adaptive_covariance = {}
         for receiver in misc_data.keys():
             adaptive_covariance[receiver] = {}

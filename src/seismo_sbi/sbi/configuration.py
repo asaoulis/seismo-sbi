@@ -15,6 +15,20 @@ from seismo_sbi.instaseis_simulator.post_processing import (
     AUGMENTABLE_EFFECT_KEYS,
     POST_NOISE_EFFECT_KEYS,
 )
+from seismo_sbi.priors.catalogue import load_catalogue
+from seismo_sbi.priors.samplers import (
+    make_catalogue_location_sampler,
+    make_gutenberg_richter_mt_sampler,
+)
+
+#: Catalogue-driven sampler factories selectable via a dict-form
+#: ``simulations.sampling_method`` entry (``type: <name>`` + factory kwargs).
+SAMPLER_FACTORIES = {
+    "catalogue_kde": make_catalogue_location_sampler,
+    "gutenberg_richter": make_gutenberg_richter_mt_sampler,
+}
+
+
 class InvalidConfiguration(Exception):
     pass
 
@@ -92,10 +106,14 @@ class SBI_Configuration:
         # read yaml config file
         with open(config_file, 'r', encoding = 'utf-8') as stream:
             config = yaml.safe_load(stream)
-        
+
         self.process_configuration_data(config)
 
     def process_configuration_data(self, config):
+        # Retain the raw parsed YAML so downstream tooling can read top-level blocks
+        # (e.g. `ml_scaler`, `ml_architecture`) without re-opening the file. Keeps the
+        # training-time and inference-time scaler choice in sync via build_flexible_scaler.
+        self.raw_config = config
         for name, parsing_callable in self._parsing_callables.items():
             if name == 'job_options':
                 subconfig = {key: value for key, value in config.items() if not(isinstance(value, dict) or isinstance(value, list))}
@@ -191,7 +209,49 @@ class SBI_Configuration:
         simulations_config = config
         if "iterative_least_squares" in simulations_config:
             simulations_config["iterative_least_squares"] = IterativeLeastSquaresParameters(**simulations_config["iterative_least_squares"])
+        if "sampling_method" in simulations_config:
+            simulations_config["sampling_method"] = self._normalise_sampling_method(
+                simulations_config["sampling_method"]
+            )
         self.dataset_parameters = DatasetGenerationParameters(**simulations_config)
+
+    @staticmethod
+    def _normalise_sampling_method(sampling_method):
+        """Resolve dict-form ``sampling_method`` entries into built samplers.
+
+        String entries pass through unchanged (looked up in
+        ``DatasetGenerator.sampler_lookup_map`` later). A dict entry selects a
+        catalogue-driven prior: its ``type`` names a factory in
+        :data:`SAMPLER_FACTORIES`, any ``catalogue`` path is loaded once into an
+        ``EventCatalogue``, and the factory is called to build the
+        ``(args, num_samples)`` closure (so the heavy I/O — catalogue load and
+        b-value fit — happens a single time, at parse time).
+        """
+        resolved = {}
+        for key, value in sampling_method.items():
+            if isinstance(value, str):
+                resolved[key] = value
+            elif isinstance(value, dict):
+                cfg = dict(value)
+                sampler_type = cfg.pop("type", None)
+                if sampler_type not in SAMPLER_FACTORIES:
+                    allowed = ', '.join(sorted(SAMPLER_FACTORIES))
+                    raise InvalidConfiguration(
+                        f"Unknown sampler type {sampler_type!r} for parameter "
+                        f"{key!r}. Allowed dict-form types: [ {allowed} ]."
+                    )
+                if "catalogue" in cfg:
+                    cfg["catalogue"] = load_catalogue(
+                        cfg["catalogue"],
+                        magnitude_type=cfg.get("magnitude_type"),
+                    )
+                resolved[key] = SAMPLER_FACTORIES[sampler_type](**cfg)
+            else:
+                raise InvalidConfiguration(
+                    f"sampling_method[{key!r}] must be a string or a dict; "
+                    f"got {type(value).__name__}."
+                )
+        return resolved
         
     
     def parse_seismic_context(self, config):

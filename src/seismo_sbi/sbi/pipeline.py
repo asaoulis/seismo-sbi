@@ -320,10 +320,14 @@ class SBIPipeline:
             self.training_noise_sampler = self.data_cov_mat.create_sampler()
         elif train_noise_type == 'real_noise':
             noise_catalogue_path = sbi_noise_model['noise_catalogue_path']
-
+            # Generic-event training: rescale=false freezes the sampler so it draws noise
+            # windows verbatim (never rescaled to one event's pre-event variance). Default
+            # True preserves the legacy single-event behaviour.
+            rescale = sbi_noise_model.get('rescale', True)
             self.training_noise_sampler = RealNoiseSampler(self.simulation_parameters,
                                                            noise_catalogue_path,
-                                                           self.trace_length)
+                                                           self.trace_length,
+                                                           freeze_scale=not rescale)
         elif train_noise_type == 'empirical_gaussian':
             self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
 
@@ -750,7 +754,12 @@ class SingleEventPipeline(SBIPipeline):
         walker_burn_in = likelihood_config['walker_burn_in']
         num_samples = likelihood_config['num_samples']
         move_size = likelihood_config.get('move_size')
-        nsamples_per_walker = num_samples//self.num_parallel_jobs
+        # MCMC worker count: decoupled from num_jobs (the dataset-gen parallelism).
+        # With the fast kernel simulator each log-prob is a cheap mat-vec, so the
+        # multiprocessing/loky fan-out is pure overhead and the source of the worker
+        # fork/HDF5 deadlock; num_processes=1 runs joblib in-process (no workers).
+        num_processes = likelihood_config.get('num_processes') or self.num_parallel_jobs
+        nsamples_per_walker = num_samples//num_processes
         return_log_prob = bool(likelihood_config.get('return_log_prob', False))
 
 
@@ -776,13 +785,13 @@ class SingleEventPipeline(SBIPipeline):
         if return_log_prob:
             samples_scaled, logps = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
-                                                        nsamples_per_walker=nsamples_per_walker, nwalkers=self.num_parallel_jobs, 
-                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size, mle_start = mle_start, return_log_prob=True)
+                                                        nsamples_per_walker=nsamples_per_walker, nwalkers=num_processes,
+                                                        burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start, return_log_prob=True)
         else:
             samples_scaled = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
-                                                        nsamples_per_walker=nsamples_per_walker, nwalkers=self.num_parallel_jobs, 
-                                                        burn_in=walker_burn_in, num_processes=self.num_parallel_jobs, theta0=theta0, move_size=move_size, mle_start = mle_start)
+                                                        nsamples_per_walker=nsamples_per_walker, nwalkers=num_processes,
+                                                        burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start)
         print("Finished MCMC chains.", flush=True)
         samples = scaler.inverse_transform(samples_scaled)
         inversion_data = InversionData(theta0, samples, scaler)
