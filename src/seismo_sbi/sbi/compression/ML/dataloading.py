@@ -58,6 +58,7 @@ class TorchSimulationDataset(Dataset):
         return_tensors: bool = True,
         torch_dtype=torch.float32,
         conditioning_param_map: dict = None,
+        conditioning_noise_std=None,
         station_subsampler: "StationSubsampler" = None,
         post_noise_augmentation_chain=None,
         post_noise_nuisance_params=None,
@@ -78,6 +79,16 @@ class TorchSimulationDataset(Dataset):
         # __getitem__ returns a packed context concat(flatten(x), source_vec); the embedding
         # net unpacks it. Absent ⇒ unchanged (N, C, T) data return.
         self.conditioning_param_map = conditioning_param_map or {}
+
+        # Source-location UNCERTAINTY augmentation (v3): per-coordinate Gaussian std applied to
+        # the raw conditioning vector on each __getitem__ (fresh draw ⇒ training augmentation).
+        # Order MUST match the conditioning vector (param_map concatenation order). Emulates the
+        # catalogue location error the conditioned model sees at inference. None ⇒ no perturbation.
+        if conditioning_noise_std is None:
+            self.conditioning_noise_std = None
+        else:
+            self.conditioning_noise_std = torch.as_tensor(
+                np.asarray(conditioning_noise_std, dtype=float), dtype=torch_dtype)
 
         self.parameter_name_map = parameter_name_map or {}
         self.synthetic_noise_model_sampler = synthetic_noise_model_sampler
@@ -170,6 +181,7 @@ class TorchSimulationDataset(Dataset):
         source_vec = None
         if self.conditioning_param_map:
             source_vec = torch.as_tensor(self._load_conditioning(sim_path), dtype=self.torch_dtype)
+            source_vec = self._perturb_conditioning(source_vec)
 
         # --- Variable-station path: subsample stations, carry per-sample coords ---
         # getattr keeps datasets built via __new__ (test stubs) working without this attr.
@@ -189,6 +201,17 @@ class TorchSimulationDataset(Dataset):
             from .source_conditioning import pack_context
             x = pack_context(x, source_vec)
         return theta, x
+
+    def _perturb_conditioning(self, source_vec):
+        """Source-location UNCERTAINTY augmentation (v3): add per-coordinate Gaussian noise to the
+        raw conditioning vector. Fresh draw per call (⇒ training augmentation). ``getattr`` keeps
+        ``__new__`` test stubs working. No-op when ``conditioning_noise_std`` is unset. The model
+        then sees a noisy source (and, in relative-coords mode, noisy source-relative station
+        geometry) — matching the catalogue location error present at inference."""
+        std = getattr(self, "conditioning_noise_std", None)
+        if std is None:
+            return source_vec
+        return source_vec + torch.randn_like(source_vec) * std
 
     def _load_conditioning(self, sim_path):
         """Extract the raw (unscaled) source-conditioning vector from a sim's stored inputs."""
@@ -286,6 +309,7 @@ def make_torch_dataloader(
     return_tensors: bool = True,
     torch_dtype=torch.float32,
     conditioning_param_map: dict = None,
+    conditioning_noise_std=None,
     station_subsampler: "StationSubsampler" = None,
     post_noise_augmentation_chain=None,
     post_noise_nuisance_params=None,
@@ -301,6 +325,7 @@ def make_torch_dataloader(
         return_tensors=return_tensors,
         torch_dtype=torch_dtype,
         conditioning_param_map=conditioning_param_map,
+        conditioning_noise_std=conditioning_noise_std,
         station_subsampler=station_subsampler,
         post_noise_augmentation_chain=post_noise_augmentation_chain,
         post_noise_nuisance_params=post_noise_nuisance_params,
@@ -346,6 +371,7 @@ def make_torch_dataloaders(
     return_tensors: bool = True,
     torch_dtype= torch.float32,
     conditioning_param_map: dict = None,
+    conditioning_noise_std=None,
     station_subsampler: "StationSubsampler" = None,
     post_noise_augmentation_chain=None,
     post_noise_nuisance_params=None,
@@ -367,6 +393,7 @@ def make_torch_dataloaders(
         return_tensors=return_tensors,
         torch_dtype=torch_dtype,
         conditioning_param_map=conditioning_param_map,
+        conditioning_noise_std=conditioning_noise_std,
         station_subsampler=station_subsampler,
         post_noise_augmentation_chain=post_noise_augmentation_chain,
         post_noise_nuisance_params=post_noise_nuisance_params,

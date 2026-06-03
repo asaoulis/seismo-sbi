@@ -26,6 +26,17 @@ def parse_arguments():
     parser.add_argument('--architecture', '-a', type=str, default=None,
                         help="Per-station encoder (station_encoder): 'cnn' (default), 'pno', 'tcn'. "
                              "Overrides the optional 'ml_architecture' key in the YAML config.")
+    parser.add_argument('--generate_only', action='store_true',
+                        help="Stop after generating the training dataset + compression stencil "
+                             "(no NDE training). Used for the CPU dataset-generation stage of the "
+                             "remote two-stage workflow; the GPU train stage re-loads these sims.")
+    parser.add_argument('--num_simulations', type=int, default=None,
+                        help="Override simulations.num_simulations from the config (caps the "
+                             "training dataset size). Used by the remote gen-submit stage.")
+    parser.add_argument('--csv_logger', action='store_true',
+                        help="Log per-epoch metrics to a Lightning CSVLogger (metrics.csv beside "
+                             "the checkpoints) instead of W&B. Gives a deterministic on-disk "
+                             "val_loss for remote monitoring (train-monitor).")
     args = parser.parse_args()
     return args
 
@@ -40,6 +51,13 @@ def main():
     config = SBI_Configuration()
     config.parse_config_file(config_path)
     print("Successfully parsed config file.")
+
+    # Optional dataset-size override (remote gen-submit stage). DatasetGenerationParameters
+    # is a NamedTuple, so _replace gives a clean immutable override.
+    if args.num_simulations is not None:
+        config.dataset_parameters = config.dataset_parameters._replace(
+            num_simulations=args.num_simulations)
+        print(f"Overriding num_simulations -> {args.num_simulations}")
 
     ### Start SBI Pipeline
 
@@ -60,8 +78,17 @@ def main():
                                                                             config.model_parameters,  
                                                                             rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
 
+    # CPU dataset-generation stage of the remote two-stage workflow: the expensive
+    # forward simulations (training dataset via simulate_test_jobs, and the score/Fisher
+    # stencil via compute_required_compression_data) are now on disk. Stop here so the
+    # GPU train stage (generate_dataset: false) re-loads them without re-simulating.
+    if args.generate_only:
+        print(f"[generate_only] dataset + compression stencil ready: "
+              f"{len(test_jobs_paths)} simulations at {sbi_pipeline.simulations_output_path}")
+        return
+
     sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
-    
+
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
     # Rescale the training noise covariance to a specific real event's pre-event variance,
@@ -116,6 +143,19 @@ def main():
             "n_fourier": _cond_cfg.get("n_fourier", 0),
         }
         print(f"Source-location conditioning enabled: {model_config['conditioning']}")
+
+    # Optional source-location UNCERTAINTY augmentation (v3): a `source_location_error` nuisance
+    # with stage 'training_augmentation' supplies a per-coordinate Gaussian std (`coordinate_std`,
+    # in the conditioning param_map order) that perturbs the conditioning vector in the dataloader
+    # (fresh per sample). Only meaningful when conditioning is active.
+    conditioning_noise_std = None
+    if conditioning_param_map:
+        _sle_cfg = ((_raw_cfg.get("parameters", {}) or {}).get("nuisance", {}) or {}).get(
+            "source_location_error")
+        if _sle_cfg and _sle_cfg.get("stage") == "training_augmentation":
+            conditioning_noise_std = _sle_cfg.get("coordinate_std")
+            print(f"Source-location conditioning noise (training augmentation): "
+                  f"coordinate_std={conditioning_noise_std}")
 
     # Optional variable-station training via a top-level 'ml_variable_stations' YAML block:
     #   ml_variable_stations:
@@ -177,13 +217,23 @@ def main():
         'pin_memory': True,
         'prefetch_factor': 6,
         'conditioning_param_map': conditioning_param_map,
+        'conditioning_noise_std': conditioning_noise_std,
         'station_subsampler': station_subsampler,
         'post_noise_augmentation_chain': post_noise_chain,
         'post_noise_nuisance_params': post_noise_nuisance_params,
     }
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    trainer.train(run_name, epochs=args.epochs, output_path=data_path, dataloader_args=dataloader_args)
+    # Default logging is W&B (cloud). For remote runs pass --csv_logger to get a
+    # deterministic on-disk metrics.csv (beside the checkpoints at data_path/run_name/)
+    # that the remote `train-monitor` verb can parse without network access.
+    logger = "wandb"
+    if args.csv_logger:
+        from pytorch_lightning.loggers import CSVLogger
+        logger = CSVLogger(save_dir=str(data_path), name=run_name, version="")
+        print(f"CSV metrics logging to {Path(data_path)/run_name/'metrics.csv'}")
+    trainer.train(run_name, epochs=args.epochs, output_path=data_path,
+                  dataloader_args=dataloader_args, logger=logger)
 
 if __name__ == '__main__':
     main()

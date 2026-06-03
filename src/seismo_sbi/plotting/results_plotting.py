@@ -72,21 +72,27 @@ class SBIPipelinePlotter:
 
     def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True, **kwargs):
         lune_kwargs, reparam_kwargs = kwargs.get("lune_kwargs", {}), kwargs.get("reparam_kwargs", {})
-        plot_path = self.base_output_path / f"./{base_figure_path}" / f"./{test_name}.svg"  if savefig else None
+        # base_figure_path is either a relative subfolder (nested under base_output_path) or an
+        # absolute directory (used as-is). Join it directly: pathlib appends a relative path and
+        # replaces with an absolute one. A leading "./" (the previous f"./{...}") would force the
+        # absolute case to be treated as relative and *append* it, doubling the directory
+        # (e.g. .../ml_eval/home/alex/.../ml_eval/...).
+        figure_dir = self.base_output_path / base_figure_path
+        plot_path = figure_dir / f"{test_name}.svg" if savefig else None
         if savefig:
-            plot_path.parent.mkdir(parents=True, exist_ok=True)
+            figure_dir.mkdir(parents=True, exist_ok=True)
         print("Added lune kwargs")
 
         self.posterior_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, figsave=plot_path)
         if "moment_tensor" in self.parameters.names.keys():
             # Scatter lune plot
-            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./lune_{test_name}.svg"  if savefig else None
+            plot_path = figure_dir / f"lune_{test_name}.svg" if savefig else None
             self.posterior_plotter.plot_lunes(inversion_data_dict, figsave=plot_path, **lune_kwargs)
             # KDE lune plot
-            plot_kde_path = self.base_output_path / f"./{base_figure_path}" / f"./lune_kde_{test_name}.svg"  if savefig else None
+            plot_kde_path = figure_dir / f"lune_kde_{test_name}.svg" if savefig else None
             self.posterior_plotter.plot_lunes_kde(inversion_data_dict, figsave=plot_kde_path, **lune_kwargs)
             # Nodal parameter corner plot
-            plot_path = self.base_output_path / f"./{base_figure_path}" / f"./nodal_params_{test_name}.svg"  if savefig else None
+            plot_path = figure_dir / f"nodal_params_{test_name}.svg" if savefig else None
             self.reparametrised_plotter.plot_chain_consumer(inversion_data_dict, kde=kde, inverse=False, figsave=plot_path, **reparam_kwargs)
 
     def plot_compression(self, raw_compressed_dataset, compressed_estimate = None, job_name=None):

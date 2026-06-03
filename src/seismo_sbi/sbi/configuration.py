@@ -14,6 +14,7 @@ from seismo_sbi.cps_simulator.compatibility import load_velocity_model
 from seismo_sbi.instaseis_simulator.post_processing import (
     AUGMENTABLE_EFFECT_KEYS,
     POST_NOISE_EFFECT_KEYS,
+    CONDITIONING_AUGMENTABLE_KEYS,
 )
 from seismo_sbi.priors.catalogue import load_catalogue
 from seismo_sbi.priors.samplers import (
@@ -43,6 +44,9 @@ class SBI_Configuration:
         "amplitude_error", "instrument_dropout", "scattering_coda", "time_shift_error",
         # Post-noise augmentation (applied after sensor noise; see ComponentDropoutEffect)
         "component_dropout",
+        # Conditioning augmentation (perturbs the source-location CONDITIONING vector in the ML
+        # dataloader, NOT the waveform; see CONDITIONING_AUGMENTABLE_KEYS).
+        "source_location_error",
     ]
 
     param_names_map = {
@@ -57,6 +61,7 @@ class SBI_Configuration:
         "scattering_coda": ["scattering_coda"],
         "time_shift_error": ["time_shift_error"],
         "component_dropout": ["component_dropout"],
+        "source_location_error": ["source_location_error"],
     }
 
     #: YAML keys consumed by the parameter machinery — any other keys in a
@@ -160,12 +165,15 @@ class SBI_Configuration:
                         f"Invalid stage {stage!r} for nuisance {parameter_type}. "
                         f"Only [ {allowed} ] allowed"
                     )
-                if stage == "training_augmentation" and parameter_type not in AUGMENTABLE_EFFECT_KEYS:
-                    allowed = ', '.join(AUGMENTABLE_EFFECT_KEYS)
+                if (stage == "training_augmentation"
+                        and parameter_type not in AUGMENTABLE_EFFECT_KEYS
+                        and parameter_type not in CONDITIONING_AUGMENTABLE_KEYS):
+                    allowed = ', '.join(AUGMENTABLE_EFFECT_KEYS + CONDITIONING_AUGMENTABLE_KEYS)
                     raise InvalidConfiguration(
                         f"Nuisance {parameter_type} cannot use stage 'training_augmentation' "
-                        f"(only Category-2 post-processing effects [ {allowed} ] are "
-                        f"augmentation-eligible; simulator-level nuisances must be baked in)."
+                        f"(only Category-2 post-processing effects + conditioning-vector "
+                        f"augmentations [ {allowed} ] are augmentation-eligible; simulator-level "
+                        f"nuisances must be baked in)."
                     )
                 if stage == "training_augmentation_post_noise" and parameter_type not in POST_NOISE_EFFECT_KEYS:
                     allowed = ', '.join(POST_NOISE_EFFECT_KEYS)
@@ -182,6 +190,16 @@ class SBI_Configuration:
                         f"Nuisance {parameter_type} must use stage "
                         f"'training_augmentation_post_noise' (it zeros channels after noise so "
                         f"they are exactly zero); got stage {stage!r}."
+                    )
+                # Conditioning-vector augmentations perturb the source-location CONDITIONING input
+                # in the ML dataloader; the simulator can't bake them, so (symmetric with
+                # component_dropout above) they are only valid as training_augmentation — otherwise
+                # the default "simulation" stage would silently no-op the feature.
+                if parameter_type in CONDITIONING_AUGMENTABLE_KEYS and stage != "training_augmentation":
+                    raise InvalidConfiguration(
+                        f"Nuisance {parameter_type} must use stage 'training_augmentation' (it "
+                        f"perturbs the source-location conditioning vector in the ML dataloader); "
+                        f"got stage {stage!r}."
                     )
                 self.model_parameters.nuisance_stage[parameter_type] = stage
 

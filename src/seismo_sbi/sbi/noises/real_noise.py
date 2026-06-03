@@ -21,6 +21,21 @@ class RealNoiseSampler:
 
         self.data_loader = SimulationDataLoader(self.components, simulation_parameters.receivers, data_length)
 
+        # Expected flattened length of a COMPLETE noise window for this receiver set.
+        # A handful of windows (~0.1% in the v2 Santorini catalogue) sit on a station
+        # data gap, so one trace is shorter than data_length; convert_sim_data_to_array
+        # anchors the length to the first receiver and truncates, silently returning a
+        # sub-length vector that will not broadcast against the full-length data vector D
+        # (and would corrupt the empirical covariance). When data_length is known we skip
+        # such windows in __call__ — the variable-length analogue of the missing-station
+        # KeyError skip. data_length == trace_length == data_vector_length // num_traces,
+        # so this expected length is exactly the data-vector length, self-consistent with
+        # whatever the true per-trace sample count is.
+        self._expected_length = (
+            None if data_length is None
+            else sum(len(rec.components) for rec in receivers.receivers) * data_length
+        )
+
         self.noise_paths = self._find_noise_paths(directory)
         np.random.shuffle(self.noise_paths)
 
@@ -40,11 +55,15 @@ class RealNoiseSampler:
     def _find_noise_paths(self, directory):
         return np.array(list(Path(directory).glob('*.h5')))
 
-    def __call__(self, noise_path = None, no_rescale = False, noise_index = None):
-        
+    def __call__(self, noise_path = None, no_rescale = False, noise_index = None, _attempts = 0):
+
         # if self.noise_index_counter == len(self.noise_paths):
         #     self.noise_index_counter = 0
         #     np.random.shuffle(self.noise_paths)
+        if _attempts > len(self.noise_paths):
+            raise RuntimeError(
+                f"RealNoiseSampler: no noise window matched the expected data-vector length "
+                f"{self._expected_length} after scanning all {len(self.noise_paths)} windows.")
         if noise_index is not None:
             # wrap: the KeyError retry below increments noise_index, which would
             # otherwise run off the end when the last window is hit (IndexError
@@ -53,11 +72,22 @@ class RealNoiseSampler:
         if noise_path is None:
             noise_index = np.random.randint(0, len(self.noise_paths))
             noise_path = self.noise_paths[noise_index]
+        # On a retry we move to the next window when walking sequentially (noise_index
+        # set), or fall back to a fresh random draw when a window was requested by path
+        # (noise_index is None).
+        next_index = None if noise_index is None else noise_index + 1
         try:
             noise_realisations = self._load_noise_file(noise_path)
         except KeyError:
             # this window lacks one of the event's stations; try the next one.
-            return self.__call__(noise_path = None, no_rescale = no_rescale, noise_index=noise_index + 1)
+            return self.__call__(noise_path = None, no_rescale = no_rescale,
+                                 noise_index=next_index, _attempts=_attempts + 1)
+        # Skip windows that sit on a station data gap: one trace is shorter than the rest,
+        # so the flattened vector is < the data-vector length and would not broadcast
+        # against D. Treated exactly like the missing-station case above.
+        if self._expected_length is not None and noise_realisations.size != self._expected_length:
+            return self.__call__(noise_path = None, no_rescale = no_rescale,
+                                 noise_index=next_index, _attempts=_attempts + 1)
         # self.noise_index_counter += 1
 
         if no_rescale:

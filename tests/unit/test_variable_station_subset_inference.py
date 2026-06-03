@@ -143,3 +143,74 @@ def test_load_event_subset(tmp_path):
 
     with pytest.raises(KeyError):
         loader.load_event_subset(str(h5_path), ["ZZZ"], stacked=True)
+
+
+# --------------------------------------------------------------------------- #
+# Conditioned-model inference path: sample_station_dropout_ensemble must forward a
+# per-event source_vec into the packed context (the post-train eval threading).
+# --------------------------------------------------------------------------- #
+class _CapturePosterior:
+    """Stub posterior: records the last context handed to .sample, returns zeros."""
+    def __init__(self):
+        self.contexts = []
+
+    def sample(self, shape, x, show_progress_bars=False):
+        self.contexts.append(torch.as_tensor(x).detach().cpu())
+        return torch.zeros((shape[0], 6))
+
+
+class _IdentityScaler:
+    def inverse_transform(self, s):
+        return np.asarray(s)
+
+
+def test_dropout_ensemble_threads_source_vec():
+    """A conditioned model's per-event source_vec is packed into every station config's
+    inference context (and round-trips out via unpack_variable_context)."""
+    from seismo_sbi.sbi.compression.ML.station_dropout import (
+        config_from_kept, sample_station_dropout_ensemble,
+    )
+
+    names = ["AAA", "BBB", "CCC"]
+    N, C, T, n_cond = 3, 3, 8, 3
+    obs = np.random.randn(N, C, T).astype(np.float32)
+    coords = np.array([[45.0, 16.0], [46.0, 17.0], [44.0, 15.0]], dtype=np.float32)
+    src = np.array([45.5, 16.5, 7.0], dtype=np.float32)
+
+    posterior = _CapturePosterior()
+    configs = [config_from_kept(names, names, "all"),
+               config_from_kept(names, ["AAA", "CCC"], "subset")]
+    ensemble, _results = sample_station_dropout_ensemble(
+        posterior, obs, coords, configs, _IdentityScaler(),
+        num_samples=4, device="cpu", event_name="EV", source_vec=src)
+
+    assert set(ensemble.keys()) == {"all", "subset"}
+    assert len(posterior.contexts) == 2
+    # The second config keeps 2 stations; its context must carry the SAME source vector.
+    seis, _coords, _mask, source_vec = unpack_variable_context(
+        posterior.contexts[1], n_components=C, trace_length=T, n_cond=n_cond)
+    assert seis.shape[1] == 2
+    assert source_vec is not None
+    assert torch.allclose(source_vec[0], torch.as_tensor(src))
+
+
+def test_dropout_ensemble_unconditioned_has_no_source_vec():
+    """With source_vec=None (unconditioned model) the packed context carries no source vector."""
+    from seismo_sbi.sbi.compression.ML.station_dropout import (
+        config_from_kept, sample_station_dropout_ensemble,
+    )
+
+    names = ["AAA", "BBB"]
+    N, C, T = 2, 3, 8
+    obs = np.random.randn(N, C, T).astype(np.float32)
+    coords = np.array([[45.0, 16.0], [46.0, 17.0]], dtype=np.float32)
+
+    posterior = _CapturePosterior()
+    configs = [config_from_kept(names, names, "all")]
+    sample_station_dropout_ensemble(
+        posterior, obs, coords, configs, _IdentityScaler(),
+        num_samples=2, device="cpu")  # source_vec defaults to None
+
+    _seis, _coords, _mask, source_vec = unpack_variable_context(
+        posterior.contexts[0], n_components=C, trace_length=T, n_cond=0)
+    assert source_vec is None

@@ -42,7 +42,8 @@ from seismo_sbi.data_handling.preprocessing.io import (
 )
 from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
 from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
-from seismo_sbi.data_handling.preprocessing.quality import check_window_quality
+from seismo_sbi.data_handling.preprocessing.quality import (
+    check_window_quality, partition_window_quality)
 from seismo_sbi.data_handling.preprocessing.windowing import (
     compute_event_arrival_windows,
     get_continuous_regions,
@@ -157,18 +158,21 @@ def build_event_catalogue(
                 stream, use_daily_processing, inventory, remove_resp,
                 eff_pre, eff_filt, sampling_rate,
             )
-            ok, reason = check_window_quality(
+            kept_stations, dropped = partition_window_quality(
                 proc, good_stations, sampling_rate, duration,
                 min_completeness=min_completeness,
                 max_flat_fraction=max_flat_fraction,
                 min_npts=compute_data_vector_length(duration_s, sampling_rate) + 1,
             )
-            if not ok:
-                return out_path, False, f"quality: {reason}"
+            if not kept_stations:
+                return out_path, False, (
+                    f"quality: all {len(good_stations)} stations dropped "
+                    f"({'; '.join(r for _, r in dropped)})"
+                )
 
             export_to_sbi_h5(
                 proc,
-                receivers=good_stations,
+                receivers=kept_stations,
                 event_window=(t_start, t_end),
                 out_path=out_path,
                 sampling_rate=sampling_rate,
@@ -308,18 +312,21 @@ def build_noise_catalogue(
                 stream, use_daily_processing, inventory, remove_resp,
                 eff_pre, eff_filt, sampling_rate,
             )
-            ok, reason = check_window_quality(
+            kept_stations, dropped = partition_window_quality(
                 proc, good_stations, sampling_rate, duration,
                 min_completeness=min_completeness,
                 max_flat_fraction=max_flat_fraction,
                 min_npts=compute_data_vector_length(duration_s, sampling_rate) + 1,
             )
-            if not ok:
-                return out_path, False, f"quality: {reason}"
+            if not kept_stations:
+                return out_path, False, (
+                    f"quality: all {len(good_stations)} stations dropped "
+                    f"({'; '.join(r for _, r in dropped)})"
+                )
 
             export_to_sbi_h5(
                 proc,
-                receivers=good_stations,
+                receivers=kept_stations,
                 event_window=(t_start, t_end),
                 out_path=out_path,
                 sampling_rate=sampling_rate,

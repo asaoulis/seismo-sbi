@@ -1,5 +1,6 @@
 """Integration tests: RealNoiseSampler loads H5 catalogue and returns correctly-shaped vectors."""
 
+import h5py
 import numpy as np
 import pytest
 
@@ -116,3 +117,55 @@ class TestRealNoiseSamplerFreezeScale:
         assert sampler.adaptive_covariance is not None
         result = sampler()
         assert isinstance(result, tuple)
+
+
+class TestRealNoiseSamplerShortWindowSkip:
+    """A noise window sitting on a station data gap has a trace shorter than data_length;
+    SimulationDataLoader anchors the length to the first receiver and truncates, silently
+    returning a sub-length vector that will not broadcast against the full-length data
+    vector D (the v2 Santorini compression crash). When data_length is known the sampler
+    must SKIP such windows — the variable-length analogue of the missing-station KeyError
+    skip."""
+
+    @staticmethod
+    def _write_window(path, receivers, length):
+        with h5py.File(path, "w") as f:
+            grp_out = f.create_group("outputs")
+            grp_misc = f.create_group("misc")
+            for rec in receivers.iterate():
+                sta = grp_out.create_group(rec.station_name)
+                sta_misc = grp_misc.create_group(rec.station_name)
+                for comp in rec.components:
+                    sta.create_dataset(comp, data=np.random.standard_normal(length))
+                    sta_misc.create_dataset(comp, data=np.array([1.0]))
+
+    def test_expected_length_computed_only_with_data_length(self, tmp_path, receivers):
+        self._write_window(tmp_path / "good.h5", receivers, TRACE_LEN)
+        with_len = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
+        assert with_len._expected_length == TRACE_LEN  # 1 receiver × 1 comp × TRACE_LEN
+        # legacy back-compat: no data_length -> no length check (behaviour unchanged)
+        without_len = RealNoiseSampler(_make_sim_params(receivers), tmp_path)
+        assert without_len._expected_length is None
+
+    def test_random_draws_skip_short_windows(self, tmp_path, receivers):
+        self._write_window(tmp_path / "good.h5", receivers, TRACE_LEN)
+        self._write_window(tmp_path / "short.h5", receivers, TRACE_LEN // 2)
+        sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
+        for _ in range(50):
+            noise = sampler()
+            assert noise.shape == (TRACE_LEN,)   # never the truncated short window
+
+    def test_explicit_short_path_falls_back(self, tmp_path, receivers):
+        self._write_window(tmp_path / "good.h5", receivers, TRACE_LEN)
+        self._write_window(tmp_path / "short.h5", receivers, TRACE_LEN // 2)
+        sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
+        noise = sampler(noise_path=tmp_path / "short.h5")
+        assert noise.shape == (TRACE_LEN,)       # skipped to the good window
+
+    def test_all_short_raises(self, tmp_path, receivers):
+        # No usable window -> bounded retry raises instead of recursing forever.
+        self._write_window(tmp_path / "short0.h5", receivers, TRACE_LEN // 2)
+        self._write_window(tmp_path / "short1.h5", receivers, TRACE_LEN // 3)
+        sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
+        with pytest.raises(RuntimeError):
+            sampler()

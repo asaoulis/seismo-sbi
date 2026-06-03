@@ -183,6 +183,30 @@ def test_dataset_load_conditioning_extraction():
     assert np.allclose(vec, [12.0, -34.0, 7.0])           # order preserved, time_shift excluded
 
 
+def test_perturb_conditioning_applies_per_coordinate_gaussian():
+    """v3 source-location uncertainty: _perturb_conditioning adds per-coordinate Gaussian noise
+    (mean≈clean, std≈configured) and is a no-op when conditioning_noise_std is None."""
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+
+    ds = TorchSimulationDataset.__new__(TorchSimulationDataset)
+    base = torch.tensor([36.5, 25.6, 8.0])
+
+    # No-op when unset.
+    ds.conditioning_noise_std = None
+    assert torch.equal(ds._perturb_conditioning(base), base)
+
+    # Per-coordinate Gaussian with the configured std (lat°, lon°, depth km).
+    std = torch.tensor([0.010, 0.013, 1.5])
+    ds.conditioning_noise_std = std
+    torch.manual_seed(0)
+    samples = torch.stack([ds._perturb_conditioning(base) for _ in range(8000)])
+    assert torch.allclose(samples.mean(0), base, atol=0.1)        # mean ≈ clean location
+    assert torch.allclose(samples.std(0), std, rtol=0.12)          # std ≈ configured per axis
+    # Fresh draw each call (not a fixed offset).
+    assert not torch.equal(ds._perturb_conditioning(base), ds._perturb_conditioning(base))
+
+
 def test_inference_path_packs_source_location():
     """MachineLearningCompressor packs a known source location into the model input."""
     from seismo_sbi.sbi.compression.gaussian import MachineLearningCompressor

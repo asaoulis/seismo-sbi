@@ -892,6 +892,17 @@ POST_NOISE_EFFECT_KEYS: tuple[str, ...] = (
 )
 
 
+#: Nuisance keys that augment the **source-location CONDITIONING vector** in the ML dataloader
+#: (NOT the waveform).  These are deliberately *absent* from :data:`EFFECT_REGISTRY` — they have
+#: no ``SeismogramEffect`` and are skipped by :func:`build_post_processing_chain`; the dataloader
+#: applies them to ``source_vec`` instead.  ``source_location_error`` perturbs the conditioned
+#: source location with per-coordinate Gaussian noise so the model learns to tolerate the
+#: catalogue location error it sees at inference.  Stage-eligible like ``training_augmentation``.
+CONDITIONING_AUGMENTABLE_KEYS: tuple[str, ...] = (
+    "source_location_error",
+)
+
+
 #: Maps an augmentation stage value → the effect keys eligible at that stage.
 _STAGE_EFFECT_KEYS: dict[str, tuple[str, ...]] = {
     "training_augmentation": AUGMENTABLE_EFFECT_KEYS,

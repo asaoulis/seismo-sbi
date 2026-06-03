@@ -120,7 +120,7 @@ def make_dropout_configs(station_names: Sequence[str], *, keep_fraction: float =
 
 def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[StationConfig],
                                     data_scaler, *, num_samples: int, device=None,
-                                    event_name: str = ""):
+                                    event_name: str = "", source_vec=None):
     """Sample the variable-station posterior for each station config.
 
     For each config, physically subset the observation rows + coords, pack with
@@ -137,6 +137,10 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     num_samples : posterior samples per config.
     device : torch device string; defaults to cuda if available.
     event_name : optional prefix for the per-config ``InversionResult.event_name``.
+    source_vec : array ``(n_cond,)``, optional. Raw source-conditioning vector (e.g. the event's
+        ``[latitude, longitude, depth]`` in ``ml_conditioning.param_map`` order) required by a
+        **conditioned** model at inference. ``None`` (default) ⇒ unconditioned model; the source
+        vector is shared across all station configs of one event (same source, different stations).
 
     Returns
     -------
@@ -155,7 +159,8 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     ensemble = OrderedDict()
     results = []
     for c in configs:
-        ctx = pack_subset_observation(obs[c.keep], coords[c.keep]).to(device)   # (1, W)
+        ctx = pack_subset_observation(
+            obs[c.keep], coords[c.keep], source_vec=source_vec).to(device)   # (1, W)
         samples = posterior.sample((num_samples,), ctx, show_progress_bars=False)
         phys = data_scaler.inverse_transform(np.asarray(samples.cpu().numpy()))  # (num_samples, 6)
         inv = InversionData(theta0=None, samples=phys, data_scaler=data_scaler)

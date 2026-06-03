@@ -49,6 +49,49 @@ class GaussianLikelihoodEvaluator:
             return -np.inf
         return self.log_likelihood(scaled_source_parameters) + log_prior_value
 
+def split_rhat(chains):
+    """Gelman--Rubin split-R-hat per parameter across MCMC chains.
+
+    ``chains`` is a sequence of ``(nsteps, ndim)`` arrays (one per independent
+    chain).  Each chain is split in half so the diagnostic is informative even
+    with only a few chains.  Returns an ``ndim`` array: ~1.0 means the chains
+    agree (converged); ``> 1.1`` flags chains stuck in separate modes.
+    """
+    chains = [np.asarray(c) for c in chains]
+    nsteps = min(c.shape[0] for c in chains)
+    half = nsteps // 2
+    ndim = chains[0].shape[1]
+    if half < 2:
+        return np.full(ndim, np.nan)
+    subs = []
+    for c in chains:
+        subs.append(c[:half])
+        subs.append(c[half:2 * half])
+    subs = np.stack(subs)                       # (m, n, ndim)
+    m, n, _ = subs.shape
+    chain_means = subs.mean(axis=1)
+    chain_vars = subs.var(axis=1, ddof=1)
+    B = n * chain_means.var(axis=0, ddof=1)
+    W = chain_vars.mean(axis=0)
+    var_hat = (n - 1) / n * W + B / n
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.sqrt(var_hat / W)
+
+
+def _report_convergence(chains):
+    """Print split-R-hat across MCMC chains (a convergence sanity check)."""
+    try:
+        rhat = np.asarray(split_rhat(chains))
+        print(
+            f"MCMC convergence: split-R-hat per param = "
+            f"{np.array2string(rhat, precision=3)} "
+            f"(max {np.nanmax(rhat):.3f}; >1.1 ⇒ chains not mixed)",
+            flush=True,
+        )
+    except Exception as exc:  # diagnostics must never break the inversion
+        print(f"MCMC convergence: R-hat unavailable ({exc})", flush=True)
+
+
 def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
                                             burn_in, nsamples_per_walker,
                                             initial_state, move_size,
@@ -120,9 +163,11 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
                 )
         if return_log_prob:
             chains, logps = zip(*results)
+            _report_convergence(chains)
             samples = np.stack(chains).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
             logp = np.stack(logps).reshape(num_processes, -1).T.reshape(-1)
             return samples, logp
         else:
+            _report_convergence(results)
             samples = np.stack(results).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
     return samples

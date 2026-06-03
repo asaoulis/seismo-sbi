@@ -162,6 +162,41 @@ def test_parse_source_location_nuisance():
     assert cfg.model_parameters.nuisance["source_location"] == [37.6, -118.9, 5.0, 0.0]
 
 
+def test_parse_source_location_error_conditioning_nuisance():
+    """v3: source_location_error parses as a training_augmentation nuisance, stores its
+    per-coordinate std in nuisance_effect_config, and is NOT built as a waveform effect."""
+    from seismo_sbi.instaseis_simulator.post_processing import (
+        build_augmentation_chain_from_parameters,
+    )
+    cfg = SBI_Configuration()
+    cfg.parse_parameters({
+        "inference": {
+            "moment_tensor": {
+                "fiducial": [1e13] * 6, "stencil_deltas": [1e10] * 6,
+                "bounds": [[-5e13] * 6, [5e13] * 6],
+            }
+        },
+        "nuisance": {
+            "source_location": {
+                "fiducial": [36.5, 25.6, 8.0, 0.0], "bounds": [36.5, 25.6, 8.0, 0.0],
+            },
+            "source_location_error": {
+                "fiducial": [1.0], "bounds": [0.0, 1.0],
+                "coordinate_std": [0.010, 0.013, 1.5], "stage": "training_augmentation",
+            },
+        },
+    })
+    mp = cfg.model_parameters
+    assert "source_location_error" in mp.nuisance
+    assert mp.nuisance_stage["source_location_error"] == "training_augmentation"
+    assert mp.nuisance_effect_config["source_location_error"]["coordinate_std"] == [0.010, 0.013, 1.5]
+    # Must NOT be realised as a waveform PostProcessing effect (absent from EFFECT_REGISTRY) —
+    # only source_location (simulation stage) + source_location_error are present, so the
+    # pre-noise augmentation chain is empty.
+    chain, _params = build_augmentation_chain_from_parameters(mp)
+    assert len(chain.effects) == 0
+
+
 # ---------------------------------------------------------------------------
 # Nuisance parameters for new effects (will PASS once the whitelist in
 # SBI_Configuration.parameter_types is extended during the refactor).
