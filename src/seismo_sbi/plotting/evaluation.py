@@ -219,7 +219,7 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
     pp = plotter.posterior_plotter
     fig, ax = plt.subplots(figsize=(12, 12))
     pp.plot_lunes_kde(recovery_dict, ax=ax, plot_beachballs=False,
-                      num_samples=num_samples, plot_inset=False, show=False)
+                      num_samples=num_samples, plot_inset=False, show=False, legend=True)
     if zoom:
         x_min, x_max, y_min, y_max = _lune_zoom_limits()
         ax.set_xlim(x_min, x_max)
@@ -267,23 +267,16 @@ def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
     """Full-lune KDE overlay of several labelled posteriors, with a per-config legend.
 
     Wraps the house ``plotter.posterior_plotter.plot_lunes_kde`` (whole lune in shot, no
-    crop) and adds the legend it lacks. ``ensemble_dict`` maps ``label -> InversionData``;
-    contour colours follow dict order (matched by the legend).
+    crop), forwarding the per-config legend it now builds in-house. ``ensemble_dict`` maps
+    ``label -> InversionData``; contour colours follow dict order (matched by the legend).
     """
     import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
-    from seismo_sbi.plotting.distributions import LUNE_ENSEMBLE_COLORS
 
     pp = plotter.posterior_plotter
     fig, ax = plt.subplots(figsize=(12, 12))
     pp.plot_lunes_kde(ensemble_dict, ax=ax, plot_beachballs=plot_beachballs,
-                      num_samples=num_samples, plot_inset=False, show=False)
-    if legend:
-        handles = [Line2D([0], [0], lw=2.2, label=lab,
-                          color=LUNE_ENSEMBLE_COLORS[i % len(LUNE_ENSEMBLE_COLORS)])
-                   for i, lab in enumerate(ensemble_dict.keys())]
-        ax.legend(handles=handles, loc="upper right", fontsize=13,
-                  title="config\n(solid 68%, dashed 95% HPD)", framealpha=0.9)
+                      num_samples=num_samples, plot_inset=False, show=False,
+                      legend=legend, legend_title="config\n(solid 68%, dashed 95% HPD)")
     if figsave is not None:
         Path(figsave).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(figsave, dpi=200, bbox_inches="tight")

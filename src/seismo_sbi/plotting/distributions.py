@@ -284,7 +284,104 @@ class MomentTensorReparametrised:
 # Exposed at module scope so external legend builders (e.g.
 # seismo_sbi.plotting.evaluation.plot_ensemble_lune_kde) stay in sync with the
 # contour colours plot_lunes / plot_lunes_kde draw.
-LUNE_ENSEMBLE_COLORS = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+LUNE_ENSEMBLE_COLORS = ['cornflowerblue', 'red', 'purple', 'green', 'brown',
+                        'orange', 'teal', 'magenta', 'olive', 'gold', 'cyan']
+
+
+def _relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1.3):
+    """Draw each collected beachball in a gutter just outside the lune rather than on top
+    of the scatter/KDE it annotates.
+
+    Beachballs belonging to the same posterior (``spec['group']``) stay together on one side,
+    stacked in their original vertical order with a minimal order-preserving nudge so they
+    don't overlap each other. Each *group* is then assigned to a (side, column) slot: the
+    lighter side of the inner column is preferred, the opposite side is the first fallback,
+    and only if a group still collides in y does it move to a further-out column (larger |x|).
+    A thin leader line connects each relocated beachball back to its true location (kept marked
+    by the caller). ``specs`` is a list of dicts with keys ``mt, x, y, color, edge`` and
+    optional ``group`` (defaults to ``color``) / ``linewidth``.
+    """
+    if not specs:
+        return
+
+    # Beachball size in data units (it is circular in display: diameter is a fraction of the
+    # axes *height* in both display dims). Offset the gutters from the lune's widest edge by
+    # ~one beachball radius so the balls clear the frame at any delta.
+    ax.figure.canvas.draw()
+    bbox = ax.get_window_extent()
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+    half_w = 0.5 * diameter * bbox.height / bbox.width * (xmax - xmin)
+    x_l, _ = bm(-30, 0)
+    x_r, _ = bm(30, 0)
+    min_gap = 1.05 * diameter * (ymax - ymin)   # beachball vertical extent + small margin
+
+    # group beachballs by posterior so each ensemble's balls stay together as a unit
+    groups, order = {}, []
+    for s in specs:
+        key = s.get('group', s['color'])
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(s)
+
+    # within each group: stack in y-order, push apart to min_gap, recentre on its own midpoint
+    g_specs, g_ys, g_interval = {}, {}, {}
+    for key in order:
+        col = sorted(groups[key], key=lambda s: s['y'])
+        ys = [s['y'] for s in col]
+        for k in range(1, len(ys)):
+            ys[k] = max(ys[k], ys[k - 1] + min_gap)
+        shift = 0.5 * (col[0]['y'] + col[-1]['y']) - 0.5 * (ys[0] + ys[-1])
+        ys = [y + shift for y in ys]
+        g_specs[key], g_ys[key] = col, ys
+        g_interval[key] = (ys[0] - 0.5 * min_gap, ys[-1] + 0.5 * min_gap)
+
+    # assign each group to a (side, column) slot, never overlapping another group's y-interval
+    slots = {}                                   # (side, col) -> occupied y-intervals
+    load = {'L': 0, 'R': 0}                       # balls per side, for balancing the inner column
+    placement = {}
+    for key in sorted(order, key=lambda k: -0.5 * (g_interval[k][0] + g_interval[k][1])):
+        lo, hi = g_interval[key]
+        chosen, col_idx = None, 0
+        while chosen is None:
+            for side in sorted(('L', 'R'), key=lambda sd: load[sd]):
+                if all(hi < a or lo > b for a, b in slots.get((side, col_idx), [])):
+                    chosen = (side, col_idx)
+                    break
+            col_idx += 1
+        slots.setdefault(chosen, []).append((lo, hi))
+        load[chosen[0]] += len(g_specs[key])
+        placement[key] = chosen
+
+    # draw each group at its slot's x; column index pushes outer columns further from the lune
+    col_step = 2.3 * half_w
+    for key in order:
+        side, col_idx = placement[key]
+        if side == 'L':
+            gx = x_l - gutter_pad * half_w - col_idx * col_step
+        else:
+            gx = x_r + gutter_pad * half_w + col_idx * col_step
+        for s, yb in zip(g_specs[key], g_ys[key]):
+            ax.plot([s['x'], gx], [s['y'], yb], color='gray', lw=0.6, alpha=0.7, zorder=9)
+            plot_beachball_on_axes(ax, s['mt'], gx, yb, diameter=diameter,
+                                   color_t=s['color'], edgecolor=s['edge'],
+                                   zorder=10, linewidth=s.get('linewidth', 1))
+
+
+def _add_lune_legend(ax, labels, colors, title=None, loc='upper left', fontsize=13):
+    """Add a per-ensemble colour legend to a lune plot (single source of truth for the
+    colour->label mapping shared by plot_lunes / plot_lunes_kde and the evaluation wrappers)."""
+    from matplotlib.lines import Line2D
+    if plt.rcParams.get('text.usetex', False):
+        # '%' is a LaTeX comment char; ChainConsumer can leave text.usetex on before we run.
+        esc = lambda t: t.replace('%', r'\%') if isinstance(t, str) else t
+        title = esc(title)
+        labels = [esc(lab) for lab in labels]
+    handles = [Line2D([0], [0], lw=2.2, color=colors[i % len(colors)], label=lab)
+               for i, lab in enumerate(labels)]
+    if handles:
+        ax.legend(handles=handles, loc=loc, fontsize=fontsize, title=title, framealpha=0.9)
 
 
 class PosteriorPlotter:
@@ -528,7 +625,7 @@ class PosteriorPlotter:
 
     def plot_chain_consumer(self, inversion_data, kde=True, extents=None, inverse=False, figsave= None, tick_font_size=30, *args, **kwargs):
 
-        colors = ['blue', 'red', 'purple', 'green', 'brown']
+        colors = LUNE_ENSEMBLE_COLORS
 
         scaled_data_dict = {name: self._prepare_data_for_plotting(*data) 
                                 for name, data in inversion_data.items()}
@@ -565,7 +662,7 @@ class PosteriorPlotter:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
         plt.close()
     
-    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None):
+    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None, legend=True):
 
         # New implementation: project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
         fig, ax = plt.subplots(figsize=(14, 14))
@@ -573,8 +670,7 @@ class PosteriorPlotter:
 
         colors = LUNE_ENSEMBLE_COLORS
         true_theta0 = None
-
-
+        beachball_specs = []
 
         for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
             np.random.shuffle(samples)
@@ -587,7 +683,7 @@ class PosteriorPlotter:
             x, y = bm(gamma, delta)
             ax.scatter(x, y, color=colors[i % len(colors)], alpha=0.3, s=6, marker='o')
             if i ==0 and plot_beachballs:
-                # if plot beachballs for true, plot 3 beachballs and truth
+                # beachballs for the true MT + delta percentiles of the first ensemble
                 true_mt = true_theta0
                 percentile_mts = []
                 for q in [5, 50, 95]:
@@ -596,7 +692,6 @@ class PosteriorPlotter:
                     idx = np.argmin(np.abs(delta - d_q))
                     percentile_mts.append(samples_MT[idx])
 
-                # add true beachball in gold
                 for idx, mt in enumerate([true_mt] + percentile_mts):
                     if mt is None:
                         continue
@@ -605,10 +700,15 @@ class PosteriorPlotter:
                     tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
                     tx, ty = bm(tg, td)
                     mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
-                    plot_beachball_on_axes(ax, mt, tx[0], ty[0], diameter=0.08, color_t=facecolor, edgecolor='black', zorder=10, linewidth=0.5)
+                    # mark the true location; the beachball itself is relocated outside the lune
                     ax.scatter(tx, ty, color=facecolor, alpha=1.0, marker='o', s=20, zorder=11)
+                    beachball_specs.append({'mt': mt, 'x': tx[0], 'y': ty[0],
+                                            'color': facecolor, 'edge': 'black', 'linewidth': 0.5,
+                                            'group': 'truth' if idx == 0 else i})
 
-
+        _relocate_beachballs_outside_lune(ax, bm, beachball_specs)
+        if legend:
+            _add_lune_legend(ax, list(inversion_data.keys()), colors)
 
         if figsave is None:
             plt.show()
@@ -617,7 +717,7 @@ class PosteriorPlotter:
         plt.close()
 
 
-    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True):
+    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True, legend=True, legend_title='solid 68%, dashed 95% HPD'):
         """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°."""
         if ax is None:
             fig, ax = plt.subplots(figsize=(14, 14))
@@ -636,7 +736,9 @@ class PosteriorPlotter:
         # Cache per-ensemble gamma/delta for reuse in inset and store truth from first ensemble
         gd_list = []
         true_theta0 = None
+        beachball_specs = []
 
+        fig.canvas.draw()
         for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
             np.random.shuffle(samples)
             samples = samples[:num_samples]
@@ -649,25 +751,21 @@ class PosteriorPlotter:
             thr68, thr95 = kde_hpd_contour_levels(Z, levels=(0.6827, 0.9545))
             ax.contour(XX, YY, Z, levels=[thr95, thr68], colors=colors[i % len(colors)],
                        linestyles=['--', '-'], linewidths=[1.5, 1.8])
-                # if plot beachballs for true, plot 3 beachballs and truth
-            true_mt = true_theta0
+
+            # delta percentiles for this ensemble; qs cycles so >3 overlaid ensembles
+            # (e.g. station-dropout comparisons) don't IndexError.
             percentile_mts = []
-            # qs holds per-ensemble percentile sets; cycle it so >3 overlaid
-            # ensembles (e.g. station-dropout comparisons) don't IndexError.
             for q in qs[i % len(qs)]:
                 d_q = np.percentile(d, q)
                 # find closest sample to this delta
                 idx = np.argmin(np.abs(d - d_q))
                 percentile_mts.append(samples_MT[idx])
 
-            # add true beachball in gold
-            fig.canvas.draw()
-
-            for idx, mt in enumerate([true_mt] + percentile_mts):
+            # truth drawn once (first ensemble, identical across ensembles); percentiles per ensemble
+            mts_to_draw = ([(true_theta0, True)] if i == 0 else []) + [(m, False) for m in percentile_mts]
+            for mt, is_true_mt in mts_to_draw:
                 if mt is None:
                     continue
-
-                is_true_mt = (idx == 0)
 
                 # If beachballs are OFF, only plot the true MT (scatter only)
                 if not plot_beachballs and not is_true_mt:
@@ -682,20 +780,7 @@ class PosteriorPlotter:
                 tx, ty = bm(tg, td)
                 mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
 
-                # Plot beachball only if enabled
-                if plot_beachballs:
-                    plot_beachball_on_axes(
-                        ax,
-                        mt,
-                        tx[0],
-                        ty[0],
-                        diameter=0.08,
-                        color_t=facecolor,
-                        edgecolor='black',
-                        zorder=10,
-                        linewidth=1
-                    )
-
+                # mark the true location; the beachball itself is relocated outside the lune
                 ax.scatter(
                     tx,
                     ty,
@@ -705,6 +790,15 @@ class PosteriorPlotter:
                     s=320 if is_true_mt else 40,
                     zorder=11
                 )
+                if plot_beachballs:
+                    beachball_specs.append({'mt': mt, 'x': tx[0], 'y': ty[0],
+                                            'color': facecolor, 'edge': 'black', 'linewidth': 1,
+                                            'group': 'truth' if is_true_mt else i})
+
+        _relocate_beachballs_outside_lune(ax, bm, beachball_specs)
+        if legend:
+            _add_lune_legend(ax, list(inversion_data.keys()), colors, title=legend_title)
+
         iax = None
         if plot_inset:
             # Add zoomed inset centered on truth ±8 degrees
