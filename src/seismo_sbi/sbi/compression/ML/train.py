@@ -169,13 +169,23 @@ class CompressionTrainer:
         output_path = Path(output_path) / run_name
 
         # Resolve the logger: "wandb" -> WandbLogger (production); None/False -> no logging;
+        # a list/tuple -> resolve each element and log to ALL of them (e.g.
+        # ["wandb", CSVLogger(...)] writes the W&B run AND a deterministic metrics.csv);
         # anything else is treated as an already-constructed Lightning logger.
-        if logger == "wandb":
-            pl_logger = WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)
-        elif logger in (None, False):
-            pl_logger = False
+        def _resolve_logger(spec):
+            if spec == "wandb":
+                return WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)
+            if spec in (None, False):
+                return None
+            return spec
+
+        if isinstance(logger, (list, tuple)):
+            resolved = [r for r in (_resolve_logger(x) for x in logger) if r is not None]
+            pl_logger = resolved if resolved else False
         else:
-            pl_logger = logger
+            pl_logger = _resolve_logger(logger)
+            if pl_logger is None:
+                pl_logger = False
 
         callbacks = []
         if enable_checkpointing:

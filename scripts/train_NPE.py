@@ -34,9 +34,13 @@ def parse_arguments():
                         help="Override simulations.num_simulations from the config (caps the "
                              "training dataset size). Used by the remote gen-submit stage.")
     parser.add_argument('--csv_logger', action='store_true',
-                        help="Log per-epoch metrics to a Lightning CSVLogger (metrics.csv beside "
-                             "the checkpoints) instead of W&B. Gives a deterministic on-disk "
-                             "val_loss for remote monitoring (train-monitor).")
+                        help="ALSO log per-epoch metrics to a Lightning CSVLogger (metrics.csv "
+                             "beside the checkpoints), ALONGSIDE W&B. Gives a deterministic on-disk "
+                             "val_loss for remote monitoring (train-monitor) while the run still "
+                             "lands in W&B.")
+    parser.add_argument('--no_wandb', action='store_true',
+                        help="Disable W&B logging (e.g. CI). Combine with --csv_logger for "
+                             "on-disk-only metrics, or leave both off to disable logging entirely.")
     args = parser.parse_args()
     return args
 
@@ -224,14 +228,18 @@ def main():
     }
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    # Default logging is W&B (cloud). For remote runs pass --csv_logger to get a
-    # deterministic on-disk metrics.csv (beside the checkpoints at data_path/run_name/)
-    # that the remote `train-monitor` verb can parse without network access.
-    logger = "wandb"
+    # Default logging is W&B (cloud; also writes a readable wandb-summary.json locally).
+    # --csv_logger ADDS a deterministic on-disk metrics.csv (beside the checkpoints at
+    # data_path/run_name/) ALONGSIDE W&B, so the remote `train-monitor` verb can parse
+    # val_loss without network access AND the run still lands in W&B. --no_wandb drops W&B.
+    loggers = []
+    if not args.no_wandb:
+        loggers.append("wandb")
     if args.csv_logger:
         from pytorch_lightning.loggers import CSVLogger
-        logger = CSVLogger(save_dir=str(data_path), name=run_name, version="")
+        loggers.append(CSVLogger(save_dir=str(data_path), name=run_name, version=""))
         print(f"CSV metrics logging to {Path(data_path)/run_name/'metrics.csv'}")
+    logger = loggers if len(loggers) > 1 else (loggers[0] if loggers else False)
     trainer.train(run_name, epochs=args.epochs, output_path=data_path,
                   dataloader_args=dataloader_args, logger=logger)
 
