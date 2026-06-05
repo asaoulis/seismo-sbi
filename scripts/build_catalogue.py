@@ -94,6 +94,14 @@ def _parse_args():
 
     p.add_argument("--n_jobs", type=int, default=4,
                    help="Parallel workers (default 4).")
+    p.add_argument("--processed_dir", type=Path, default=None,
+                   help="Shared daily-processed cache directory.  Point both the "
+                        "event and noise builds at the SAME path so each "
+                        "(station, calendar-day) is response-removed/filtered/"
+                        "resampled only once (the daily cache is resumable — "
+                        "existing days are skipped).  Defaults to "
+                        "<output_dir>/{events,noise}/_daily (i.e. NOT shared, so "
+                        "overlapping days get processed twice).")
     p.add_argument("--channel_glob", default="BH?",
                    help="Channel glob pattern (default 'BH?').")
     p.add_argument("--taup_model", default="prem",
@@ -178,6 +186,7 @@ def main():
             min_completeness=args.min_completeness,
             n_jobs=args.n_jobs,
             error_log=error_log,
+            processed_dir=args.processed_dir,
         )
         print(f"  {len(written)} event h5 files written.")
 
@@ -210,6 +219,7 @@ def main():
             rolling_window_gap_s=args.rolling_window_gap,
             n_jobs=args.n_jobs,
             error_log=error_log,
+            processed_dir=args.processed_dir,
         )
         print(f"  {len(written)} noise h5 files written.")
 

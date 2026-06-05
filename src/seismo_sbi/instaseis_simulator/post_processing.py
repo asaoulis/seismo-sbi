@@ -1074,8 +1074,8 @@ def build_augmentation_chain_from_parameters(parameters, sampling_rate=None,
 
     Unpacks ``nuisance`` / ``nuisance_stage`` / ``nuisance_effect_config`` from a parsed
     :class:`ModelParameters` and forwards to :func:`build_augmentation_chain`.  Used by the
-    training (`train_NPE`) and evaluation (`_eval_inference`) entrypoints so the unpacking
-    isn't duplicated.  ``stage`` selects the pre-noise (default) or
+    training (`train_NPE`) and evaluation (`seismo_sbi.evaluation`) entrypoints so the
+    unpacking isn't duplicated.  ``stage`` selects the pre-noise (default) or
     ``training_augmentation_post_noise`` chain.  Returns ``(chain, nuisance_params)``.
     """
     return build_augmentation_chain(

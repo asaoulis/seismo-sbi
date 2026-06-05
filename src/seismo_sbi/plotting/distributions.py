@@ -284,8 +284,15 @@ class MomentTensorReparametrised:
 # Exposed at module scope so external legend builders (e.g.
 # seismo_sbi.plotting.evaluation.plot_ensemble_lune_kde) stay in sync with the
 # contour colours plot_lunes / plot_lunes_kde draw.
-LUNE_ENSEMBLE_COLORS = ['cornflowerblue', 'red', 'purple', 'green', 'brown',
-                        'orange', 'teal', 'magenta', 'olive', 'gold', 'cyan']
+# HEX (not matplotlib colour names): the same palette feeds the ChainConsumer corner
+# (plot_chain_consumer -> CustomChainConsumer.add_chain), which only accepts hex codes
+# or its own 14 mapped names — names like 'cornflowerblue'/'teal'/'olive'/'gold' raise
+# "Color ... is not mapped". Hex renders identically in matplotlib, so the lune contours
+# and the corner now use exactly the same colours. Values = matplotlib.to_hex of the
+# original names: cornflowerblue, red, purple, green, brown, orange, teal, magenta,
+# olive, gold, cyan.
+LUNE_ENSEMBLE_COLORS = ['#6495ED', '#FF0000', '#800080', '#008000', '#A52A2A',
+                        '#FFA500', '#008080', '#FF00FF', '#808000', '#FFD700', '#00FFFF']
 
 
 def _relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1.3):
