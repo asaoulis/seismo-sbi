@@ -152,7 +152,8 @@ def test_relative_geometry_per_sample_matches_broadcast():
 # Masking invariance (the key correctness property)
 # --------------------------------------------------------------------------- #
 
-def _make_model(coord_mode="absolute", pooling="mean", use_cls=False, n_cond=0, amplitude=None):
+def _make_model(coord_mode="absolute", pooling="mean", use_cls=False, n_cond=0, amplitude=None,
+                positional_encoding=None):
     C, T, d = 3, 128, 16
     cfg = {
         "channels": d, "nheads": 2, "layers": 2, "station_encoder": "cnn",
@@ -163,6 +164,8 @@ def _make_model(coord_mode="absolute", pooling="mean", use_cls=False, n_cond=0, 
         cfg["conditioning"] = {"n_cond": n_cond, "d_cond": 8, "coord_mode": "geographic", "inject": []}
     if amplitude is not None:
         cfg["amplitude_embedding"] = amplitude
+    if positional_encoding is not None:
+        cfg["positional_encoding"] = positional_encoding
     torch.manual_seed(0)
     model = SeismogramTransformer(
         C, cfg, d, num_outputs=d, noise_model=None,
@@ -240,6 +243,39 @@ def test_padded_stations_invariance_with_amplitude_embedding(mode):
     cp = torch.zeros(n + 2, 2); cp[:n] = coords; cp[n:] = torch.randn(2, 2)
     mp = torch.zeros(n + 2, dtype=torch.bool); mp[:n] = True
     ctx_pad = pack_variable_context(xp, cp, mp, None).unsqueeze(0)
+
+    with torch.no_grad():
+        e_real = model.embed(ctx_real)
+        e_pad = model.embed(ctx_pad)
+
+    assert torch.isfinite(e_pad).all()
+    torch.testing.assert_close(e_real, e_pad, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("inject_every_layer", [True, False])
+def test_padded_stations_invariance_with_fourier_posenc(inject_every_layer):
+    """The §3.2 RFF positional encoder must respect the validity mask: padded stations (with
+    garbage coords) leave the real-station embedding bit-identical, using source-relative
+    geometry + depth and per-layer injection."""
+    model, C, T = _make_model(
+        "relative", pooling="mean", use_cls=False, n_cond=3,
+        positional_encoding={"mode": "fourier", "include_depth": True,
+                             "inject_every_layer": inject_every_layer},
+    )
+    assert model.all_station_transformer.station_posenc is not None
+    n = 3
+    x = torch.randn(n, C, T)
+    coords = torch.tensor(_COORDS[:n])
+    source = torch.tensor([37.5, -120.5, 8.0])
+
+    ctx_real = pack_variable_context(
+        x, coords, torch.ones(n, dtype=torch.bool), source
+    ).unsqueeze(0)
+
+    xp = torch.zeros(n + 2, C, T); xp[:n] = x; xp[n:] = torch.randn(2, C, T)
+    cp = torch.zeros(n + 2, 2); cp[:n] = coords; cp[n:] = torch.randn(2, 2) * 50.0
+    mp = torch.zeros(n + 2, dtype=torch.bool); mp[:n] = True
+    ctx_pad = pack_variable_context(xp, cp, mp, source).unsqueeze(0)
 
     with torch.no_grad():
         e_real = model.embed(ctx_real)

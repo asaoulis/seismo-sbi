@@ -604,6 +604,112 @@ def test_load_best_restores_amplitude_embedding(kernel_pipeline, tmp_path):
     assert torch.isfinite(log_prob).all()
 
 
+def test_positional_encoding_one_epoch(kernel_pipeline, tmp_path):
+    """One headless epoch with the §3.2 RFF station positional encoding (source-relative
+    geometry + depth, injected every layer) under source-location conditioning yields a finite
+    log-prob — the full encoder → RFF-posenc-conditioned transformer → flow path end-to-end."""
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+    conditioning_param_map = {"source_location": ["latitude", "longitude", "depth"]}
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+        "conditioning_param_map": conditioning_param_map,
+    }
+
+    trainer = CompressionTrainer(
+        components, station_locations,
+        channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+        model_config={
+            "conditioning": {"n_cond": 3, "d_cond": 8, "coord_mode": "geographic",
+                             "inject": ["relative_posemb"]},
+            "positional_encoding": {"mode": "fourier", "include_depth": True,
+                                    "inject_every_layer": True, "num_freqs": 8},
+        },
+    )
+    model = trainer.train(
+        "test_posenc_fourier", epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
+        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+    )
+    assert model is not None
+    sp = model.flow._embedding_net.all_station_transformer.station_posenc
+    assert sp is not None and sp.coords_kind == "relative" and sp.include_depth
+
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), "RFF-posenc training produced non-finite log-prob"
+
+
+def test_load_best_restores_positional_encoding(kernel_pipeline, tmp_path):
+    """The positional_encoding config must round-trip through model_meta.json: train with it,
+    reload into a default-constructed trainer (which has no posenc), and confirm it is restored
+    and runs. Uses the absolute (unconditioned) variant so no conditioning plumbing is needed."""
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+    }
+
+    pe_cfg = {"positional_encoding": {"mode": "fourier", "num_freqs": 8, "sigma": 1.0}}
+    trainer = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length, model_config=pe_cfg,
+    )
+    run_name = "posenc_ckpt"
+    trainer.train(run_name, epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
+                  logger=None, enable_checkpointing=True, enable_progress_bar=False)
+
+    reloader = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+    )
+    assert reloader.model.flow._embedding_net.all_station_transformer.station_posenc is None
+
+    reloader.load_best(tmp_path / run_name)
+
+    restored = reloader.model.flow._embedding_net.all_station_transformer.station_posenc
+    assert restored is not None and restored.coords_kind == "absolute"
+    reloader.model.to(reloader.device)
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    with torch.no_grad():
+        log_prob = reloader.model(x.to(reloader.device), theta.to(reloader.device))
+    assert torch.isfinite(log_prob).all()
+
+
 def test_gutenberg_richter_mt_prior_one_epoch(tmp_path):
     """A Gutenberg-Richter moment-tensor prior closure flows through dataset generation,
     keeps the kernel simulator engaged (source_location stays 'constant'), and trains one

@@ -3,6 +3,8 @@ import torch.nn as nn
 from typing import Optional, Tuple
 import math
 
+from .positional_encoding import FourierStationPositionalEncoding
+
 def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     """
     Returns sinusoidal embeddings for positions [0..L-1].
@@ -226,6 +228,9 @@ class SeismogramAxialTransformer(nn.Module):
         time_embedding_mode: str = "add",   # "add" or "concat"
         use_cls_token: bool = False,         # New: CLS-style global token instead of query tokens
         temporal_pool_tokens: int = 0,    # New: number of PMA temporal pool tokens per station (0=disable)
+        posemb_config: Optional[dict] = None,   # New: opt-in RFF station positional encoding (§3.2)
+        posemb_coords_kind: str = "absolute",   # "relative" (distance, azimuth) or "absolute" (lat, lon)
+        inject_every_layer: bool = True,        # re-inject the RFF posenc before every block (§3.2.c)
     ):
         super().__init__()
         self.register_buffer(
@@ -281,6 +286,32 @@ class SeismogramAxialTransformer(nn.Module):
         self.gem_p = nn.Parameter(torch.ones(1) * 3.0)
 
         self.final_ln = nn.LayerNorm(d_model)
+
+        # --- Optional RFF station positional encoding (review §3.2; opt-in) ---
+        # Absent / mode='sinusoidal' ⇒ self.station_posenc is None and forward() uses the
+        # original additive sinusoidal station embedding (byte-identical legacy path).
+        self.inject_every_layer = bool(inject_every_layer)
+        self.station_posenc = None
+        if posemb_config:
+            pe_mode = posemb_config.get("mode", "fourier")
+            if pe_mode not in ("fourier", "sinusoidal"):
+                raise ValueError(
+                    f"positional_encoding.mode must be 'fourier' or 'sinusoidal', got '{pe_mode}'."
+                )
+            if pe_mode == "fourier":
+                if self.mode != "axial":
+                    raise ValueError(
+                        "RFF positional encoding currently supports mode='axial' only "
+                        f"(got mode='{self.mode}')."
+                    )
+                if self.use_cls_token:
+                    raise ValueError(
+                        "RFF positional encoding does not yet support use_cls_token=True; "
+                        "use query-token pooling (the default)."
+                    )
+                self.station_posenc = FourierStationPositionalEncoding.from_config(
+                    d_model, posemb_coords_kind, posemb_config
+                )
 
     def station_position_embedding(self, pos: torch.Tensor, d_model: int = 128, batch_size: int = None):
         """
@@ -396,13 +427,18 @@ class SeismogramAxialTransformer(nn.Module):
             # fallback to mean
             return self._masked_mean(seq, mask)
 
-    def forward(self, x: torch.Tensor, key_padding_mask=None, station_coords_override=None):
+    def forward(self, x: torch.Tensor, key_padding_mask=None, station_coords_override=None,
+                source_depth=None, station_mask=None):
         """
         x: (B, N, L, D)
         station_coords: (B, N, 2) or (1, N, 2) fixed coordinates
         station_coords_override: optional (B, N, 2) per-sample coordinates (e.g.
             source-relative distance/azimuth) used instead of the shared station
             coords. ``None`` reproduces the original shared-coords behaviour.
+        source_depth: optional (B, 1) source depth, RFF-encoded by the §3.2 positional
+            encoder when ``include_depth`` is set. Ignored on the legacy sinusoid path.
+        station_mask: optional (B, N) station validity (True=real) passed to the RFF
+            positional encoder so padded stations don't corrupt its running stats.
         key_padding_mask: axial mode -> (B, N, L) booleans (True=pad), full mode -> same input is accepted
         """
         B, N, L, D = x.shape
@@ -415,7 +451,24 @@ class SeismogramAxialTransformer(nn.Module):
 
         x = x + t_e.unsqueeze(0).unsqueeze(1)  # (B, N, L, D)
 
-        if self.mode == "axial":
+        # Station positional embedding. ``posenc_to_inject`` is set to a (B, N, d_model) RFF
+        # embedding that the block loop re-adds before every block (§3.2.c); it stays None on
+        # the legacy path and on the single-injection RFF variant (added once just below).
+        posenc_to_inject = None
+        if self.station_posenc is not None:
+            # RFF path (axial only; CLS disabled at construction so N is preserved).
+            if station_coords_override is not None:
+                coords = station_coords_override
+            else:
+                coords = self.station_coords.to(x.dtype)
+                if coords.dim() == 2:
+                    coords = coords.unsqueeze(0).expand(B, coords.shape[0], 2)
+            sta_e = self.station_posenc(coords, depth=source_depth, mask=station_mask)  # (B,N,d_model)
+            if self.inject_every_layer:
+                posenc_to_inject = sta_e            # re-added before every block
+            else:
+                x = x + sta_e.unsqueeze(2)          # single injection at input
+        elif self.mode == "axial":
             sta_e = self._station_embedding(self.conv_length, B, station_coords_override)
             x = x + sta_e.unsqueeze(2)
         elif self.mode == "full":
@@ -452,8 +505,12 @@ class SeismogramAxialTransformer(nn.Module):
         if (self.query_tokens is not None) and (not self.use_cls_token):
             q = self.query_tokens.expand(B, -1, -1)
 
-        # Axial/full blocks
+        # Axial/full blocks. With the RFF positional encoder and inject_every_layer, re-add the
+        # station embedding before each block (§3.2.c) — the pre-norm LayerNorm in each block
+        # re-normalises the accumulated stream, so the geometry conditions every layer's attention.
         for blk in self.blocks:
+            if posenc_to_inject is not None:
+                x = x + posenc_to_inject.unsqueeze(2)
             x, q = blk(x, q, key_padding_mask=mask_to_pass)
 
         x = self.final_ln(x)

@@ -205,6 +205,27 @@ def main():
         }
         print(f"Per-station amplitude embedding enabled: {model_config['amplitude_embedding']}")
 
+    # Optional RFF station positional encoding via a top-level 'ml_positional_encoding' block:
+    #   ml_positional_encoding:
+    #     enabled: true
+    #     mode: fourier            # fourier (sinusoidal / absence => legacy sinusoid)
+    #     num_freqs: 16
+    #     sigma: 1.0
+    #     learnable_freqs: false
+    #     include_depth: true      # also RFF-encode source depth (needs ml_conditioning, n_cond >= 3)
+    #     inject_every_layer: true # re-inject the geometry before every transformer block (§3.2.c)
+    #     standardize: running     # per-feature input standardisation ('running' | 'none')
+    # Replaces the mis-scaled Vaswani station sinusoid with a well-scaled Random-Fourier-Feature
+    # map of source-relative geometry (distance, periodic azimuth) or absolute (lat, lon); azimuth
+    # enters as (cos, sin) so 11° ≈ 350°. coords_kind is auto-derived (relative iff relative_posemb
+    # / station_coords_mode='relative'). Absent ⇒ unchanged legacy sinusoid (see positional_encoding.py).
+    _pe_cfg = _raw_cfg.get("ml_positional_encoding")
+    if _pe_cfg and _pe_cfg.get("enabled", False):
+        model_config["positional_encoding"] = {
+            k: v for k, v in _pe_cfg.items() if k != "enabled"
+        }
+        print(f"RFF station positional encoding enabled: {model_config['positional_encoding']}")
+
     trainer = CompressionTrainer(components, station_locations, channels=model_dim, latent_dim=model_dim,
                                  trace_length=sbi_pipeline.trace_length,
                                  model_config=model_config)

@@ -344,3 +344,147 @@ def test_inference_path_packs_source_location():
     # Model received a packed 2-D context of width N*C*T + n_cond.
     assert captured["shape"] == (1, _N * _C * _T + _NCOND)
     assert torch.isfinite(out).all()
+
+
+# ---------------------------------------------------------------------------
+# RFF station positional encoding (opt-in; review §3.2)
+# ---------------------------------------------------------------------------
+
+def _build_pe_model(positional_encoding=None, conditioning=None, **cfg_extra):
+    cfg = _base_config(**cfg_extra)
+    if positional_encoding is not None:
+        cfg["positional_encoding"] = positional_encoding
+    if conditioning is not None:
+        cfg["conditioning"] = conditioning
+    return SeismogramTransformer(
+        num_seismic_components=_C,
+        transformer_config=cfg,
+        feature_length=_DM,
+        num_outputs=6,
+        noise_model=None,
+        seismogram_locations=_locations(),
+        device=torch.device("cpu"),
+        input_length=_T,
+    )
+
+
+def test_no_posenc_key_is_backward_compatible():
+    """Absent config ⇒ no RFF posenc module ⇒ legacy sinusoid path."""
+    assert _build_model().all_station_transformer.station_posenc is None
+
+
+def test_sinusoidal_mode_is_legacy():
+    assert _build_pe_model({"mode": "sinusoidal"}).all_station_transformer.station_posenc is None
+
+
+def test_fourier_absolute_fixed_station_finite():
+    """Unconditioned model + fourier posenc (absolute coords, no depth) ⇒ finite embedding."""
+    model = _build_pe_model({"mode": "fourier"}).eval()
+    sp = model.all_station_transformer.station_posenc
+    assert sp is not None and sp.coords_kind == "absolute" and sp.in_dim == 2
+    x = torch.randn(4, _N, _C, _T)
+    with torch.no_grad():
+        out = model.embed(x)
+    assert out.shape == (4, _DM) and torch.isfinite(out).all()
+
+
+def test_fourier_relative_depth_finite_and_coords_kind():
+    """Primary path: conditioned relative geometry + depth, two layers, every-layer injection."""
+    model = _build_pe_model(
+        {"mode": "fourier", "include_depth": True},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",
+                      "inject": ["relative_posemb"]},
+        layers=2,
+    ).eval()
+    sp = model.all_station_transformer.station_posenc
+    assert sp is not None and sp.coords_kind == "relative" and sp.include_depth and sp.in_dim == 4
+    ctx, _, _ = _packed_batch()
+    with torch.no_grad():
+        out = model.embed(ctx)
+    assert out.shape == (4, _DM) and torch.isfinite(out).all()
+
+
+def test_fourier_posenc_is_active_vs_legacy():
+    """Ablation: nulling the RFF posenc (⇒ legacy sinusoid) on the SAME model + input changes
+    the pooled embedding, proving the RFF positional path is wired and reaches the flow context."""
+    model = _build_pe_model(
+        {"mode": "fourier", "include_depth": True},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "inject": ["relative_posemb"]},
+        layers=2,
+    ).eval()
+    ctx, _, _ = _packed_batch()
+    with torch.no_grad():
+        out_fourier = model.embed(ctx)
+        saved = model.all_station_transformer.station_posenc
+        model.all_station_transformer.station_posenc = None
+        out_legacy = model.embed(ctx)
+        model.all_station_transformer.station_posenc = saved
+    assert not torch.allclose(out_fourier, out_legacy, atol=1e-5)
+
+
+def test_fourier_posenc_sensitive_to_source_location():
+    """Different source locations ⇒ different source-relative geometry ⇒ different embedding."""
+    model = _build_pe_model(
+        {"mode": "fourier", "include_depth": True},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",
+                      "inject": ["relative_posemb"]},
+    ).eval()
+    seis = torch.randn(2, _N, _C, _T)
+    src_a = torch.tensor([[10.0, 20.0, 5.0], [10.0, 20.0, 5.0]])
+    src_b = torch.tensor([[40.0, 50.0, 5.0], [40.0, 50.0, 5.0]])
+    with torch.no_grad():
+        oa = model.embed(pack_context(seis, src_a))
+        ob = model.embed(pack_context(seis, src_b))
+    assert not torch.allclose(oa, ob, atol=1e-5)
+
+
+def test_fourier_posenc_depth_reaches_model():
+    """Changing ONLY source depth changes the embedding iff include_depth — proving the depth
+    path. inject=['relative_posemb'] uses only lat/lon, so depth reaches the output SOLELY via
+    the positional encoder; include_depth=False is the control where depth must be ignored."""
+    cond = {"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",
+            "inject": ["relative_posemb"]}
+    seis = torch.randn(2, _N, _C, _T)
+    src_a = torch.tensor([[10.0, 20.0, 5.0], [10.0, 20.0, 5.0]])
+    src_b = torch.tensor([[10.0, 20.0, 80.0], [10.0, 20.0, 80.0]])  # only depth differs
+
+    with_depth = _build_pe_model({"mode": "fourier", "include_depth": True}, cond).eval()
+    with torch.no_grad():
+        oa = with_depth.embed(pack_context(seis, src_a))
+        ob = with_depth.embed(pack_context(seis, src_b))
+    assert not torch.allclose(oa, ob, atol=1e-5)            # depth reaches the model
+
+    without_depth = _build_pe_model({"mode": "fourier", "include_depth": False}, cond).eval()
+    with torch.no_grad():
+        ca = without_depth.embed(pack_context(seis, src_a))
+        cb = without_depth.embed(pack_context(seis, src_b))
+    assert torch.allclose(ca, cb, atol=1e-5)                # control: depth ignored when off
+
+
+@pytest.mark.parametrize("every", [True, False])
+def test_inject_every_layer_finite(every):
+    model = _build_pe_model(
+        {"mode": "fourier", "include_depth": True, "inject_every_layer": every},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "inject": ["relative_posemb"]},
+        layers=2,
+    ).eval()
+    assert model.all_station_transformer.inject_every_layer is every
+    ctx, _, _ = _packed_batch()
+    with torch.no_grad():
+        out = model.embed(ctx)
+    assert out.shape == (4, _DM) and torch.isfinite(out).all()
+
+
+def test_include_depth_without_conditioning_raises():
+    with pytest.raises(ValueError, match="include_depth needs a source depth"):
+        _build_pe_model({"mode": "fourier", "include_depth": True})
+
+
+def test_cls_token_with_fourier_raises():
+    with pytest.raises(ValueError, match="use_cls_token"):
+        _build_pe_model({"mode": "fourier"}, use_cls_token=True)
+
+
+def test_invalid_posenc_mode_raises():
+    with pytest.raises(ValueError, match="must be 'fourier' or 'sinusoidal'"):
+        _build_pe_model({"mode": "bogus"})

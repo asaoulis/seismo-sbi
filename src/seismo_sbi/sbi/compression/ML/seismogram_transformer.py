@@ -67,23 +67,9 @@ class SeismogramTransformer(nn.Module):
         pool_method = transformer_config.get("pooling", "mean")  # supports: mean, first, attn, max, gem
         use_cls = transformer_config.get("use_cls_token", False)
         num_q = transformer_config.get("num_query_tokens", 8)
-        self.all_station_transformer = SeismogramAxialTransformer(
-            seismogram_locations,
-            d_model=d_model,
-            nheads=transformer_config["nheads"],
-            num_layers=transformer_config["layers"],
-            time_steps=self.L,
-            conv_length=d_model,
-            # Size the sinusoidal time-embedding buffer to the encoder's token count.
-            # Encoders (e.g. PNO/TCN with light downsampling) can emit L > the old default
-            # of 60; without this the time_embed[:L] add would fail to broadcast.
-            max_time_steps=max(self.L, 60),
-            mode=mode,
-            pool_queries=pool_method,
-            use_cls_token=use_cls,
-            num_query_tokens=num_q,
-            temporal_pool_tokens=transformer_config.get("temporal_pool_tokens", 0),   # New
-        )
+        # NOTE: the axial transformer itself is constructed at the END of __init__ (below the
+        # conditioning / variable-station setup) so the opt-in §3.2 RFF positional encoder can be
+        # told whether station coordinates are source-relative or absolute (posemb_coords_kind).
 
         self.source_param_predictor = nn.Sequential(
             nn.Linear(d_model, d_model),
@@ -131,6 +117,55 @@ class SeismogramTransformer(nn.Module):
             raise ValueError(
                 "station_coords_mode='relative' needs source conditioning (n_cond > 0) so a "
                 "source location is available; configure `conditioning` or use 'absolute'."
+            )
+
+        # --- Build the all-station axial transformer (last, so the §3.2 RFF positional encoder
+        # knows whether station coords are source-relative). Optional 'positional_encoding' block:
+        #   ml_positional_encoding:
+        #     enabled: true
+        #     mode: fourier            # fourier (sinusoidal/absence => legacy sinusoid)
+        #     num_freqs: 16
+        #     sigma: 1.0
+        #     learnable_freqs: false
+        #     include_depth: true      # RFF-encode source depth (needs n_cond >= 3)
+        #     inject_every_layer: true # re-inject the geometry before every block (§3.2.c)
+        #     standardize: running
+        posemb_config = transformer_config.get("positional_encoding", None)
+        # coords_kind is static per model: source-relative iff the source-relative station
+        # embedding is in use (relative_posemb injection, or variable-station relative mode).
+        posemb_coords_kind = (
+            "relative"
+            if (("relative_posemb" in self._inject) or (self._station_coords_mode == "relative"))
+            else "absolute"
+        )
+        inject_every_layer = (
+            posemb_config.get("inject_every_layer", True) if posemb_config else True
+        )
+        self.all_station_transformer = SeismogramAxialTransformer(
+            seismogram_locations,
+            d_model=d_model,
+            nheads=transformer_config["nheads"],
+            num_layers=transformer_config["layers"],
+            time_steps=self.L,
+            conv_length=d_model,
+            # Size the sinusoidal time-embedding buffer to the encoder's token count (PNO/TCN
+            # can emit L > the old default of 60; without this the time_embed[:L] add fails).
+            max_time_steps=max(self.L, 60),
+            mode=mode,
+            pool_queries=pool_method,
+            use_cls_token=use_cls,
+            num_query_tokens=num_q,
+            temporal_pool_tokens=transformer_config.get("temporal_pool_tokens", 0),
+            posemb_config=posemb_config,
+            posemb_coords_kind=posemb_coords_kind,
+            inject_every_layer=inject_every_layer,
+        )
+        # include_depth needs a source depth in the conditioning vector (lat, lon, depth, ...).
+        _posenc = self.all_station_transformer.station_posenc
+        if _posenc is not None and _posenc.include_depth and self._n_cond < 3:
+            raise ValueError(
+                "positional_encoding.include_depth needs a source depth (n_cond >= 3): "
+                "configure an `ml_conditioning` block with at least (latitude, longitude, depth)."
             )
 
     def _configure_conditioning(self, cond_cfg, d_model):
@@ -197,6 +232,12 @@ class SeismogramTransformer(nn.Module):
                     "2-D context carrying the source vector and per-sample coords; a bare 4-D "
                     "tensor has no source location to measure against."
                 )
+            _posenc = self.all_station_transformer.station_posenc
+            if _posenc is not None and _posenc.include_depth:
+                raise ValueError(
+                    "positional_encoding.include_depth needs a packed 2-D context carrying the "
+                    "source vector; a bare 4-D tensor has no source depth to encode."
+                )
             B_, N_ = x.shape[0], x.shape[1]
             var_mask = torch.ones(B_, N_, dtype=torch.bool, device=x.device)
             var_coords = self.all_station_transformer.station_coords.to(x.dtype)
@@ -221,6 +262,12 @@ class SeismogramTransformer(nn.Module):
 
         # Source embedding (shared across stations/time) — only when conditioning is active.
         source_emb = self.source_conditioner(source_vec) if (source_vec is not None) else None
+
+        # Source depth (km), RFF-encoded by the §3.2 positional encoder when include_depth is set.
+        # Conditioning param_map order is (latitude, longitude, depth, ...) ⇒ index 2.
+        source_depth = (
+            source_vec[:, 2:3] if (source_vec is not None and source_vec.shape[1] >= 3) else None
+        )
 
         # Flatten to feed per-station encoder: (B*N, C, T)
         x_flat = x.reshape(B * N, num_seismic_components, trace_length)
@@ -288,6 +335,8 @@ class SeismogramTransformer(nn.Module):
             feature_sequences,
             key_padding_mask=key_padding_mask,
             station_coords_override=station_override,
+            source_depth=source_depth,
+            station_mask=var_mask,
         )  # (x, q, pooled)
         pooled = transformer_output[2]  # pooled embedding (B, d_model)
 
