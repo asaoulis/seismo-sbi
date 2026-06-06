@@ -182,6 +182,29 @@ def main():
         print(f"Variable-station training enabled: coords_mode="
               f"{model_config['station_coords_mode']}, keep_fraction={station_subsampler.keep_fraction}")
 
+    # Optional per-station amplitude embedding via a top-level 'ml_amplitude_embedding' block:
+    #   ml_amplitude_embedding:
+    #     enabled: true
+    #     mode: array_relative      # array_relative | absolute
+    #     per_component: false
+    #     reference: mean           # mean | median  (array_relative only)
+    #     num_freqs: 16
+    #     sigma: 1.0
+    #     learnable_freqs: false
+    #     scale: 1.0                # fixed std for the array-relative token feature
+    #     distance_correction: true # de-bias the reference for geometric spreading (needs conditioning)
+    #     snr_weighting: true       # down-weight noise-dominated stations in the reference
+    #     snr_floor_quantile: 0.2   # low-percentile |x| used as the rough per-station noise floor
+    # Lifts per-station amplitude out of the waveform channel into a full-width Random-Fourier
+    # token so cross-station relative amplitude reaches the transformer attention; the per-event
+    # reference (≈log M0) is added to the pooled embedding (see amplitude_embedding.py).
+    _amp_cfg = _raw_cfg.get("ml_amplitude_embedding")
+    if _amp_cfg and _amp_cfg.get("enabled", False):
+        model_config["amplitude_embedding"] = {
+            k: v for k, v in _amp_cfg.items() if k != "enabled"
+        }
+        print(f"Per-station amplitude embedding enabled: {model_config['amplitude_embedding']}")
+
     trainer = CompressionTrainer(components, station_locations, channels=model_dim, latent_dim=model_dim,
                                  trace_length=sbi_pipeline.trace_length,
                                  model_config=model_config)

@@ -135,7 +135,8 @@ def multicomp_kernel_pipeline(tmp_path_factory):
     return _build_kernel_pipeline(tmp_path, receivers=receivers, components="ZN")
 
 
-def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_scaler=None):
+def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_scaler=None,
+                     model_config=None):
     """Run a single headless training epoch and return the trained model."""
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
@@ -164,6 +165,7 @@ def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_
         components, station_locations,
         channels=_MODEL_DIM, latent_dim=_MODEL_DIM, architecture=architecture,
         trace_length=trace_length,
+        model_config=model_config,
     )
     model = trainer.train(
         f"test_{architecture}", epochs=1, output_path=tmp_path,
@@ -204,6 +206,38 @@ def test_train_one_epoch_returns_finite_logprob(kernel_pipeline, tmp_path, archi
     assert isinstance(model, NPELightningModule)
 
     # Pull one batch and check the flow's log-prob is finite.
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), "flow produced non-finite log-prob"
+
+
+# Per-station amplitude embedding modes exercised by the one-epoch gate.
+AMPLITUDE_MODES = ["array_relative", "absolute"]
+
+
+@pytest.mark.parametrize("mode", AMPLITUDE_MODES)
+def test_amplitude_embedding_one_epoch(kernel_pipeline, tmp_path, mode):
+    """One headless epoch with the per-station amplitude embedding yields a finite log-prob,
+    exercising the full encoder → amplitude-token → transformer → flow path end-to-end."""
+    import torch
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    model_config = {"amplitude_embedding": {"mode": mode}}
+    trainer, model, dataloader_args = _train_one_epoch(
+        pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+        model_config=model_config,
+    )
+
+    assert model is not None
+    emb_net = model.flow._embedding_net
+    assert getattr(emb_net, "amplitude_embedding", None) is not None, (
+        "amplitude embedding was not wired into the trained model"
+    )
+
     from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))
@@ -282,6 +316,58 @@ def test_conditioned_one_epoch(kernel_pipeline, tmp_path, inject):
     assert torch.isfinite(log_prob).all(), (
         f"conditioned model (inject={inject}) produced non-finite log-prob"
     )
+
+
+def test_amplitude_distance_snr_one_epoch(kernel_pipeline, tmp_path):
+    """Distance-corrected, SNR-weighted amplitude embedding under source-location conditioning
+    trains one epoch to a finite log-prob (full conditioned + amplitude path end-to-end)."""
+    import torch
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+    conditioning_param_map = {"source_location": ["latitude", "longitude", "depth"]}
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+        "conditioning_param_map": conditioning_param_map,
+    }
+
+    trainer = CompressionTrainer(
+        components, station_locations,
+        channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+        model_config={
+            "conditioning": {"n_cond": 3, "d_cond": 8, "coord_mode": "geographic",
+                             "inject": ["relative_posemb"]},
+            "amplitude_embedding": {"mode": "array_relative",
+                                    "distance_correction": True, "snr_weighting": True},
+        },
+    )
+    model = trainer.train(
+        "test_amp_dist_snr", epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
+        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+    )
+    assert model is not None
+    assert model.flow._embedding_net.amplitude_embedding.uses_distance is True
+
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all()
 
 
 @pytest.mark.parametrize("coords_mode", ["absolute", "relative"])
@@ -458,6 +544,58 @@ def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
 
     # After reload the embedding net must be the PNO encoder, and the model must run.
     assert reloader.model.flow._embedding_net.station_encoder.__class__.__name__ == "PhaseNeuralOperatorEncoder"
+    reloader.model.to(reloader.device)
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    with torch.no_grad():
+        log_prob = reloader.model(x.to(reloader.device), theta.to(reloader.device))
+    assert torch.isfinite(log_prob).all()
+
+
+def test_load_best_restores_amplitude_embedding(kernel_pipeline, tmp_path):
+    """The amplitude_embedding config must round-trip through model_meta.json: train with it,
+    reload into a default-constructed trainer (which has no amplitude embedding), and confirm
+    it is restored and runs. Locks the inference-time persistence claim."""
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+    }
+
+    amp_cfg = {"amplitude_embedding": {"mode": "array_relative", "num_freqs": 8, "sigma": 1.0}}
+    trainer = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length, model_config=amp_cfg,
+    )
+    run_name = "amp_ckpt"
+    trainer.train(run_name, epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
+                  logger=None, enable_checkpointing=True, enable_progress_bar=False)
+
+    reloader = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+    )
+    assert reloader.model.flow._embedding_net.amplitude_embedding is None   # default has none
+
+    reloader.load_best(tmp_path / run_name)
+
+    restored = reloader.model.flow._embedding_net.amplitude_embedding
+    assert restored is not None and restored.mode == "array_relative"
     reloader.model.to(reloader.device)
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))

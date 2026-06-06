@@ -207,6 +207,111 @@ def test_perturb_conditioning_applies_per_coordinate_gaussian():
     assert not torch.equal(ds._perturb_conditioning(base), ds._perturb_conditioning(base))
 
 
+# ---------------------------------------------------------------------------
+# Amplitude embedding (opt-in)
+# ---------------------------------------------------------------------------
+
+def _build_amp_model(amplitude, conditioning=None):
+    cfg = _base_config()
+    cfg["amplitude_embedding"] = amplitude
+    if conditioning is not None:
+        cfg["conditioning"] = conditioning
+    return SeismogramTransformer(
+        num_seismic_components=_C,
+        transformer_config=cfg,
+        feature_length=_DM,
+        num_outputs=6,
+        noise_model=None,
+        seismogram_locations=_locations(),
+        device=torch.device("cpu"),
+        input_length=_T,
+    )
+
+
+def test_no_amplitude_key_is_backward_compatible():
+    """Absent config ⇒ no amplitude module ⇒ unchanged embed path."""
+    assert _build_model().amplitude_embedding is None
+
+
+@pytest.mark.parametrize("mode", ["array_relative", "absolute"])
+def test_amplitude_model_finite_embedding(mode):
+    model = _build_amp_model({"mode": mode}).eval()
+    x = torch.randn(4, _N, _C, _T)
+    with torch.no_grad():
+        out = model.embed(x)
+    assert out.shape == (4, _DM)
+    assert torch.isfinite(out).all()
+
+
+def test_amplitude_path_changes_pooled_embedding():
+    """Ablation: switching the amplitude embedding off on the SAME model + input changes the
+    pooled output ⇒ amplitude information demonstrably reaches the flow context."""
+    model = _build_amp_model({"mode": "array_relative"}).eval()
+    x = torch.randn(4, _N, _C, _T)
+    with torch.no_grad():
+        out_with = model.embed(x)
+        saved, model.amplitude_embedding = model.amplitude_embedding, None
+        out_without = model.embed(x)
+        model.amplitude_embedding = saved
+    assert not torch.allclose(out_with, out_without, atol=1e-5)
+
+
+def test_amplitude_model_sensitive_to_cross_station_ratios():
+    """Changing inter-station amplitude ratios changes the embedding (the diagnostic signal)."""
+    model = _build_amp_model({"mode": "array_relative"}).eval()
+    x = torch.randn(4, _N, _C, _T)
+    x2 = x.clone()
+    x2[:, 0] *= 5.0       # boost station 0, suppress station 1 → new radiation-pattern ratios
+    x2[:, 1] *= 0.2
+    with torch.no_grad():
+        out1, out2 = model.embed(x), model.embed(x2)
+    assert not torch.allclose(out1, out2, atol=1e-5)
+
+
+def test_amplitude_with_conditioning_finite():
+    """Amplitude embedding coexists with source-location conditioning."""
+    model = _build_amp_model(
+        {"mode": "array_relative"},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "inject": ["token_add", "film"]},
+    ).eval()
+    ctx, _, _ = _packed_batch()
+    with torch.no_grad():
+        out = model.embed(ctx)
+    assert out.shape == (4, _DM)
+    assert torch.isfinite(out).all()
+
+
+def test_distance_correction_requires_conditioning():
+    """distance_correction needs a source location ⇒ building it without conditioning errors."""
+    with pytest.raises(ValueError, match="distance_correction needs a source location"):
+        _build_amp_model({"mode": "array_relative", "distance_correction": True})
+
+
+def test_amplitude_distance_correction_with_conditioning_finite():
+    """Distance-corrected amplitude embedding runs under source-location conditioning, where the
+    per-station epicentral distance is available."""
+    model = _build_amp_model(
+        {"mode": "array_relative", "distance_correction": True},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",
+                      "inject": ["relative_posemb"]},
+    ).eval()
+    ctx, _, _ = _packed_batch()
+    with torch.no_grad():
+        out = model.embed(ctx)
+    assert out.shape == (4, _DM)
+    assert torch.isfinite(out).all()
+
+
+def test_amplitude_snr_weighting_finite():
+    """SNR-weighted reference is self-contained (no conditioning needed) and stays finite."""
+    model = _build_amp_model({"mode": "array_relative", "snr_weighting": True}).eval()
+    x = torch.randn(4, _N, _C, _T)
+    with torch.no_grad():
+        out = model.embed(x)
+    assert out.shape == (4, _DM)
+    assert torch.isfinite(out).all()
+
+
 def test_inference_path_packs_source_location():
     """MachineLearningCompressor packs a known source location into the model input."""
     from seismo_sbi.sbi.compression.gaussian import MachineLearningCompressor

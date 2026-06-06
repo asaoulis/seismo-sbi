@@ -32,6 +32,52 @@ import torch
 import torch.nn as nn
 
 # ---------------------------------------------------------------------------
+# Shared amplitude primitives (single-sourced so cnn/pno/tcn don't duplicate)
+# ---------------------------------------------------------------------------
+#
+# Every per-station encoder max-abs-normalises a trace over (C, T) and appends a
+# broadcast log-amplitude channel. These helpers define that operation in ONE place so
+# the three encoders stay numerically identical, and so the transformer-level amplitude
+# embedding (amplitude_embedding.py) can reuse the SAME max-abs definition.
+
+_AMP_EPS = 1e-12
+
+
+def normalize_trace(x: torch.Tensor, eps: float = _AMP_EPS):
+    """Per-trace max-abs scaling over the (component, time) axes.
+
+    ``x``: ``(B*N, C, T)``. Returns ``(x_norm, max_val)`` where ``max_val`` is the
+    ``(B*N, 1, 1)`` clamped peak amplitude (shared across components ⇒ within-station
+    component ratios and polarity are preserved in ``x_norm``).
+    """
+    max_val = x.abs().amax(dim=(1, 2), keepdim=True).clamp_min(eps)
+    return x / max_val, max_val
+
+
+def log_amp_channel(max_val: torch.Tensor, length: int, eps: float = _AMP_EPS) -> torch.Tensor:
+    """Broadcast ``log(max_val)`` into a ``(B*N, 1, length)`` feature channel."""
+    log_amp = max_val.clamp_min(eps).log()          # (B*N, 1, 1)
+    return log_amp.expand(-1, -1, length)           # (B*N, 1, length)
+
+
+def station_amplitudes(
+    x: torch.Tensor, per_component: bool = False, eps: float = _AMP_EPS
+) -> torch.Tensor:
+    """Per-station log-amplitude features for the transformer-level embedding.
+
+    ``x``: ``(B, N, C, T)``. Returns ``(B, N, K)`` log-amplitudes, with ``K == 1``
+    (per-station peak, max over components and time) or ``K == C`` (per-component peak,
+    max over time) when ``per_component`` is set. Uses the same max-abs definition as
+    :func:`normalize_trace`.
+    """
+    if per_component:
+        amp = x.abs().amax(dim=3)                    # (B, N, C)
+    else:
+        amp = x.abs().amax(dim=(2, 3)).unsqueeze(-1)  # (B, N, 1)
+    return amp.clamp_min(eps).log()
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -284,13 +330,10 @@ class PhaseNeuralOperatorEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: (B*N, C, T)  →  (B*N, L, D)"""
-        # Safe per-trace amplitude normalisation
-        max_val = x.abs().amax(dim=(1, 2), keepdim=True).clamp_min(self._EPS)
-        x_norm = x / max_val
-        # Append log-amplitude as an extra channel
-        log_amp = max_val.clamp_min(self._EPS).log()[:, :, :1]  # (B*N, 1, 1)
-        log_amp = log_amp.expand(-1, -1, x.shape[-1])            # (B*N, 1, T)
-        x_in = torch.cat([x_norm, log_amp], dim=1)               # (B*N, C+1, T)
+        # Safe per-trace amplitude normalisation + appended log-amplitude channel.
+        x_norm, max_val = normalize_trace(x, self._EPS)
+        log_amp = log_amp_channel(max_val, x.shape[-1], self._EPS)  # (B*N, 1, T)
+        x_in = torch.cat([x_norm, log_amp], dim=1)                  # (B*N, C+1, T)
 
         h = self.lift(x_in)           # (B*N, width, T)
         h = self.fno_blocks(h)        # (B*N, width, T)
@@ -414,13 +457,10 @@ class DilatedTCNEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: (B*N, C, T)  →  (B*N, L, D)"""
-        # Safe per-trace amplitude normalisation
-        max_val = x.abs().amax(dim=(1, 2), keepdim=True).clamp_min(self._EPS)
-        x_norm = x / max_val
-        # Append log-amplitude channel
-        log_amp = max_val.clamp_min(self._EPS).log()[:, :, :1]  # (B*N, 1, 1)
-        log_amp = log_amp.expand(-1, -1, x.shape[-1])            # (B*N, 1, T)
-        x_in = torch.cat([x_norm, log_amp], dim=1)               # (B*N, C+1, T)
+        # Safe per-trace amplitude normalisation + appended log-amplitude channel.
+        x_norm, max_val = normalize_trace(x, self._EPS)
+        log_amp = log_amp_channel(max_val, x.shape[-1], self._EPS)  # (B*N, 1, T)
+        x_in = torch.cat([x_norm, log_amp], dim=1)                  # (B*N, C+1, T)
 
         h = self.lift(x_in)     # (B*N, channels, T)
         h = self.blocks(h)      # (B*N, channels, T)

@@ -8,11 +8,16 @@ Verifies:
 These tests are dependency-free (no Instaseis/CPS, no large models).
 """
 
+import math
+
 import pytest
 import torch
 from seismo_sbi.sbi.compression.ML.station_encoders import (
     PER_STATION_ENCODER_REGISTRY,
     build_station_encoder,
+    normalize_trace,
+    log_amp_channel,
+    station_amplitudes,
 )
 
 # (encoder_name, encoder_config, input_length)
@@ -129,3 +134,73 @@ def test_tcn_even_kernel_size_rejected():
             "tcn", num_seismic_components=_C, input_length=201, d_model=_D_MODEL,
             kernel_size=4,
         )
+
+
+# ---------------------------------------------------------------------------
+# Shared amplitude primitives — numerics / behavioural contract
+# ---------------------------------------------------------------------------
+
+def test_normalize_trace_unit_peak_and_max_val():
+    x = torch.randn(_BN, _C, 50) * 7.0
+    x_norm, max_val = normalize_trace(x)
+    assert max_val.shape == (_BN, 1, 1)
+    # Each trace's max-abs over (C, T) is 1 after normalisation.
+    peaks = x_norm.abs().amax(dim=(1, 2))
+    assert torch.allclose(peaks, torch.ones(_BN), atol=1e-5)
+    # max_val matches the raw peak.
+    assert torch.allclose(max_val.squeeze(), x.abs().amax(dim=(1, 2)), atol=1e-5)
+
+
+def test_log_amp_channel_broadcasts_log_of_max():
+    max_val = torch.tensor([[[3.0]], [[10.0]]])     # (2,1,1)
+    ch = log_amp_channel(max_val, length=4)
+    assert ch.shape == (2, 1, 4)
+    assert torch.allclose(ch[0], torch.full((1, 4), math.log(3.0)))
+    assert torch.allclose(ch[1], torch.full((1, 4), math.log(10.0)))
+
+
+def test_station_amplitudes_per_station_and_per_component():
+    # (B=1, N=2, C=2, T=3) with known peaks.
+    x = torch.tensor([[
+        [[1.0, -2.0, 0.5], [0.1, 0.2, 0.3]],     # station 0: comp maxima 2.0, 0.3
+        [[-4.0, 1.0, 2.0], [5.0, -1.0, 0.0]],    # station 1: comp maxima 4.0, 5.0
+    ]])
+    per_station = station_amplitudes(x, per_component=False)
+    assert per_station.shape == (1, 2, 1)
+    assert torch.allclose(per_station[0, 0, 0], torch.tensor(math.log(2.0)), atol=1e-6)
+    assert torch.allclose(per_station[0, 1, 0], torch.tensor(math.log(5.0)), atol=1e-6)
+
+    per_comp = station_amplitudes(x, per_component=True)
+    assert per_comp.shape == (1, 2, 2)
+    expected = torch.log(torch.tensor([[[2.0, 0.3], [4.0, 5.0]]]))
+    assert torch.allclose(per_comp, expected, atol=1e-6)
+
+
+def test_cnn_amplitude_channel_equals_log_max():
+    """The CNN's LAST output channel must be log(max|x|) broadcast over time."""
+    from seismo_sbi.sbi.compression.ML.cnn_feature_extractor import SeismicTraceCNN
+    cnn = SeismicTraceCNN(_C, input_length=201, final_layer=_D_MODEL).eval()
+    x = torch.randn(_BN, _C, 201) * 3.0
+    with torch.no_grad():
+        out = cnn(x)                              # (B, D, L)
+    expected_log = x.abs().amax(dim=(1, 2)).clamp_min(1e-12).log()   # (B,)
+    amp_channel = out[:, -1, :]                   # (B, L)
+    assert torch.allclose(amp_channel, expected_log[:, None].expand_as(amp_channel), atol=1e-5)
+
+
+def test_cnn_conv_body_scale_invariant_amp_channel_tracks_scale():
+    """Scaling the input by c>0 leaves the conv body unchanged (max-abs normalisation) and
+    shifts only the log-amplitude channel by log(c) — the contract the new amplitude path
+    relies on (scale lives in the amplitude feature, shape in the body)."""
+    from seismo_sbi.sbi.compression.ML.cnn_feature_extractor import SeismicTraceCNN
+    cnn = SeismicTraceCNN(_C, input_length=201, final_layer=_D_MODEL).eval()
+    x = torch.randn(_BN, _C, 201)
+    c = 10.0
+    with torch.no_grad():
+        out1 = cnn(x)
+        out2 = cnn(c * x)
+    # Conv body (all but the appended amplitude channel) is identical.
+    assert torch.allclose(out1[:, :-1, :], out2[:, :-1, :], atol=1e-5)
+    # Amplitude channel differs by exactly log(c).
+    delta = (out2[:, -1, :] - out1[:, -1, :])
+    assert torch.allclose(delta, torch.full_like(delta, math.log(c)), atol=1e-5)

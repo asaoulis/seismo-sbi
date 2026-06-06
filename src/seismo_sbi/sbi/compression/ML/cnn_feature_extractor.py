@@ -2,6 +2,8 @@ import torch
 
 from torch import nn
 
+from .station_encoders import normalize_trace, log_amp_channel
+
 class ConvolutionalFeatureExtractor(nn.Module):
 
     def __init__(self, num_seismic_components, cnn_output_dim, final_feature_length,
@@ -122,19 +124,14 @@ class SeismicTraceCNN(nn.Module):
 
     def forward(self, x):
 
-        # Safe per-trace scaling to [-1,1] range by max abs value
-        max_trace_val = x.abs().amax(dim=(1,2), keepdim=True).clamp_min(self._eps)
-        scaled_x = x / max_trace_val
+        # Safe per-trace scaling to [-1,1] range by max abs value (shared helper).
+        scaled_x, max_trace_val = normalize_trace(x, self._eps)
 
         scaled_x = self.conv_stack(scaled_x)
 
-        # scaled_x = self.flatten(scaled_x)
-        # Concatenate log amplitude (avoid -inf)
-        amp_feature = max_trace_val.clamp_min(self._eps).log()[:, 0]  # (B,)
-        amp_feature = amp_feature.squeeze()                            # (B,)
-        amp_feature = amp_feature[:, None, None]                       # (B,1,1)
-        amp_feature = amp_feature.expand(-1, 1, scaled_x.size(-1))     # (B,1,L)
-        scaled_x = torch.cat([scaled_x, amp_feature], dim=1)       
+        # Append the broadcast log-amplitude channel (avoids -inf via clamp).
+        amp_feature = log_amp_channel(max_trace_val, scaled_x.size(-1), self._eps)  # (B,1,L)
+        scaled_x = torch.cat([scaled_x, amp_feature], dim=1)
         return scaled_x
 
 

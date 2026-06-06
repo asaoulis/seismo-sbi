@@ -7,6 +7,7 @@ from .cnn_feature_extractor import ConvolutionalFeatureExtractor
 from .csdi_transformer import ConditionalTransformer
 from .axial_transformer import SeismogramAxialTransformer
 from .station_encoders import build_station_encoder
+from .amplitude_embedding import AmplitudeTokenEmbedding
 from .source_conditioning import (
     SourceConditioner,
     FiLM,
@@ -96,6 +97,20 @@ class SeismogramTransformer(nn.Module):
         self._n_components = num_seismic_components
         self._n_stations = int(seismogram_locations.shape[0])
         self._configure_conditioning(transformer_config.get("conditioning", None), d_model)
+
+        # --- Optional per-station amplitude embedding (opt-in; see amplitude_embedding.py) ---
+        # Absent ⇒ self.amplitude_embedding is None and embed() is byte-identical to before.
+        amp_cfg = transformer_config.get("amplitude_embedding", None)
+        self.amplitude_embedding = (
+            AmplitudeTokenEmbedding.from_config(d_model, num_seismic_components, amp_cfg)
+            if amp_cfg else None
+        )
+        if (self.amplitude_embedding is not None
+                and self.amplitude_embedding.uses_distance and self._n_cond == 0):
+            raise ValueError(
+                "amplitude_embedding.distance_correction needs a source location (n_cond > 0): "
+                "configure a `conditioning` block so per-station epicentral distance is available."
+            )
 
         # --- Variable-station support (opt-in) ---
         # When enabled, embed() expects the packed variable-station context (padded
@@ -246,6 +261,28 @@ class SeismogramTransformer(nn.Module):
             # the transformer's reshape/permute consumers materialise only where needed.
             key_padding_mask = (~var_mask).unsqueeze(-1).expand(B, N, self.L)
 
+        # --- Optional per-station amplitude embedding ---
+        # Inject the array-relative radiation-pattern token BEFORE the transformer (so
+        # cross-station attention sees relative amplitude), and stash the per-event global
+        # (≈log M0) vector to add to the pooled embedding AFTER the transformer. When distance
+        # correction is enabled and a source location is available, supply per-station epicentral
+        # distance so the geometric-spreading trend is removed before forming the reference.
+        amp_global = None
+        if self.amplitude_embedding is not None:
+            station_distance = None
+            if self.amplitude_embedding.uses_distance and source_vec is not None:
+                amp_coords = (
+                    var_coords if var_coords is not None
+                    else self.all_station_transformer.station_coords
+                )
+                station_distance = relative_station_geometry(
+                    source_vec, amp_coords, self._coord_mode
+                )[..., 0:1]   # (B, N, 1) epicentral distance
+            amp_token, amp_global = self.amplitude_embedding(
+                x, mask=var_mask, distance=station_distance
+            )
+            feature_sequences = feature_sequences + amp_token[:, :, None, :]
+
         # Contextualize with transformer
         transformer_output = self.all_station_transformer(
             feature_sequences,
@@ -257,6 +294,12 @@ class SeismogramTransformer(nn.Module):
         # Global concat-conditioning, projected back to d_model.
         if source_emb is not None and self.concat_proj is not None:
             pooled = self.concat_proj(torch.cat([pooled, source_emb], dim=-1))
+
+        # Absolute-moment (M0) path: add the per-event global amplitude vector to the pooled
+        # embedding so the flow sees absolute scale even though the per-station tokens carried
+        # only the array-relative pattern.
+        if amp_global is not None:
+            pooled = pooled + amp_global
         return pooled
 
 
