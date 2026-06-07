@@ -62,13 +62,15 @@ class CompressionTrainer:
     def __init__(self, components, station_locations, channels=128, latent_dim=128,
                  architecture="seismogram_transformer", trace_length=200,
                  num_dims=6, feature_length=128, lr=1e-4, weight_decay=1e-4,
-                 model_config=None, flow_config=None):
+                 model_config=None, flow_config=None, lr_second_stage="cosine"):
         """Build the embedding net + conditional normalising flow.
 
         trace_length: per-trace sample count of the data (CNN input length). Defaults to
             200 for backward compatibility; pass the pipeline's real ``trace_length``.
         model_config / flow_config: optional overrides merged over DEFAULT_MODEL_CONFIG /
             DEFAULT_FLOW_CONFIG.
+        lr_second_stage: LR schedule after warmup — "cosine" (default; decay to lr*0.1),
+            "constant" (held flat at lr), or "cyclic". Forwarded to the Lightning module.
         """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,6 +87,7 @@ class CompressionTrainer:
         self.num_seismic_components = num_seismic_components
         self.lr = lr
         self.weight_decay = weight_decay
+        self.lr_second_stage = lr_second_stage
         # Store resolved configs + station locations for checkpoint metadata and rebuild.
         self._model_config = model_config
         self._flow_config = flow_config
@@ -115,6 +118,7 @@ class CompressionTrainer:
             flow=self.flow,
             lr=lr,
             weight_decay=weight_decay,
+            lr_second_stage=lr_second_stage,
         )
 
     @staticmethod
@@ -141,13 +145,18 @@ class CompressionTrainer:
             device=device,
             trace_length=trace_length,
         )
-        # hidden_features matches the resolved model channels (model_config carries it).
+        # The flow's hidden width defaults to the resolved embedding channels
+        # (model_config carries it), but flow_config may override it explicitly to
+        # decouple the NDE head's capacity from the embedding width. Pop it so it is
+        # not also passed positionally below (which would be a duplicate-kwarg error).
+        flow_kwargs = dict(flow_config)
+        flow_hidden_features = flow_kwargs.pop("hidden_features", None) or model_config["channels"]
         return build_nsf(
             dim=num_dims,
             conditional_dim=latent_dim,
-            hidden_features=model_config["channels"],
+            hidden_features=flow_hidden_features,
             embedding_net=embedding_net,
-            **flow_config,
+            **flow_kwargs,
         )
 
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,

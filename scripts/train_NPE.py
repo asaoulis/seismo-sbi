@@ -226,9 +226,43 @@ def main():
         }
         print(f"RFF station positional encoding enabled: {model_config['positional_encoding']}")
 
+    # Optional NDE-head (normalising-flow) overrides via a top-level 'ml_flow' block:
+    #   ml_flow:
+    #     num_transforms: 8          # flow coupling-transform depth (default 5)
+    #     num_blocks: 2              # residual blocks per spline conditioner
+    #     dropout_probability: 0.0
+    #     use_batch_norm: true
+    # The flow's hidden width stays tied to the embedding channel width (model_dim); it is
+    # intentionally NOT exposed here. Absent => DEFAULT_FLOW_CONFIG (legacy num_transforms=5).
+    flow_config = None
+    _flow_cfg = _raw_cfg.get("ml_flow")
+    if _flow_cfg:
+        flow_config = {k: v for k, v in _flow_cfg.items() if k != "enabled"}
+        # `hidden_features` here is OPTIONAL and decouples the flow's hidden width from the
+        # embedding channel width (model_dim); when absent the flow width stays tied to
+        # channels (the legacy behaviour, preserved for run comparability).
+        print(f"NDE-head (flow) overrides: {flow_config}")
+
+    # Optional optimizer / LR-schedule overrides via a top-level 'ml_optimizer' block:
+    #   ml_optimizer:
+    #     lr: 1.0e-4
+    #     weight_decay: 1.0e-4
+    #     lr_schedule: constant      # cosine (default; warmup->decay to lr*0.1) | constant | cyclic
+    # Absent => lr=1e-4, weight_decay=1e-4, cosine (the legacy schedule).
+    _opt_cfg = _raw_cfg.get("ml_optimizer") or {}
+    lr = float(_opt_cfg.get("lr", 1e-4))
+    weight_decay = float(_opt_cfg.get("weight_decay", 1e-4))
+    lr_second_stage = _opt_cfg.get("lr_schedule", "cosine")
+    if _opt_cfg:
+        print(f"Optimizer overrides: lr={lr}, weight_decay={weight_decay}, "
+              f"lr_schedule={lr_second_stage}")
+
     trainer = CompressionTrainer(components, station_locations, channels=model_dim, latent_dim=model_dim,
                                  trace_length=sbi_pipeline.trace_length,
-                                 model_config=model_config)
+                                 model_config=model_config,
+                                 flow_config=flow_config,
+                                 lr=lr, weight_decay=weight_decay,
+                                 lr_second_stage=lr_second_stage)
     # Build the training-time nuisance augmentation chain from the config: only
     # nuisances staged `training_augmentation` (Category-2 post-processing effects)
     # are folded in per-batch on the clean simulations. Empty chain ⇒ no augmentation.

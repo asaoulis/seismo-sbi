@@ -136,7 +136,8 @@ def multicomp_kernel_pipeline(tmp_path_factory):
 
 
 def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_scaler=None,
-                     model_config=None):
+                     model_config=None, flow_config=None, lr_second_stage="cosine",
+                     enable_checkpointing=False, run_name=None):
     """Run a single headless training epoch and return the trained model."""
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
@@ -166,11 +167,13 @@ def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_
         channels=_MODEL_DIM, latent_dim=_MODEL_DIM, architecture=architecture,
         trace_length=trace_length,
         model_config=model_config,
+        flow_config=flow_config,
+        lr_second_stage=lr_second_stage,
     )
     model = trainer.train(
-        f"test_{architecture}", epochs=1, output_path=tmp_path,
+        run_name or f"test_{architecture}", epochs=1, output_path=tmp_path,
         dataloader_args=dataloader_args,
-        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+        logger=None, enable_checkpointing=enable_checkpointing, enable_progress_bar=False,
     )
     return trainer, model, dataloader_args
 
@@ -213,6 +216,56 @@ def test_train_one_epoch_returns_finite_logprob(kernel_pipeline, tmp_path, archi
     with torch.no_grad():
         log_prob = model(x.to(model.device), theta.to(model.device))
     assert torch.isfinite(log_prob).all(), "flow produced non-finite log-prob"
+
+
+def test_flow_config_and_constant_lr_one_epoch_and_round_trip(kernel_pipeline, tmp_path):
+    """The NDE-head/LR follow-up knobs train end-to-end and round-trip.
+
+    Exercises a deeper flow (num_transforms=8) with the constant-after-warmup LR schedule for
+    one headless epoch (checkpointing on), confirms a finite log-prob, and reloads from the
+    model_meta.json sidecar — asserting the rebuilt flow keeps the 8 coupling transforms.
+    """
+    import torch
+    from pyknos.nflows import transforms
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = kernel_pipeline
+
+    def _count_coupling(flow):
+        return sum(isinstance(t, transforms.PiecewiseRationalQuadraticCouplingTransform)
+                   for t in flow._transform._transforms)
+
+    run_name = "bigflow_constlr"
+    trainer, model, dataloader_args = _train_one_epoch(
+        pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+        flow_config={"num_transforms": 8}, lr_second_stage="constant",
+        enable_checkpointing=True, run_name=run_name,
+    )
+    assert _count_coupling(trainer.flow) == 8
+    assert model.lr_second_stage == "constant"
+
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all()
+
+    # Reload into a fresh DEFAULT trainer (num_transforms=5) — must rebuild to 8 from sidecar.
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    reloader = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+    )
+    assert _count_coupling(reloader.flow) == 5            # before reload (default)
+    reloader.load_best(tmp_path / run_name)               # rebuilds from model_meta.json
+    assert _count_coupling(reloader.flow) == 8            # after reload (from sidecar)
+    reloader.model.to(reloader.device)
+    with torch.no_grad():
+        log_prob2 = reloader.model(x.to(reloader.device), theta.to(reloader.device))
+    assert torch.isfinite(log_prob2).all()
 
 
 # Per-station amplitude embedding modes exercised by the one-epoch gate.

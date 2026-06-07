@@ -431,13 +431,16 @@ class LightningModel(pl.LightningModule):
         return [opt], [sch]
 
 class NPELightningModule(pl.LightningModule):
-    def __init__(self, flow, lr=1e-3, weight_decay=0.0, **kwargs):
+    def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine", **kwargs):
         super().__init__()
         self.flow = flow
         self.lr = lr
         self.weight_decay = weight_decay
-        # New: allow selecting second-stage scheduler ("cosine" or "cyclic")
-        self.lr_second_stage = "cosine"
+        # Second-stage LR schedule applied AFTER the linear warmup:
+        #   "cosine"   (default) — anneal down to lr*0.1 over the remaining epochs;
+        #   "constant"           — hold flat at the base lr (no decay);
+        #   "cyclic"             — triangular CyclicLR (step-based).
+        self.lr_second_stage = lr_second_stage
         self.cyclic_period_steps = 8000
 
     def forward(self, x, theta):
@@ -518,6 +521,21 @@ class NPELightningModule(pl.LightningModule):
         def lr_lambda_warmup(epoch):
             return float(epoch + 1) / float(max(1, warmup_epochs))
         warmup = LambdaLR(optimizer, lr_lambda=lr_lambda_warmup)
+
+        # Constant second stage: hold the LR flat at the base lr after warmup (no decay).
+        if str(self.lr_second_stage).lower() == "constant":
+            # LambdaLR returning 1.0 keeps the optimiser at its base lr for every epoch.
+            constant = LambdaLR(optimizer, lr_lambda=lambda *_: 1.0)
+            scheduler = SequentialLR(
+                optimizer,
+                schedulers=[warmup, constant],
+                milestones=[warmup_epochs],
+            )
+            return [optimizer], [{
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            }]
 
         # Cosine annealing down to 10% of base LR
         cosine = CosineAnnealingLR(optimizer, T_max=cosine_epochs, eta_min=self.lr * 0.1)
