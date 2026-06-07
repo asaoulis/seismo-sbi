@@ -153,7 +153,7 @@ def test_relative_geometry_per_sample_matches_broadcast():
 # --------------------------------------------------------------------------- #
 
 def _make_model(coord_mode="absolute", pooling="mean", use_cls=False, n_cond=0, amplitude=None,
-                positional_encoding=None):
+                positional_encoding=None, pma_pooling=None):
     C, T, d = 3, 128, 16
     cfg = {
         "channels": d, "nheads": 2, "layers": 2, "station_encoder": "cnn",
@@ -166,6 +166,8 @@ def _make_model(coord_mode="absolute", pooling="mean", use_cls=False, n_cond=0, 
         cfg["amplitude_embedding"] = amplitude
     if positional_encoding is not None:
         cfg["positional_encoding"] = positional_encoding
+    if pma_pooling is not None:
+        cfg["pma_pooling"] = pma_pooling
     torch.manual_seed(0)
     model = SeismogramTransformer(
         C, cfg, d, num_outputs=d, noise_model=None,
@@ -276,6 +278,38 @@ def test_padded_stations_invariance_with_fourier_posenc(inject_every_layer):
     cp = torch.zeros(n + 2, 2); cp[:n] = coords; cp[n:] = torch.randn(2, 2) * 50.0
     mp = torch.zeros(n + 2, dtype=torch.bool); mp[:n] = True
     ctx_pad = pack_variable_context(xp, cp, mp, source).unsqueeze(0)
+
+    with torch.no_grad():
+        e_real = model.embed(ctx_real)
+        e_pad = model.embed(ctx_pad)
+
+    assert torch.isfinite(e_pad).all()
+    torch.testing.assert_close(e_real, e_pad, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("pool_over", ["tokens", "stations"])
+def test_padded_stations_invariance_with_pma_head(pool_over):
+    """The §3.4 PMA pooling head must respect the validity mask under variable stations:
+    appending fully-padded stations (with garbage content/coords) leaves the real-station
+    embedding bit-identical in BOTH pool_over modes (tokens and stations)."""
+    model, C, T = _make_model(
+        "absolute", use_cls=False,
+        pma_pooling={"pool_over": pool_over, "num_seeds": 4, "seed_self_attention": True,
+                     "combine": "linear"},
+    )
+    assert model.all_station_transformer.pma_head is not None
+    # The head owns the seeds ⇒ the in-block query tokens are disabled.
+    assert model.all_station_transformer.query_tokens is None
+    n = 3
+    x = torch.randn(n, C, T)
+    coords = torch.tensor(_COORDS[:n])
+
+    ctx_real = pack_variable_context(x, coords, torch.ones(n, dtype=torch.bool), None).unsqueeze(0)
+
+    xp = torch.zeros(n + 2, C, T); xp[:n] = x; xp[n:] = torch.randn(2, C, T) * 50.0
+    cp = torch.zeros(n + 2, 2); cp[:n] = coords; cp[n:] = torch.randn(2, 2)
+    mp = torch.zeros(n + 2, dtype=torch.bool); mp[:n] = True
+    ctx_pad = pack_variable_context(xp, cp, mp, None).unsqueeze(0)
 
     with torch.no_grad():
         e_real = model.embed(ctx_real)

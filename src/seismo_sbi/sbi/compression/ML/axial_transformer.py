@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import math
 
 from .positional_encoding import FourierStationPositionalEncoding
+from .pma_pooling import SetTransformerPMAHead
 
 def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     """
@@ -231,6 +232,7 @@ class SeismogramAxialTransformer(nn.Module):
         posemb_config: Optional[dict] = None,   # New: opt-in RFF station positional encoding (§3.2)
         posemb_coords_kind: str = "absolute",   # "relative" (distance, azimuth) or "absolute" (lat, lon)
         inject_every_layer: bool = True,        # re-inject the RFF posenc before every block (§3.2.c)
+        pma_pooling_config: Optional[dict] = None,  # New: opt-in Set-Transformer PMA pooling head (§3.4)
     ):
         super().__init__()
         self.register_buffer(
@@ -247,12 +249,17 @@ class SeismogramAxialTransformer(nn.Module):
         self.conv_length = conv_length
         self.mode = mode
         self.use_cls_token = use_cls_token
+        # When the §3.4 PMA head is enabled it owns the learned seeds and pools the final encoded
+        # token set once at the end, so the in-block query cross-attention is redundant — disable
+        # it (pure axial set-encoder). The token field's evolution is unchanged either way: the
+        # query tokens only ever read from x, never write to it.
+        pma_enabled = bool(pma_pooling_config)
 
         # Sinusoidal time embedding (like transformer positional encoding)
         self.register_buffer("time_embed", sinusoidal_time_embedding(max_time_steps, conv_length))
 
-        # Persistent query tokens (used only if CLS is not enabled)
-        if (num_query_tokens > 0) and (not self.use_cls_token):
+        # Persistent query tokens (used only if CLS is not enabled and the PMA head is off)
+        if (num_query_tokens > 0) and (not self.use_cls_token) and (not pma_enabled):
             self.query_tokens = nn.Parameter(torch.randn(1, num_query_tokens, d_model))
         else:
             self.query_tokens = None
@@ -273,7 +280,7 @@ class SeismogramAxialTransformer(nn.Module):
                 nheads=nheads,
                 dim_feedforward=dim_feedforward,
                 dropout=dropout,
-                use_query_xattn=((num_query_tokens > 0) and (not self.use_cls_token)),
+                use_query_xattn=((num_query_tokens > 0) and (not self.use_cls_token) and (not pma_enabled)),
                 mode=self.mode,
                 input_dim=self.conv_length * self.timesteps if self.mode == "full" else None,
                 temporal_pool_tokens=temporal_pool_tokens,   # pass through
@@ -312,6 +319,23 @@ class SeismogramAxialTransformer(nn.Module):
                 self.station_posenc = FourierStationPositionalEncoding.from_config(
                     d_model, posemb_coords_kind, posemb_config
                 )
+
+        # --- Optional Set-Transformer PMA pooling head (review §3.4; opt-in) ---
+        # Absent ⇒ self.pma_head is None and forward() uses the legacy CLS / query-mean pooling
+        # (byte-identical). Axial-only and incompatible with CLS (which has its own pooling path).
+        self.pma_head = None
+        if pma_enabled:
+            if self.mode != "axial":
+                raise ValueError(
+                    "PMA pooling head currently supports mode='axial' only "
+                    f"(got mode='{self.mode}')."
+                )
+            if self.use_cls_token:
+                raise ValueError(
+                    "PMA pooling head is incompatible with use_cls_token=True "
+                    "(CLS provides its own pooling); disable one of them."
+                )
+            self.pma_head = SetTransformerPMAHead.from_config(d_model, nheads, pma_pooling_config)
 
     def station_position_embedding(self, pos: torch.Tensor, d_model: int = 128, batch_size: int = None):
         """
@@ -514,6 +538,13 @@ class SeismogramAxialTransformer(nn.Module):
             x, q = blk(x, q, key_padding_mask=mask_to_pass)
 
         x = self.final_ln(x)
+
+        # §3.4 PMA pooling head (opt-in): pool the final encoded token field once. Built only for
+        # mode='axial' without CLS, so x is (B, N, L, D) and q is None here. mask_to_pass is the
+        # (B, N, L) key-padding mask (True=pad), or None on the fixed-station path.
+        if self.pma_head is not None:
+            pooled = self.pma_head(x, key_padding_mask=mask_to_pass)
+            return x, q, pooled
 
         pooled = None
         # Pooling: prefer CLS if enabled, else pool queries (backward compatible)

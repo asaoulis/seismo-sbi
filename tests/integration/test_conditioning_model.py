@@ -488,3 +488,101 @@ def test_cls_token_with_fourier_raises():
 def test_invalid_posenc_mode_raises():
     with pytest.raises(ValueError, match="must be 'fourier' or 'sinusoidal'"):
         _build_pe_model({"mode": "bogus"})
+
+
+# ---------------------------------------------------------------------------
+# Set-Transformer PMA pooling head (opt-in; review §3.4)
+# ---------------------------------------------------------------------------
+
+def _build_pma_model(pma_pooling=None, conditioning=None, positional_encoding=None,
+                     amplitude_embedding=None, **cfg_extra):
+    cfg = _base_config(**cfg_extra)
+    if pma_pooling is not None:
+        cfg["pma_pooling"] = pma_pooling
+    if conditioning is not None:
+        cfg["conditioning"] = conditioning
+    if positional_encoding is not None:
+        cfg["positional_encoding"] = positional_encoding
+    if amplitude_embedding is not None:
+        cfg["amplitude_embedding"] = amplitude_embedding
+    return SeismogramTransformer(
+        num_seismic_components=_C,
+        transformer_config=cfg,
+        feature_length=_DM,
+        num_outputs=6,
+        noise_model=None,
+        seismogram_locations=_locations(),
+        device=torch.device("cpu"),
+        input_length=_T,
+    )
+
+
+def test_no_pma_key_is_backward_compatible():
+    """Absent config ⇒ no PMA head and the legacy query tokens remain ⇒ unchanged pooling path."""
+    m = _build_model()
+    assert m.all_station_transformer.pma_head is None
+    assert m.all_station_transformer.query_tokens is not None   # legacy 8 query seeds present
+
+
+@pytest.mark.parametrize("pool_over", ["tokens", "stations"])
+@pytest.mark.parametrize("num_seeds", [1, 4])
+def test_pma_model_finite_embedding(pool_over, num_seeds):
+    model = _build_pma_model({"pool_over": pool_over, "num_seeds": num_seeds}).eval()
+    head = model.all_station_transformer.pma_head
+    assert head is not None and head.pool_over == pool_over
+    # The head owns the seeds ⇒ the in-block query cross-attention is disabled (pure encoder).
+    assert model.all_station_transformer.query_tokens is None
+    x = torch.randn(4, _N, _C, _T)
+    with torch.no_grad():
+        out = model.embed(x)
+    assert out.shape == (4, _DM) and torch.isfinite(out).all()
+
+
+def test_pma_stations_mode_builds_time_pool():
+    m = _build_pma_model({"pool_over": "stations"})
+    assert m.all_station_transformer.pma_head.time_pool is not None
+    m2 = _build_pma_model({"pool_over": "tokens"})
+    assert m2.all_station_transformer.pma_head.time_pool is None
+
+
+@pytest.mark.parametrize("pool_over", ["tokens", "stations"])
+def test_pma_model_sensitive_to_cross_station_ratios(pool_over):
+    """Changing inter-station content changes the PMA-pooled embedding (the head is wired in)."""
+    model = _build_pma_model({"pool_over": pool_over, "num_seeds": 4}).eval()
+    x = torch.randn(4, _N, _C, _T)
+    x2 = x.clone()
+    x2[:, 0] *= 5.0
+    x2[:, 1] *= 0.2
+    with torch.no_grad():
+        out1, out2 = model.embed(x), model.embed(x2)
+    assert not torch.allclose(out1, out2, atol=1e-5)
+
+
+def test_pma_orthogonal_to_posenc_and_amplitude():
+    """PMA head composes with the §3.2 RFF positional encoder and the §3.1 amplitude embedding
+    (and source conditioning) — all enabled together build and run finite."""
+    model = _build_pma_model(
+        {"pool_over": "stations", "num_seeds": 4, "seed_self_attention": True},
+        conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",
+                      "inject": ["relative_posemb"]},
+        positional_encoding={"mode": "fourier", "include_depth": True},
+        amplitude_embedding={"mode": "array_relative"},
+        layers=2,
+    ).eval()
+    assert model.all_station_transformer.pma_head is not None
+    ctx, _, _ = _packed_batch()
+    with torch.no_grad():
+        out = model.embed(ctx)
+    assert out.shape == (4, _DM) and torch.isfinite(out).all()
+
+
+def test_pma_with_cls_token_raises():
+    with pytest.raises(ValueError, match="use_cls_token"):
+        _build_pma_model({"pool_over": "tokens"}, use_cls_token=True)
+
+
+def test_pma_invalid_config_rejected():
+    with pytest.raises(ValueError):
+        _build_pma_model({"bogus_key": 1})
+    with pytest.raises(ValueError):
+        _build_pma_model({"pool_over": "nonsense"})

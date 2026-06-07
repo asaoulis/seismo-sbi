@@ -226,6 +226,30 @@ def main():
         }
         print(f"RFF station positional encoding enabled: {model_config['positional_encoding']}")
 
+    # Optional Set-Transformer PMA pooling head via a top-level 'ml_pooling' block:
+    #   ml_pooling:
+    #     enabled: true
+    #     pool_over: tokens        # tokens (pool the N·L final tokens) | stations (time-collapse,
+    #                              #   one token/station, then pool the N station tokens — §3.4b)
+    #     num_seeds: 4             # k learnable seeds (k=1 => single-vector summary)
+    #     num_heads: null          # default = transformer nheads
+    #     seed_self_attention: false  # SAB among the k seed outputs (opt-in; speculative)
+    #     combine: linear          # linear (learned concat→Linear) | mean | first
+    #     ffn: true                # MAB position-wise FFN inside the pool (textbook PMA)
+    #     dim_feedforward: null    # MAB / TimePool FFN width (default 2*channels)
+    #     dropout: 0.0
+    #     time_pool_heads: null    # pool_over=stations only: TimePool attention heads (default num_heads)
+    # Replaces the legacy "query tokens then unweighted mean" read-out with a proper PMA head whose
+    # k seeds are combined by a LEARNED linear map (the §3.4a fix). Enabling it disables the in-block
+    # query cross-attention (the axial blocks become a pure set-encoder; the encoder is unchanged).
+    # Absent ⇒ no head ⇒ byte-identical legacy pooling (see pma_pooling.py).
+    _pool_cfg = _raw_cfg.get("ml_pooling")
+    if _pool_cfg and _pool_cfg.get("enabled", False):
+        model_config["pma_pooling"] = {
+            k: v for k, v in _pool_cfg.items() if k != "enabled"
+        }
+        print(f"Set-Transformer PMA pooling head enabled: {model_config['pma_pooling']}")
+
     # Optional NDE-head (normalising-flow) overrides via a top-level 'ml_flow' block:
     #   ml_flow:
     #     num_transforms: 8          # flow coupling-transform depth (default 5)

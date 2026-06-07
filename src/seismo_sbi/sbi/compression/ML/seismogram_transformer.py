@@ -141,6 +141,22 @@ class SeismogramTransformer(nn.Module):
         inject_every_layer = (
             posemb_config.get("inject_every_layer", True) if posemb_config else True
         )
+        # --- Optional §3.4 PMA pooling head. Absent ⇒ pma_cfg is None ⇒ pma_pooling_config=None ⇒
+        # the axial transformer keeps the legacy query-mean / CLS pooling (byte-identical). When
+        # enabled, the head owns the learned seeds and pools the final encoded token set, so the
+        # in-block query cross-attention is turned off (num_query_tokens=0).
+        #   ml_pooling:
+        #     enabled: true
+        #     pool_over: tokens        # tokens (pool N·L tokens) | stations (time-collapse, pool N)
+        #     num_seeds: 4             # k learnable seeds
+        #     seed_self_attention: false
+        #     combine: linear          # linear (learned) | mean | first
+        pma_cfg = transformer_config.get("pma_pooling", None)
+        if pma_cfg and use_cls:
+            raise ValueError(
+                "pma_pooling is incompatible with use_cls_token=True (CLS has its own pooling); "
+                "disable one of them."
+            )
         self.all_station_transformer = SeismogramAxialTransformer(
             seismogram_locations,
             d_model=d_model,
@@ -154,11 +170,12 @@ class SeismogramTransformer(nn.Module):
             mode=mode,
             pool_queries=pool_method,
             use_cls_token=use_cls,
-            num_query_tokens=num_q,
+            num_query_tokens=(0 if pma_cfg else num_q),
             temporal_pool_tokens=transformer_config.get("temporal_pool_tokens", 0),
             posemb_config=posemb_config,
             posemb_coords_kind=posemb_coords_kind,
             inject_every_layer=inject_every_layer,
+            pma_pooling_config=pma_cfg,
         )
         # include_depth needs a source depth in the conditioning vector (lat, lon, depth, ...).
         _posenc = self.all_station_transformer.station_posenc

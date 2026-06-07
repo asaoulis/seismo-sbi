@@ -763,6 +763,111 @@ def test_load_best_restores_positional_encoding(kernel_pipeline, tmp_path):
     assert torch.isfinite(log_prob).all()
 
 
+def test_pma_pooling_one_epoch(kernel_pipeline, tmp_path):
+    """One headless epoch with the §3.4 Set-Transformer PMA pooling head (stations mode, k=4
+    seeds, SAB among seeds, learned linear combine) yields a finite log-prob — the full
+    encoder → axial transformer → PMA head → flow path end-to-end. Also asserts the head owns
+    the seeds (in-block query tokens disabled)."""
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+    }
+
+    trainer = CompressionTrainer(
+        components, station_locations,
+        channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+        model_config={
+            "pma_pooling": {"pool_over": "stations", "num_seeds": 4,
+                            "seed_self_attention": True, "combine": "linear", "ffn": True},
+        },
+    )
+    model = trainer.train(
+        "test_pma_pooling", epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
+        logger=None, enable_checkpointing=False, enable_progress_bar=False,
+    )
+    assert model is not None
+    transformer = model.flow._embedding_net.all_station_transformer
+    head = transformer.pma_head
+    assert head is not None and head.pool_over == "stations" and head.num_seeds == 4
+    assert transformer.query_tokens is None  # head owns the seeds ⇒ no in-block query xattn
+
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    model.eval()
+    with torch.no_grad():
+        log_prob = model(x.to(model.device), theta.to(model.device))
+    assert torch.isfinite(log_prob).all(), "PMA-pooling training produced non-finite log-prob"
+
+
+def test_load_best_restores_pma_pooling(kernel_pipeline, tmp_path):
+    """The pma_pooling config must round-trip through model_meta.json: train with it, reload
+    into a default-constructed trainer (which has no head — legacy query-mean), and confirm the
+    head is restored and runs."""
+    import torch
+    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    data_scaler = FlexibleScaler(pipeline.parameters)
+    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+    train_max_index = int(0.9 * _NUM_SIMS)
+    dataloader_args = {
+        "data_loader": pipeline.data_manager.data_loader,
+        "data_folder": pipeline.simulations_output_path + "/train",
+        "parameter_name_map": pipeline.parameters.names,
+        "synthetic_noise_model_sampler": synthetic_noise_sampler,
+        "data_scaler": data_scaler,
+        "train_max_index": train_max_index,
+        "train_batch_size": 8, "val_batch_size": 8,
+        "train_shuffle": True, "val_shuffle": False, "num_workers": 0,
+    }
+
+    pma_cfg = {"pma_pooling": {"pool_over": "tokens", "num_seeds": 2, "combine": "linear"}}
+    trainer = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length, model_config=pma_cfg,
+    )
+    run_name = "pma_ckpt"
+    trainer.train(run_name, epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
+                  logger=None, enable_checkpointing=True, enable_progress_bar=False)
+
+    reloader = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+    )
+    assert reloader.model.flow._embedding_net.all_station_transformer.pma_head is None
+
+    reloader.load_best(tmp_path / run_name)
+
+    restored = reloader.model.flow._embedding_net.all_station_transformer.pma_head
+    assert restored is not None and restored.pool_over == "tokens" and restored.num_seeds == 2
+    reloader.model.to(reloader.device)
+    _, val_loader = make_torch_dataloaders(**dataloader_args)
+    theta, x = next(iter(val_loader))
+    with torch.no_grad():
+        log_prob = reloader.model(x.to(reloader.device), theta.to(reloader.device))
+    assert torch.isfinite(log_prob).all()
+
+
 def test_gutenberg_richter_mt_prior_one_epoch(tmp_path):
     """A Gutenberg-Richter moment-tensor prior closure flows through dataset generation,
     keeps the kernel simulator engaged (source_location stays 'constant'), and trains one
