@@ -1,9 +1,16 @@
 # Minimal, reusable lune utilities: conversion to Tape & Tape gamma/delta and Basemap-projected plotting
 import numpy as np
 from scipy.stats import gaussian_kde
-from mpl_toolkits.basemap import Basemap
 from pyproj import Geod
 import matplotlib.pyplot as plt
+
+# basemap is only needed for the lune (Tape gamma/delta) source-type plots; it is an awkward
+# dependency to co-install, so import it lazily.  The conversion utilities below (used by
+# distributions.py / results_analysis.py and the example notebooks) work without it.
+try:
+    from mpl_toolkits.basemap import Basemap
+except ImportError:
+    Basemap = None
 
 
 # -----------------------------
@@ -134,6 +141,9 @@ def plot_lune_frame(ax, frame_color='k', grid_color='lightgray', fontweight='bol
                     clvd_left=True, clvd_right=True, lon_0=0):
     """Draw the standard Tape & Tape lune frame using a Hammer projection and
     remove any outer frame/spines/ticks. Returns the Basemap instance."""
+    if Basemap is None:
+        raise ImportError("basemap is required for lune plots — install it with "
+                          "`conda install -c conda-forge basemap` or `pip install basemap`.")
     g = Geod(ellps='sphere')
     bm = Basemap(projection='hammer', lon_0=lon_0, ax=ax)
     ax.set_aspect('equal')

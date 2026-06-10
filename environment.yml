@@ -1,0 +1,35 @@
+# Conda environment for seismo-sbi.
+#
+# This installs instaseis (the historically painful dependency) together with the scientific,
+# seismology and geospatial C-extension libraries from conda-forge, so their binary stacks are
+# resolved consistently up front.  The pure-Python ML/inference stack is then installed with
+#     pip install -e .
+# (see requirements.txt and the README).
+#
+# Usage:
+#     conda env create -f environment.yml
+#     conda activate seismo-sbi
+#     pip install -e .
+#
+# Tip: a modern conda (>= 23.10) uses the fast libmamba solver by default.  On older conda run
+#     conda install -n base conda-libmamba-solver
+#     conda config --set solver libmamba
+# or append `--solver libmamba` to the create command, otherwise the solve can take many minutes.
+
+name: seismo-sbi
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11        # current conda-forge `instaseis` (1.5.0) requires python >= 3.11
+  - pip
+  - instaseis
+  - obspy
+  - "numpy>=2"         # instaseis 1.5 uses numpy.trapezoid (added in numpy 2.0)
+  - "numba<0.62"       # numba 0.62+ JIT kernels crash instaseis under joblib/loky parallelism
+  - scipy
+  - h5py
+  - matplotlib
+  - cartopy
+  - pyproj
+  - basemap
+  # pyrocko is not on conda-forge; it is installed from PyPI by `pip install -e .` (manylinux wheel).

@@ -13,7 +13,12 @@ After installation (see below), try running the minimal example to perform SBI o
 
 ### Data errors paper
 
-We are currently working on an updated, unified version of this repository. However, some example notebooks are not backware compatible yet. For the data errors paper [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112), revert to the earlier release to ensure all examples work correctly:
+The data-errors example, [examples/azores_inversion.ipynb](examples/azores_inversion.ipynb)
+([Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112)), now runs out of the box on the
+current `main` (data download, processing and inversion). We are still working towards an updated,
+unified version of this repository, and some of the *other* example notebooks are not yet
+back-compatible — to reproduce the full set of paper results you can still revert to the earlier
+release:
 
 https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
 
@@ -43,37 +48,51 @@ _Fig. 3 from the `seismo-sbi` paper._
 
 ### Prerequisites
 
-- Conda
-- Python >=3.8
-
-Install Anaconda or Miniconda. Set up your conda environment by executing the following command in the terminal, assuming `my_env` is the name of your conda environment:
-
-```
-conda create -n "my_env" python=3.8
-conda activate my_env
-```
+- Conda (Miniconda or Anaconda). A modern conda (>= 23.10) uses the fast `libmamba` solver by
+  default; on an older conda the `instaseis` solve can take many minutes, so first run
+  `conda install -n base conda-libmamba-solver` (or append `--solver libmamba` to the commands below).
+- Python 3.11 (created for you by the environment file below; the current conda-forge `instaseis`
+  requires Python >= 3.11).
 
 ### Installing
 
-First, install `instaseis`, which is best installed through `conda-forge`:
+`instaseis` is historically the most fragile dependency, so **always start from a fresh environment
+and install it first** — together with the rest of the scientific / seismology / geospatial stack —
+from `conda-forge`. The provided [`environment.yml`](environment.yml) does exactly this; the
+pure-Python ML / inference stack is then installed with `pip`:
 
 ```
-conda install -y -c conda-forge instaseis
+conda env create -f environment.yml      # python 3.11 + instaseis + obspy + cartopy + basemap + ...
+conda activate seismo-sbi
+pip install -e .                          # torch, sbi, pytorch_lightning, pyrocko, ...
 ```
 
-Installation of the library can then be done by navigating to the top-level directory `seismo-sbi` and running:
+Equivalently, without the file:
+
 ```
+conda create -n seismo-sbi -c conda-forge python=3.11 instaseis obspy "numpy>=2" "numba<0.62" scipy h5py matplotlib cartopy basemap pyproj
+conda activate seismo-sbi
 pip install -e .
 ```
 
+Two example notebooks then run out of the box:
+
+- [examples/theory_errors_LV2.ipynb](examples/theory_errors_LV2.ipynb) — theory-error SBI on the LV2
+  Long Valley event. This one additionally needs **Computer Programs in Seismology (CPS)** installed
+  (point the notebook's `CPS_PATH` at your install —
+  https://www.eas.slu.edu/eqc/ComputerProgramsSeismology/index.html) and **git-lfs**
+  (`git lfs pull`) to fetch the bundled compression checkpoint.
+- [examples/azores_inversion.ipynb](examples/azores_inversion.ipynb) — see *Usage* below.
+
 ## Usage <a name = "usage"></a>
 
-An example notebook is provided under [examples/azores_inversion.ipynb](examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
+[examples/azores_inversion.ipynb](examples/azores_inversion.ipynb) uses SBI to perform (i) a fixed-location MT inversion and (ii) a full 10-parameter MT + time/location inversion for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is also provided, as it is computationally cheap.
 
-Before running the notebook, you will need to run the two provided scripts
+The notebook's first cell downloads and prepares all of the data for you by running:
 ```
 cd scripts
-python download.py
-python generate_noise_database.py
+python prepare_azores_example.py --output_dir ../examples/data/azores
 ```
-which downloads the nearby IPMA permanent land station data, and then processes the data to build an event file and a noise catalogue. 
+This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
+
+Forward modelling uses a global PREM Instaseis database. By default the notebook streams it from IRIS Syngine (`syngine://prem_i_2s`) so it works anywhere; if you have a local database, set the environment variable `INSTASEIS_DB=/path/to/db` to use it instead (much faster, especially for the full inversion).

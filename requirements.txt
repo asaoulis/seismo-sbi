@@ -1,24 +1,29 @@
-numpy
-torch==2.0.0 # not a hard requirement, just worked on my machine
-sbi==0.21.0
-setuptools
-wheel
-jupyter
-matplotlib==3.7.5
+# Pip-installed dependencies, read by `pip install -e .`.
+#
+# The conda-forge scientific / seismology / geospatial stack (instaseis, obspy, numpy, scipy, h5py,
+# matplotlib, cartopy, basemap, pyproj) is installed FIRST via conda — see environment.yml / the
+# README.  Those libraries are intentionally NOT listed here so that pip does not try to re-resolve
+# them from PyPI and fight conda's solver (re-resolving basemap/pyproj in particular drags in old,
+# unbuildable versions).  numpy is the one exception: it is pinned only as a guard so that a pip
+# dependency cannot silently downgrade it below the 2.x that instaseis 1.5 (numpy.trapezoid) needs.
+numpy>=2
+
+# --- ML / inference / plotting stack (pip-only) ---
+torch>=2.2       # bumped from the old torch==2.0.0 pin; sbi 0.21 allows torch>=1.8
+sbi==0.21.0      # kept: the codebase imports sbi internals (sbi.inference.snpe.PosteriorEstimator,
+                 # sbi.utils.sbiutils/torchutils) that were restructured in sbi>=0.22
+pytorch_lightning
+ChainConsumer==0.34.0
+scienceplots       # matplotlib styles used by the LV2 example plots
+emcee
+scikit-learn
 joblib
 tqdm
-obspy==1.4.0
-obspyDMT==2.2.11
 pyyaml
-scipy==1.10.1
-scikit-learn==1.2.1
-emcee
-ChainConsumer==0.34.0
-tarp==0.1.0
-h5py==3.10.0
-pyrocko
-cartopy
+pyrocko          # not on conda-forge; PyPI ships manylinux wheels
+
+# --- notebooks / packaging tooling ---
+jupyter
 ipykernel
-autoreload
-pyproj
-basemap
+setuptools
+wheel

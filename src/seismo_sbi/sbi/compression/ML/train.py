@@ -93,12 +93,21 @@ class CompressionTrainer:
         """
         ckpt_path = find_best_checkpoint_path(output_path)
         print(ckpt_path)
-        self.model = NPELightningModule.load_from_checkpoint(
-            ckpt_path,
-            flow=self.flow,
-            lr=1e-4,
-            weight_decay=1e-4,
-        )
+        # torch >= 2.6 defaults torch.load to weights_only=True, which rejects Lightning
+        # checkpoints (they pickle hyperparameters).  Force weights_only=False for this trusted,
+        # locally-produced checkpoint.
+        import torch
+        _orig_torch_load = torch.load
+        torch.load = lambda *a, **k: _orig_torch_load(*a, **{**k, "weights_only": False})
+        try:
+            self.model = NPELightningModule.load_from_checkpoint(
+                ckpt_path,
+                flow=self.flow,
+                lr=1e-4,
+                weight_decay=1e-4,
+            )
+        finally:
+            torch.load = _orig_torch_load
         self.model.eval()
         self.model.freeze()
         return ckpt_path

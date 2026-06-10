@@ -87,7 +87,13 @@ class ModelParameters:
             flattened_parameters = [item for sublist in self._parameters_register[parameter_type].values() for item in sublist]
         # np.concatenate converts namedtuple to np.array, so can't use it here
         if parameter_type != "information":
-            flattened_parameters = np.array(flattened_parameters)
+            try:
+                flattened_parameters = np.array(flattened_parameters)
+            except ValueError:
+                # numpy >= 2 rejects ragged sequences that numpy 1 silently stored as object
+                # arrays; preserve that behaviour for heterogeneous parameter dimensions
+                # (e.g. a 6-component moment tensor alongside a 4-component source location).
+                flattened_parameters = np.array(flattened_parameters, dtype=object)
         return flattened_parameters
 
     def get_parameter_values(self, param_name):

@@ -21,7 +21,6 @@ from .rocko_beachball_patch import plot_beachball_on_axes
 from tqdm import tqdm
 from contextlib import contextmanager
 import logging
-from seismo_sbi.plotting.MTfit import _LunePlot
 from pyrocko import moment_tensor as pmt
 # New: reusable lune plotting utilities
 from seismo_sbi.plotting.lune import (
