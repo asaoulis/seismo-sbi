@@ -46,6 +46,9 @@ class SeismicTraceCNN(nn.Module):
         conv_kernels=None,           # list[int]: kernel_size per conv
         conv_strides=None,           # list[int]: stride per conv
         same_padding=False,          # if True, uses kernel_size//2 padding
+        downsample=None,             # int: total temporal stride (single strided front conv,
+                                     #   same-padded rest). Uniform with tcn/pno; makes the stack
+                                     #   length-predictable + safe on short (e.g. decimated) inputs.
         activation="silu",           # "relu" | "gelu" | "silu"
         norm_type="batch",              # None | "batch" | "group" | "instance"
         dropout=0.1,                 # float in [0,1], applied after activation
@@ -58,8 +61,17 @@ class SeismicTraceCNN(nn.Module):
             conv_channels = [64, 64, 64, 128, 128, final_layer-1]
         if conv_kernels is None:
             conv_kernels = [5] * len(conv_channels)
+        # `downsample` (a single strided front conv, all else stride 1) makes the CNN's temporal
+        # reduction a single uniform knob — matching tcn/pno — and pairs with same_padding so the
+        # output length is exactly ceil(input_length / downsample), which never underflows on a
+        # short input (e.g. after model-entry Nyquist decimation). When set it OVERRIDES the legacy
+        # multi-strided default and forces same_padding=True.
+        if downsample is not None:
+            same_padding = True
+            n = len(conv_channels)
+            conv_strides = [int(downsample)] + [1] * (n - 1)
         if conv_strides is None:
-            # First 4 layers strided, rest stride=1 (matches previous behavior)
+            # First 2 layers strided, rest stride=1 (legacy behavior)
             n = len(conv_channels)
             n_strided = min(2, n)
             conv_strides = [2] * n_strided + [1] * (n - n_strided)

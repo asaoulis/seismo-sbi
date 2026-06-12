@@ -113,12 +113,18 @@ class CompressionTrainer:
             device=self.device,
         )
 
-        # Lightning module that maximizes log p_phi(theta | x)
+        # Lightning module that maximizes log p_phi(theta | x). Module-level perf toggles
+        # (fused optimizer / torch.compile) ride in model_config['perf'] alongside the
+        # embedding-net toggles; absent ⇒ all off ⇒ legacy behaviour.
+        _perf = model_config.get("perf", {}) or {}
         self.model = NPELightningModule(
             flow=self.flow,
             lr=lr,
             weight_decay=weight_decay,
             lr_second_stage=lr_second_stage,
+            fused_adam=bool(_perf.get("fused_adam", False)),
+            compile_forward=bool(_perf.get("compile", False)),
+            compile_flow=bool(_perf.get("compile_flow", False)),
         )
 
     @staticmethod
@@ -160,14 +166,17 @@ class CompressionTrainer:
         )
 
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
-              logger="wandb", enable_checkpointing=True, enable_progress_bar=True):
+              logger="wandb", enable_checkpointing=True, enable_progress_bar=True,
+              extra_callbacks=None):
         """Train the flow.
 
         Defaults preserve production behaviour (W&B logging + checkpointing). For headless
         runs (tests/CI) pass ``logger=None`` (or ``False``) to disable logging entirely,
         ``enable_checkpointing=False`` to skip writing .ckpt files, and
-        ``enable_progress_bar=False`` for clean output. Returns the trained model so callers
-        that disabled checkpointing can use it without reading a checkpoint from disk.
+        ``enable_progress_bar=False`` for clean output. ``extra_callbacks`` (list) are
+        appended to the Trainer callbacks (e.g. epoch timers in the bench harnesses).
+        Returns the trained model so callers that disabled checkpointing can use it
+        without reading a checkpoint from disk.
         """
         if dataloader_args is None or "train_max_index" not in dataloader_args:
             raise ValueError("dataloader_args must include: data_loader, data_folder, parameter_name_map, synthetic_noise_model_sampler, and train_max_index.")
@@ -202,6 +211,8 @@ class CompressionTrainer:
         # LearningRateMonitor requires a logger to write to; only add it when logging is on.
         if pl_logger is not False:
             callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+        if extra_callbacks:
+            callbacks.extend(extra_callbacks)
 
         trainer = pl.Trainer(
             max_epochs=epochs,

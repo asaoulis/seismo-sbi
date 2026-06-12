@@ -30,6 +30,7 @@ from typing import Any, Callable, Dict
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # ---------------------------------------------------------------------------
 # Shared amplitude primitives (single-sourced so cnn/pno/tcn don't duplicate)
@@ -131,6 +132,60 @@ def build_station_encoder(
 
 
 # ---------------------------------------------------------------------------
+# InputDecimator — Nyquist-aware model-entry decimation (opt-in)
+# ---------------------------------------------------------------------------
+
+class InputDecimator(nn.Module):
+    """Decimate input traces by an integer factor at the model entry.
+
+    Data band-limited below the post-decimation Nyquist frequency loses no
+    information (e.g. a 0.03–0.08 Hz bandpass at 1 Hz sampling tolerates factor
+    ≥ 3; a 6 s minimum period tolerates exactly 3).  Every station encoder then
+    sees ``ceil(T / factor)`` samples, cutting encoder FLOPs by ~factor and the
+    transformer's time-token count proportionally.
+
+    ``antialias=True`` (default) applies a depthwise windowed-sinc low-pass at
+    0.9× the new Nyquist before the stride, guarding against out-of-band noise
+    energy folding into the band.  For data (and noise) already filtered below
+    the new Nyquist, ``antialias=False`` is exact and cheaper.
+    """
+
+    def __init__(self, factor: int, num_components: int, antialias: bool = True):
+        super().__init__()
+        if int(factor) < 2:
+            raise ValueError(f"InputDecimator factor must be >= 2, got {factor}")
+        self.factor = int(factor)
+        self.antialias = bool(antialias)
+        self.num_components = int(num_components)
+        if self.antialias:
+            taps = 8 * self.factor + 1
+            n = torch.arange(taps, dtype=torch.float64) - (taps - 1) / 2
+            cutoff = 0.9 * 0.5 / self.factor          # cycles/sample at the original rate
+            kernel = 2 * cutoff * torch.sinc(2 * cutoff * n)
+            kernel = kernel * torch.hann_window(taps, periodic=False, dtype=torch.float64)
+            kernel = kernel / kernel.sum()            # unit DC gain
+            fir = kernel.to(torch.float32).view(1, 1, -1).repeat(self.num_components, 1, 1)
+            self.register_buffer("fir", fir)
+
+    def output_length(self, input_length: int) -> int:
+        return (int(input_length) - 1) // self.factor + 1
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, N, C, T) or (B*N, C, T) → same layout with T → ceil(T/factor)."""
+        four_d = x.dim() == 4
+        if four_d:
+            B, N, C, T = x.shape
+            x = x.reshape(B * N, C, T)
+        if self.antialias:
+            pad = (self.fir.shape[-1] - 1) // 2
+            x = F.conv1d(x, self.fir.to(x.dtype), padding=pad, groups=x.shape[1])
+        x = x[..., :: self.factor]
+        if four_d:
+            x = x.reshape(B, N, C, x.shape[-1])
+        return x
+
+
+# ---------------------------------------------------------------------------
 # CNNEncoder — thin adapter around SeismicTraceCNN (backward-compatible default)
 # ---------------------------------------------------------------------------
 
@@ -203,16 +258,22 @@ class SpectralConv1d(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, T = x.shape
-        # rfft along the time axis
-        x_ft = torch.fft.rfft(x, dim=-1)                   # (B, C_in, T//2+1)
-        m = min(self.modes, x_ft.shape[-1])
-        out_ft = torch.zeros(B, self.out_channels, x_ft.shape[-1],
-                             dtype=x_ft.dtype, device=x.device)
-        # Einstein sum over in-channels and modes
-        out_ft[:, :, :m] = torch.einsum(
-            "bim,iom->bom", x_ft[:, :, :m], self.weights[:, :, :m]
-        )
-        return torch.fft.irfft(out_ft, n=T, dim=-1)         # (B, C_out, T)
+        # torch.fft has no bf16/half kernels, so the spectral path runs in fp32 even under a
+        # bf16 autocast (the complex weights are cfloat); the result is cast back to the input
+        # dtype so the surrounding (autocast) graph is unaffected. Disable autocast explicitly
+        # so the einsum over complex tensors isn't down-cast either.
+        in_dtype = x.dtype
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            xf = x.float()
+            x_ft = torch.fft.rfft(xf, dim=-1)              # (B, C_in, T//2+1)
+            m = min(self.modes, x_ft.shape[-1])
+            out_ft = torch.zeros(B, self.out_channels, x_ft.shape[-1],
+                                 dtype=x_ft.dtype, device=x.device)
+            out_ft[:, :, :m] = torch.einsum(
+                "bim,iom->bom", x_ft[:, :, :m], self.weights[:, :, :m]
+            )
+            out = torch.fft.irfft(out_ft, n=T, dim=-1)      # (B, C_out, T), fp32
+        return out.to(in_dtype)
 
 
 class FNOBlock(nn.Module):

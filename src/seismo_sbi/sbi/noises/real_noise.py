@@ -39,6 +39,14 @@ class RealNoiseSampler:
         self.noise_paths = self._find_noise_paths(directory)
         np.random.shuffle(self.noise_paths)
 
+        # Optional in-RAM noise-window cache (opt-in via preload_cache()). Each __call__ otherwise
+        # opens an HDF5 noise file (~12 ms) — a per-training-sample cost on top of the sim load. The
+        # generic-event ML path draws noise windows uniformly at random WITH replacement and never
+        # rescales (adaptive_covariance is None), so a contiguous in-RAM pool returning a random row
+        # is distributionally identical to the on-disk draw, at no disk cost and with no
+        # worker-scaling wall. Disabled (None) ⇒ unchanged on-disk behaviour.
+        self._noise_cache = None
+
         # When True the sampler draws generic noise windows verbatim and never rescales them to
         # a single event's pre-event variance: set_adaptive_covariance_with_misc_data becomes a
         # no-op so adaptive_covariance stays None. Use for generic-event ("amortised over
@@ -55,7 +63,53 @@ class RealNoiseSampler:
     def _find_noise_paths(self, directory):
         return np.array(list(Path(directory).glob('*.h5')))
 
+    def preload_cache(self, max_workers: int = 16, dtype=np.float32):
+        """Preload every VALID noise window into one contiguous RAM buffer (opt-in, generic mode).
+
+        Loads each ``noise_paths`` file once (in parallel — h5py reads release the GIL), keeps the
+        windows whose flattened length matches the data-vector length (skipping the
+        missing-station / data-gap windows the on-disk ``__call__`` skips too), and stacks them into
+        ``self._noise_cache`` ``(n_valid, L)``. Built in the MAIN process before the DataLoader forks
+        workers, so the buffer is shared copy-on-write. ``__call__`` then returns a uniformly random
+        row instead of opening a file. Only the generic (no-rescale, ``adaptive_covariance is None``)
+        path uses the cache; the adaptive / ``no_rescale`` paths still read from disk.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+        import time as _t
+        paths = list(self.noise_paths)
+
+        def _try_load(p):
+            try:
+                v = np.asarray(self._load_noise_file(p)).reshape(-1)
+            except KeyError:
+                return None
+            if self._expected_length is not None and v.size != self._expected_length:
+                return None
+            return v
+
+        t0 = _t.perf_counter()
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
+            loaded = list(ex.map(_try_load, paths))
+        # Keep windows matching the modal length (the data-vector length); drop gaps/mismatches.
+        valid = [v for v in loaded if v is not None]
+        if not valid:
+            raise RuntimeError("RealNoiseSampler.preload_cache: no valid noise windows found.")
+        ref_len = self._expected_length or valid[0].size
+        valid = [v for v in valid if v.size == ref_len]
+        self._noise_cache = np.ascontiguousarray(np.stack(valid, axis=0), dtype=dtype)
+        gb = self._noise_cache.nbytes / 1e9
+        print(f"[noise-cache] preloaded {len(valid)}/{len(paths)} noise windows into RAM "
+              f"({gb:.2f} GB, {np.dtype(dtype).name}) in {_t.perf_counter() - t0:.1f}s — "
+              f"per-sample HDF5 noise read removed.")
+
     def __call__(self, noise_path = None, no_rescale = False, noise_index = None, _attempts = 0):
+
+        # Fast path: in-RAM pool for the generic ML draw (random window, no rescale). Returns a
+        # uniformly random cached window — distributionally identical to the on-disk random draw.
+        if (self._noise_cache is not None and not no_rescale
+                and self.adaptive_covariance is None
+                and noise_path is None and noise_index is None):
+            return self._noise_cache[np.random.randint(0, self._noise_cache.shape[0])]
 
         # if self.noise_index_counter == len(self.noise_paths):
         #     self.noise_index_counter = 0

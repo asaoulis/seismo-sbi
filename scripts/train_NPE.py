@@ -127,6 +127,31 @@ def main():
 
     model_config = {"station_encoder": architecture}
 
+    # Optional per-station encoder hyperparameters via a top-level 'ml_encoder' YAML block,
+    # forwarded verbatim to the encoder __init__ (see station_encoders.py). Example:
+    #   ml_encoder:
+    #     downsample: 8       # tcn/pno temporal stride — bigger ⇒ fewer time tokens L ⇒ less
+    #                         #   transformer/PMA work (a measured ~1.25x train-step speedup at 8 vs 4)
+    #     channels: 32        # tcn intermediate channel count
+    #     n_blocks: 4
+    # Absent ⇒ encoder defaults (tcn downsample=4). A capacity-affecting knob — change only with
+    # a val-loss check (proven non-regressing for downsample 8 on the kernel + brustle-lomax tasks).
+    _enc_cfg = _raw_cfg.get("ml_encoder")
+    if _enc_cfg:
+        enc_cfg = {k: v for k, v in _enc_cfg.items() if k != "enabled"}
+        # `input_decimate` is a MODEL-entry knob (Nyquist-aware decimation before the
+        # encoder), not an encoder kwarg — pop it out so the encoder __init__ never sees
+        # it. Accepts `input_decimate: 3` or `{factor: 3, antialias: true}`.
+        _dec = enc_cfg.pop("input_decimate", None)
+        if _dec:
+            model_config["input_decimate"] = (
+                dict(_dec) if isinstance(_dec, dict) else {"factor": int(_dec)}
+            )
+            print(f"Model-entry input decimation: {model_config['input_decimate']}")
+        if enc_cfg:
+            model_config["encoder_config"] = enc_cfg
+            print(f"Per-station encoder config: {model_config['encoder_config']}")
+
     # Optional source-location conditioning via a top-level 'ml_conditioning' YAML block:
     #   ml_conditioning:
     #     param_map: {source_location: [latitude, longitude, depth]}
@@ -252,7 +277,9 @@ def main():
 
     # Optional NDE-head (normalising-flow) overrides via a top-level 'ml_flow' block:
     #   ml_flow:
-    #     num_transforms: 8          # flow coupling-transform depth (default 5)
+    #     num_transforms: 8          # flow coupling-transform depth (default 5). 8->5 is a
+    #                                #   measured ~1.17x model-step speedup; CAPACITY change —
+    #                                #   quality-validate (TARP) before lowering in production.
     #     num_blocks: 2              # residual blocks per spline conditioner
     #     dropout_probability: 0.0
     #     use_batch_norm: true
@@ -266,6 +293,24 @@ def main():
         # embedding channel width (model_dim); when absent the flow width stays tied to
         # channels (the legacy behaviour, preserved for run comparability).
         print(f"NDE-head (flow) overrides: {flow_config}")
+
+    # Optional performance toggles via a top-level 'ml_perf' block (speed-only, opt-in):
+    #   ml_perf:
+    #     amp: true            # bf16 autocast scoped to the EMBEDDING net (flow head stays fp32)
+    #     amp_dtype: bfloat16  # bfloat16 (default) | float16
+    #     sdpa: true           # fused scaled_dot_product_attention (numerically-equivalent attn)
+    #     fused_adam: true     # fused-kernel AdamW (same update rule; falls back on CPU/old torch)
+    #     compile: true        # torch.compile the full log-prob (embedding + flow). Needs a
+    #                          #   WORKING torch.compile (>= 2.2; broken on torch 2.0) — gate-test first.
+    #     compile_flow: true   # compile only the flow transform stack (fallback if `compile`
+    #                          #   recompile-thrashes on the embedding's mask branches)
+    # The flow's precision-brittle transforms (LULinear log-det + BatchNorm conditioner) are NEVER
+    # autocast — the autocast is wrapped around SeismogramTransformer.forward and casts the context
+    # back to fp32 before the flow. Absent ⇒ all off ⇒ byte-identical legacy compute.
+    _perf_cfg = _raw_cfg.get("ml_perf") or {}
+    if _perf_cfg:
+        model_config["perf"] = {k: v for k, v in _perf_cfg.items() if k != "enabled"}
+        print(f"ML perf toggles: {model_config['perf']}")
 
     # Optional optimizer / LR-schedule overrides via a top-level 'ml_optimizer' block:
     #   ml_optimizer:
@@ -304,6 +349,26 @@ def main():
     )
     print(f"Post-noise augmentation: {list(post_noise_nuisance_params.keys()) or 'none'}")
 
+    # Optional in-RAM caches via a top-level 'ml_cache' block (opt-in; speed-only). The per-sample
+    # HDF5 reads (clean sim load + a 2nd open for conditioning + the RealNoiseSampler noise read)
+    # are ~25-40 ms/sample and DON'T scale with workers (shared-file reads plateau). Once the model
+    # step is fast (ml_perf), they dominate and starve the GPU. Preloading into contiguous RAM
+    # buffers (fork-shared copy-on-write across workers) removes them.
+    #   ml_cache:
+    #     sims: true            # cache clean sim arrays (sim_count * N*C*T * dtype bytes)
+    #     noise: true           # cache the RealNoiseSampler window pool
+    #     dtype: float32        # sim-cache storage dtype (float32 == model precision; float64 byte-exact)
+    #     preload_workers: 16
+    _cache_cfg = _raw_cfg.get("ml_cache") or {}
+    cache_sims = bool(_cache_cfg.get("sims", False))
+    cache_noise = bool(_cache_cfg.get("noise", False))
+    cache_dtype = str(_cache_cfg.get("dtype", "float32"))
+    cache_workers = int(_cache_cfg.get("preload_workers", 16))
+    if cache_noise and hasattr(sbi_pipeline.training_noise_sampler, "preload_cache"):
+        sbi_pipeline.training_noise_sampler.preload_cache(max_workers=cache_workers)
+    if _cache_cfg:
+        print(f"ML in-RAM cache: sims={cache_sims} noise={cache_noise} dtype={cache_dtype}")
+
     num_sims = len(test_jobs_paths)
     train_max_index = int(0.90 * num_sims)
     dataloader_args = {
@@ -327,6 +392,9 @@ def main():
         'station_subsampler': station_subsampler,
         'post_noise_augmentation_chain': post_noise_chain,
         'post_noise_nuisance_params': post_noise_nuisance_params,
+        'cache_in_memory': cache_sims,
+        'cache_dtype': cache_dtype,
+        'cache_preload_workers': cache_workers,
     }
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name

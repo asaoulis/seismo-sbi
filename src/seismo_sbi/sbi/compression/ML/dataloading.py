@@ -62,6 +62,9 @@ class TorchSimulationDataset(Dataset):
         station_subsampler: "StationSubsampler" = None,
         post_noise_augmentation_chain=None,
         post_noise_nuisance_params=None,
+        cache_in_memory: bool = False,
+        cache_preload_workers: int = 16,
+        cache_dtype: str = "float32",
     ):
         self.data_loader = data_loader
 
@@ -116,13 +119,79 @@ class TorchSimulationDataset(Dataset):
         else:
             print(f"Found {len(self.paths)} simulations matching {glob_pattern} under {data_folder}")
 
+        # --- Optional in-RAM sim cache (opt-in) ---
+        # The per-sample HDF5 open/read (`_load_sim`, plus a SECOND open for `_load_conditioning`
+        # on the conditioned path) is ~13 ms/sample and — being a shared-file read — does NOT scale
+        # with more DataLoader workers (it plateaus the loader throughput). Once the model step is
+        # fast (AMP/SDPA), this load dominates and starves the GPU. Preloading every clean array into
+        # ONE contiguous numpy buffer in the MAIN process (before the workers fork) removes the load
+        # entirely: __getitem__ indexes RAM, and the workers share the buffer copy-on-write (a single
+        # large array's data pages aren't touched by Python refcounting, so no per-worker duplication).
+        # The augmentation + noise + scaling still run per __getitem__ on a COPY, so behaviour is
+        # byte-identical to the on-disk path (verified by checksum in scripts/bench_aug_dataloader.py).
+        # cache_dtype trades RAM for storage precision. The model trains in float32, so
+        # "float32" (default) is identical to the on-disk path at the model's input precision
+        # (measured rel|Δ| 8e-8 < float32 ULP) at HALF the RAM of the native float64; use
+        # "float64" for a byte-identical cache, or "float16" to halve RAM again on big (1M+)
+        # datasets where the extra rounding is acceptable.
+        self._cache_D = None
+        self._cache_theta = None
+        self._cache_cond = None
+        if cache_in_memory:
+            self._preload_cache(int(cache_preload_workers), dtype=np.dtype(cache_dtype).type)
+
     def __len__(self):
         return len(self.paths)
 
+    def _preload_cache(self, max_workers: int = 16, dtype=np.float32):
+        """Preload every sim's clean (theta, D[, conditioning]) into contiguous RAM buffers.
+
+        Runs ONCE in the main process (before the DataLoader forks its workers) so the big
+        ``_cache_D`` buffer is shared copy-on-write. Uses a thread pool because h5py releases the
+        GIL on reads, so the per-file open/read I/O overlaps across threads (the on-disk path's
+        scaling wall is exactly this serialised read). The cached arrays reproduce ``_load_sim`` /
+        ``_load_conditioning`` exactly, so __getitem__ stays behaviour-identical.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+        import time as _t
+        n = len(self.paths)
+        theta0, D0 = self._load_sim(self.paths[0])
+        self._cache_D = np.empty((n,) + tuple(D0.shape), dtype=dtype)
+        self._cache_theta = (
+            np.empty((n, theta0.shape[0]), dtype=np.float64) if theta0.size else None
+        )
+        self._cache_cond = None
+        if self.conditioning_param_map:
+            cond0 = self._load_conditioning(self.paths[0])
+            self._cache_cond = np.empty((n, cond0.shape[0]), dtype=np.float64)
+
+        def _load_one(i):
+            th, D = self._load_sim(self.paths[i])
+            self._cache_D[i] = D
+            if self._cache_theta is not None:
+                self._cache_theta[i] = th
+            if self._cache_cond is not None:
+                self._cache_cond[i] = self._load_conditioning(self.paths[i])
+
+        t0 = _t.perf_counter()
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
+            list(ex.map(_load_one, range(n)))
+        gb = self._cache_D.nbytes / 1e9
+        print(f"[sim-cache] preloaded {n} sims into RAM ({gb:.2f} GB, {dtype.__name__}) "
+              f"in {_t.perf_counter() - t0:.1f}s — per-sample HDF5 load removed.")
+
     def __getitem__(self, idx):
-        # Load per-sample data on demand
+        # Load per-sample data — from the in-RAM cache when preloaded, else on demand from HDF5.
         sim_path = self.paths[idx]
-        theta, D = self._load_sim(sim_path)
+        # getattr keeps datasets built via __new__ (test stubs) working without this attr.
+        cache_D = getattr(self, "_cache_D", None)
+        if cache_D is not None:
+            # Copy out of the shared buffer so the aug/noise below never mutate the cache.
+            D = np.array(cache_D[idx])
+            theta = (np.array(self._cache_theta[idx]) if self._cache_theta is not None
+                     else np.array([]))
+        else:
+            theta, D = self._load_sim(sim_path)
 
         # Fold in nuisance augmentation on the CLEAN data, before noise is added
         # (physical semantics: amplitude/dropout/shift act on signal, then noise).
@@ -180,7 +249,10 @@ class TorchSimulationDataset(Dataset):
         # Optional raw source-conditioning vector (shared by both return paths).
         source_vec = None
         if self.conditioning_param_map:
-            source_vec = torch.as_tensor(self._load_conditioning(sim_path), dtype=self.torch_dtype)
+            cache_cond = getattr(self, "_cache_cond", None)
+            raw_cond = (cache_cond[idx] if cache_cond is not None
+                        else self._load_conditioning(sim_path))
+            source_vec = torch.as_tensor(raw_cond, dtype=self.torch_dtype)
             source_vec = self._perturb_conditioning(source_vec)
 
         # --- Variable-station path: subsample stations, carry per-sample coords ---
@@ -375,6 +447,9 @@ def make_torch_dataloaders(
     station_subsampler: "StationSubsampler" = None,
     post_noise_augmentation_chain=None,
     post_noise_nuisance_params=None,
+    cache_in_memory: bool = False,
+    cache_preload_workers: int = 16,
+    cache_dtype: str = "float32",
 ):
     if val_batch_size is None:
         val_batch_size = train_batch_size
@@ -397,6 +472,9 @@ def make_torch_dataloaders(
         station_subsampler=station_subsampler,
         post_noise_augmentation_chain=post_noise_augmentation_chain,
         post_noise_nuisance_params=post_noise_nuisance_params,
+        cache_in_memory=cache_in_memory,
+        cache_preload_workers=cache_preload_workers,
+        cache_dtype=cache_dtype,
     )
     n = len(full_dataset)
     end = max(0, min(train_max_index, n))

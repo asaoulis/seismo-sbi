@@ -60,6 +60,8 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn as nn
 
+from .fused_attention import build_mha
+
 # Keys accepted in the ``pma_pooling`` config block (``enabled`` is stripped by the config parser
 # before the dict reaches the model). A single validator covers the whole block.
 _CONFIG_KEYS = {
@@ -123,13 +125,12 @@ class _MAB(nn.Module):
         ffn: bool = True,
         dim_feedforward: Optional[int] = None,
         dropout: float = 0.0,
+        use_sdpa: bool = False,
     ) -> None:
         super().__init__()
         self.ln_q = nn.LayerNorm(d_model)
         self.ln_kv = nn.LayerNorm(d_model)
-        self.attn = nn.MultiheadAttention(
-            d_model, num_heads, dropout=dropout, batch_first=True
-        )
+        self.attn = build_mha(d_model, num_heads, dropout, use_sdpa)
         self.use_ffn = bool(ffn)
         if self.use_ffn:
             self.ln_ff = nn.LayerNorm(d_model)
@@ -168,11 +169,13 @@ class _TimePool(nn.Module):
         dim_feedforward: Optional[int] = None,
         dropout: float = 0.0,
         seed_init_scale: float = 1.0,
+        use_sdpa: bool = False,
     ) -> None:
         super().__init__()
         self.seed = nn.Parameter(torch.randn(1, 1, d_model) * seed_init_scale)
         self.mab = _MAB(
-            d_model, num_heads, ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout
+            d_model, num_heads, ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout,
+            use_sdpa=use_sdpa,
         )
 
     def forward(
@@ -211,6 +214,7 @@ class SetTransformerPMAHead(nn.Module):
         dropout: float = 0.0,
         seed_init_scale: float = 1.0,
         time_pool_heads: Optional[int] = None,
+        use_sdpa: bool = False,
     ) -> None:
         super().__init__()
         if pool_over not in ("tokens", "stations"):
@@ -242,20 +246,22 @@ class SetTransformerPMAHead(nn.Module):
             self.time_pool = _TimePool(
                 d_model, int(time_pool_heads) if time_pool_heads else nh,
                 ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout,
-                seed_init_scale=seed_init_scale,
+                seed_init_scale=seed_init_scale, use_sdpa=use_sdpa,
             )
 
         # PMA seeds + pool.
         self.seeds = nn.Parameter(torch.randn(1, num_seeds, d_model) * seed_init_scale)
         self.pma = _MAB(
-            d_model, nh, ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout
+            d_model, nh, ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout,
+            use_sdpa=use_sdpa,
         )
 
         # Optional self-attention among the k seed outputs.
         self.sab: Optional[_MAB] = None
         if seed_self_attention:
             self.sab = _MAB(
-                d_model, nh, ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout
+                d_model, nh, ffn=ffn, dim_feedforward=dim_feedforward, dropout=dropout,
+                use_sdpa=use_sdpa,
             )
 
         # k -> 1 combination.
@@ -285,15 +291,20 @@ class SetTransformerPMAHead(nn.Module):
 
     @classmethod
     def from_config(
-        cls, d_model: int, num_heads_default: int, cfg: Dict[str, Any]
+        cls, d_model: int, num_heads_default: int, cfg: Dict[str, Any],
+        use_sdpa: bool = False,
     ) -> "SetTransformerPMAHead":
-        """Build from the ``pma_pooling`` config dict, rejecting unknown keys."""
+        """Build from the ``pma_pooling`` config dict, rejecting unknown keys.
+
+        ``use_sdpa`` is a perf flag threaded from the transformer (not a config-block key), so
+        it is passed separately and never appears in ``cfg``.
+        """
         unknown = set(cfg) - _CONFIG_KEYS
         if unknown:
             raise ValueError(
                 f"Unknown pma_pooling keys {sorted(unknown)}; valid: {sorted(_CONFIG_KEYS)}"
             )
-        return cls(d_model, num_heads_default, **cfg)
+        return cls(d_model, num_heads_default, use_sdpa=use_sdpa, **cfg)
 
     def _combine_seeds(self, h: torch.Tensor) -> torch.Tensor:
         """Reduce the ``k`` seed outputs ``(B, k, D)`` to one vector ``(B, D)``."""

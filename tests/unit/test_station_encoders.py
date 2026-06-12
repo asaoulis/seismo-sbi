@@ -96,6 +96,122 @@ def test_encoder_handles_zero_input(enc_name, enc_cfg, T):
     assert torch.isfinite(out).all(), f"{enc_name}: non-finite output on zero-valued input"
 
 
+def test_input_decimator_shapes_and_band_limited_exactness():
+    """InputDecimator: output length = ceil(T/factor); on a band-limited signal the
+    anti-aliased decimation matches ideal striding in the interior (no information loss)."""
+    from seismo_sbi.sbi.compression.ML.station_encoders import InputDecimator
+
+    T, factor, C = 600, 3, 3
+    dec = InputDecimator(factor, C, antialias=True)
+    assert dec.output_length(T) == (T - 1) // factor + 1 == 200
+
+    # Band-limited mix (0.03-0.08 Hz at 1 Hz sampling) — well below the post-decimation
+    # Nyquist (0.5/3 ≈ 0.167 Hz), so striding is information-preserving.
+    t = torch.arange(T, dtype=torch.float64)
+    sig = sum(torch.sin(2 * math.pi * f * t + p) for f, p in [(0.03, 0.3), (0.05, 1.1), (0.08, 2.0)])
+    x = sig.to(torch.float32).view(1, 1, 1, -1).repeat(2, 4, C, 1)   # (B,N,C,T)
+
+    y = dec(x)
+    assert y.shape == (2, 4, C, 200)
+    ref = x[..., ::factor]
+    interior = slice(5, -5)   # edges taper from the FIR; compare the interior
+    rel = (y[..., interior] - ref[..., interior]).abs().max() / ref.abs().max()
+    assert rel < 1e-2, f"band-limited anti-aliased decimation drifted from ideal stride: {rel:.2e}"
+
+
+def test_input_decimator_flat_layouts_agree_and_finite():
+    """4-D (B,N,C,T) and flat (B*N,C,T) inputs decimate identically; output is finite."""
+    from seismo_sbi.sbi.compression.ML.station_encoders import InputDecimator
+
+    B, N, C, T = 2, 3, 3, 201
+    dec = InputDecimator(2, C, antialias=True)
+    x4 = torch.randn(B, N, C, T)
+    y4 = dec(x4)
+    y_flat = dec(x4.reshape(B * N, C, T)).reshape(B, N, C, -1)
+    assert torch.allclose(y4, y_flat, atol=1e-6)
+    assert torch.isfinite(y4).all()
+    assert y4.shape[-1] == dec.output_length(T)
+
+    with pytest.raises(ValueError):
+        InputDecimator(1, C)   # factor < 2 is rejected
+
+
+def test_input_decimation_train_inference_symmetric():
+    """A model built with ml_encoder input_decimate sizes its encoder to the decimated
+    length and applies the SAME decimation in embed() on both the 4-D and packed paths,
+    so train (packed) and inference (4-D) see the same model entry."""
+    from seismo_sbi.sbi.compression.ML.seismogram_transformer import SeismogramTransformer
+
+    T, N, B = 201, 2, 3
+    model = SeismogramTransformer(
+        num_seismic_components=1,
+        transformer_config={
+            "channels": _D_MODEL, "nheads": 2, "layers": 1,
+            "station_encoder": "tcn",
+            "encoder_config": {"channels": 8, "n_blocks": 2, "downsample": 4},
+            "input_decimate": {"factor": 3, "antialias": True},
+        },
+        feature_length=_D_MODEL,
+        num_outputs=6,
+        noise_model=None,
+        seismogram_locations=torch.tensor([[10.0, 20.0], [11.0, 21.0]]),
+        device=torch.device("cpu"),
+        input_length=T,
+    )
+    # The decimator is active and the encoder/token count was sized for the DECIMATED
+    # length (T/3), not the raw T: a tcn downsample=4 over 67 samples gives fewer tokens
+    # than over 201.
+    assert model.input_decimator is not None and model.input_decimator.factor == 3
+    dec_T = (T - 1) // 3 + 1
+    undec = SeismogramTransformer(
+        num_seismic_components=1,
+        transformer_config={
+            "channels": _D_MODEL, "nheads": 2, "layers": 1,
+            "station_encoder": "tcn",
+            "encoder_config": {"channels": 8, "n_blocks": 2, "downsample": 4},
+        },
+        feature_length=_D_MODEL, num_outputs=6, noise_model=None,
+        seismogram_locations=torch.tensor([[10.0, 20.0], [11.0, 21.0]]),
+        device=torch.device("cpu"), input_length=T,
+    )
+    assert model.L < undec.L, "decimation should reduce the transformer token count"
+    model.eval()
+    with torch.no_grad():
+        out = model.embed(torch.randn(B, N, 1, T))   # 4-D inference path
+    assert out.shape == (B, _D_MODEL)
+    assert torch.isfinite(out).all()
+
+
+@pytest.mark.parametrize("enc_name", ["cnn", "tcn", "pno"])
+def test_encoder_amp_safe_bf16_autocast(enc_name):
+    """Every encoder must produce a finite output under a bf16 autocast (the production AMP
+    path). Regression: the pno SpectralConv1d FFT has no bf16 kernel and used to raise
+    'Unsupported dtype BFloat16'; it now runs its FFT in fp32 inside the autocast region."""
+    T = 201
+    enc = build_station_encoder(enc_name, num_seismic_components=_C, input_length=T,
+                                d_model=_D_MODEL, downsample=2)
+    x = torch.randn(_BN, _C, T)
+    with torch.no_grad(), torch.autocast("cpu", dtype=torch.bfloat16):
+        out = enc(x)
+    assert torch.isfinite(out.float()).all(), f"{enc_name}: non-finite under bf16 autocast"
+
+
+@pytest.mark.parametrize("enc_name", ["cnn", "tcn", "pno"])
+def test_encoder_uniform_downsample(enc_name):
+    """All three encoders accept a uniform `downsample` (cnn gained it) and produce a token
+    count of ceil(T/downsample) for cnn (same-padded) / T//downsample for tcn/pno — short-input
+    safe (the model-entry Nyquist decimation feeds them a reduced T)."""
+    T = 67   # e.g. 201 after input_decimate=3
+    enc = build_station_encoder(enc_name, num_seismic_components=_C, input_length=T,
+                                d_model=_D_MODEL, downsample=2)
+    x = torch.randn(_BN, _C, T)
+    with torch.no_grad():
+        out = enc(x)
+    assert out.shape[1] == enc.output_length
+    assert 25 <= enc.output_length <= 40, f"{enc_name}: unexpected token count {enc.output_length}"
+    assert torch.isfinite(out).all()
+
+
 def test_transformer_handles_long_token_sequence():
     """Regression: an encoder emitting L > 60 tokens must not break the transformer's
     time-embedding add (max_time_steps used to default to 60). PNO with downsample=2 on a

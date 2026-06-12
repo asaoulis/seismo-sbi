@@ -187,7 +187,12 @@ class AmplitudeTokenEmbedding(nn.Module):
         B, N, C, T = x.shape
         ax = x.abs().reshape(B, N, C * T)
         peak = ax.amax(dim=-1).clamp_min(self.eps)                                   # (B, N)
-        floor = torch.quantile(ax, self.snr_floor_quantile, dim=-1).clamp_min(self.eps)
+        # torch.quantile requires float/double — under bf16 autocast ax is bf16, so compute
+        # the floor in fp32 (an amplitude statistic; precision here is immaterial) then cast
+        # back. Newer torch rejects bf16 outright; torch 2.0 tolerated it silently.
+        floor = torch.quantile(
+            ax.float(), self.snr_floor_quantile, dim=-1
+        ).to(ax.dtype).clamp_min(self.eps)
         s = peak.log() - floor.log()                                                 # (B, N)
         slope = F.softplus(self.snr_gate_slope)                                      # > 0
         w = torch.sigmoid(slope * (s - self.snr_gate_bias))                          # (B, N)

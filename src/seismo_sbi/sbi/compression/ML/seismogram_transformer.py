@@ -6,7 +6,7 @@ from torch import nn
 from .cnn_feature_extractor import ConvolutionalFeatureExtractor
 from .csdi_transformer import ConditionalTransformer
 from .axial_transformer import SeismogramAxialTransformer
-from .station_encoders import build_station_encoder
+from .station_encoders import build_station_encoder, InputDecimator
 from .amplitude_embedding import AmplitudeTokenEmbedding
 from .source_conditioning import (
     SourceConditioner,
@@ -44,13 +44,42 @@ class SeismogramTransformer(nn.Module):
         self.aggregation = aggregation
         d_model = transformer_config['channels']
 
+        # --- Optional performance toggles (opt-in via model_config['perf']; see train.py) ---
+        # Absent ⇒ all default to off and the model is byte-identical to before. These are pure
+        # speed knobs for the EMBEDDING net only; the NSF flow head (precision-brittle: LULinear
+        # log-det + BatchNorm conditioner) is left in fp32 by construction — autocast here wraps
+        # SeismogramTransformer.forward and casts its context output back to fp32 before the flow.
+        perf = transformer_config.get("perf", {}) or {}
+        self._amp = bool(perf.get("amp", False))
+        _amp_dtype = str(perf.get("amp_dtype", "bfloat16")).lower()
+        self._amp_dtype = torch.bfloat16 if _amp_dtype in ("bfloat16", "bf16") else torch.float16
+        # SDPA (fused scaled_dot_product_attention) for the axial / PMA attentions.
+        self._use_sdpa = bool(perf.get("sdpa", False))
+
+        # --- Optional Nyquist-aware model-entry input decimation (opt-in) ---
+        # model_config['input_decimate'] = {"factor": k, "antialias": bool}. Band-limited
+        # data sampled above its Nyquist rate decimates losslessly (min period 6 s @ 1 Hz
+        # sampling ⇒ factor 3). Packed-context UNPACKING keeps the original trace length
+        # (self.input_length); only the encoder and everything downstream see T/k.
+        dec_cfg = transformer_config.get("input_decimate", None) or {}
+        dec_factor = int(dec_cfg.get("factor", 1) or 1)
+        self.input_decimator = (
+            InputDecimator(dec_factor, num_seismic_components,
+                           antialias=bool(dec_cfg.get("antialias", True)))
+            if dec_factor > 1 else None
+        )
+        encoder_input_length = (
+            self.input_decimator.output_length(input_length)
+            if self.input_decimator is not None else input_length
+        )
+
         # --- Pluggable per-station encoder ---
         encoder_name = transformer_config.get("station_encoder", "cnn")
         encoder_cfg = transformer_config.get("encoder_config", {})
         self.station_encoder = build_station_encoder(
             encoder_name,
             num_seismic_components=num_seismic_components,
-            input_length=input_length,
+            input_length=encoder_input_length,
             d_model=d_model,
             **encoder_cfg,
         )
@@ -176,6 +205,7 @@ class SeismogramTransformer(nn.Module):
             posemb_coords_kind=posemb_coords_kind,
             inject_every_layer=inject_every_layer,
             pma_pooling_config=pma_cfg,
+            use_sdpa=self._use_sdpa,
         )
         # include_depth needs a source depth in the conditioning vector (lat, lon, depth, ...).
         _posenc = self.all_station_transformer.station_posenc
@@ -221,6 +251,15 @@ class SeismogramTransformer(nn.Module):
         return torch.stack([self.noise_model() for _ in range(batch_size)], dim =0)
     
     def forward(self, x : torch.Tensor):
+        # Optional bf16 autocast scoped to the EMBEDDING net only. The flow (which calls this
+        # forward as its embedding_net) then receives an fp32 context, so the precision-brittle
+        # coupling/LU/BatchNorm transforms keep running in fp32. autocast keeps LayerNorm/softmax
+        # in fp32 automatically (its op allowlist) and routes matmuls/convs to bf16 tensor cores.
+        if self._amp and x.is_cuda:
+            with torch.autocast("cuda", dtype=self._amp_dtype):
+                aggregated_station_info = self.embed(x)
+                outputs = self.source_param_predictor(aggregated_station_info)
+            return outputs.float()
         aggregated_station_info = self.embed(x)
         outputs = self.source_param_predictor(aggregated_station_info)
         return outputs
@@ -273,6 +312,11 @@ class SeismogramTransformer(nn.Module):
                 "(n_cond == 0). Did you set source_location on an unconditioned model, or load "
                 "a conditioned checkpoint into a default-constructed trainer?"
             )
+
+        # Model-entry decimation: after unpacking (which needs the original trace length),
+        # before the encoder/amplitude paths — everything downstream sees T/k samples.
+        if self.input_decimator is not None:
+            x = self.input_decimator(x)
 
         (batch_size, num_stations, num_seismic_components, trace_length) = x.shape
         B, N = batch_size, num_stations
@@ -448,7 +492,8 @@ class LightningModel(pl.LightningModule):
         return [opt], [sch]
 
 class NPELightningModule(pl.LightningModule):
-    def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine", **kwargs):
+    def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine",
+                 fused_adam=False, compile_forward=False, compile_flow=False, **kwargs):
         super().__init__()
         self.flow = flow
         self.lr = lr
@@ -459,9 +504,40 @@ class NPELightningModule(pl.LightningModule):
         #   "cyclic"             — triangular CyclicLR (step-based).
         self.lr_second_stage = lr_second_stage
         self.cyclic_period_steps = 8000
+        # --- Optional perf toggles (opt-in via model_config['perf']; default-off = legacy) ---
+        # fused_adam: one fused CUDA optimizer kernel instead of a per-parameter launch storm
+        #   (~8M params in many small tensors — real saving on this launch-bound workload).
+        # compile_forward: torch.compile the WHOLE log-prob (embedding + flow) — the flow's
+        #   small per-transform kernels dominate launch overhead. Wrapped as a closure so
+        #   state_dict keys are unchanged (no _orig_mod. prefix in checkpoints).
+        # compile_flow: compile ONLY the transform stack + base density (embedding eager) —
+        #   fallback if the embedding's data-dependent mask branches thrash recompilation.
+        # Requires a working torch.compile (torch >= 2.2; broken on 2.0) — only set these on
+        # an env where the one-epoch e2e gate passes with them on.
+        self._fused_adam = bool(fused_adam)
+        self._log_prob_fn = None
+        self._flow_tail_fn = None
+        if compile_forward and hasattr(torch, "compile"):
+            self._log_prob_fn = torch.compile(self._log_prob)
+        elif compile_flow and hasattr(torch, "compile"):
+            self._flow_tail_fn = torch.compile(self._flow_log_prob_from_embedded)
+
+    def _log_prob(self, theta, x):
+        return self.flow.log_prob(theta, context=x)
+
+    def _flow_log_prob_from_embedded(self, theta, embedded):
+        # nflows.Flow.log_prob with the embedding hoisted out, so only the launch-bound
+        # transform stack + base density are compiled.
+        noise, logabsdet = self.flow._transform(theta, context=embedded)
+        return self.flow._distribution.log_prob(noise, context=embedded) + logabsdet
 
     def forward(self, x, theta):
         # The flow contains the embedding_net; pass x as context to be embedded internally.
+        if self._log_prob_fn is not None:
+            return self._log_prob_fn(theta, x)
+        if self._flow_tail_fn is not None:
+            embedded = self.flow._embedding_net(x)
+            return self._flow_tail_fn(theta, embedded)
         return self.flow.log_prob(theta, context=x)
 
     def training_step(self, batch, batch_idx):
@@ -481,8 +557,18 @@ class NPELightningModule(pl.LightningModule):
         return val_loss
 
     def configure_optimizers(self):
-        # Optimizer
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        # Optimizer. fused=True is numerically equivalent (same update rule, fused kernel).
+        # Guard on all-CUDA params explicitly: some torch versions only fail fused CPU
+        # params at step() time, not at construction — never rely on the constructor raising.
+        optimizer = None
+        if self._fused_adam and all(p.is_cuda for p in self.parameters()):
+            try:
+                optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr,
+                                              weight_decay=self.weight_decay, fused=True)
+            except (TypeError, RuntimeError, ValueError):
+                optimizer = None
+        if optimizer is None:
+            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
         # Default: 2-phase schedule → warmup → cosine or cyclic
         max_epochs = getattr(self.trainer, "max_epochs", None) or 500

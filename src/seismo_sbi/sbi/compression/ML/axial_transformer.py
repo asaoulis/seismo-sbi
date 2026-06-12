@@ -5,6 +5,7 @@ import math
 
 from .positional_encoding import FourierStationPositionalEncoding
 from .pma_pooling import SetTransformerPMAHead
+from .fused_attention import build_mha
 
 def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     """
@@ -69,11 +70,13 @@ class FeedForward(nn.Module):
 class AxialOrFullBlock(nn.Module):
     def __init__(self, d_model, nheads, dim_feedforward=512, dropout=0.1,
                  use_query_xattn=True, mode="axial", input_dim=None,
-                 temporal_pool_tokens: int = 4):
+                 temporal_pool_tokens: int = 4, use_sdpa: bool = False):
         """
         mode: "axial" (station × time attention) or "full" (station-level only)
         input_dim: only needed if mode="full" (will project L*D → d_model)
         temporal_pool_tokens: if >0, use PMA-style temporal summarization per station before station-wise attention
+        use_sdpa: route every attention through the fused scaled_dot_product_attention drop-in
+            (numerically equivalent; opt-in perf path). Absent ⇒ stock nn.MultiheadAttention.
         """
         super().__init__()
         self.mode = mode
@@ -85,32 +88,32 @@ class AxialOrFullBlock(nn.Module):
             print(f"Using full attention with input dim {input_dim}, projecting to {d_model}")
             self.proj = nn.Linear(input_dim, d_model)
             self.ln_sta = nn.LayerNorm(d_model)
-            self.attn_sta = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.attn_sta = build_mha(d_model, nheads, dropout, use_sdpa)
 
         elif mode == "axial":
             # Always keep these for the baseline/time path
             self.ln_sta = nn.LayerNorm(d_model)
-            self.attn_sta = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.attn_sta = build_mha(d_model, nheads, dropout, use_sdpa)
 
             self.ln_tim = nn.LayerNorm(d_model)
-            self.attn_tim = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.attn_tim = build_mha(d_model, nheads, dropout, use_sdpa)
 
             # Optional PMA-style temporal summarization and time←station cross-attn
             if self.temporal_pool_tokens > 0:
                 # Per-station temporal pooling by multihead attention (PMA)
                 self.pma_queries = nn.Parameter(torch.randn(1, self.temporal_pool_tokens, d_model))
                 self.ln_pma_in = nn.LayerNorm(d_model)
-                self.attn_pma = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+                self.attn_pma = build_mha(d_model, nheads, dropout, use_sdpa)
 
                 # Used to provide station summaries as context to time tokens
                 self.ln_z = nn.LayerNorm(d_model)
-                self.tim_from_sta = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+                self.tim_from_sta = build_mha(d_model, nheads, dropout, use_sdpa)
 
         # Query cross-attention
         if use_query_xattn:
             self.ln_q = nn.LayerNorm(d_model)
             self.ln_ctx = nn.LayerNorm(d_model)
-            self.q_xattn = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.q_xattn = build_mha(d_model, nheads, dropout, use_sdpa)
 
         # FFN
         self.ln_ff = nn.LayerNorm(d_model)
@@ -233,8 +236,10 @@ class SeismogramAxialTransformer(nn.Module):
         posemb_coords_kind: str = "absolute",   # "relative" (distance, azimuth) or "absolute" (lat, lon)
         inject_every_layer: bool = True,        # re-inject the RFF posenc before every block (§3.2.c)
         pma_pooling_config: Optional[dict] = None,  # New: opt-in Set-Transformer PMA pooling head (§3.4)
+        use_sdpa: bool = False,                  # New: fused SDPA attention everywhere (opt-in perf)
     ):
         super().__init__()
+        self.use_sdpa = bool(use_sdpa)
         self.register_buffer(
             "station_coords",
             torch.as_tensor(station_coords, dtype=torch.float32)
@@ -284,6 +289,7 @@ class SeismogramAxialTransformer(nn.Module):
                 mode=self.mode,
                 input_dim=self.conv_length * self.timesteps if self.mode == "full" else None,
                 temporal_pool_tokens=temporal_pool_tokens,   # pass through
+                use_sdpa=self.use_sdpa,
             )
             for _ in range(num_layers)
         ])
@@ -335,7 +341,8 @@ class SeismogramAxialTransformer(nn.Module):
                     "PMA pooling head is incompatible with use_cls_token=True "
                     "(CLS provides its own pooling); disable one of them."
                 )
-            self.pma_head = SetTransformerPMAHead.from_config(d_model, nheads, pma_pooling_config)
+            self.pma_head = SetTransformerPMAHead.from_config(
+                d_model, nheads, pma_pooling_config, use_sdpa=self.use_sdpa)
 
     def station_position_embedding(self, pos: torch.Tensor, d_model: int = 128, batch_size: int = None):
         """
