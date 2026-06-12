@@ -83,11 +83,16 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
                 f"No Instaseis DB directories found in {ensemble_dir}"
             )
         self._fiducial_member = str(instaseis_fiducial_loc)
-        self._db_cache: dict[str, InstaseisDBQuerier] = {}
 
-        # Derive sampling_rate from the fiducial DB (matches InstaseisSourceSimulator)
+        # Derive sampling_rate from the fiducial DB via a TRANSIENT querier (matches
+        # InstaseisSourceSimulator). We deliberately do NOT cache an open DB handle on
+        # the instance: GeneralSimulatorWrapper deepcopies the simulation_callable at
+        # init, and joblib pickles the simulator out to dataset-generation workers — an
+        # open instaseis/h5py handle is not picklable ("h5py objects cannot be pickled").
+        # Each _simulate_with_member opens the drawn member fresh (one open per
+        # simulation, exactly like the single-DB InstaseisSourceSimulator).
         self.sampling_rate = float(
-            self._querier_for(self._fiducial_member).sampling_rate
+            self._open_querier(self._fiducial_member).sampling_rate
         )
 
     @property
@@ -98,20 +103,17 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     def fiducial_member(self):
         return self._fiducial_member
 
-    def _querier_for(self, db_path) -> InstaseisDBQuerier:
-        # Convert numpy.str_ (returned by np.random.choice on string lists) to
-        # plain Python str to avoid "Can't mix strings and bytes" in os.walk
-        # inside instaseis.open_db.
-        key = str(db_path)
-        if key not in self._db_cache:
-            self._db_cache[key] = InstaseisDBQuerier(
-                key, self.synthetics_processing, self.seismogram_length
-            )
-        return self._db_cache[key]
+    def _open_querier(self, db_path) -> InstaseisDBQuerier:
+        # str() converts numpy.str_ (returned by np.random.choice on string lists) to
+        # plain Python str to avoid "Can't mix strings and bytes" in os.walk inside
+        # instaseis.open_db.
+        return InstaseisDBQuerier(
+            str(db_path), self.synthetics_processing, self.seismogram_length
+        )
 
     def _simulate_with_member(self, member: str, source: GenericPointSource, *,
                               stf_duration=None, **kwargs) -> dict:
-        querier = self._querier_for(member)
+        querier = self._open_querier(member)
         all_seismograms_map = {}
         for receiver in self.receivers.iterate():
             all_seismograms_map[receiver.station_name] = {}

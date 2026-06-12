@@ -674,16 +674,26 @@ class SingleEventPipeline(SBIPipeline):
                 
 
     def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details, extra_gradients=None, compressor_name: str = None):
-        only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
-        single_least_squares_step =  only_moment_tensor_variable
         print("Starting MLE", flush=True)
-        # choose a compressor name if not provided
+        # choose a compressor name if not provided (needed to decide single- vs multi-step below)
         if compressor_name is None:
             if not self.compressor_keys:
                 # default to first configured method name
                 compressor_name = next(iter(dict(self.compression_methods).keys()))
             else:
                 compressor_name = self.compressor_keys[0]
+        only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
+        # A single linearised Gauss-Newton step is exact ONLY when the MLE problem is linear: the
+        # moment tensor is the only free parameter AND the data covariance is constant. The
+        # theory_optimal_score covariance C_t(m) is the ensemble spread of the model predictions,
+        # which scales with the source, so it is NOT constant — an MT-only inversion is then still
+        # nonlinear and must iterate (each step recomputes C_t at the current estimate, with damping).
+        # With the CPS workflow the theory error is a sampled `velocity_model` nuisance, so "MT-only"
+        # was a reliable proxy for "constant covariance"; with the Instaseis ensemble the theory error
+        # is baked into the simulator (a random member per draw), so MT-only no longer implies a
+        # constant covariance — hence the explicit theory-error check.
+        theory_error_covariance = str(compressor_name).startswith("theory")
+        single_least_squares_step = only_moment_tensor_variable and not theory_error_covariance
         # build / refresh this specific compressor with its own compression data
         key, compressor, compression_data, extra_gradients = self.prepare_single_compressor(
             compressor_name,
