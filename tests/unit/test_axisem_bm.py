@@ -124,6 +124,46 @@ def test_perturbation_preserves_monotonicity(fiducial):
         assert np.all(np.diff(p.column("vsv")[:k + 1]) >= -1e-6), f"Vs reversal seed {seed}"
 
 
+def test_velocity_perturbation_is_mean_preserving(fiducial):
+    # The drift-corrected log-normal increments must keep the ensemble mean on
+    # the fiducial (E[v']=v).  Without the -sigma^2/2 drift the shallow nodes are
+    # biased low by ~(exp(sigma^2/2)-1)*(v_anchor-v_i); here we check the bias is
+    # consistent with sampling noise, not a systematic offset.
+    R = fiducial.radius.max()
+    depth = (R - fiducial.radius) / 1000.0
+    md = 50.0
+    crust = depth < md
+    k = int(crust.sum())
+    assert k >= 2  # need a non-trivial crust block to make the test meaningful
+
+    sigma = 0.10
+    n = 3000
+    acc_vp = np.zeros(fiducial.n_rows)
+    acc_vs = np.zeros(fiducial.n_rows)
+    for s in range(n):
+        p = perturb_background_model(
+            fiducial, vp_sigma=sigma, vs_sigma=sigma, width_sigma=0.0,
+            rho_mode="fixed", max_depth_km=md, seed=s,
+        )
+        acc_vp += p.column("vpv")
+        acc_vs += p.column("vsv")
+    mean_vp = acc_vp / n
+    mean_vs = acc_vs / n
+    fid_vp = fiducial.column("vpv")
+    fid_vs = fiducial.column("vsv")
+
+    # Fractional bias in the perturbed crust must be small.  An UNcorrected
+    # log-normal would bias the surface Vp by ~exp(sigma^2/2)-1 ~= 0.5% (one-
+    # sided); with the drift correction the residual is sampling noise
+    # (std/sqrt(n) per node ~ sigma/sqrt(n) ~ 0.18%).  Use a tolerance that the
+    # corrected version passes but the uncorrected (one-sided -0.5%+) would fail.
+    for mean_v, fid_v in ((mean_vp, fid_vp), (mean_vs, fid_vs)):
+        solid = (fid_v[:k] > 0)
+        frac = (mean_v[:k][solid] - fid_v[:k][solid]) / fid_v[:k][solid]
+        assert np.abs(frac).max() < 0.003, f"max |frac bias| {np.abs(frac).max():.4f}"
+        assert np.abs(frac.mean()) < 0.001, f"mean frac bias {frac.mean():+.4f}"
+
+
 def test_width_perturbation_disabled_keeps_radii(fiducial):
     p = perturb_background_model(fiducial, vp_sigma=0.0, vs_sigma=0.0,
                                  width_sigma=0.0, seed=3)

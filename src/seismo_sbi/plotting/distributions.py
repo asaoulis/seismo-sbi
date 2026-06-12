@@ -294,6 +294,16 @@ class MomentTensorReparametrised:
 LUNE_ENSEMBLE_COLORS = ['#6495ED', '#FF0000', '#800080', '#008000', '#A52A2A',
                         '#FFA500', '#008080', '#FF00FF', '#808000', '#FFD700', '#00FFFF']
 
+# Distinct scatter styles for *additional* published reference MTs overlaid on the lune
+# alongside the primary 'truth' (e.g. extra catalogue solutions: Lentas, Fountoulakis, ...).
+# Cycled in the order the extra_references mapping is provided.
+LUNE_REFERENCE_STYLES = [
+    {"marker": "*", "color": "gold",        "s": 380},
+    {"marker": "s", "color": "dodgerblue",  "s": 200},
+    {"marker": "^", "color": "magenta",     "s": 230},
+    {"marker": "P", "color": "darkorange",  "s": 230},
+]
+
 
 def _relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1.3):
     """Draw each collected beachball in a gutter just outside the lune rather than on top
@@ -376,17 +386,26 @@ def _relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1
                                    zorder=10, linewidth=s.get('linewidth', 1))
 
 
-def _add_lune_legend(ax, labels, colors, title=None, loc='upper left', fontsize=13):
+def _add_lune_legend(ax, labels, colors, title=None, loc='upper left', fontsize=13,
+                     extra_markers=None):
     """Add a per-ensemble colour legend to a lune plot (single source of truth for the
-    colour->label mapping shared by plot_lunes / plot_lunes_kde and the evaluation wrappers)."""
+    colour->label mapping shared by plot_lunes / plot_lunes_kde and the evaluation wrappers).
+
+    ``extra_markers`` (optional) is a list of ``{label, color, marker}`` dicts for additional
+    reference-MT scatter overlays; each is appended as a marker handle below the line handles."""
     from matplotlib.lines import Line2D
+    extra_markers = list(extra_markers or [])
     if plt.rcParams.get('text.usetex', False):
         # '%' is a LaTeX comment char; ChainConsumer can leave text.usetex on before we run.
         esc = lambda t: t.replace('%', r'\%') if isinstance(t, str) else t
         title = esc(title)
         labels = [esc(lab) for lab in labels]
+        extra_markers = [{**em, "label": esc(em["label"])} for em in extra_markers]
     handles = [Line2D([0], [0], lw=2.2, color=colors[i % len(colors)], label=lab)
                for i, lab in enumerate(labels)]
+    handles += [Line2D([0], [0], lw=0, marker=em["marker"], color=em["color"],
+                       markeredgecolor='black', markersize=12, label=em["label"])
+                for em in extra_markers]
     if handles:
         ax.legend(handles=handles, loc=loc, fontsize=fontsize, title=title, framealpha=0.9)
 
@@ -669,7 +688,7 @@ class PosteriorPlotter:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
         plt.close()
     
-    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None, legend=True):
+    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None, legend=True, extra_references=None, reference_label=None, primary_reference=None):
 
         # New implementation: project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
         fig, ax = plt.subplots(figsize=(14, 14))
@@ -714,8 +733,25 @@ class PosteriorPlotter:
                                             'group': 'truth' if idx == 0 else i})
 
         _relocate_beachballs_outside_lune(ax, bm, beachball_specs)
+        extra_specs = self._scatter_extra_references(ax, bm, extra_references or {})
+        # Primary 'truth' here is the black dot (drawn in the i==0 block when plot_beachballs);
+        # if absent but a primary_reference is supplied, draw it so it is shown consistently.
+        ref_specs = []
+        if reference_label:
+            if not (true_theta0 is not None and plot_beachballs) and primary_reference is not None:
+                _, pr = self.get_moment_tensors(np.empty((0, 6)),
+                                                np.asarray(primary_reference, dtype=float))
+                pr = np.array(self.convert_mt_convention(pr))
+                pg, pd = mts6_to_gamma_delta(pr.reshape(1, -1))
+                px, py = bm(pg, pd)
+                ax.scatter(px, py, color='black', marker='o', s=60,
+                           edgecolors='black', zorder=12)
+                ref_specs = [{"label": reference_label, "color": "black", "marker": "o"}]
+            elif true_theta0 is not None and plot_beachballs:
+                ref_specs = [{"label": reference_label, "color": "black", "marker": "o"}]
         if legend:
-            _add_lune_legend(ax, list(inversion_data.keys()), colors)
+            _add_lune_legend(ax, list(inversion_data.keys()), colors,
+                             extra_markers=ref_specs + extra_specs)
 
         if figsave is None:
             plt.show()
@@ -724,8 +760,15 @@ class PosteriorPlotter:
         plt.close()
 
 
-    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True, legend=True, legend_title='solid 68%, dashed 95% HPD'):
-        """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°."""
+    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True, legend=True, legend_title='solid 68%, dashed 95% HPD', extra_references=None, reference_label=None, primary_reference=None):
+        """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°.
+
+        ``extra_references`` (optional) maps ``label -> MT 6-vector`` (canonical
+        ``[Mrr,Mtt,Mpp,Mrt,Mrp,Mtp]``) for additional published reference solutions, drawn as
+        distinct scatter markers (see ``LUNE_REFERENCE_STYLES``) with their own legend entries.
+        ``reference_label`` (optional) gives the primary 'truth' (gold diamond) its own legend
+        entry. ``primary_reference`` (optional) is a primary-reference MT 6-vector drawn as that
+        gold diamond when the ensembles carry no ``theta0`` truth (e.g. the dropout lune)."""
         if ax is None:
             fig, ax = plt.subplots(figsize=(14, 14))
         else:
@@ -803,8 +846,12 @@ class PosteriorPlotter:
                                             'group': 'truth' if is_true_mt else i})
 
         _relocate_beachballs_outside_lune(ax, bm, beachball_specs)
+        extra_specs = self._scatter_extra_references(ax, bm, extra_references or {})
+        ref_specs = self._primary_reference_legend(
+            ax, bm, true_theta0, reference_label, primary_reference)
         if legend:
-            _add_lune_legend(ax, list(inversion_data.keys()), colors, title=legend_title)
+            _add_lune_legend(ax, list(inversion_data.keys()), colors, title=legend_title,
+                             extra_markers=ref_specs + extra_specs)
 
         iax = None
         if plot_inset:
@@ -874,6 +921,49 @@ class PosteriorPlotter:
 
         if show:
             plt.close()
+
+    def _primary_reference_legend(self, ax, bm, true_theta0, reference_label, primary_reference):
+        """Return the legend spec ``[{label,color,marker}]`` for the PRIMARY reference — the gold
+        'truth' diamond (e.g. the Zahradník solution). If the ensembles carried a ``theta0`` truth
+        it is already drawn by the main loop and we only emit its legend entry; if they did NOT
+        (e.g. the station-dropout lune, whose configs have ``theta0=None``) but a
+        ``primary_reference`` MT 6-vector is supplied, draw it here as the same peru diamond so it
+        appears consistently. Returns ``[]`` when there is nothing to label."""
+        truth_drawn = true_theta0 is not None
+        if not truth_drawn and primary_reference is not None:
+            _, pr_mt = self.get_moment_tensors(np.empty((0, 6)),
+                                               np.asarray(primary_reference, dtype=float))
+            pr_mt = np.array(self.convert_mt_convention(pr_mt))
+            pg, pd = mts6_to_gamma_delta(pr_mt.reshape(1, -1))
+            px, py = bm(pg, pd)
+            ax.scatter(px, py, color='peru', marker='d', s=320,
+                       edgecolors='black', linewidths=1.0, zorder=12)
+            truth_drawn = True
+        if truth_drawn and reference_label:
+            return [{"label": reference_label, "color": "peru", "marker": "d"}]
+        return []
+
+    def _scatter_extra_references(self, ax, bm, extra_references):
+        """Overlay additional published reference MTs as distinct scatter markers on the
+        projected lune. ``extra_references`` maps ``label -> MT 6-vector`` in the canonical
+        ``[Mrr,Mtt,Mpp,Mrt,Mrp,Mtp]`` (USE/RTP) convention; each is routed through the SAME
+        conversion path as the primary truth (``get_moment_tensors`` + ``convert_mt_convention``)
+        so its lune position is consistent with the gold 'truth' marker. The lune (γ,δ) is
+        scale- and basis-invariant, so absolute units / deviatoric-vs-full do not matter here.
+        Returns a list of ``{label, color, marker}`` legend specs."""
+        specs = []
+        for j, (label, rmt) in enumerate(extra_references.items()):
+            if rmt is None:
+                continue
+            style = LUNE_REFERENCE_STYLES[j % len(LUNE_REFERENCE_STYLES)]
+            _, ref_mt = self.get_moment_tensors(np.empty((0, 6)), np.asarray(rmt, dtype=float))
+            ref_mt = np.array(self.convert_mt_convention(ref_mt))
+            rg, rd = mts6_to_gamma_delta(ref_mt.reshape(1, -1))
+            rx, ry = bm(rg, rd)
+            ax.scatter(rx, ry, color=style["color"], marker=style["marker"], s=style["s"],
+                       edgecolors="black", linewidths=1.0, zorder=12)
+            specs.append({"label": label, "color": style["color"], "marker": style["marker"]})
+        return specs
 
     def get_moment_tensors(self, samples, theta0):
         sample_mts = []

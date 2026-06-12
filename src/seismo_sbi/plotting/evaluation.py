@@ -208,18 +208,26 @@ def _lune_zoom_limits(gamma_deg=35, pad_frac=0.05):
 
 
 def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
-                       zoom=True, decomposition=True, reference_label=None):
+                       zoom=True, decomposition=True, reference_label=None,
+                       extra_references=None, reference_name=None):
     """
     Overlay the recovery_dict ensembles on a single Tape & Tape lune (KDE contours),
     optionally cropped to ±35° γ with ISO/CLVD/DC decomposition beachballs for the
     reference (gold) solution. Reuses ``PosteriorPlotter.plot_lunes_kde``.
+
+    ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional published
+    reference solutions, overlaid as distinct scatter markers (e.g. extra catalogues).
+    ``reference_name`` (optional) is the legend label for the primary (gold diamond) reference
+    — e.g. "Zahradník"; ``reference_label`` still selects which ensemble's theta0 feeds the
+    decomposition beachballs.
     """
     import matplotlib.pyplot as plt
 
     pp = plotter.posterior_plotter
     fig, ax = plt.subplots(figsize=(12, 12))
     pp.plot_lunes_kde(recovery_dict, ax=ax, plot_beachballs=False,
-                      num_samples=num_samples, plot_inset=False, show=False, legend=True)
+                      num_samples=num_samples, plot_inset=False, show=False, legend=True,
+                      extra_references=extra_references, reference_label=reference_name)
     if zoom:
         x_min, x_max, y_min, y_max = _lune_zoom_limits()
         ax.set_xlim(x_min, x_max)
@@ -263,12 +271,18 @@ def spread_stats(mt_samples) -> Dict[str, float]:
 
 
 def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
-                           plot_beachballs=False, legend=True, num_samples=2500):
+                           plot_beachballs=False, legend=True, num_samples=2500,
+                           extra_references=None, reference_label=None,
+                           primary_reference=None):
     """Full-lune KDE overlay of several labelled posteriors, with a per-config legend.
 
     Wraps the house ``plotter.posterior_plotter.plot_lunes_kde`` (whole lune in shot, no
     crop), forwarding the per-config legend it now builds in-house. ``ensemble_dict`` maps
     ``label -> InversionData``; contour colours follow dict order (matched by the legend).
+    ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional reference
+    overlays drawn as distinct scatter markers. ``primary_reference`` + ``reference_label``
+    draw and label the primary (gold diamond) reference — needed here because dropout-ensemble
+    configs carry no theta0 truth.
     """
     import matplotlib.pyplot as plt
 
@@ -276,7 +290,9 @@ def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
     fig, ax = plt.subplots(figsize=(12, 12))
     pp.plot_lunes_kde(ensemble_dict, ax=ax, plot_beachballs=plot_beachballs,
                       num_samples=num_samples, plot_inset=False, show=False,
-                      legend=legend, legend_title="config\n(solid 68%, dashed 95% HPD)")
+                      legend=legend, legend_title="config\n(solid 68%, dashed 95% HPD)",
+                      extra_references=extra_references, reference_label=reference_label,
+                      primary_reference=primary_reference)
     if figsave is not None:
         Path(figsave).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(figsave, dpi=200, bbox_inches="tight")

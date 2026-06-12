@@ -82,6 +82,31 @@ class TestRealNoiseSampler:
         n1 = self.sampler(noise_index=1)
         assert not np.allclose(n0, n1)
 
+    def test_preload_cache_draws_from_same_pool(self):
+        """The opt-in in-RAM cache returns ONLY genuine catalogue windows (distribution-identical
+        to the on-disk random draw) and correctly-shaped, finite vectors."""
+        # Gather every on-disk window by index for a membership check.
+        on_disk = [np.asarray(self.sampler(noise_index=i)) for i in range(len(self.sampler.noise_paths))]
+        self.sampler.preload_cache(max_workers=4)
+        assert self.sampler._noise_cache is not None
+        assert self.sampler._noise_cache.shape[1] == self.expected_len
+        # Every cached draw must EQUAL one of the on-disk windows (drawn from the same pool).
+        for _ in range(12):
+            v = self.sampler()
+            assert v.shape == (self.expected_len,)
+            assert np.all(np.isfinite(v))
+            assert any(np.allclose(v, w, rtol=1e-5, atol=0) for w in on_disk), (
+                "cached noise draw is not a genuine catalogue window"
+            )
+
+    def test_preload_cache_no_rescale_still_reads_disk(self):
+        """The cache only serves the generic random draw; explicit no_rescale/index paths still hit
+        disk (so misc-data / adaptive behaviour is unchanged)."""
+        self.sampler.preload_cache(max_workers=4)
+        noise, misc = self.sampler(no_rescale=True)   # must still return the (vector, misc) tuple
+        assert noise.shape == (self.expected_len,)
+        assert "STA1" in misc
+
 
 class TestRealNoiseSamplerFreezeScale:
     """freeze_scale=True is the generic-event mode: set_adaptive_covariance_with_misc_data is a

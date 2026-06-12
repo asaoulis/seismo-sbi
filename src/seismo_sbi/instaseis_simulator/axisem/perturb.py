@@ -5,7 +5,15 @@ extends the spirit of ``cps_simulator.smooth_perturbations.perturb_model``:
 treat the 1-D model as a stack of layers and draw **log-normal fractional**
 perturbations on the key parameters:
 
-* ``vpv`` (Vp) and ``vsv`` (Vs)  -- per-row multiplicative ``exp(N(0, sigma))``
+* ``vpv`` (Vp) and ``vsv`` (Vs)  -- the *signed increments* between successive
+                                    nodes are scaled by a mean-1 log-normal factor
+                                    ``exp(N(-sigma^2/2, sigma))`` and the profile is
+                                    rebuilt from a fixed deep anchor (see
+                                    ``_perturb_monotone_increments``).  This keeps
+                                    monotonicity (no LVZ/cliff artifacts) *and*
+                                    makes the perturbation mean-preserving
+                                    (``E[v'] = v``), so the ensemble stays centred
+                                    on the 1-D reference.
 * layer width                    -- the radial gaps between successive nodes are
                                     perturbed, then renormalised so the surface
                                     and centre radii stay fixed.  This naturally
@@ -65,8 +73,8 @@ def _perturb_monotone_increments(v, anchor_idx, sigma, rng):
     cross and produce unphysical velocity reversals / low-velocity zones), we
     perturb the *increments* between successive nodes multiplicatively:
 
-        g_i  = v[i+1] - v[i]            (signed gap, top -> down)
-        g_i' = g_i * exp(N(0, sigma))   (exp > 0 -> sign of g_i is preserved)
+        g_i  = v[i+1] - v[i]                  (signed gap, top -> down)
+        g_i' = g_i * exp(N(-sigma^2/2, sigma)) (exp > 0 -> sign of g_i preserved)
 
     and rebuild the profile **upward from a fixed anchor** at ``anchor_idx``
     (``v[anchor_idx]`` and everything below it are left unchanged):
@@ -79,12 +87,24 @@ def _perturb_monotone_increments(v, anchor_idx, sigma, rng):
     never overtake the fixed deep anchor.  Spread is largest at the surface and
     shrinks toward the anchor (the shallow crust being the least constrained),
     which is the physically sensible uncertainty structure.
+
+    **Mean-preserving:** the log-normal factor uses a ``-sigma^2/2`` drift so it
+    has *mean* 1 (``E[exp(N(-sigma^2/2, sigma))] = 1``), not just median 1.  Then
+    ``E[g_i'] = g_i`` and, since the reconstruction is linear in the gaps with a
+    fixed anchor, ``E[v'] = v`` exactly at every node.  A plain ``N(0, sigma)``
+    factor would have mean ``exp(sigma^2/2) > 1``, inflating every increment and
+    systematically biasing the shallow velocities below the fiducial (the bias
+    grows toward the surface and scales as ``exp(sigma^2/2)``), so the ensemble
+    mean would drift away from the 1-D reference.  The drift correction keeps the
+    *marginal* deliberately non-log-normal (no LVZ/cliff artifacts) while
+    centring the ensemble on the reference model.
     """
     v_new = v.copy()
     if sigma <= 0 or anchor_idx < 1:
         return v_new
     gaps = v[1:anchor_idx + 1] - v[:anchor_idx]              # g_i, i=0..anchor_idx-1
-    gaps_p = gaps * np.exp(rng.normal(0.0, sigma, size=anchor_idx))
+    factors = np.exp(rng.normal(-0.5 * sigma ** 2, sigma, size=anchor_idx))  # E[factor]=1
+    gaps_p = gaps * factors
     suffix = np.cumsum(gaps_p[::-1])[::-1]                   # suffix[i] = sum_{j>=i} g_j'
     v_new[:anchor_idx] = v[anchor_idx] - suffix
     return v_new
