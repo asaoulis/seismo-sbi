@@ -153,6 +153,7 @@ class TorchSimulationDataset(Dataset):
         ``_load_conditioning`` exactly, so __getitem__ stays behaviour-identical.
         """
         from concurrent.futures import ThreadPoolExecutor
+        from tqdm import tqdm
         import time as _t
         n = len(self.paths)
         theta0, D0 = self._load_sim(self.paths[0])
@@ -175,7 +176,12 @@ class TorchSimulationDataset(Dataset):
 
         t0 = _t.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
-            list(ex.map(_load_one, range(n)))
+            # tqdm over the (in-order) map so the otherwise-silent preload of a large sim set
+            # (tens of GB / many minutes at 500k) shows progress; on a non-tty SLURM log it
+            # still emits periodic CR-updates, readable like the gen progress bar.
+            for _ in tqdm(ex.map(_load_one, range(n)), total=n,
+                          desc="[sim-cache] preloading", unit="sim"):
+                pass
         gb = self._cache_D.nbytes / 1e9
         print(f"[sim-cache] preloaded {n} sims into RAM ({gb:.2f} GB, {dtype.__name__}) "
               f"in {_t.perf_counter() - t0:.1f}s — per-sample HDF5 load removed.")

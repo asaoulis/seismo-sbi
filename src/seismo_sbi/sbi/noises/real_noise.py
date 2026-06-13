@@ -75,6 +75,7 @@ class RealNoiseSampler:
         path uses the cache; the adaptive / ``no_rescale`` paths still read from disk.
         """
         from concurrent.futures import ThreadPoolExecutor
+        from tqdm import tqdm
         import time as _t
         paths = list(self.noise_paths)
 
@@ -89,7 +90,8 @@ class RealNoiseSampler:
 
         t0 = _t.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
-            loaded = list(ex.map(_try_load, paths))
+            loaded = list(tqdm(ex.map(_try_load, paths), total=len(paths),
+                               desc="[noise-cache] preloading", unit="win"))
         # Keep windows matching the modal length (the data-vector length); drop gaps/mismatches.
         valid = [v for v in loaded if v is not None]
         if not valid:
