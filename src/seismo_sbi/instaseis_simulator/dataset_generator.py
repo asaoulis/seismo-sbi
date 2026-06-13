@@ -53,7 +53,10 @@ class ParallelSimulationRunner(ABC):
                     # Error handling for remote instaseis simulations
                     # to prevent hanging on single connection failure
                     print(f"Simulation terminated with exception {attempt_number + 1} times:")
-                    print(traceback.format_exception())
+                    # format_exc() formats the exception CURRENTLY being handled. The previous
+                    # `format_exception()` (no args) is invalid on Python >=3.10 and itself raised
+                    # a TypeError inside the except block — masking the real worker error.
+                    print(traceback.format_exc())
                     print("Retrying simulation...")
 
             print("Simulations failed. Exiting.")
