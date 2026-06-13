@@ -41,6 +41,14 @@ def parse_arguments():
     parser.add_argument('--no_wandb', action='store_true',
                         help="Disable W&B logging (e.g. CI). Combine with --csv_logger for "
                              "on-disk-only metrics, or leave both off to disable logging entirely.")
+    parser.add_argument('--skip_compression_data', action='store_true',
+                        help="Skip the score/Fisher compression stencil + the Gaussian "
+                             "(optimal_score) compressor. ML/NPE training (CompressionTrainer) "
+                             "trains its own embedding net on raw waveforms and never consumes "
+                             "score_compression_data, so the stencil is pure overhead for ML runs "
+                             "— and forking instaseis's numba-JIT forward model across the "
+                             "stencil's loky workers can abort with 'ReferenceError: underlying "
+                             "object has vanished'. Use for the ML gen + train stages.")
     args = parser.parse_args()
     return args
 
@@ -78,20 +86,34 @@ def main():
         test_jobs_paths = list(Path(path).glob('*.h5'))
 
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
-    score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
-                                                                            config.model_parameters,  
-                                                                            rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
+    # The score/Fisher stencil + Gaussian (optimal_score) compressor are only needed for the
+    # classical compressed-inversion path; ML/NPE training builds + trains its own embedding net
+    # on raw waveforms and never reads score_compression_data. Skipping the stencil bypasses it
+    # entirely for ML runs (and dodges the instaseis numba/loky stencil crash). Enable via the
+    # --skip_compression_data CLI flag OR a top-level `skip_compression_data: true` config key
+    # (the latter rides the normal config sync so the remote ML gen/train stages pick it up).
+    skip_compression_data = args.skip_compression_data or bool(
+        config.raw_config.get("skip_compression_data", False))
+    if skip_compression_data:
+        print("[skip_compression_data] Skipping score/Fisher stencil + Gaussian compressor "
+              "(unused by ML/NPE training).")
+        score_compression_data, extra_gradients = None, None
+    else:
+        score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
+                                                                                config.model_parameters,
+                                                                                rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
 
     # CPU dataset-generation stage of the remote two-stage workflow: the expensive
     # forward simulations (training dataset via simulate_test_jobs, and the score/Fisher
     # stencil via compute_required_compression_data) are now on disk. Stop here so the
     # GPU train stage (generate_dataset: false) re-loads them without re-simulating.
     if args.generate_only:
-        print(f"[generate_only] dataset + compression stencil ready: "
+        print(f"[generate_only] dataset ready: "
               f"{len(test_jobs_paths)} simulations at {sbi_pipeline.simulations_output_path}")
         return
 
-    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
+    if not skip_compression_data:
+        sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
 
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
