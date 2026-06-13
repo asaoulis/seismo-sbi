@@ -34,6 +34,10 @@ class SimulationParameters(NamedTuple):
     cps_GFs_fiducial_path : str = None
     cps_multi_models_path: Optional[str] = None
     syngine_fiducial_address: Optional[str] = None
+    # Inline list of per-region Instaseis-DB ensembles for the
+    # 'instaseis_multi_ensemble' simulation_type.  Each entry:
+    #   {ensemble_dir, fiducial_dir, receivers: [station_name, ...]}
+    instaseis_multi_models: Optional[list] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
 

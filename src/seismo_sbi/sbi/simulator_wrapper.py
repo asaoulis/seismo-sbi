@@ -7,6 +7,7 @@ from pathlib import Path
 
 from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
 from seismo_sbi.instaseis_simulator.ensemble import InstaseisEnsembleSimulator
+from seismo_sbi.instaseis_simulator.multi_model import InstaseisMultiModelSimulator
 from seismo_sbi.instaseis_simulator.post_processing import build_post_processing_chain
 from seismo_sbi.cps_simulator.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
 from seismo_sbi.sbi.compression.theory_covariance import (
@@ -119,6 +120,61 @@ class GeneralSimulatorWrapper:
             models.append(model_cfg)
         return models
 
+    def _build_instaseis_multi_models(self, simulation_parameters: SimulationParameters):
+        """Turn the inline ``instaseis_multi_models`` YAML list into sub-model dicts.
+
+        Each YAML entry has ``ensemble_dir`` + ``fiducial_dir`` (Instaseis DB
+        ensemble paths) and ``receivers`` (a list of station names), e.g.::
+
+            instaseis_multi_models:
+              - ensemble_dir: /…/santorini_tomo_mode_a/
+                fiducial_dir: /…/santorini_tomo_mode_a/fiducial/
+                receivers: [CMBO, SANT, …]   # Mode-A = on-island stations
+              - ensemble_dir: /…/santorini_tomo_mode_b/
+                fiducial_dir: /…/santorini_tomo_mode_b/fiducial/
+                receivers: [AMGA, ANYD, …]   # Mode-B = off-island stations
+
+        The DB paths are kept inline (YAML string leaves) so the cluster
+        orchestrator's path_remap rewrites them to the archive automatically.
+        """
+        cfg_list = getattr(simulation_parameters, "instaseis_multi_models", None)
+        if not cfg_list:
+            return None
+
+        if not isinstance(cfg_list, list):
+            raise ValueError(
+                f"instaseis_multi_models must be a list of model configs, got {type(cfg_list)}"
+            )
+
+        global_receivers = simulation_parameters.receivers
+        station_to_receiver = {rec.station_name: rec for rec in global_receivers.iterate()}
+
+        models = []
+        for idx, cfg in enumerate(cfg_list):
+            if not isinstance(cfg, dict):
+                raise ValueError(
+                    f"Entry {idx} in instaseis_multi_models must be an object/dict, got {type(cfg)}"
+                )
+
+            station_names = cfg.get("receivers", [])
+            sub_receivers_list = []
+            for sta in station_names:
+                try:
+                    sub_receivers_list.append(station_to_receiver[sta])
+                except KeyError:
+                    raise KeyError(
+                        f"Station '{sta}' in instaseis_multi_models (entry {idx}) "
+                        "not found in global receivers list"
+                    )
+
+            sub_receivers = Receivers(receivers=sub_receivers_list)
+            models.append({
+                "receivers": sub_receivers,
+                "ensemble_dir": cfg["ensemble_dir"],
+                "fiducial_dir": cfg["fiducial_dir"],
+            })
+        return models
+
     def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
         pp_effects = post_processing_effects or []
         if simulator_config[0] == 'instaseis_ensemble':
@@ -163,6 +219,24 @@ class GeneralSimulatorWrapper:
                             synthetics_processing=simulation_parameters.processing,
                             gf_storage_root=simulation_parameters.cps_GFs_path,
                             cps_path=getattr(simulation_parameters, 'cps_path', None),
+                            post_processing_effects=pp_effects)
+        elif simulator_config[0] == 'instaseis_multi_ensemble':
+            # simulator_config[1] can override and directly provide model dicts.
+            if simulator_config[1] is not None:
+                models = simulator_config[1]
+            else:
+                models = self._build_instaseis_multi_models(simulation_parameters)
+            if not models:
+                raise ValueError(
+                    "simulation_type 'instaseis_multi_ensemble' requires a non-empty "
+                    "'instaseis_multi_models' list in seismic_context."
+                )
+            simulator = InstaseisMultiModelSimulator(
+                            models=models,
+                            components=simulation_parameters.components,
+                            receivers=simulation_parameters.receivers,
+                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
+                            synthetics_processing=simulation_parameters.processing,
                             post_processing_effects=pp_effects)
         elif simulator_config[0] == 'cps_multi':
             # simulator_config[1] can override and directly provide model dicts.
