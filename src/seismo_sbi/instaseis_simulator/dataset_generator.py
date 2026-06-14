@@ -45,6 +45,11 @@ class ParallelSimulationRunner(ABC):
 
         def _error_handled_simulation_callable(*args, **kwargs):
 
+            # Bind the exception OUTSIDE the except block: in Python 3 the
+            # `except ... as exc` target is deleted when the block exits, so a
+            # later `raise exc` after the loop hits `UnboundLocalError` and masks
+            # the real worker error. Keep the last failure to re-raise faithfully.
+            last_exc = None
             for attempt_number in range(num_attempts):
                 try:
                     simulation_callable(*args, **kwargs)
@@ -52,6 +57,7 @@ class ParallelSimulationRunner(ABC):
                 except Exception as exc:
                     # Error handling for remote instaseis simulations
                     # to prevent hanging on single connection failure
+                    last_exc = exc
                     print(f"Simulation terminated with exception {attempt_number + 1} times:")
                     # format_exc() formats the exception CURRENTLY being handled. The previous
                     # `format_exception()` (no args) is invalid on Python >=3.10 and itself raised
@@ -60,7 +66,7 @@ class ParallelSimulationRunner(ABC):
                     print("Retrying simulation...")
 
             print("Simulations failed. Exiting.")
-            raise exc
+            raise last_exc
             
         
         return _error_handled_simulation_callable
