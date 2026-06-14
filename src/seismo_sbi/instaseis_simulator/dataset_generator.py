@@ -53,7 +53,7 @@ class ParallelSimulationRunner(ABC):
             for attempt_number in range(num_attempts):
                 try:
                     simulation_callable(*args, **kwargs)
-                    return None # tidy this up
+                    return True  # success
                 except Exception as exc:
                     # Error handling for remote instaseis simulations
                     # to prevent hanging on single connection failure
@@ -65,8 +65,16 @@ class ParallelSimulationRunner(ABC):
                     print(traceback.format_exc())
                     print("Retrying simulation...")
 
-            print("Simulations failed. Exiting.")
-            raise last_exc
+            # All retries exhausted. A small fraction of sampled sources can fall
+            # outside a forward model's valid domain (e.g. instaseis 'Element not
+            # found' when a source/receiver geometry is off the DB mesh — retrying
+            # redraws the ensemble member but NOT the source, so it can't recover).
+            # SKIP this sample (write no output) and continue rather than aborting
+            # the whole run; an excessive skip fraction is caught downstream in
+            # run_parallel_simulations (guards against a systemic bad-config run).
+            print(f"Simulation FAILED after {num_attempts} attempts; SKIPPING sample. "
+                  f"Last error: {type(last_exc).__name__}: {last_exc}")
+            return False
             
         
         return _error_handled_simulation_callable
@@ -81,7 +89,7 @@ class ParallelSimulationRunner(ABC):
             try:
                 with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))) as progress_bar:
                     with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
-                        joblib.Parallel()(
+                        results = joblib.Parallel()(
                             joblib.delayed(self.simulator)(*simulation_job_args) for
                                 simulation_job_args in simulation_job_args_list
                         )
@@ -92,8 +100,35 @@ class ParallelSimulationRunner(ABC):
                 from joblib.externals.loky import get_reusable_executor
                 get_reusable_executor().shutdown(wait=True, kill_workers=True)
         else:
-            for simulation_job_args in simulation_job_args_list:
-                self.simulator(*simulation_job_args)
+            results = [self.simulator(*simulation_job_args)
+                       for simulation_job_args in simulation_job_args_list]
+
+        self._guard_against_excessive_skips(results)
+
+    @staticmethod
+    def _guard_against_excessive_skips(results, max_skip_fraction=0.2):
+        """Report skipped simulations and abort if too many failed.
+
+        Each wrapped simulation callable returns True on success and False when it
+        was skipped after exhausting retries (rare out-of-domain sources). A few
+        skips are expected and harmless; a large fraction means a systemic problem
+        (e.g. a wrong DB path) that would otherwise silently produce a near-empty
+        dataset, so we raise instead.
+        """
+        total = len(results)
+        n_skipped = sum(1 for r in results if r is False)
+        if not n_skipped:
+            return
+        fraction = n_skipped / total if total else 0.0
+        print(f"[dataset_generator] {n_skipped}/{total} simulations skipped "
+              f"({fraction:.2%}) after exhausting retries.")
+        if fraction > max_skip_fraction:
+            raise RuntimeError(
+                f"Aborting dataset generation: {fraction:.1%} of simulations failed "
+                f"(> {max_skip_fraction:.0%} threshold). This indicates a systemic "
+                "problem (bad DB path / config / broken forward model), not rare "
+                "out-of-domain source draws."
+            )
         
     def _create_sampler_transformer(self, parameters : ModelParameters):
         return lambda sampled_vector: parameters.vector_to_simulation_inputs(sampled_vector)
