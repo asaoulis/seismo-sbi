@@ -38,6 +38,10 @@ class SimulationParameters(NamedTuple):
     # 'instaseis_multi_ensemble' simulation_type.  Each entry:
     #   {ensemble_dir, fiducial_dir, receivers: [station_name, ...]}
     instaseis_multi_models: Optional[list] = None
+    # Intra-ensemble (per-station) theory-error sampling: when True, each station draws an
+    # INDEPENDENT 1-D ensemble member per event instead of one member shared across all stations.
+    # Applies to 'instaseis_ensemble' and (per region) 'instaseis_multi_ensemble'.
+    resample_member_per_station: bool = False
 
 class IterativeLeastSquaresParameters(NamedTuple):
 

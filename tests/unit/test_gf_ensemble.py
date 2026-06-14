@@ -3,11 +3,18 @@
 Dependency-free: no Instaseis DB or CPS binaries required.
 """
 
+import copy
 import numpy as np
 import pytest
 from copy import deepcopy
 
-from seismo_sbi.instaseis_simulator.ensemble import GFEnsembleSimulator
+from seismo_sbi.instaseis_simulator.ensemble import (
+    GFEnsembleSimulator,
+    InstaseisEnsembleSimulator,
+    _QUERIER_CACHE,
+    PER_STATION_SEED_STRIDE,
+)
+from seismo_sbi.instaseis_simulator.simulator import Simulator
 from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
 from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
 from seismo_sbi.sbi.compression.theory_covariance import (
@@ -305,3 +312,192 @@ class TestCPSPrecomputedSelectMemberRegression:
             assert str(chosen) == str(legacy), (
                 f"seed={seed}: select_member={chosen}, legacy={legacy}"
             )
+
+
+# ===========================================================================
+# Per-station (intra-ensemble) member resampling + per-process querier cache
+# (InstaseisEnsembleSimulator.resample_member_per_station / _cached_querier).
+# Dependency-free: a fake querier replaces Instaseis DB access while the REAL
+# generic_point_source_simulation / _simulate_per_station / _cached_querier run.
+# ===========================================================================
+
+@pytest.fixture(autouse=True)
+def _clear_querier_cache():
+    """Keep the module-global querier cache clean between tests."""
+    _QUERIER_CACHE.clear()
+    yield
+    _QUERIER_CACHE.clear()
+
+
+class _FakeQuerier:
+    """Stand-in for InstaseisDBQuerier: returns a constant trace = the member tag, so each
+    station's trace value reveals WHICH member served it."""
+
+    def __init__(self, member, trace_len):
+        self.member = member
+        self.trace_len = trace_len
+        self.sampling_rate = 1.0
+        self.get_calls = 0
+
+    def get_seismograms(self, source, receiver, components, stf_duration=None):
+        self.get_calls += 1
+        return {comp: np.full(self.trace_len, float(self.member)) for comp in components}
+
+
+class _FakeQuerierEnsemble(InstaseisEnsembleSimulator):
+    """Drives the REAL InstaseisEnsembleSimulator dispatch (generic_point_source_simulation,
+    _simulate_per_station, _cached_querier, _simulate_with_member) but opens fake queriers
+    instead of Instaseis DBs (no filesystem/DB needed)."""
+
+    def __init__(self, receivers, members, *, fiducial=-1,
+                 resample_member_per_station=False, trace_len=TRACE_LEN):
+        # Bypass InstaseisEnsembleSimulator.__init__ (no DB); init only the Simulator base.
+        Simulator.__init__(
+            self,
+            components=["Z"],
+            receivers=receivers,
+            seismogram_duration_in_s=trace_len,
+            synthetics_processing={
+                "sampling_rate": 1.0,
+                "filter": {"type": "bandpass", "freqmin": 0.01, "freqmax": 0.1},
+            },
+        )
+        self.resample_member_per_station = resample_member_per_station
+        # Unique per instance so the module-global cache never collides across tests/instances.
+        self._processing_signature = f"fake-{id(self)}"
+        self._members = list(members)
+        self._fiducial_member = fiducial
+        self._trace_len = trace_len
+        self.sampling_rate = 1.0
+        self.open_calls = []  # member tags passed to _open_querier == cache MISSES
+
+    def _open_querier(self, db_path):
+        self.open_calls.append(db_path)
+        return _FakeQuerier(db_path, self._trace_len)
+
+
+@pytest.fixture
+def receivers5():
+    recs = [Receiver(0.0, float(i), "XX", f"STA{i}", ["Z"]) for i in range(5)]
+    return Receivers(receivers=recs)
+
+
+def _src():
+    from seismo_sbi.instaseis_simulator.wrapper import GeneralMomentTensor, SourceLocation
+    return GenericPointSource(SourceLocation(0.0, 0.0, 10.0, 0.0),
+                              GeneralMomentTensor([1e14] * 6))
+
+
+def _station_tags(result):
+    return {name: result[name]["Z"][0] for name in result}
+
+
+class TestPerStationResampling:
+
+    def test_default_off_single_member_for_all_stations(self, receivers5):
+        """Flag OFF (default): all stations share ONE member == select_member(seed)."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4))
+        result = sim.generic_point_source_simulation(_src(), seed=7)
+        tags = set(_station_tags(result).values())
+        assert len(tags) == 1
+        assert tags.pop() == float(sim.select_member(seed=7))
+
+    def test_off_path_draws_member_exactly_once(self, receivers5):
+        """The default path must draw a single member (no per-station RNG-draw leakage)."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4))
+        calls = {"n": 0}
+        real = sim.select_member
+
+        def counting(**kw):
+            calls["n"] += 1
+            return real(**kw)
+
+        sim.select_member = counting
+        sim.generic_point_source_simulation(_src(), seed=7)
+        assert calls["n"] == 1
+
+    def test_per_station_draws_independent_members(self, receivers5):
+        """Flag ON, unseeded: stations get >1 distinct member (probabilistic; retried)."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4),
+                                   resample_member_per_station=True)
+        saw_variation = any(
+            len(set(_station_tags(sim.generic_point_source_simulation(_src())).values())) > 1
+            for _ in range(15)
+        )
+        assert saw_variation
+
+    def test_per_station_seeded_reproducible(self, receivers5):
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4),
+                                   resample_member_per_station=True)
+        r1 = sim.generic_point_source_simulation(_src(), seed=123)
+        r2 = sim.generic_point_source_simulation(_src(), seed=123)
+        for name in r1:
+            assert np.array_equal(r1[name]["Z"], r2[name]["Z"])
+
+    def test_per_station_seeded_distinct_per_station(self, receivers5):
+        """Flag ON, seeded: per-station draws are not forced to collapse to one member."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(20),
+                                   resample_member_per_station=True)
+        saw_distinct = any(
+            len(set(_station_tags(
+                sim.generic_point_source_simulation(_src(), seed=seed)).values())) > 1
+            for seed in range(8)
+        )
+        assert saw_distinct
+
+    def test_use_fiducial_overrides_flag(self, receivers5):
+        """use_fiducial=True => every station uses the single fiducial member, flag ignored."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4),
+                                   resample_member_per_station=True)
+        result = sim.generic_point_source_simulation(_src(), use_fiducial=True)
+        assert set(_station_tags(result).values()) == {float(sim.fiducial_member)}
+
+
+class TestQuerierCache:
+
+    def test_off_path_caches_open_across_sims(self, receivers5):
+        """Same member drawn each sim => opened once, then cache hits (per-event amortization)."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4))
+        for _ in range(5):
+            sim.generic_point_source_simulation(_src(), seed=7)
+        assert len(sim.open_calls) == 1
+
+    def test_cached_querier_returns_same_handle(self, receivers5):
+        sim = _FakeQuerierEnsemble(receivers5, members=range(4))
+        q1 = sim._cached_querier(0)
+        q2 = sim._cached_querier(0)
+        assert q1 is q2
+        assert len(sim.open_calls) == 1
+
+    def test_per_station_opens_bounded_by_unique_members(self, receivers5):
+        """ON: across many sims, opens are bounded by #members, NOT #stations*#sims."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(3),
+                                   resample_member_per_station=True)
+        for _ in range(20):
+            sim.generic_point_source_simulation(_src())
+        assert len(sim.open_calls) <= 3
+
+    def test_lru_eviction_respects_maxsize(self, receivers5, monkeypatch):
+        import seismo_sbi.instaseis_simulator.ensemble as ens_mod
+        monkeypatch.setattr(ens_mod, "_QUERIER_CACHE_MAXSIZE", 2)
+        sim = _FakeQuerierEnsemble(receivers5, members=range(5))
+        for member in range(5):
+            sim._cached_querier(member)
+        assert len(ens_mod._QUERIER_CACHE) <= 2
+
+
+class TestPicklingSafety:
+
+    def test_deepcopy_with_flag_on(self, receivers5):
+        sim = _FakeQuerierEnsemble(receivers5, members=range(3),
+                                   resample_member_per_station=True)
+        sim.generic_point_source_simulation(_src(), seed=1)  # populate the module cache
+        clone = copy.deepcopy(sim)
+        assert clone.resample_member_per_station is True
+
+    def test_instance_holds_no_open_handle(self, receivers5):
+        """The open handle lives in the module cache, never on the instance (pickle-safe)."""
+        sim = _FakeQuerierEnsemble(receivers5, members=range(3))
+        sim.generic_point_source_simulation(_src(), seed=1)
+        assert "_QUERIER_CACHE" not in vars(sim)
+        assert not any(isinstance(v, _FakeQuerier) for v in vars(sim).values())

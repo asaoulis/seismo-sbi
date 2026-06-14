@@ -185,7 +185,8 @@ class GeneralSimulatorWrapper:
                             receivers=simulation_parameters.receivers,
                             seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                             synthetics_processing=simulation_parameters.processing,
-                            post_processing_effects=pp_effects)
+                            post_processing_effects=pp_effects,
+                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False))
         elif simulator_config[0] == 'instaseis':
             simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address,
                                         components=simulation_parameters.components,
@@ -237,7 +238,8 @@ class GeneralSimulatorWrapper:
                             receivers=simulation_parameters.receivers,
                             seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                             synthetics_processing=simulation_parameters.processing,
-                            post_processing_effects=pp_effects)
+                            post_processing_effects=pp_effects,
+                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False))
         elif simulator_config[0] == 'cps_multi':
             # simulator_config[1] can override and directly provide model dicts.
             if simulator_config[1] is not None:

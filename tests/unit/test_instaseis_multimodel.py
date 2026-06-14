@@ -269,3 +269,54 @@ class TestCPSMultiModelRefactor:
         sim, _, _ = self._build(geometry)
         with pytest.raises(NotImplementedError):
             sim.compute_or_load_greens_functions(None, None)
+
+
+# ---------------------------------------------------------------------------
+# resample_member_per_station forwarding (multi-model -> each region's ensemble)
+# ---------------------------------------------------------------------------
+
+class _RecordingEnsemble:
+    """Fake InstaseisEnsembleSimulator that records the flag it was built with (no DB)."""
+
+    def __init__(self, **kwargs):
+        self.resample_member_per_station = kwargs.get("resample_member_per_station")
+        self.receivers = kwargs["receivers"]
+        self.num_models = 3
+        self.sampling_rate = 1.0
+
+    def generic_point_source_simulation(self, source, **kwargs):
+        return {
+            rec.station_name: {comp: np.zeros(TRACE_LEN) for comp in rec.components}
+            for rec in self.receivers.iterate()
+        }
+
+
+def _ensemble_models():
+    a, b = _rec("STA_A1"), _rec("STA_B1")
+    return [
+        {"receivers": Receivers(receivers=[a]), "ensemble_dir": "/x/a", "fiducial_dir": "/x/a/f"},
+        {"receivers": Receivers(receivers=[b]), "ensemble_dir": "/x/b", "fiducial_dir": "/x/b/f"},
+    ], Receivers(receivers=[a, b])
+
+
+class TestResampleMemberPerStationForwarding:
+
+    def _build(self, monkeypatch, **flag):
+        import seismo_sbi.instaseis_simulator.multi_model as mm
+        monkeypatch.setattr(mm, "InstaseisEnsembleSimulator", _RecordingEnsemble)
+        models, union = _ensemble_models()
+        sim = InstaseisMultiModelSimulator(
+            models=models, components=["Z"], receivers=union,
+            seismogram_duration_in_s=TRACE_LEN, synthetics_processing=_PROC, **flag,
+        )
+        return sim
+
+    def test_flag_forwarded_to_every_region(self, monkeypatch):
+        sim = self._build(monkeypatch, resample_member_per_station=True)
+        assert sim.resample_member_per_station is True
+        assert [s.resample_member_per_station for s in sim.sub_sims] == [True, True]
+
+    def test_default_flag_false_for_every_region(self, monkeypatch):
+        sim = self._build(monkeypatch)
+        assert sim.resample_member_per_station is False
+        assert [s.resample_member_per_station for s in sim.sub_sims] == [False, False]

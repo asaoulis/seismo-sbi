@@ -162,9 +162,19 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
     With ``use_fiducial=True`` each region routes its receivers to ITS OWN
     fiducial DB (per-mode fiducial), so the merged output is the regionally
     consistent reference seismogram.
+
+    ``resample_member_per_station`` is forwarded to every region's
+    :class:`InstaseisEnsembleSimulator` (each region then independently draws a
+    fresh member per station — the intra-ensemble / per-station theory-error
+    mode). Pre-built ``"simulator"`` entries keep whatever flag they were built
+    with.
     """
 
-    def __init__(self, models, *args, **kwargs):
+    def __init__(self, models, *args, resample_member_per_station=False, **kwargs):
+        # Set BEFORE super().__init__: MultiModelSimulator.__init__ builds the sub-simulators
+        # (via _init_sub_models -> _build_sub_simulator) inside its own __init__, and
+        # _build_sub_simulator reads this flag to forward it into each region's ensemble.
+        self.resample_member_per_station = resample_member_per_station
         super().__init__(models, *args, **kwargs)
         # Parity with InstaseisEnsembleSimulator / InstaseisSourceSimulator:
         # expose a sampling_rate (all regions share period/sampling).  Optional
@@ -189,4 +199,5 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
             synthetics_processing=self.synthetics_processing,
             # Parent applies the post-processing chain once over the union.
             post_processing_effects=[],
+            resample_member_per_station=self.resample_member_per_station,
         )
