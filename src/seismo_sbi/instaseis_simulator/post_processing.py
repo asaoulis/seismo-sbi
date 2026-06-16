@@ -475,10 +475,15 @@ class TimeShiftErrorEffect(SeismogramEffect):
     components, mirroring the legacy ``random_shift_distribution`` pattern but
     flipped (uniform common offset + per-station Gaussian):
 
-    1. **Common offset** (array-wide) — a single value drawn once per call from
-       ``uniform(-uniform_offset, +uniform_offset)`` and applied identically to
-       every station.  Models a constant velocity / source-time bias.  With the
-       default ``uniform_offset = 0.0`` this component is always zero.
+    1. **Common offset** (array-wide) — a single value drawn once per call and
+       applied identically to every station.  Models a constant velocity /
+       source-time bias.  Its distribution is selected by ``common_offset_dist``:
+
+       * ``"uniform"`` (default, back-compat) — ``uniform(-uniform_offset,
+         +uniform_offset)``; with ``uniform_offset = 0.0`` this component is zero.
+       * ``"gaussian"`` — ``N(0, common_offset_sigma)``.  Calibrated array-wide
+         offsets are peaked at zero (not flat), so a Gaussian fits them better
+         than a uniform.
 
     2. **Per-station Gaussian** — each station additionally gets an independent
        draw from ``N(0, gaussian_sigma)`` seconds.
@@ -538,6 +543,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
     DEFAULT_GAUSSIAN_SIGMA: float = 1.0
     #: Default Lanczos kernel order.
     DEFAULT_LANCZOS_ORDER: int = 5
+    #: Default common-offset distribution ("uniform" for back-compat).
+    DEFAULT_COMMON_OFFSET_DIST: str = "uniform"
 
     def __init__(
         self,
@@ -545,6 +552,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
         uniform_offset: Optional[float] = None,
         gaussian_sigma: Optional[float] = None,
         lanczos_order: Optional[int] = None,
+        common_offset_dist: Optional[str] = None,
+        common_offset_sigma: Optional[float] = None,
     ) -> None:
         self._sampling_rate = float(sampling_rate)
         self._uniform_offset = (
@@ -562,6 +571,24 @@ class TimeShiftErrorEffect(SeismogramEffect):
             if lanczos_order is not None
             else self.DEFAULT_LANCZOS_ORDER
         )
+        self._common_dist = (
+            str(common_offset_dist).lower()
+            if common_offset_dist is not None
+            else self.DEFAULT_COMMON_OFFSET_DIST
+        )
+        if self._common_dist not in ("uniform", "gaussian"):
+            raise ValueError(
+                "common_offset_dist must be 'uniform' or 'gaussian'; got "
+                f"{common_offset_dist!r}"
+            )
+        # Std of the array-wide common offset when common_offset_dist='gaussian'.
+        # Defaults to uniform_offset (so an existing scale carries over if the dist
+        # is flipped without specifying a new sigma).
+        self._common_sigma = (
+            float(common_offset_sigma)
+            if common_offset_sigma is not None
+            else self._uniform_offset
+        )
 
     def __call__(
         self,
@@ -575,12 +602,19 @@ class TimeShiftErrorEffect(SeismogramEffect):
         if time_shift_error is None or float(time_shift_error) == 0.0:
             return seismograms_map
 
-        # One array-wide common offset for this call.
-        common_offset_s = (
-            np.random.uniform(-self._uniform_offset, self._uniform_offset)
-            if self._uniform_offset > 0.0
-            else 0.0
-        )
+        # One array-wide common offset for this call, from the chosen distribution.
+        if self._common_dist == "gaussian":
+            common_offset_s = (
+                np.random.normal(0.0, self._common_sigma)
+                if self._common_sigma > 0.0
+                else 0.0
+            )
+        else:  # uniform (back-compat default)
+            common_offset_s = (
+                np.random.uniform(-self._uniform_offset, self._uniform_offset)
+                if self._uniform_offset > 0.0
+                else 0.0
+            )
         result = {}
         for station, components in seismograms_map.items():
             # One per-station Normal draw, in map order (RNG order preserved).

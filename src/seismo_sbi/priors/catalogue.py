@@ -9,6 +9,7 @@ formats transparently (matching ``scripts/build_catalogue.py``).
 from __future__ import annotations
 
 import csv
+import datetime as _dt
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -33,6 +34,10 @@ class EventCatalogue:
     err_h, err_z:
         Optional horizontal / vertical location errors in km, shape ``(N,)`` or
         ``None`` when the source does not provide them.
+    time:
+        Optional per-event origin times as ``numpy.datetime64[us]``, shape
+        ``(N,)`` or ``None`` when the source does not provide them. Populated by
+        both CSV paths (built from the date columns) and the obspy path.
     """
 
     latitude: np.ndarray
@@ -42,6 +47,7 @@ class EventCatalogue:
     magnitude_type: np.ndarray
     err_h: Optional[np.ndarray] = None
     err_z: Optional[np.ndarray] = None
+    time: Optional[np.ndarray] = None
 
     def __len__(self) -> int:
         return int(self.latitude.shape[0])
@@ -90,23 +96,60 @@ def _filter(cat: EventCatalogue, mask: np.ndarray) -> EventCatalogue:
         magnitude_type=cat.magnitude_type[mask],
         err_h=None if cat.err_h is None else cat.err_h[mask],
         err_z=None if cat.err_z is None else cat.err_z[mask],
+        time=None if cat.time is None else cat.time[mask],
     )
 
 
 def _load_csv(path: Path) -> EventCatalogue:
-    rows = list(csv.DictReader(open(path)))
+    """Parse a catalogue CSV, dispatching on the column layout.
+
+    Two layouts are supported:
+
+    * **Lomax / legacy** (``Santorini_catalog.csv``) — explicit
+      ``latitude,longitude,depth,magnitude,magnitude_type`` columns, a split
+      ``year,month,day,hour,minute,seconds`` time, and ``ErrH``/``Errz`` errors.
+    * **NLL-SC** (``..._NLL-SC_se4.csv``) — a single ISO ``date-time`` column,
+      magnitudes in ``Mamp`` (amplitude Ml, used here) / ``Mdur`` (duration Ml),
+      ``errH``/``errZ`` errors, and leading whitespace on every header name.
+    """
+    with open(path) as fh:
+        reader = csv.DictReader(fh)
+        # Header names in the NLL-SC export carry leading spaces; normalise both
+        # the keys and (lazily, at access time) the values.
+        rows = [{(k.strip() if k else k): v for k, v in r.items()} for r in reader]
     if not rows:
         raise ValueError(f"CSV catalogue {path} is empty")
 
     def col(name):
         return np.array([float(r[name]) for r in rows], dtype=float)
 
-    fields = rows[0].keys()
+    fields = set(rows[0].keys())
+    if "date-time" in fields and "Mamp" in fields:
+        return _load_csv_nllsc(rows, col)
+    return _load_csv_lomax(rows, col, fields)
+
+
+def _load_csv_lomax(rows, col, fields) -> EventCatalogue:
     err_h = col("ErrH") if "ErrH" in fields else None
     err_z = col("Errz") if "Errz" in fields else None
     mag_type = np.array(
         [r.get("magnitude_type", "") for r in rows], dtype=object
     )
+    time = None
+    if {"year", "month", "day", "hour", "minute", "seconds"} <= fields:
+        time = np.array(
+            [
+                np.datetime64(
+                    _dt.datetime(
+                        int(r["year"]), int(r["month"]), int(r["day"]),
+                        int(r["hour"]), int(r["minute"]),
+                    )
+                    + _dt.timedelta(seconds=float(r["seconds"]))
+                )
+                for r in rows
+            ],
+            dtype="datetime64[us]",
+        )
     return EventCatalogue(
         latitude=col("latitude"),
         longitude=col("longitude"),
@@ -115,6 +158,25 @@ def _load_csv(path: Path) -> EventCatalogue:
         magnitude_type=mag_type,
         err_h=err_h,
         err_z=err_z,
+        time=time,
+    )
+
+
+def _load_csv_nllsc(rows, col) -> EventCatalogue:
+    """Load the NLL-SC export: ISO ``date-time`` + ``Mamp`` magnitude."""
+    time = np.array(
+        [np.datetime64(r["date-time"].strip()) for r in rows],
+        dtype="datetime64[us]",
+    )
+    return EventCatalogue(
+        latitude=col("latitude"),
+        longitude=col("longitude"),
+        depth=col("depth"),  # km
+        magnitude=col("Mamp"),  # amplitude Ml; closest analogue to legacy Ml
+        magnitude_type=np.array(["Ml"] * len(rows), dtype=object),
+        err_h=col("errH"),
+        err_z=col("errZ"),
+        time=time,
     )
 
 
@@ -122,7 +184,7 @@ def _load_obspy(path: Path) -> EventCatalogue:
     import obspy  # local import: obspy is heavy and only needed for non-CSV catalogues
 
     events = obspy.read_events(str(path))
-    lats, lons, depths, mags, mag_types = [], [], [], [], []
+    lats, lons, depths, mags, mag_types, times = [], [], [], [], [], []
     for ev in events:
         origin = ev.preferred_origin() or (ev.origins[0] if ev.origins else None)
         magnitude = ev.preferred_magnitude() or (
@@ -136,6 +198,10 @@ def _load_obspy(path: Path) -> EventCatalogue:
         depths.append((origin.depth or 0.0) / 1000.0)
         mags.append(magnitude.mag)
         mag_types.append(magnitude.magnitude_type or "")
+        times.append(
+            np.datetime64(origin.time.datetime) if origin.time is not None
+            else np.datetime64("NaT")
+        )
 
     return EventCatalogue(
         latitude=np.array(lats, dtype=float),
@@ -145,4 +211,5 @@ def _load_obspy(path: Path) -> EventCatalogue:
         magnitude_type=np.array(mag_types, dtype=object),
         err_h=None,
         err_z=None,
+        time=np.array(times, dtype="datetime64[us]"),
     )

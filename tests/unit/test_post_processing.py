@@ -356,6 +356,63 @@ class TestBuildPostProcessingChain:
 
 
 # ===========================================================================
+# TimeShiftErrorEffect — common-offset distribution
+# ===========================================================================
+
+
+class TestTimeShiftCommonOffset:
+
+    @staticmethod
+    def _ramp_map(receivers):
+        # non-constant traces so a time shift is detectable
+        return {rec.station_name: {"Z": np.arange(TRACE_LEN, dtype=float)}
+                for rec in receivers.iterate()}
+
+    def test_default_is_uniform_backcompat(self):
+        effect = TimeShiftErrorEffect(sampling_rate=1.0)
+        assert effect._common_dist == "uniform"
+
+    def test_invalid_dist_raises(self):
+        with pytest.raises(ValueError):
+            TimeShiftErrorEffect(sampling_rate=1.0, common_offset_dist="lognormal")
+
+    def test_gaussian_common_shared_across_stations(self, two_stations):
+        # per-station sigma 0 => the only shift is the shared array-wide common
+        # offset, so both stations must shift identically and away from input.
+        np.random.seed(0)
+        effect = TimeShiftErrorEffect(
+            sampling_rate=1.0, common_offset_dist="gaussian",
+            common_offset_sigma=3.0, gaussian_sigma=0.0)
+        seismo = self._ramp_map(two_stations)
+        out = effect(seismo, two_stations, time_shift_error=1.0)
+        np.testing.assert_allclose(out["STA1"]["Z"], out["STA2"]["Z"])
+        assert not np.allclose(out["STA1"]["Z"], np.arange(TRACE_LEN, dtype=float))
+
+    def test_gaussian_common_sigma_defaults_to_uniform_offset(self):
+        # when flipped to gaussian without a sigma, the existing uniform_offset
+        # scale carries over as the Gaussian std.
+        effect = TimeShiftErrorEffect(
+            sampling_rate=1.0, common_offset_dist="gaussian", uniform_offset=2.5)
+        assert effect._common_sigma == 2.5
+
+    def test_gaussian_common_can_exceed_uniform_halfwidth(self, one_station):
+        # A Gaussian has unbounded support: over many draws the common shift
+        # magnitude should sometimes exceed sigma (impossible for U(±0.5*sigma)).
+        effect = TimeShiftErrorEffect(
+            sampling_rate=1.0, common_offset_dist="gaussian",
+            common_offset_sigma=3.0, gaussian_sigma=0.0)
+        ramp = np.arange(TRACE_LEN, dtype=float)
+        # recover the applied shift via the ramp slope (unit slope => Δvalue ≈ shift)
+        max_abs_shift = 0.0
+        for seed in range(40):
+            np.random.seed(seed)
+            out = effect(self._ramp_map(one_station), one_station, time_shift_error=1.0)
+            mid = TRACE_LEN // 2
+            max_abs_shift = max(max_abs_shift, abs(out["STA1"]["Z"][mid] - ramp[mid]))
+        assert max_abs_shift > 3.0    # exceeds 1 sigma at least once over 40 draws
+
+
+# ===========================================================================
 # Lanczos interpolation helpers
 # ===========================================================================
 
