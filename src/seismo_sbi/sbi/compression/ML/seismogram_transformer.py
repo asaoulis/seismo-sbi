@@ -552,8 +552,11 @@ class NPELightningModule(pl.LightningModule):
         theta, x = batch
         log_prob = self.forward(x, theta)
         val_loss = -log_prob.mean()
-        self.log("val_loss", val_loss, prog_bar=True)
-        self.log("val_log_prob", log_prob.mean())
+        # sync_dist=True averages across DDP ranks so ModelCheckpoint's monitored
+        # val_loss is the true mean over the whole val split (not just rank 0's shard).
+        # No-op on a single device ⇒ single-GPU/CPU behaviour is unchanged.
+        self.log("val_loss", val_loss, prog_bar=True, sync_dist=True)
+        self.log("val_log_prob", log_prob.mean(), sync_dist=True)
         return val_loss
 
     def configure_optimizers(self):

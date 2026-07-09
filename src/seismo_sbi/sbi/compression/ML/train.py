@@ -14,6 +14,7 @@ from .dataloading import make_torch_dataloader, make_torch_dataloaders
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.strategies import DDPStrategy
   # added
 # from lightning.pytorch.profiler import AdvancedProfiler, SimpleProfiler, PyTorchProfiler
 
@@ -167,7 +168,7 @@ class CompressionTrainer:
 
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
               logger="wandb", enable_checkpointing=True, enable_progress_bar=True,
-              extra_callbacks=None):
+              extra_callbacks=None, devices=1, strategy=None):
         """Train the flow.
 
         Defaults preserve production behaviour (W&B logging + checkpointing). For headless
@@ -177,6 +178,14 @@ class CompressionTrainer:
         appended to the Trainer callbacks (e.g. epoch timers in the bench harnesses).
         Returns the trained model so callers that disabled checkpointing can use it
         without reading a checkpoint from disk.
+
+        ``devices`` selects how many accelerators to train on: ``1`` (default) is the
+        single-device path and is byte-identical to the previous behaviour. ``devices > 1``
+        engages multi-GPU DistributedDataParallel (one rank per GPU, launched via ``srun``
+        under SLURM); each rank receives its OWN batch of ``train_batch_size`` samples, so
+        the caller must size ``train_batch_size`` for a single GPU. Pass an explicit
+        ``strategy`` (a Lightning strategy object or string) to override the auto-selected
+        one; by default ``devices > 1`` uses ``DDPStrategy(find_unused_parameters=True)``.
         """
         if dataloader_args is None or "train_max_index" not in dataloader_args:
             raise ValueError("dataloader_args must include: data_loader, data_folder, parameter_name_map, synthetic_noise_model_sampler, and train_max_index.")
@@ -214,10 +223,18 @@ class CompressionTrainer:
         if extra_callbacks:
             callbacks.extend(extra_callbacks)
 
+        # devices=1 -> strategy="auto" reproduces the previous single-device Trainer exactly.
+        # devices>1 -> DDP with one rank per GPU (find_unused_parameters=True is the safe default
+        # for this many-branch model: variable stations / conditioning / amplitude / posenc / PMA).
+        if strategy is None:
+            strategy = (DDPStrategy(find_unused_parameters=True) if devices and devices > 1 else "auto")
+
         trainer = pl.Trainer(
             max_epochs=epochs,
             accelerator="auto",
-            devices=1,
+            devices=devices,
+            num_nodes=1,
+            strategy=strategy,
             callbacks=callbacks,
             precision=32,
             logger=pl_logger,
@@ -230,7 +247,9 @@ class CompressionTrainer:
         # Write sidecar metadata so new architectures can be reloaded without
         # hard-coding defaults.  Old checkpoints that lack this file fall back
         # to the current defaults in load_best() for backward compatibility.
-        if enable_checkpointing:
+        # Guard on rank 0 so the 4 DDP ranks don't race-write the same sidecar
+        # (is_global_zero is True on the single-device path, so this is a no-op there).
+        if enable_checkpointing and trainer.is_global_zero:
             meta = {
                 "architecture": self.architecture,
                 "model_config": self._model_config,

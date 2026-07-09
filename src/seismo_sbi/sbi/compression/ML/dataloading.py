@@ -364,8 +364,15 @@ def _seed_worker(worker_id):
     Each worker process inherits the same numpy global RNG state on fork; without
     re-seeding, all workers would draw the SAME augmentation sequence. Derive a
     distinct seed per worker from torch's per-worker initial seed.
+
+    Under multi-GPU DDP (one srun rank per GPU) each rank draws its own noise and
+    augmentation; folding in ``SLURM_PROCID`` guarantees the per-rank streams are
+    provably independent (so two ranks never corrupt the same synthetic with the
+    identical noise realisation) and robust to any future ``seed_everything``.
+    ``SLURM_PROCID`` is unset off-cluster ⇒ rank 0 ⇒ byte-identical to before.
     """
-    seed = (torch.initial_seed() + worker_id) % (2 ** 32)
+    rank = int(os.environ.get("SLURM_PROCID", 0))
+    seed = (torch.initial_seed() + worker_id + rank * 100003) % (2 ** 32)
     np.random.seed(seed)
 
 

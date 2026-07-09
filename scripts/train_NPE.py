@@ -49,6 +49,18 @@ def parse_arguments():
                              "— and forking instaseis's numba-JIT forward model across the "
                              "stencil's loky workers can abort with 'ReferenceError: underlying "
                              "object has vanished'. Use for the ML gen + train stages.")
+    parser.add_argument('--devices', type=int, default=1,
+                        help="Number of GPUs to train on. 1 (default) is the single-device path. "
+                             ">1 engages multi-GPU DistributedDataParallel (one rank per GPU); each "
+                             "rank gets its OWN batch of train_batch_size, so size the batch for a "
+                             "single GPU. Set to $NGPU by the srun DDP launcher (submit_train.sh).")
+    parser.add_argument('--train-batch-size', dest='train_batch_size', type=int, default=None,
+                        help="Per-GPU training batch size. Overrides the config's ml_batch.train "
+                             "(and the legacy default of 128). For DDP the GLOBAL batch is "
+                             "train_batch_size * devices.")
+    parser.add_argument('--val-batch-size', dest='val_batch_size', type=int, default=None,
+                        help="Per-GPU validation batch size. Overrides the config's ml_batch.val "
+                             "(default 2 * train_batch_size).")
     args = parser.parse_args()
     return args
 
@@ -386,6 +398,21 @@ def main():
     cache_noise = bool(_cache_cfg.get("noise", False))
     cache_dtype = str(_cache_cfg.get("dtype", "float32"))
     cache_workers = int(_cache_cfg.get("preload_workers", 16))
+
+    # Per-GPU batch sizing: CLI overrides the optional top-level `ml_batch` YAML block,
+    # which overrides the legacy 128/256/8 defaults. Under DDP each rank/GPU consumes a
+    # full train_batch_size, so this is the PER-GPU batch (global batch = train_bs * devices).
+    #   ml_batch:
+    #     train: 32           # per-GPU training batch (e.g. 32 * 4 GPUs = 128 global)
+    #     val: 64             # per-GPU validation batch (default: 2 * train)
+    #     num_workers: 8      # DataLoader workers per rank
+    _batch_cfg = _raw_cfg.get("ml_batch") or {}
+    train_bs = int(args.train_batch_size or _batch_cfg.get("train", 128))
+    val_bs = int(args.val_batch_size or _batch_cfg.get("val", 2 * train_bs))
+    num_workers = int(_batch_cfg.get("num_workers", 8))
+    if args.devices > 1:
+        print(f"DDP enabled: devices={args.devices}, per-GPU train_batch_size={train_bs} "
+              f"(global batch {train_bs * args.devices}), val_batch_size={val_bs}")
     if cache_noise and hasattr(sbi_pipeline.training_noise_sampler, "preload_cache"):
         sbi_pipeline.training_noise_sampler.preload_cache(max_workers=cache_workers)
     if _cache_cfg:
@@ -402,11 +429,11 @@ def main():
         'augmentation_nuisance_params': augmentation_nuisance_params,
         'data_scaler': data_scaler,
         'train_max_index': train_max_index,
-        'train_batch_size': 128,
-        'val_batch_size': 256,
+        'train_batch_size': train_bs,
+        'val_batch_size': val_bs,
         'train_shuffle': True,
         'val_shuffle': False,
-        'num_workers': 8,
+        'num_workers': num_workers,
         'pin_memory': True,
         'prefetch_factor': 6,
         'conditioning_param_map': conditioning_param_map,
@@ -433,7 +460,7 @@ def main():
         print(f"CSV metrics logging to {Path(data_path)/run_name/'metrics.csv'}")
     logger = loggers if len(loggers) > 1 else (loggers[0] if loggers else False)
     trainer.train(run_name, epochs=args.epochs, output_path=data_path,
-                  dataloader_args=dataloader_args, logger=logger)
+                  dataloader_args=dataloader_args, logger=logger, devices=args.devices)
 
 if __name__ == '__main__':
     main()
