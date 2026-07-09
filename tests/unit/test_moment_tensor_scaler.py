@@ -179,3 +179,40 @@ def test_invalid_mt_log_decades_string_raises():
     bad = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "nonsense"}}
     with pytest.raises(ValueError):
         build_flexible_scaler(p, bad)
+
+
+def test_auto_reads_resolved_sampler_callable():
+    """The LIVE pipeline: SBI_Configuration resolves sampling_method.moment_tensor into a
+    built sampler CALLABLE (not a dict) before build_flexible_scaler runs. auto must read
+    the derived window off the sampler's .info (this is exactly what a naive dict-only
+    implementation crashes on: 'function' object has no attribute 'get')."""
+    from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
+    p = _mt_and_location_params()
+    sampler = make_gutenberg_richter_mt_sampler(
+        b_value=0.691, mw_min=3.5, mw_max=6.0, mc=3.8,
+        magnitude_conversion="identity", seed=0,
+    )
+    raw = {
+        "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},
+        # sampling_method already RESOLVED to the callable, as in the live pipeline:
+        "simulations": {"sampling_method": {"moment_tensor": sampler}},
+    }
+    scaler = build_flexible_scaler(p, raw)
+    mt = scaler.scalers[1]
+    assert isinstance(mt, MomentTensorScaler)
+    assert np.isclose(mt.log10_m0_min, 1.5 * 3.5 + 9.1)
+    assert np.isclose(mt.log10_m0_max, 1.5 * 6.0 + 9.1)
+
+
+def test_gr_sampler_exposes_log10_m0_range():
+    """The GR sampler stashes its derived log10(M0) window in .info (conversion applied)."""
+    from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
+    s = make_gutenberg_richter_mt_sampler(b_value=0.7, mw_min=3.5, mw_max=6.0, mc=3.8, seed=0)
+    lo, hi = s.info["log10_m0_range"]
+    assert np.isclose(lo, 1.5 * 3.5 + 9.1) and np.isclose(hi, 1.5 * 6.0 + 9.1)
+    # with a {slope,intercept} conversion the window shifts to the converted Mw
+    s2 = make_gutenberg_richter_mt_sampler(
+        b_value=0.7, mw_min=3.0, mw_max=5.0, mc=3.5,
+        magnitude_conversion={"slope": 1.0, "intercept": 0.5}, seed=0)
+    lo2, hi2 = s2.info["log10_m0_range"]
+    assert np.isclose(lo2, 1.5 * 3.5 + 9.1) and np.isclose(hi2, 1.5 * 5.5 + 9.1)

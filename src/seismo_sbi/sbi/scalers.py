@@ -262,7 +262,19 @@ def _mt_log10_m0_range_from_prior(raw_config: dict):
     from seismo_sbi.priors.gutenberg_richter import magnitude_to_m0
 
     smpl = (((raw_config.get("simulations") or {}).get("sampling_method") or {})
-            .get("moment_tensor") or {})
+            .get("moment_tensor"))
+    # In the live pipeline, SBI_Configuration resolves this sampling_method entry from
+    # its dict form into a built sampler CALLABLE whose ``.info`` carries the derived
+    # log10(M0) window; a pristine (un-parsed) YAML config still holds the dict form.
+    if callable(smpl):
+        rng = (getattr(smpl, "info", {}) or {}).get("log10_m0_range")
+        if rng is None:
+            raise ValueError(
+                "ml_scaler.mt_log_decades: auto — the resolved moment_tensor sampler "
+                "exposes no log10_m0_range (needs a gutenberg_richter sampler)"
+            )
+        return (float(rng[0]), float(rng[1]))
+    smpl = smpl or {}
     if smpl.get("type") != "gutenberg_richter":
         raise ValueError(
             "ml_scaler.mt_log_decades: auto requires a gutenberg_richter moment_tensor "

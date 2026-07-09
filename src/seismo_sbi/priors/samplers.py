@@ -210,8 +210,16 @@ def make_gutenberg_richter_mt_sampler(
     model = GutenbergRichterModel(resolved_b, mw_min, mw_max)
     convert = _make_magnitude_converter(magnitude_conversion)
     rng = np.random.default_rng(seed)
+    # The [log10 M0_min, log10 M0_max] window the prior actually spans (magnitude
+    # conversion applied), stashed so the scale_shape scaler's dynamic mode
+    # (ml_scaler.mt_log_decades: auto) can read it AFTER SBI_Configuration has
+    # resolved this sampling_method entry from a dict into this callable.
+    _lo = float(np.log10(magnitude_to_m0(convert(mw_min))))
+    _hi = float(np.log10(magnitude_to_m0(convert(mw_max))))
+    log10_m0_range = tuple(sorted((_lo, _hi)))
     # expose the resolved values for inspection / notebook plots
-    sampler_info = {"b_value": resolved_b, "mc": mc, "model": model}
+    sampler_info = {"b_value": resolved_b, "mc": mc, "model": model,
+                    "log10_m0_range": log10_m0_range}
 
     def sampler(args, num_samples):
         mags = model.sample_magnitudes(num_samples, rng)
