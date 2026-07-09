@@ -120,3 +120,62 @@ def test_invalid_scaling_option_raises():
     p = _mt_and_location_params()
     with pytest.raises(ValueError):
         FlexibleScaler(p, moment_tensor_scaling="nonsense")
+
+
+def _auto_raw_config(mw_min=3.5, mw_max=6.0, magnitude_conversion="identity"):
+    return {
+        "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},
+        "simulations": {"sampling_method": {"moment_tensor": {
+            "type": "gutenberg_richter",
+            "mw_min": mw_min, "mw_max": mw_max,
+            "magnitude_conversion": magnitude_conversion,
+        }}},
+    }
+
+
+def test_auto_mt_log_decades_matches_prior_edges_in_scaled_space():
+    """mt_log_decades: auto sets the log-M0 window to the GR prior's [mw_min, mw_max]
+    so the sampled magnitude maps to u in [0,1] with the edges hit exactly (no clip,
+    no wasted range) — the whole point of the dynamic mode."""
+    p = _mt_and_location_params()
+    scaler = build_flexible_scaler(p, _auto_raw_config(3.5, 6.0))
+    mt = scaler.scalers[1]
+    assert isinstance(mt, MomentTensorScaler)
+    # window edges == prior magnitude edges (M0 = 10**(1.5 Mw + 9.1))
+    assert np.isclose(mt.log10_m0_min, 1.5 * 3.5 + 9.1)
+    assert np.isclose(mt.log10_m0_max, 1.5 * 6.0 + 9.1)
+
+    mts = _gr_like_tensors(5000, mw_min=3.5, mw_max=6.0)
+    scaled = mt.transform(mts)
+    u = np.linalg.norm(2 * scaled - 1, axis=1)
+    assert u.min() >= 0.0 and u.max() <= 1.0 + 1e-9      # inside [0,1]
+    assert u.min() < 0.02 and u.max() > 0.98             # edges reached (perfect fit)
+    # no clipping => fully invertible
+    recovered = mt.inverse_transform(scaled)
+    assert np.allclose(recovered, mts, rtol=1e-6, atol=1e-3 * np.abs(mts).max())
+
+
+def test_auto_honours_magnitude_conversion():
+    """A {slope, intercept} magnitude_conversion shifts the derived window accordingly."""
+    p = _mt_and_location_params()
+    scaler = build_flexible_scaler(
+        p, _auto_raw_config(3.0, 5.0, magnitude_conversion={"slope": 1.0, "intercept": 0.5})
+    )
+    mt = scaler.scalers[1]
+    # Mw = 1.0*M + 0.5  =>  window edges at Mw 3.5 and 5.5
+    assert np.isclose(mt.log10_m0_min, 1.5 * 3.5 + 9.1)
+    assert np.isclose(mt.log10_m0_max, 1.5 * 5.5 + 9.1)
+
+
+def test_auto_requires_gr_sampler():
+    p = _mt_and_location_params()
+    bad = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"}}
+    with pytest.raises(ValueError):
+        build_flexible_scaler(p, bad)
+
+
+def test_invalid_mt_log_decades_string_raises():
+    p = _mt_and_location_params()
+    bad = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "nonsense"}}
+    with pytest.raises(ValueError):
+        build_flexible_scaler(p, bad)

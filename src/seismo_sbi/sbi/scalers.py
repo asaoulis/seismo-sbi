@@ -101,19 +101,39 @@ class MomentTensorScaler:
         ``bounds = +/- sqrt(2) * M0_max``).
     n_decades:
         Magnitude dynamic range in log10 decades: ``log10 M0_min = log10 M0_max -
-        n_decades``. Must exceed the prior's span ``1.5 * (mw_max - mw_min)`` so that all
-        sampled tensors map to ``u in [0, 1]``.
+        n_decades`` (used only when ``log10_m0_range`` is None). Must exceed the prior's
+        span ``1.5 * (mw_max - mw_min)`` so that all sampled tensors map to ``u in [0, 1]``.
+        NB the window's upper edge comes from ``bounds`` (not ``mw_max``), so the true
+        minimum is ``log10 M0_max(bounds) - log10 M0_min(prior)`` — slightly larger than
+        the prior span. Prefer ``log10_m0_range`` (``mt_log_decades: auto``) to avoid this.
+    log10_m0_range:
+        Optional ``(log10 M0_min, log10 M0_max)`` window, overriding ``bounds``/``n_decades``.
+        Set from the GR prior's ``[mw_min, mw_max]`` (via ``build_flexible_scaler`` with
+        ``mt_log_decades: auto``) so the sampled magnitude maps to ``u in [0, 1]`` exactly
+        — the prior limits land on the scaled-space limits, no clipping, no wasted range.
     """
 
     _SQRT2 = np.sqrt(2.0)
 
-    def __init__(self, bounds, n_decades: float = 9.0):
-        bounds = np.asarray(bounds, dtype=float)
-        max_abs = float(np.max(np.abs(bounds)))
-        if max_abs <= 0:
-            raise ValueError("MomentTensorScaler needs non-degenerate moment_tensor bounds")
-        self.log10_m0_max = np.log10(max_abs / self._SQRT2)
-        self.log10_m0_min = self.log10_m0_max - float(n_decades)
+    def __init__(self, bounds=None, n_decades: float = 9.0, log10_m0_range=None):
+        if log10_m0_range is not None:
+            # Explicit magnitude window (e.g. derived from the GR prior's
+            # [mw_min, mw_max] so the sampled range maps to u in [0, 1] exactly).
+            lo, hi = float(log10_m0_range[0]), float(log10_m0_range[1])
+            if hi <= lo:
+                raise ValueError(
+                    f"log10_m0_range must be increasing, got ({lo}, {hi})"
+                )
+            self.log10_m0_min, self.log10_m0_max = lo, hi
+        elif bounds is not None:
+            bounds = np.asarray(bounds, dtype=float)
+            max_abs = float(np.max(np.abs(bounds)))
+            if max_abs <= 0:
+                raise ValueError("MomentTensorScaler needs non-degenerate moment_tensor bounds")
+            self.log10_m0_max = np.log10(max_abs / self._SQRT2)
+            self.log10_m0_min = self.log10_m0_max - float(n_decades)
+        else:
+            raise ValueError("MomentTensorScaler needs either bounds or log10_m0_range")
         self._log_range = self.log10_m0_max - self.log10_m0_min
 
     def transform(self, X):
@@ -143,7 +163,7 @@ class MomentTensorScaler:
 class FlexibleScaler:
 
     def __init__(self, parameters : ModelParameters, moment_tensor_scaling: str = "linear",
-                 mt_log_decades: float = 9.0):
+                 mt_log_decades: float = 9.0, mt_log10_m0_range=None):
         """Per-parameter-block scaler into [0, 1].
 
         ``moment_tensor_scaling`` selects how the moment-tensor block is scaled:
@@ -168,7 +188,9 @@ class FlexibleScaler:
         for param_type, params in parameters.theta_fiducial.items():
             if param_type == "moment_tensor" and moment_tensor_scaling == "scale_shape":
                 scaler = MomentTensorScaler(
-                    np.array(parameters.bounds["moment_tensor"]), n_decades=mt_log_decades
+                    np.array(parameters.bounds["moment_tensor"]),
+                    n_decades=(mt_log_decades if mt_log10_m0_range is None else 9.0),
+                    log10_m0_range=mt_log10_m0_range,
                 )
             else:
                 scaler = ZeroOneScaler(np.array(parameters.bounds[param_type]))
@@ -206,12 +228,62 @@ def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None) 
     ``raw_config`` is the parsed YAML dict (``SBI_Configuration.raw_config`` or a
     ``yaml.safe_load`` of the config file); ``None`` reproduces the legacy default.
     """
-    cfg = (raw_config or {}).get("ml_scaler") or {}
+    raw_config = raw_config or {}
+    cfg = raw_config.get("ml_scaler") or {}
+    mt_scaling = cfg.get("moment_tensor", "linear")
+    mt_log_decades = cfg.get("mt_log_decades", 9.0)
+
+    mt_log10_m0_range = None
+    if mt_scaling == "scale_shape" and isinstance(mt_log_decades, str):
+        if mt_log_decades.lower() != "auto":
+            raise ValueError(
+                f"ml_scaler.mt_log_decades must be a number or 'auto', got {mt_log_decades!r}"
+            )
+        # Dynamic: fit the log-M0 window to the GR prior so mw_min/mw_max land on u=0/1.
+        mt_log10_m0_range = _mt_log10_m0_range_from_prior(raw_config)
+
     return FlexibleScaler(
         parameters,
-        moment_tensor_scaling=cfg.get("moment_tensor", "linear"),
-        mt_log_decades=cfg.get("mt_log_decades", 9.0),
+        moment_tensor_scaling=mt_scaling,
+        mt_log_decades=mt_log_decades,
+        mt_log10_m0_range=mt_log10_m0_range,
     )
+
+
+def _mt_log10_m0_range_from_prior(raw_config: dict):
+    """``[log10 M0_min, log10 M0_max]`` window from the moment_tensor Gutenberg-Richter
+    prior, so the sampled magnitude range maps to ``u in [0, 1]`` exactly.
+
+    Uses the SAME magnitude->M0 convention as the sampler
+    (:func:`seismo_sbi.priors.gutenberg_richter.magnitude_to_m0`,
+    ``M0 = 10**(1.5*Mw + 9.1)``) and honours ``magnitude_conversion``.  Requires a
+    ``gutenberg_richter`` moment_tensor sampler (``mt_log_decades: auto``).
+    """
+    from seismo_sbi.priors.gutenberg_richter import magnitude_to_m0
+
+    smpl = (((raw_config.get("simulations") or {}).get("sampling_method") or {})
+            .get("moment_tensor") or {})
+    if smpl.get("type") != "gutenberg_richter":
+        raise ValueError(
+            "ml_scaler.mt_log_decades: auto requires a gutenberg_richter moment_tensor "
+            "sampler (simulations.sampling_method.moment_tensor.type)"
+        )
+    mw_min, mw_max = float(smpl["mw_min"]), float(smpl["mw_max"])
+    conv = smpl.get("magnitude_conversion", "identity")
+
+    def to_mw(m):
+        if conv in (None, "identity"):
+            return m
+        if isinstance(conv, dict):
+            return conv.get("slope", 1.0) * m + conv.get("intercept", 0.0)
+        raise ValueError(
+            "mt_log_decades: auto supports magnitude_conversion 'identity' or "
+            "{slope, intercept}; a callable conversion can't be derived from config"
+        )
+
+    lo, hi = sorted((float(np.log10(magnitude_to_m0(to_mw(mw_min)))),
+                     float(np.log10(magnitude_to_m0(to_mw(mw_max))))))
+    return (lo, hi)
 
 
 class GeneralScaler:
