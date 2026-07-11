@@ -493,12 +493,19 @@ class MisfitsPlotting:
         alpha=0.08,
         seed=None,
         figname=None,
+        per_trace=False,
     ):
         """
         Posterior predictive check plot akin to plot_ordered_stacked_traces:
         - Columns per component (Z, E, N), stations ordered by earliest P-arrival.
         - Plots the observation (black) and random samples from multiple ensembles.
         - Adds provided metrics per ensemble as a small textbox.
+
+        per_trace : bool
+            If False (default) every trace is normalised by the SINGLE global observation
+            peak (amplitudes are comparable across stations). If True each trace is scaled by
+            its OWN observation peak, so the waveform SHAPE fit is visible on quiet/distant
+            stations that a global scale would flatten.
 
         Parameters
         ----------
@@ -545,10 +552,16 @@ class MisfitsPlotting:
             for name, arr in ensembles.items()
         }
 
-        # Global normalization based on observation
-        max_abs = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
-        if max_abs == 0:
-            max_abs = 1.0
+        # Normalisation: single global peak, or per-trace peak (see per_trace docstring).
+        global_max = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
+        if global_max == 0:
+            global_max = 1.0
+
+        def _norm(flat_idx):
+            if not per_trace:
+                return global_max
+            m = float(np.max(np.abs(obs_matrix[flat_idx])))
+            return m if m > 0 else 1.0
 
         # Component-specific ordered lists
         components = ['Z', 'E', 'N']
@@ -593,7 +606,7 @@ class MisfitsPlotting:
             # Draw observation (black)
             for k, (st, c) in enumerate(pairs):
                 flat_idx = trace_index_map[(st, c)]
-                d = obs_matrix[flat_idx] / max_abs
+                d = obs_matrix[flat_idx] / _norm(flat_idx)
                 y0 = offsets[k]
                 ax.plot(t, y0 + d, color='black', linewidth=1.2, zorder=3, label='Observation')
 
@@ -610,7 +623,7 @@ class MisfitsPlotting:
                     flat_idx = trace_index_map[(st, c)]
                     y0 = offsets[k]
                     # samples: [take, time]
-                    samples = sample_cube[sel, flat_idx, :] / max_abs
+                    samples = sample_cube[sel, flat_idx, :] / _norm(flat_idx)
                     # plot lines (vectorized loop)
                     for row in samples:
                         ax.plot(t, y0 + row, color=color, alpha=alpha, linewidth=0.6, zorder=2)

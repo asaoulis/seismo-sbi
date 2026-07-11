@@ -236,7 +236,19 @@ def plot_kde_contours_on_lune(ax, bm: Basemap, gamma, delta, colors='C0', grid_r
     XX, YY = bm(GX, GY)
     _, _, Z, _ = kde_on_grid(gamma, delta, gx, gy)
     thr = kde_hpd_contour_levels(Z, levels=levels)
-    ax.contour(XX, YY, Z, levels=list(thr), colors=colors, linestyles=list(linestyles), linewidths=list(linewidths))
+    # ``ax.contour`` requires STRICTLY-INCREASING levels, but the HPD density
+    # threshold for the tighter mass (e.g. 68%) is HIGHER than for the looser one
+    # (95%), so ``thr`` comes back decreasing.  Pair each threshold with its
+    # style/width, sort ascending, and drop any non-increasing duplicates (a
+    # degenerate cloud) so the contour call never silently fails.
+    n = min(len(thr), len(linestyles), len(linewidths))
+    triples = sorted(zip(thr[:n], linestyles[:n], linewidths[:n]), key=lambda t: t[0])
+    lv, ls, lw = [], [], []
+    for level, style, width in triples:
+        if not lv or level > lv[-1]:
+            lv.append(level); ls.append(style); lw.append(width)
+    if lv:
+        ax.contour(XX, YY, Z, levels=lv, colors=colors, linestyles=ls, linewidths=lw)
 
 
 __all__ = [
