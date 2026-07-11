@@ -145,6 +145,59 @@ def test_load_event_subset(tmp_path):
         loader.load_event_subset(str(h5_path), ["ZZZ"], stacked=True)
 
 
+def test_load_event_subset_with_components_matches_subset_order(tmp_path):
+    """The QA components_map path must return the SAME channel row order as
+    load_event_subset, regardless of the order of the caller's component lists.
+
+    Regression for the 2026-07 N/E swap: the old implementation rebuilt receivers with
+    the caller's component-list order, so a components_map built with ['Z','N','E'] (a
+    backend's component order) silently swapped every horizontal pair relative to the
+    training data (master order Z,E,N) — wrecking every components_map inference.
+    """
+    from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+
+    T = 10
+    recs = Receivers(receivers=[
+        Receiver(45.0, 16.0, "CR", "AAA", ["Z", "E", "N"], 0),
+        Receiver(46.0, 17.0, "CR", "BBB", ["Z", "E", "N"], 0),
+        Receiver(44.0, 15.0, "CR", "CCC", ["Z", "E", "N"], 0),
+    ])
+    loader = SimulationDataLoader("ZEN", recs)
+    h5_path = tmp_path / "event.h5"
+    with h5py.File(h5_path, "w") as f:
+        out = f.create_group("outputs")
+        for s, base in (("AAA", 0.0), ("BBB", 100.0), ("CCC", 200.0)):
+            g = out.create_group(s)
+            for i, comp in enumerate(("Z", "1", "2")):   # on-disk channel keys are Z/1/2
+                g.create_dataset(comp, data=base + i + np.arange(T, dtype=float))
+
+    ref, ref_coords = loader.load_event_subset(str(h5_path), ["AAA", "BBB", "CCC"],
+                                               stacked=True)
+    # 1. all-components map == load_event_subset EXACTLY, whatever the list order
+    for order in (["Z", "E", "N"], ["Z", "N", "E"], ["N", "E", "Z"]):
+        cm = {s: list(order) for s in ("AAA", "BBB", "CCC")}
+        data, coords, kept = loader.load_event_subset_with_components(str(h5_path), cm)
+        assert kept == ["AAA", "BBB", "CCC"]
+        assert np.array_equal(data, ref), f"row order broken for map order {order}"
+        assert np.allclose(coords, ref_coords)
+    # 2. dropping one component zeroes exactly that row (E is on-disk key '1' -> row 1)
+    cm = {"AAA": ["Z", "N"], "BBB": ["Z", "E", "N"], "CCC": ["Z", "E", "N"]}
+    data, _, _ = loader.load_event_subset_with_components(str(h5_path), cm)
+    assert np.all(data[0, 1, :] == 0.0)                  # AAA E zeroed
+    assert np.array_equal(data[0, [0, 2], :], ref[0, [0, 2], :])   # Z/N untouched
+    assert np.array_equal(data[1:], ref[1:])             # other stations untouched
+    # 2b. '1'/'2' aliases in the map are honoured (h5 rename convention)
+    cm_alias = {"AAA": ["Z", "2"], "BBB": ["Z", "E", "N"], "CCC": ["Z", "E", "N"]}
+    data_alias, _, _ = loader.load_event_subset_with_components(str(h5_path), cm_alias)
+    assert np.array_equal(data_alias, data)
+    # 3. a station mapped to [] (or absent) is excluded entirely
+    cm = {"AAA": ["Z", "E", "N"], "BBB": [], "CCC": ["Z", "E", "N"]}
+    data, coords, kept = loader.load_event_subset_with_components(str(h5_path), cm)
+    assert kept == ["AAA", "CCC"] and data.shape == (2, 3, T)
+    assert np.array_equal(data[1], ref[2])
+
+
 # --------------------------------------------------------------------------- #
 # Conditioned-model inference path: sample_station_dropout_ensemble must forward a
 # per-event source_vec into the packed context (the post-train eval threading).

@@ -118,6 +118,73 @@ def make_dropout_configs(station_names: Sequence[str], *, keep_fraction: float =
     return configs
 
 
+def _prior_bounds(prior):
+    """(low, high) tensors for a BoxUniform prior, else (None, None)."""
+    base = getattr(prior, "base_dist", prior)
+    return getattr(base, "low", None), getattr(base, "high", None)
+
+
+def _flow_sample(estimator, ctx, n):
+    """Draw ``n`` samples from the (nflows) posterior estimator conditioned on ``ctx``,
+    bypassing sbi's prior-rejection.  Robust to the context kwarg name."""
+    import torch
+    with torch.no_grad():
+        try:
+            s = estimator.sample(n, context=ctx)
+        except TypeError:
+            s = estimator.sample((n,), condition=ctx)
+    return s.reshape(-1, s.shape[-1])
+
+
+def robust_posterior_sample(posterior, ctx, num_samples, *, oversample=4, max_factor=64):
+    """Sample a sbi ``DirectPosterior`` WITHOUT the leakage-rejection hang.
+
+    sbi 0.21's ``DirectPosterior.sample`` rejects flow draws outside the prior box to
+    correct for leakage; if the trained flow puts ~all mass outside the prior for an
+    out-of-distribution observation, the acceptance rate is ~0% and the rejection loop
+    never terminates (the ``Only 0.000% proposal samples are accepted`` warning that
+    stalled some catalogue events).
+
+    This draws directly from the underlying flow in bounded batches, keeps the
+    in-prior-box samples (identical to sbi's rejection for the healthy, high-acceptance
+    case), and — only when the posterior leaks so badly it cannot fill the request
+    within ``max_factor`` × ``num_samples`` candidates — tops up with flow samples
+    *clipped* to the prior box so the call always returns ``num_samples`` and never
+    hangs.  Returns a torch tensor ``(num_samples, dim)`` on the estimator's device.
+    """
+    import torch
+    est = getattr(posterior, "posterior_estimator", None)
+    if est is None:
+        # Duck-typed posterior (no sbi flow internals to bypass): the plain sample
+        # path IS the whole contract — leakage rejection only exists on DirectPosterior.
+        return posterior.sample((num_samples,), ctx, show_progress_bars=False)
+    prior = getattr(posterior, "_prior", None) or getattr(posterior, "prior", None)
+    lo, hi = _prior_bounds(prior)
+    batch = max(int(num_samples * oversample), int(num_samples))
+    cap = int(num_samples * max_factor)
+    collected, n_have, total, last = [], 0, 0, None
+    while n_have < num_samples and total < cap:
+        s = _flow_sample(est, ctx, batch)
+        last, total = s, total + s.shape[0]
+        if lo is not None and hi is not None:
+            acc = s[((s >= lo) & (s <= hi)).all(dim=-1)]
+        else:
+            acc = s
+        if acc.shape[0]:
+            collected.append(acc)
+            n_have += acc.shape[0]
+        elif n_have == 0 and total >= num_samples * 8:
+            break          # clearly leaking -> stop early, fall through to clip
+    if n_have >= num_samples:
+        return torch.cat(collected)[:num_samples]
+    # leakage fallback: pad with clipped flow samples (best-effort, never hang/short)
+    need = num_samples - n_have
+    filler = last if last is not None else _flow_sample(est, ctx, need)
+    if lo is not None and hi is not None:
+        filler = torch.max(torch.min(filler, hi), lo)
+    return torch.cat(collected + [filler[:need]])[:num_samples]
+
+
 def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[StationConfig],
                                     data_scaler, *, num_samples: int, device=None,
                                     event_name: str = "", source_vec=None):
@@ -161,7 +228,7 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     for c in configs:
         ctx = pack_subset_observation(
             obs[c.keep], coords[c.keep], source_vec=source_vec).to(device)   # (1, W)
-        samples = posterior.sample((num_samples,), ctx, show_progress_bars=False)
+        samples = robust_posterior_sample(posterior, ctx, num_samples)
         phys = data_scaler.inverse_transform(np.asarray(samples.cpu().numpy()))  # (num_samples, 6)
         inv = InversionData(theta0=None, samples=phys, data_scaler=data_scaler)
         ensemble[c.label] = inv
