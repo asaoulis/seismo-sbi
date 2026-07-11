@@ -64,11 +64,33 @@ def write_verdicts_json(
 def components_from_verdicts(
     verdicts: Dict[str, StationVerdict],
     all_stations: List[str],
+    component_verdicts: Dict[str, Dict] = None,
+    full_components: List[str] = ("Z", "E", "N"),
 ) -> Dict[str, List[str]]:
-    """Build the ``components.json`` map: kept stations -> ``[Z,E,N]``, everything else
-    (drops and stations absent from the verdicts) -> ``[]``."""
+    """Build the ``components.json`` map: ``{station: [kept components] | []}``.
+
+    Per-STATION policy (the default): kept stations -> all ``full_components``,
+    everything else (drops, stations absent from the verdicts) -> ``[]``.
+
+    If ``component_verdicts`` (``{station: {component: ComponentVerdict}}``, from
+    :func:`policy.component_verdicts`) is supplied, kept stations are further
+    refined to ONLY the components whose per-component verdict is ``keep`` — so a
+    station can keep ``[Z, E]`` while its dodgy ``N`` channel is dropped (zero-filled
+    at load). A station-level drop still zeroes the whole station (``[]``), and a
+    kept station with no surviving component also collapses to ``[]``."""
     kept = {s for s, v in verdicts.items() if v.is_kept}
-    return {s: (["Z", "E", "N"] if s in kept else []) for s in all_stations}
+    full = list(full_components)
+    out: Dict[str, List[str]] = {}
+    for s in all_stations:
+        if s not in kept:
+            out[s] = []
+            continue
+        if component_verdicts and s in component_verdicts:
+            cv = component_verdicts[s]
+            out[s] = [c for c in full if c in cv and cv[c].is_kept]
+        else:
+            out[s] = list(full)
+    return out
 
 
 @dataclass

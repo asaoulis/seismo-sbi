@@ -103,3 +103,43 @@ def test_summarise_event_groups_by_station():
     assert set(out) == {"AAA", "BBB"}
     assert out["AAA"].verdict == "time-shift" and out["AAA"].suggested_shift == 4
     assert out["BBB"].suggested_shift == 0
+
+
+# ------------------------------------------------------------- per-component verdicts
+from seismo_sbi.data_quality.policy import (  # noqa: E402
+    ComponentVerdict, component_verdicts, decide_component)
+from seismo_sbi.data_quality.serialization import components_from_verdicts  # noqa: E402
+
+
+def test_decide_component_keep_drop_corr_drop_amp():
+    assert decide_component(_tm("A", "Z", max_xcorr=0.9, amp_ratio_obs_syn=1.0), T).verdict == "keep"
+    assert decide_component(_tm("A", "E", max_xcorr=0.1), T).verdict == "drop-corr"
+    assert decide_component(_tm("A", "N", amp_ratio_obs_syn=99.0), T).verdict == "drop-amp"
+    # coherence is judged before amplitude (matches the station policy priority)
+    v = decide_component(_tm("A", "Z", max_xcorr=0.1, amp_ratio_obs_syn=99.0), T)
+    assert v.verdict == "drop-corr" and isinstance(v, ComponentVerdict)
+
+
+def test_component_verdicts_group_by_station_component():
+    ms = [_tm("AAA", "Z"), _tm("AAA", "E", max_xcorr=0.1), _tm("BBB", "Z")]
+    cv = component_verdicts(ms, T)
+    assert set(cv) == {"AAA", "BBB"}
+    assert cv["AAA"]["Z"].is_kept and cv["AAA"]["E"].is_dropped
+    assert cv["BBB"]["Z"].is_kept
+
+
+def test_components_from_verdicts_per_component_drops_one_channel():
+    # AAA: station kept, but its N channel is incoherent -> keep [Z, E]
+    # BBB: station dropped entirely -> []
+    metrics = [_tm("AAA", "Z"), _tm("AAA", "E"), _tm("AAA", "N", max_xcorr=0.1),
+               _tm("BBB", "Z", max_xcorr=0.1), _tm("BBB", "E", max_xcorr=0.1),
+               _tm("BBB", "N", max_xcorr=0.1)]
+    sv = summarise_event(metrics, T)
+    cv = component_verdicts(metrics, T)
+    comp_map = components_from_verdicts(sv, ["AAA", "BBB", "CCC"],
+                                        component_verdicts=cv)
+    assert comp_map["AAA"] == ["Z", "E"]      # dodgy N dropped
+    assert comp_map["BBB"] == []              # whole station dropped
+    assert comp_map["CCC"] == []              # absent from verdicts
+    # backward-compat: without component_verdicts the kept station keeps all channels
+    assert components_from_verdicts(sv, ["AAA"])["AAA"] == ["Z", "E", "N"]

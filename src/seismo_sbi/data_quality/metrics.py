@@ -75,6 +75,88 @@ class TraceMetrics:
             obs_peak=self.obs_peak, syn_peak=self.syn_peak)
 
 
+@dataclass(frozen=True)
+class SNRMetrics:
+    """Pre-event-noise signal-to-noise metrics for one (station, component) trace.
+
+    Built from the pre-event noise std ``sigma`` (= sqrt of the h5 ``/misc`` lag-0
+    autocorrelation, i.e. the pre-event ``mean(x^2)``).  All SNRs are RMS-based, so a
+    pure-noise trace has ``snr_obs ~ 1`` exactly (the observation *contains* the noise:
+    ``E[obs^2] = signal^2 + sigma^2``).  The signal window is the SYNTHETIC's 5-95%
+    cumulative-energy interval (noise-free, hence well defined), so far-station coda does
+    not dilute the comparison.  See :func:`snr_metrics` and the policy SNR gates.
+    """
+
+    station: str
+    component: str
+    sigma: float            # pre-event noise std
+    snr_obs: float          # RMS_W(obs) / sigma   (>= ~1 floor)
+    snr_syn: float          # RMS_W(syn) / sigma   (predicted detectability; noise-free)
+    snr_sig: float          # sqrt(max(0, snr_obs^2 - 1)) — noise-DEBIASED observed signal SNR
+    snr_obs_full: float     # whole-window RMS(obs) / sigma  (for the excess gate)
+    snr_syn_full: float     # whole-window RMS(syn) / sigma
+
+
+def _rms(x) -> float:
+    x = np.asarray(x, float)
+    return float(np.sqrt(np.mean(x ** 2))) if x.size else 0.0
+
+
+def signal_window(syn1d, quantiles=(0.05, 0.95)):
+    """``(lo, hi)`` sample indices bracketing the synthetic's ``quantiles`` cumulative
+    energy; the FULL window if the synthetic is degenerate (all-zero / no energy)."""
+    e = np.cumsum(np.asarray(syn1d, float) ** 2)
+    tot = float(e[-1]) if e.size else 0.0
+    if tot <= 0:
+        return 0, len(syn1d)
+    lo = int(np.searchsorted(e, quantiles[0] * tot))
+    hi = int(np.searchsorted(e, quantiles[1] * tot))
+    if hi <= lo:
+        return 0, len(syn1d)
+    return lo, min(hi + 1, len(syn1d))
+
+
+def snr_metrics(obs2d, syn2d, traces, sigma_map, *, quantiles=(0.05, 0.95),
+                sigma_floor: float = 0.0, align: bool = True, max_lag: int = 60) -> List["SNRMetrics"]:
+    """Per-trace pre-event-noise SNR for a flattened event (``obs2d``/``syn2d`` are
+    ``(n_traces, T)`` in the same order as ``traces``).
+
+    ``sigma_map`` maps ``(station, component) -> noise std sigma`` — the CALLER keys it with
+    the SAME component names as ``traces`` (so it must apply any E->1 / N->2 renaming itself).
+    A trace with a missing / non-finite / <= ``sigma_floor`` sigma is emitted with
+    ``sigma=nan`` and all SNRs 0, which the policy routes straight to a dead-channel drop.
+
+    ``align`` (default True) cross-correlates obs vs syn (±``max_lag`` samples) and shifts the
+    synthetic onto the observation before windowing. A 1-D fiducial model mis-times arrivals by
+    several seconds vs the real Earth, so an UNALIGNED synthetic signal window misses the
+    observed signal and understates ``snr_sig`` — making healthy but time-shifted stations look
+    dead. Alignment removes that confound (the signal-window SNR is a fit-quality-free amplitude
+    measure once aligned).
+    """
+    obs2d = np.asarray(obs2d, float)
+    syn2d = np.asarray(syn2d, float)
+    out: List[SNRMetrics] = []
+    for i, tr in enumerate(traces):
+        sigma = sigma_map.get((tr.station, tr.component))
+        if sigma is None or not np.isfinite(sigma) or sigma <= sigma_floor:
+            out.append(SNRMetrics(tr.station, tr.component,
+                                  float(sigma) if sigma is not None else float("nan"),
+                                  0.0, 0.0, 0.0, 0.0, 0.0))
+            continue
+        o, s = obs2d[i], syn2d[i]
+        if align:
+            _, lag = align_best_lag(o, s, max_lag)          # +lag delays the synthetic
+            s = shift_1d_with_padding(s, lag)
+        lo, hi = signal_window(s, quantiles)
+        snr_obs = _rms(o[lo:hi]) / sigma
+        snr_syn = _rms(s[lo:hi]) / sigma
+        snr_sig = float(np.sqrt(max(0.0, snr_obs ** 2 - 1.0)))
+        out.append(SNRMetrics(tr.station, tr.component, float(sigma),
+                              snr_obs, snr_syn, snr_sig,
+                              _rms(o) / sigma, _rms(s) / sigma))
+    return out
+
+
 # --------------------------------------------------------------------------- maths
 def align_best_lag(obs: np.ndarray, syn: np.ndarray, max_lag: int) -> tuple:
     """Return ``(max_normalised_xcorr, best_lag)`` aligning ``syn`` to ``obs``.

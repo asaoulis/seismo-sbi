@@ -8,6 +8,7 @@ unit-testable. Scripts (e.g. the Santorini ``qa_forward_check``) do the I/O and 
 modelling and hand arrays in.
 """
 from .metrics import (
+    SNRMetrics,
     TraceDescriptor,
     TraceMetrics,
     align_best_lag,
@@ -16,18 +17,26 @@ from .metrics import (
     correlation_misfit,
     envelope_misfit,
     peak_amplitude_ratio,
+    signal_window,
+    snr_metrics,
     station_reduced_chi2,
     traces_from_receivers,
     variance_reduction,
 )
 from .policy import (
     KEPT_VERDICTS,
+    ComponentVerdict,
     QAThresholds,
     StationSummary,
     StationVerdict,
     VERDICT_COLORS,
     VERDICT_LABELS,
+    component_verdicts,
+    decide_component,
     decide_station,
+    event_contamination,
+    sigma_outlier_verdicts,
+    snr_station_drop,
     summarise_event,
     summarise_station,
 )
@@ -50,13 +59,15 @@ from .aggregate import StationReliability, station_reliability
 
 __all__ = [
     # metrics
-    "TraceDescriptor", "TraceMetrics", "align_best_lag", "aligned_variance_reduction",
-    "compute_trace_metrics", "correlation_misfit", "envelope_misfit",
-    "peak_amplitude_ratio", "station_reduced_chi2", "traces_from_receivers",
-    "variance_reduction",
+    "TraceDescriptor", "TraceMetrics", "SNRMetrics", "align_best_lag",
+    "aligned_variance_reduction", "compute_trace_metrics", "correlation_misfit",
+    "envelope_misfit", "peak_amplitude_ratio", "signal_window", "snr_metrics",
+    "station_reduced_chi2", "traces_from_receivers", "variance_reduction",
     # policy
-    "KEPT_VERDICTS", "QAThresholds", "StationSummary", "StationVerdict",
-    "VERDICT_COLORS", "VERDICT_LABELS", "decide_station", "summarise_event",
+    "KEPT_VERDICTS", "ComponentVerdict", "QAThresholds", "StationSummary",
+    "StationVerdict", "VERDICT_COLORS", "VERDICT_LABELS", "component_verdicts",
+    "decide_component", "decide_station", "event_contamination",
+    "sigma_outlier_verdicts", "snr_station_drop", "summarise_event",
     "summarise_station",
     # alignment
     "ShiftResult", "nonzero_shifts", "optimise_event_shifts", "optimise_station_shift",
