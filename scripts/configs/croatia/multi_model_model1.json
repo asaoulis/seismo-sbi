@@ -1,0 +1,12 @@
+[
+    {
+      "cps_GFs_path": "/data/alex/cps/cps_croatia/multi_models/model1/kappa_3",
+      "cps_GFs_fiducial_path": "/data/alex/cps/cps_croatia/multi_models/model1/kappa_3_fiducial",
+      "receivers": ["KALN", "MOSL", "BLY", "KRJB", "RABC", "PLIT", "CACV"]
+    },
+    {
+      "cps_GFs_path": "/data/alex/cps/cps_croatia/multi_models/model4_simple/kappa_3",
+      "cps_GFs_fiducial_path": "/data/alex/cps/cps_croatia/multi_models/model4_simple/kappa_3_fiducial",
+      "receivers": ["CEY", "MOZS", "PERS"]
+    }
+  ]

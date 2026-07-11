@@ -1,0 +1,100 @@
+run_name: synthetic_tests
+output_directory: '/data/alex/cps/alex'
+job_name: synthetic_arrangement_LV
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps_precomputed' # 'instaseis' or 'cps'
+  components: 'ZEN'
+  stations_path: './configs/long_valley/stations.txt'
+  stations_path: './configs/long_valley/synthetic_arrangement/stations.txt'
+  station_components_path: './configs/long_valley/synthetic_arrangement/components.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  cps_GFs_path: '/data/alex/cps/cps_long_valley/synthetic_arrangement/kappa_3'
+  cps_GFs_fiducial_path: '/data/alex/cps/cps_long_valley/synthetic_arrangement/kappa_3_fiducial'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      # fiducial: [2.5679503714262864e+16, 4088315540457834.0, 2.143170060059789e+16, 1138279029296896.2, -1.8092427075991144e+16, 1.5021729089952764e+16]
+
+      # fiducial: [ -1.44320726e+16, -2.81644758e+16, -3.22345163e+15 , 1.36591122e+16, -3.36507262e+14, -1.40488503e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16],
+              [4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16]]
+  nuisance: 
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 5, 0]
+      bounds: [37.636, -118.936, 5, 0]
+    velocity_model:
+      fiducial: '/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt'
+      bounds: ['/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt', 5]
+
+simulations:
+  num_simulations: 8000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: 15
+  iterative_least_squares:
+    max_iterations: 10
+    damping_factor: 0.0
+    dynamic_damping: False
+
+
+compression: 
+  theory_optimal_score:
+    noise_level:  2.e-8
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model: 
+      type: 'gaussian_filtered'
+      noise_level: null
+
+  likelihood: 
+    run: True
+    ensemble: False
+    covariance: empirical
+    num_samples: 40000
+    walker_burn_in: 1000
+    move_size: [0.0001, 0.0001]
+
+
+jobs:
+  real_events: {}
+    # LV2: ./data/events/LV2_event_filt_20_50_1hz.h5
+  simulations:
+    random_events: 3
+    fixed_events: []
+    custom_events: 
+      synthetic_dc_wrong_model:
+        moment_tensor: [2.5679503714262864e+16, 4088315540457834.0, 2.143170060059789e+16, -3.33009612011787, -1.812819893559739e+16, 1.5021729089952764e+16]
+        source_location: [37.636, -118.936, 5, 0]
+        use_fiducial: False
+  noise_models:
+    # real_noise: './data/noise/azores_event_samples'
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [['theory_optimal_score', 'gaussian_filtered'], ['gaussian_likelihood', 'gaussian_filtered']]
+    disable_plotting: False

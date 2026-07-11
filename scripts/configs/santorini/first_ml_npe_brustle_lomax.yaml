@@ -1,0 +1,258 @@
+# first_ml_npe_brustle_lomax.yaml
+# ============================================================
+# Santorini ML NPE — BRUSTLE theory-error ensemble + LOMAX-16 stations/noise.
+#
+# Same ML defaults as first_ml_npe_v3_allsta_amp_posenc_bigflow_constlr_pma_tokens.yaml
+# (tcn + ml_conditioning + ml_variable_stations + amplitude embedding + RFF positional
+# encoding + §3.4 PMA pooling pool_over=TOKENS + num_transforms=8 + constant post-warmup
+# LR=1e-4 + scale_shape MT scaler + the training_augmentation nuisance chain) EXCEPT the
+# DATA CONTEXT, which is swapped to the new theory-error setup:
+#   * simulation_type: instaseis_ensemble  (santorini_tomo_brustle, 61 member DBs) -> the
+#     theory error is baked into each training sim by drawing a random ensemble member.
+#   * stations = the lomax-16 broadband set (stations_lomax.txt + components_lomax.json).
+#   * noise/compression = the lomax noise catalogue; real event = lomax event 14.
+#
+# Local target for the ensemble DBs: /data/alex/axisem_dbs/santorini_tomo_brustle/
+# (rsync'd from compute-gpu-0-5:/share/gpu5/asaoulis/axisem_dbs/santorini_tomo_brustle/).
+# On the cluster the orchestrator path_remap maps that local path -> the gpu5 archive.
+#
+# ---- LAUNCH (remote, two-stage) -----------------------------------------------------------
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_brustle_lomax.yaml
+#   python $ORCH --config $CFG avail
+#   python $ORCH --config $CFG push-data                 # noise/event/stations/components
+#   python $ORCH --config $CFG sync --rev <branch>       # commit+push first
+#   # 100k CPU dataset generation (instaseis ensemble):
+#   python $ORCH --config $CFG --run santorini_brustle_lomax gen \
+#          --partition CORES64 --ncpu 64 --wall_h 48 --nsims 100000
+#   # GPU training (l40s is data-local; DBs + lomax noise live on compute-gpu-0-5):
+#   python $ORCH --config $CFG --run santorini_brustle_lomax train \
+#          --train-name santorini_brustle_lomax_v1 --arch tcn --epochs 200 --gpu l40s
+# ============================================================
+
+run_name: santorini_brustle_lomax    # keys the brustle-lomax sim set
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: False              # orchestrator sets True for the gen stage, False for train
+num_jobs: 30
+
+ml_architecture: tcn
+
+# ---- SOURCE-LOCATION CONDITIONING ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+# ---- per-station amplitude embedding ----
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+# ---- RFF station positional encoding (review §3.2) ----
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+# ---- §3.4 Set-Transformer PMA pooling head (pool_over=TOKENS) ----
+ml_pooling:
+  enabled: true
+  pool_over: tokens
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+# ---- NDE head (normalising-flow) sizing ----
+ml_flow:
+  num_transforms: 8
+
+# ---- optimizer / LR schedule ----
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: cosine
+
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+# ---- training-efficiency optimisations (ml-architectures/efficiency-optimization) ----
+# Measured stacked ~2.45x e2e per-epoch speedup on the A6000 (and a wall-clock-matched val-loss
+# A/B showed the optimised stack reaches BETTER val-loss in equal training time). See the task
+# logbook for the per-opt breakdown. All are opt-in; the four below are split by risk:
+ml_cache:
+  sims: true            # preload clean sims to RAM (~3.9 GB @100k, 19 GB @500k float32); removes
+                        #   the per-sample HDF5 load + its worker-scaling wall. ZERO-RISK (float32 ==
+                        #   model precision; one-time preload ~33 min @100k, negligible vs the run).
+  noise: true           # preload the RealNoiseSampler window pool; removes the per-sample noise read.
+  dtype: float32        # float32 == model precision (rel 8e-8); use float64 for byte-exact, float16 for 1M.
+ml_perf:
+  sdpa: true            # fused scaled_dot_product_attention — NUMERICALLY IDENTICAL (max|Δ|=1.9e-7). ZERO-RISK.
+  amp: true             # bf16 autocast on the EMBEDDING net (flow head stays fp32). ~1.4x model step.
+                        #   VALIDATE quality on the first cluster run (precision change; net-positive
+                        #   in the local wall-clock A/B). Set false to drop if a real-data run regresses.
+ml_encoder:
+  downsample: 8         # tcn temporal stride 4->8 (L 50->25): ~1.25x. CAPACITY change — VALIDATE
+                        #   quality on the first cluster run; revert to 4 if the posterior degrades.
+
+seismic_context:
+  simulation_type: 'instaseis_ensemble'                  # theory-error ensemble
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations_lomax.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components_lomax.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  syngine_address: "/data/alex/axisem_dbs/santorini_tomo_brustle/"            # ensemble dir (61 member DBs)
+  syngine_fiducial_address: "/data/alex/axisem_dbs/santorini_tomo_brustle/fiducial/"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      coordinate_std: [0.010, 0.013, 1.5]   # Gaussian sigma per conditioning coord [lat deg, lon deg, depth km]
+      stage: training_augmentation
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      uniform_offset: 3.0
+      gaussian_sigma: 3.0
+      lanczos_order: 5
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: training_augmentation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"
+    scattering_coda: "constant"
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini_lomax_stations/catalogue/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini_lomax_stations/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    # lomax event 14 (No14_id3250). 14/16 lomax stations present in the h5;
+    # variable-station packing handles the gap.
+    No14_id3250: /data/alex/santorini_lomax_stations/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 100000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini_lomax_stations/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

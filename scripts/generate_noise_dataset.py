@@ -1,131 +1,293 @@
+"""Generate a noise database using the new obspy-centred preprocessing API.
+
+Processing flow (daily mode, default):
+  1. For each station-day in [NOISE_START, NOISE_END], remove instrument
+     response, bandpass filter, and resample → save as processed daily mseed.
+  2. Query FDSN for interfering events to compute clean noise windows.
+  3. Slice each noise window from the pre-processed daily files → export h5.
+
+The daily-processing step is parallelised over (station, day) pairs, and
+the slicing step over individual windows.  Both use NUM_JOBS workers.
+
+Set USE_DAILY_PROCESSING = False to fall back to per-window processing
+(re-applies full deconvolution for every window — slower but no intermediate
+files on disk).
+"""
+
 from pathlib import Path
 from datetime import datetime, timedelta
+import csv
+import traceback
 
-from seismo_sbi.data_handling.noise_collection import NoiseCollector, EventNoiseAggregator, ProcessedDataSlicer
+import obspy
+import joblib
+
+from seismo_sbi.data_handling.preprocessing import (
+    find_mseed_files,
+    load_waveforms,
+    load_inventory,
+    deconvolve_and_filter,
+    export_to_sbi_h5,
+    check_window_quality,
+    process_daily_files,
+    build_noise_catalogue,
+    build_event_catalogue,
+)
+from seismo_sbi.data_handling.preprocessing.windowing import (
+    get_continuous_regions,
+    make_noise_windows,
+)
 from seismo_sbi.data_handling.event_window_selection import EventWindowSelector
-from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
+from seismo_sbi.instaseis_simulator.receivers import Receivers
 from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
 
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+# ---------------------------------------------------------------------------
+# User-configurable parameters
+# ---------------------------------------------------------------------------
 
-from constants import STATION_CODES_PATHS, create_ipma_data_format, STATION_CODES_PATHS_INDO, INDO_DATA_FORMAT
+from constants import STATION_CODES_PATHS_INDO, INDO_DATA_FORMAT
+
 STATION_CODES_PATHS = STATION_CODES_PATHS_INDO
-output_dir = Path('/data/alex')
-station_config = create_ipma_data_format(output_dir)
-station_config = INDO_DATA_FORMAT
-PREFILTER_KWARGS = dict(pre_filt=[0.004, 0.008, 0.04, 0.08])
-FILTER_KWARGS = dict(freqmin=1/100, freqmax=1/50, corners=4, zerophase=True)
-DURATION = 29
-NUM_JOBS = 20
 
-noise_name = 'long_period'
+DATA_DIR = Path("/data/alex")
+STATIONXML_DIR = DATA_DIR / "stationxml"
+OUTPUT_DIR = Path("/data/alex/noise/indo_pacific")
 
-DAILY_OUTPUT_DIRECTORY = Path(f'/data/alex/noise/indo_pacific/{noise_name}_daily')
-DAILY_OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+PREFILTER_KWARGS = dict(pre_filt=[0.005, 0.01, 0.08, 0.1])
+FILTER_KWARGS = dict(freqmin=1 / 50, freqmax=1 / 20, corners=4, zerophase=False)
 
-NOISE_OUTPUT_DIRECTORY = Path(f'/data/alex/noise/indo_pacific/{noise_name}_samples')
-NOISE_OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+DURATION = timedelta(minutes=3 + 1 / 3)   # noise window length per h5 file
+MAX_FREQUENCY = 1.0                         # Hz
+NUM_JOBS = 4                                # parallel worker processes
+NOISE_NAME = "50_20s_200sec_samples"
 
-date_format = '%Y-%m-%d'
-noise_start_time = '2024-09-01'
-noise_end_time = '2024-09-20'
+USE_DAILY_PROCESSING = True                 # recommended; set False to disable
 
-# # north islands 2022/01/13 06:46:12.23 Azores Islands Event 621827081
-event_window = [datetime(2024, 9, 13, 6, 45, 12), datetime(2024, 9, 13, 7, 0, 12)]
-event_location = (5,  117)
+EVENT_WINDOW = [datetime(2024, 9, 13, 6, 45, 12), datetime(2024, 9, 13, 7, 0, 12)]
+EVENT_LOCATION = (5, 117)
 
-max_frequency =  0.5
-noise_collector = NoiseCollector(station_config, STATION_CODES_PATHS, {}, prefilter_kwargs=PREFILTER_KWARGS, filter_kwargs=FILTER_KWARGS)
-event_noise_aggregator = EventNoiseAggregator(noise_collector, STATION_CODES_PATHS, sampling_rate = max_frequency)
-event_noise_aggregator.select_event_and_check_available_stations(event_window, event_location, buffer=timedelta(minutes=3), convert_to_numpy=True)
-print("Num stations ", len(event_noise_aggregator.available_stations_during_event))
-receivers = Receivers(station_config=station_config, 
-                      stations=event_noise_aggregator.available_stations_during_event, 
-                      station_codes_paths=STATION_CODES_PATHS)
+NOISE_START = datetime(2024, 9, 1)
+NOISE_END = datetime(2024, 9, 20)
 
+CHANNEL_GLOB = "BH?"
+MIN_COMPLETENESS = 0.9
 
-pre_event_window = (event_window[0] - timedelta(minutes=DURATION), event_window[0])
+# ---------------------------------------------------------------------------
+# Build output directories
+# ---------------------------------------------------------------------------
 
+noise_samples_dir = OUTPUT_DIR / f"{NOISE_NAME}_samples"
+noise_samples_dir.mkdir(parents=True, exist_ok=True)
 
-event_window_selector = EventWindowSelector(num_jobs=NUM_JOBS)
-distant_events, near_events = event_window_selector.select_events(
-    event_location[0], event_location[1],
-    noise_start_time, noise_end_time,
-    distant_min_radius = 40, distant_min_magnitude = 6.0,
-    close_max_radius = 20, close_min_magnitude=4.5
-)
+event_dir = OUTPUT_DIR / "events"
+event_dir.mkdir(parents=True, exist_ok=True)
+
+error_log = OUTPUT_DIR / f"{NOISE_NAME}_errors.csv"
+
+# ---------------------------------------------------------------------------
+# Build station→network mapping and detect available stations
+# ---------------------------------------------------------------------------
+
+print("Loading inventory...")
 try:
-    event_start_end_times = event_window_selector.get_unavailability_time_pairs(
-        receivers, near_events, distant_events
+    inventory_check = load_inventory(STATIONXML_DIR)
+    has_inventory = True
+except FileNotFoundError:
+    print(f"WARNING: No StationXML in {STATIONXML_DIR} — skipping response removal.")
+    has_inventory = False
+
+
+def _station_has_data(station, network, t0, t1):
+    return bool(find_mseed_files(DATA_DIR, station, t0, t1,
+                                 network=network, channel_glob=CHANNEL_GLOB))
+
+
+event_t0 = EVENT_WINDOW[0] - timedelta(minutes=5)
+event_t1 = EVENT_WINDOW[1] + timedelta(minutes=1)
+available_stations = []
+station_networks = {}
+
+for station, network_key in STATION_CODES_PATHS.items():
+    network = network_key if len(network_key) <= 2 else "*"
+    if _station_has_data(station, network, event_t0, event_t1):
+        available_stations.append(station)
+        station_networks[station] = network
+
+print(f"Available stations: {len(available_stations)}")
+if not available_stations:
+    raise RuntimeError("No stations have data for the event window.")
+
+# ---------------------------------------------------------------------------
+# Optional: process daily files for the full noise period up front
+# ---------------------------------------------------------------------------
+
+if USE_DAILY_PROCESSING:
+    processed_dir = OUTPUT_DIR / "_daily"
+    print(f"Processing daily files → {processed_dir}  (NUM_JOBS={NUM_JOBS})")
+    process_daily_files(
+        data_dir=DATA_DIR,
+        station_networks=station_networks,
+        processed_dir=processed_dir,
+        t_start=NOISE_START,
+        t_end=NOISE_END,
+        stationxml_dir=STATIONXML_DIR if has_inventory else None,
+        prefilter_kwargs=PREFILTER_KWARGS,
+        filter_kwargs=FILTER_KWARGS,
+        sampling_rate=MAX_FREQUENCY,
+        channel_glob=CHANNEL_GLOB,
+        n_jobs=NUM_JOBS,
     )
+    effective_data_dir = processed_dir
+    remove_response = False
+    use_filter_kwargs = None
+    use_prefilter_kwargs = None
+    inventory = None
+else:
+    effective_data_dir = DATA_DIR
+    inventory = load_inventory(STATIONXML_DIR) if has_inventory else None
+    remove_response = has_inventory
+    use_filter_kwargs = FILTER_KWARGS
+    use_prefilter_kwargs = PREFILTER_KWARGS
 
-    continuous_noise_regions, gaps = event_window_selector.get_continuous_regions(event_start_end_times,
-        datetime.strptime(noise_start_time, date_format), 
-        datetime.strptime(noise_end_time, date_format))
-except Exception as e:
-    print('Error with event window selector')
-    print(e)
-    continuous_noise_regions = [(datetime.strptime(noise_start_time, date_format), datetime.strptime(noise_end_time, date_format))]
-noise_time_windows= event_window_selector.create_daily_overlapping_windows_from_regions(
-    continuous_noise_regions, window_length=timedelta(minutes= 20), buffer = timedelta(minutes=20), overlap_offset=timedelta(minutes=3)
-)
-print("Number of day windows: ", len(noise_time_windows))
-print("Num noise windows: ", sum([len(windows) for windows in noise_time_windows.values()]) )
+# ---------------------------------------------------------------------------
+# Export the event window h5 (from pre-processed or raw data)
+# ---------------------------------------------------------------------------
 
-# create a datetime window for each date in noise_time_windows
-times = [datetime.time(datetime.strptime('00:00:00', '%H:%M:%S')), datetime.time(datetime.strptime('23:59:59', '%H:%M:%S'))]
-windows = [[datetime.combine(date, time) for time in times] for date in noise_time_windows.keys()]
+def _load_and_process_window(t_start, t_end):
+    pad_s = 60
+    t0_load = t_start - DURATION.total_seconds() - pad_s
+    t1_load = t_end + pad_s
 
-from functools import partial
+    combined = obspy.Stream()
+    good_stations = []
+    for sta in available_stations:
+        network = station_networks.get(sta, "*")
+        paths = find_mseed_files(effective_data_dir, sta, t0_load, t1_load,
+                                 network=network, channel_glob=CHANNEL_GLOB)
+        if not paths:
+            continue
+        try:
+            st = load_waveforms(paths, starttime=t0_load, endtime=t1_load)
+            if len(st) == 0:
+                continue
+            combined += st
+            good_stations.append(sta)
+        except Exception as exc:
+            print(f"  {sta}: load error — {exc}")
 
-window_length = timedelta(minutes=DURATION)
-noise_collection_callable = partial(event_noise_aggregator.collect_noise_data, noise_window_length=timedelta(hours=24),  convert_to_numpy = False)
+    if USE_DAILY_PROCESSING:
+        combined.merge(method=0, fill_value="latest")
+        return combined, good_stations
+    else:
+        if combined:
+            combined = deconvolve_and_filter(
+                combined, inventory=inventory, remove_response=remove_response,
+                prefilter_kwargs=use_prefilter_kwargs, filter_kwargs=use_filter_kwargs,
+                target_sr=MAX_FREQUENCY,
+            )
+        return combined, good_stations
 
-noise_database_generator = NoiseDatabaseGenerator(noise_collection_callable, num_jobs=NUM_JOBS, mseed_output=True)
 
-# noise_database_generator.create_database(DAILY_OUTPUT_DIRECTORY, windows)
+event_stream, event_available = _load_and_process_window(EVENT_WINDOW[0], EVENT_WINDOW[1])
+if event_stream:
+    data_vector_length = compute_data_vector_length(
+        (EVENT_WINDOW[1] - EVENT_WINDOW[0]).total_seconds(), MAX_FREQUENCY
+    ) + 1
+    export_to_sbi_h5(
+        event_stream,
+        receivers=event_available,
+        event_window=EVENT_WINDOW,
+        out_path=event_dir / f"{NOISE_NAME}_event_filtered_1hz.h5",
+        sampling_rate=MAX_FREQUENCY,
+        covariance_window=DURATION,
+        full_auto_correlation=True,
+    )
+    print(f"Event h5 written: data_vector_length={data_vector_length}")
 
-data_slicer = ProcessedDataSlicer(data_folder=DAILY_OUTPUT_DIRECTORY, 
-                                  sampling_rate=max_frequency, 
-                                  covariance_estimation_window=timedelta(minutes=DURATION),
-                                  full_auto_correlation=True,
-                                  receivers=event_noise_aggregator.available_stations_during_event)
+# ---------------------------------------------------------------------------
+# Find event-free noise windows
+# ---------------------------------------------------------------------------
 
-data_vector_length = compute_data_vector_length(DURATION*60, max_frequency) + 1
-print(data_vector_length)
-data_saver = NoiseDatabaseGenerator(data_slicer.load_noise_window_data, data_vector_length=data_vector_length, num_jobs=NUM_JOBS)
-# data_saver._collect_and_save_noise(Path('/data/alex/indo_pacific/events/'), noise_window=event_window, name=f'{noise_name}_event_filtered_1hz')
+print("Querying FDSN for interfering events...")
+from seismo_sbi.instaseis_simulator.receivers import Receiver
+dummy_receivers = Receivers(receivers=[
+    Receiver(0.0, 0.0, station_networks.get(s, "XX"), s, ["Z"])
+    for s in available_stations
+])
 
-h5_files = list(Path(DAILY_OUTPUT_DIRECTORY).glob("*.h5"))
-successful_files = []
-for h5_file in h5_files:
-    # Extract the file's stem (filename without extension)
-    file_stem = h5_file.stem
-    
-    # Parse the stem into a datetime object
+ews = EventWindowSelector(num_jobs=NUM_JOBS)
+try:
+    distant, near = ews.select_events(
+        EVENT_LOCATION[0], EVENT_LOCATION[1],
+        NOISE_START.strftime("%Y-%m-%d"), NOISE_END.strftime("%Y-%m-%d"),
+        distant_min_radius=40, distant_min_magnitude=6.0,
+        close_max_radius=20, close_min_magnitude=4.5,
+    )
+    unavail = ews.get_unavailability_time_pairs(dummy_receivers, near, distant)
+    continuous_regions, _ = get_continuous_regions(unavail, NOISE_START, NOISE_END)
+except Exception as exc:
+    print(f"Event selection failed ({exc}) — using full date range as one region.")
+    continuous_regions = [(NOISE_START, NOISE_END)]
+
+noise_time_windows = list(make_noise_windows(
+    continuous_regions,
+    window_length=DURATION,
+    buffer=timedelta(minutes=20),
+))
+print(f"Found {len(noise_time_windows)} candidate noise windows.")
+
+# ---------------------------------------------------------------------------
+# Parallel noise window export
+# ---------------------------------------------------------------------------
+
+def _process_one_noise_window(t_start, t_end):
+    label = t_start.strftime("%Y.%m.%d.%H.%M")
+    out_path = noise_samples_dir / f"{label}.h5"
+    if out_path.exists():
+        return label, True, "already_exists"
     try:
-        file_datetime = datetime.strptime(file_stem, "%Y.%m.%d.%H.%M").date()
-        successful_files.append(file_datetime)
-    except ValueError:
-        continue
-print(len(successful_files))
+        stream, good_stations = _load_and_process_window(t_start, t_end)
+        if not stream or not good_stations:
+            return label, False, "no_data"
 
-noise_time_windows= event_window_selector.create_daily_overlapping_windows_from_regions(
-    continuous_noise_regions, window_length=timedelta(minutes= DURATION), buffer = timedelta(minutes=20), overlap_offset=timedelta(minutes=3)
+        ok, reason = check_window_quality(
+            stream, good_stations, MAX_FREQUENCY, DURATION, MIN_COMPLETENESS
+        )
+        if not ok:
+            return label, False, f"quality: {reason}"
+
+        export_to_sbi_h5(
+            stream,
+            receivers=good_stations,
+            event_window=(t_start, t_end),
+            out_path=out_path,
+            sampling_rate=MAX_FREQUENCY,
+            covariance_window=DURATION,
+            full_auto_correlation=False,
+        )
+        return label, True, ""
+    except Exception:
+        return label, False, traceback.format_exc().splitlines()[-1]
+
+
+print(f"Generating noise samples (NUM_JOBS={NUM_JOBS})...")
+results = joblib.Parallel(n_jobs=NUM_JOBS, backend="loky")(
+    joblib.delayed(_process_one_noise_window)(t_start, t_end)
+    for t_start, t_end in noise_time_windows
 )
 
-final_noise_windows = {date: noise_time_windows[date] for date in successful_files}
+n_written = sum(1 for _, ok, r in results if ok and r != "already_exists")
+n_existed = sum(1 for _, ok, r in results if r == "already_exists")
+failures = [(label, r) for label, ok, r in results if not ok]
 
-print("Number of day windows: ", len(final_noise_windows))
-print("Num noise windows: ", sum([len(windows) for windows in final_noise_windows.values()]) )
+if failures:
+    with open(error_log, "a", newline="") as f:
+        writer = csv.writer(f)
+        for label, reason in failures:
+            f.write(f"{label},{reason}\n")
+    print(f"  {len(failures)} failures logged to {error_log}")
 
-data_slicer = ProcessedDataSlicer(data_folder=DAILY_OUTPUT_DIRECTORY, 
-                                  sampling_rate=max_frequency, 
-                                  covariance_estimation_window=timedelta(minutes=DURATION),
-                                  full_auto_correlation=True,
-                                  receivers=event_noise_aggregator.available_stations_during_event)
-flattened_time_windows = [time for date in final_noise_windows for time in final_noise_windows[date]]
-
-noise_database_generator = NoiseDatabaseGenerator(data_slicer.load_noise_window_data, data_vector_length=data_vector_length, num_jobs=NUM_JOBS)
-
-noise_database_generator.create_database(NOISE_OUTPUT_DIRECTORY, flattened_time_windows)
+print(
+    f"Noise database complete: {n_written} new + {n_existed} existing = "
+    f"{n_written + n_existed} total samples in {noise_samples_dir}"
+)

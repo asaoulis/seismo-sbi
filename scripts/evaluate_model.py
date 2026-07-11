@@ -104,7 +104,8 @@ ALL_STAGES = ["events", "dropout", "validation"]
 # --------------------------------------------------------------------------- #
 def _event_dropout(obs_all, coords_all, names_all, posterior, data_scaler, parameters,
                    out_dir, *, num_samples, n_subsets, keep_fraction, min_stations, seed,
-                   device, event, source_vec=None):
+                   device, event, source_vec=None, extra_references=None,
+                   primary_reference=None, reference_label=None):
     """Station-dropout ensemble on the event's all-available set, via the shared
     src utilities. ``source_vec`` (when the model is conditioned) is the event's
     source vector, shared across every dropout config."""
@@ -133,7 +134,10 @@ def _event_dropout(obs_all, coords_all, names_all, posterior, data_scaler, param
         data_scaler, parameters.parameter_to_vector("information")[:6])
     try:
         p = out_dir / f"ml_{event}_dropout_lune_kde.svg"
-        plot_ensemble_lune_kde(ensemble, plotter, figsave=p, legend=True)
+        plot_ensemble_lune_kde(ensemble, plotter, figsave=p, legend=True,
+                               extra_references=extra_references,
+                               primary_reference=primary_reference,
+                               reference_label=reference_label)
         figures["dropout_lune_kde"] = str(p)
     except Exception as e:  # noqa: BLE001
         print(f"    [warn] dropout KDE lune failed: {type(e).__name__}: {e}")
@@ -382,7 +386,10 @@ def main():
                     obs_all, coords_all, names_all, posterior, data_scaler, original_parameters,
                     out_dir, num_samples=num_samples, n_subsets=n_subsets,
                     keep_fraction=args.keep_fraction, min_stations=args.min_stations,
-                    seed=args.seed, device=device, event=event, source_vec=source_vec)
+                    seed=args.seed, device=device, event=event, source_vec=source_vec,
+                    extra_references=spec.extra.get("extra_refs"),
+                    primary_reference=spec.ref_mt,
+                    reference_label=spec.extra.get("ref_label"))
                 ev_summary["dropout_figures"] = d_figs
                 ev_summary["dropout_spread"] = d_stats
 

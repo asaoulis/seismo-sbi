@@ -110,9 +110,11 @@ def _parse_args():
                    help="Use TauPy to compute precise arrival windows for event "
                         "avoidance in the noise catalogue (default: off — use "
                         "onset time directly, suitable for local/regional events).")
-    p.add_argument("--pre_event_window", type=float, default=0.0,
-                   help="Start event windows this many seconds before the origin "
-                        "time (default 0). Useful when filtering shifts the onset.")
+    p.add_argument("--pre_event_window", type=float, default=60.0,
+                   help="Start event windows this many seconds before the origin time. "
+                        "DEFAULT 60 = the pre-origin pad every Instaseis synthetic carries "
+                        "(SYNTHETICS_PRE_EVENT_PAD_S); obs must match the sims or they are "
+                        "misaligned by 60 s. Pass 0 only for a non-Instaseis convention.")
     p.add_argument("--rolling_window_gap", type=float, default=30.0,
                    help="Step in seconds between consecutive noise windows "
                         "(default 30). Use a larger value for sparser catalogues.")

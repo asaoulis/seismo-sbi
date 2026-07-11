@@ -1,0 +1,308 @@
+# first_ml_npe_brustle_lomax_sweep.yaml
+# ============================================================
+# Santorini ML NPE — BRUSTLE theory-error ensemble + LOMAX-16 stations/noise.
+# *** ENCODER-SWEEP variant: ONE 500k baked dataset, THREE station encoders (cnn/tcn/pno). ***
+#
+# Derived from first_ml_npe_brustle_lomax_baked.yaml. Same baked-nuisance dataset (time_shift
+# + scattering_coda moved to `stage: simulation`, so per-sim diversity comes from the 500k sim
+# count) and the same ML stack, run off ONE config for all three encoders via the orchestrator's
+# --arch flag (which overrides ml_architecture). The temporal handling is UNIFIED:
+#   * Nyquist `input_decimate: 3` is a model-entry step applied to EVERY encoder (the data is
+#     band-limited 0.03-0.08 Hz ⇒ losslessly decimatable 3x), then each encoder does ONE light
+#     `downsample: 2` (cnn gained a `downsample` param matching tcn/pno) ⇒ ~33-34 tokens/station
+#     for all three. (NOT backward-compatible with the old cnn fixed conv stack — accepted.)
+# Kept (the bulk of the speedup): the 500k baking (dataloader off the critical path), the in-RAM
+# sim+noise caches, bf16 AMP + fused SDPA. num_transforms left at 8 (quality-safe; identical
+# across all three so it doesn't bias the encoder comparison; set 5 for ~1.17x more speed).
+#
+# Baked-nuisance staging is below under parameters.nuisance (time_shift_error/scattering_coda
+# stage: simulation). Sim-cache RAM @500k float32 = ~19.3 GB.
+#
+# LAUNCH: see scripts/configs/santorini/run_brustle_encoder_sweep.sh (one gen + three trains).
+#
+# Same ML defaults as first_ml_npe_v3_allsta_amp_posenc_bigflow_constlr_pma_tokens.yaml
+# (tcn + ml_conditioning + ml_variable_stations + amplitude embedding + RFF positional
+# encoding + §3.4 PMA pooling pool_over=TOKENS + num_transforms=8 + constant post-warmup
+# LR=1e-4 + scale_shape MT scaler + the training_augmentation nuisance chain) EXCEPT the
+# DATA CONTEXT, which is swapped to the new theory-error setup:
+#   * simulation_type: instaseis_ensemble  (santorini_tomo_brustle, 61 member DBs) -> the
+#     theory error is baked into each training sim by drawing a random ensemble member.
+#   * stations = the lomax-16 broadband set (stations_lomax.txt + components_lomax.json).
+#   * noise/compression = the lomax noise catalogue; real event = lomax event 14.
+#
+# Local target for the ensemble DBs: /data/alex/axisem_dbs/santorini_tomo_brustle/
+# (rsync'd from compute-gpu-0-5:/share/gpu5/asaoulis/axisem_dbs/santorini_tomo_brustle/).
+# On the cluster the orchestrator path_remap maps that local path -> the gpu5 archive.
+#
+# ---- LAUNCH (remote) — one gen, three trainings off the SAME 500k dataset ------------------
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_brustle_lomax_sweep.yaml
+#   RUN=santorini_brustle_lomax_sweep                    # the shared dataset run
+#   python $ORCH --config $CFG avail
+#   python $ORCH --config $CFG sync --rev <branch>       # commit+push first
+#   python $ORCH --config $CFG push-data                 # noise/event/stations/components
+#   # 500k CPU dataset generation (instaseis ensemble; shift+coda BAKED per sim):
+#   python $ORCH --config $CFG --run $RUN gen --partition CORES64 --ncpu 64 --wall_h 48 --nsims 500000
+#   # then AFTER gen completes, the three encoder trainings (same --run => SHARED sims):
+#   for A in cnn tcn pno; do
+#     python $ORCH --config $CFG --run $RUN train --train-name ${RUN}_$A --arch $A --epochs 60 --gpu l40s
+#   done
+#   # (wrapped in scripts/configs/santorini/run_brustle_encoder_sweep.sh)
+# ============================================================
+
+run_name: santorini_brustle_lomax_sweep    # keys the SWEEP 500k baked sim set (distinct dataset)
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: False              # orchestrator sets True for the gen stage, False for train
+num_jobs: 60
+# ML/NPE training trains its own embedding net on raw waveforms and never consumes the score/Fisher
+# compression stencil — and forking instaseis's numba-JIT forward model across the stencil's loky
+# workers crashes ('ReferenceError: underlying object has vanished'). Skip it for both gen + train.
+skip_compression_data: True
+
+ml_architecture: cnn                 # default; the orchestrator's --arch (cnn/tcn/pno) overrides it per run
+
+# ---- SOURCE-LOCATION CONDITIONING ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+# ---- per-station amplitude embedding ----
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+# ---- RFF station positional encoding (review §3.2) ----
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+# ---- §3.4 Set-Transformer PMA pooling head (pool_over=TOKENS) ----
+ml_pooling:
+  enabled: true
+  pool_over: tokens
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+# ---- NDE head (normalising-flow) sizing ----
+ml_flow:
+  num_transforms: 8
+
+# ---- optimizer / LR schedule ----
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: cosine
+
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+# ---- training-efficiency optimisations (ml-architectures/efficiency-optimization) ----
+# This sweep keeps the ENCODER-AGNOSTIC, quality-safe wins (the bulk of the speedup): the 500k
+# BAKING (above) takes the dataloader off the critical path, the in-RAM caches remove per-sample
+# HDF5 reads, and amp+sdpa speed the embedding net. See the task logbook for the breakdown.
+#
+# CLUSTER TORCH NOTE: build the env with torch 2.5.1+cu121 (setup_train_env.sh + conda_env in
+# training_cluster_config.yaml are already set to seismo-sbi-t25). The optimized stack is
+# launch-bound, so the newer torch's lower per-kernel launch overhead is itself ~1.3x (torch 2.0
+# = 3.5x e2e vs torch 2.12 = 4.7x) — that bump, NOT compile (~1.04x, left off), is what lands the
+# 5x. Must stay <=2.6 (RHEL7/glibc-2.17 nodes; >=2.7 won't import). See [[hypatia-torch-glibc-ceiling]].
+ml_cache:
+  sims: true            # preload clean sims to RAM (~3.9 GB @100k, 19 GB @500k float32); removes
+                        #   the per-sample HDF5 load + its worker-scaling wall. ZERO-RISK (float32 ==
+                        #   model precision; one-time preload ~33 min @100k, negligible vs the run).
+  noise: true           # preload the RealNoiseSampler window pool; removes the per-sample noise read.
+  dtype: float32        # float32 == model precision (rel 8e-8); use float64 for byte-exact, float16 for 1M.
+ml_perf:
+  sdpa: true            # fused scaled_dot_product_attention — NUMERICALLY IDENTICAL (max|Δ|=1.9e-7). ZERO-RISK.
+  amp: true             # bf16 autocast on the EMBEDDING net (flow head stays fp32). ~1.4x model step.
+                        #   VALIDATE quality on the first cluster run (precision change; net-positive
+                        #   in the local wall-clock A/B). Set false to drop if a real-data run regresses.
+  fused_adam: false     # fused-kernel AdamW (same update rule; ~1.02x). Auto-falls-back on CPU/old
+                        #   torch. Safe to enable anywhere; left off as it's a negligible win.
+  # compile: false      # torch.compile measured only ~1.04x e2e on top of the stack below — NOT
+                        #   worth the torch>=2.2 requirement + the inductor-on-RHEL7 smoke. Left OFF
+                        #   by default. (compile_flow is the lower-risk variant if ever revisited.)
+# ---- ml_encoder: Nyquist decimation applied to ALL THREE encoders (cnn/tcn/pno) ----
+# input_decimate is a model-entry step (before every encoder), so the Nyquist reduction is
+# UNIFORM across architectures; each encoder then does ONE light strided downsample. cnn now
+# accepts `downsample` too (single same-padded strided front conv = ceil(L/downsample)), so this
+# block is shared by all three via --arch.
+#   * input_decimate 3 : 201 -> 67 samples. LOSSLESS — the data's 6 s min period (0.03-0.08 Hz
+#     band at 1 Hz sampling) sits well inside the post-decimation Nyquist (0.167 Hz). Anti-alias
+#     FIR on by default. This is the Nyquist sampling logic, now applied to every model.
+#   * downsample 2     : 67 -> ~33-34 tokens/station for all three (cnn 34, tcn/pno 33). Total 6x
+#     temporal reduction, comparable to the original brustle ds8 (~25). Reduce to 1 for more
+#     temporal resolution, raise for fewer tokens / more speed.
+# CAPACITY change vs the un-decimated brustle — the wall-clock val-loss A/B showed nt5+dec3 reach
+# BETTER loss in equal time; validate posterior quality (TARP) on the first real-data run.
+ml_encoder:
+  input_decimate: 3
+  downsample: 2
+
+seismic_context:
+  simulation_type: 'instaseis_ensemble'                  # theory-error ensemble
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations_lomax.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components_lomax.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  syngine_address: "/data/alex/axisem_dbs/santorini_tomo_brustle/"            # ensemble dir (61 member DBs)
+  syngine_fiducial_address: "/data/alex/axisem_dbs/santorini_tomo_brustle/fiducial/"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      coordinate_std: [0.010, 0.013, 1.5]   # Gaussian sigma per conditioning coord [lat deg, lon deg, depth km]
+      stage: training_augmentation
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    # BAKED (this variant): one fixed draw per simulation at generation time — the effect's
+    # internal RNG still randomises shift/coda per sim; diversity comes from --nsims 500000.
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      uniform_offset: 3.0
+      gaussian_sigma: 3.0
+      lanczos_order: 5
+      stage: simulation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: simulation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"        # BAKED: gate constant; effect RNG draws per sim
+    scattering_coda: "constant"         # BAKED: gate constant; effect RNG draws per sim
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini_lomax_stations/catalogue/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini_lomax_stations/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    # lomax event 14 (No14_id3250). 14/16 lomax stations present in the h5;
+    # variable-station packing handles the gap.
+    No14_id3250: /data/alex/santorini_lomax_stations/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 500000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini_lomax_stations/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

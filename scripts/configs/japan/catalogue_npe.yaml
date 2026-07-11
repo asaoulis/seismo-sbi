@@ -1,0 +1,112 @@
+# Japan main-arc catalogue-level NPE — catalogue-driven source-location + Mw priors.
+#
+# Mirrors scripts/configs/santorini/catalogue_npe.yaml but for the Japan F-net demo.
+# Priors (src/seismo_sbi/priors/) built by this task
+# (.claude/runs/personal-page/source-catalogue-dataset/):
+#   * source_location -> `catalogue_kde`     over the F-net MT catalogue (713 events <=80km)
+#   * moment_tensor   -> `gutenberg_richter` truncated-GR M0 (b fit above completeness)
+#
+# Catalogue source = F-net (NIED) regional MT (consistent Mw down to ~3.5), NOT USGS
+# (mb-dominated). See artifacts/catalogue_source_evaluation.md.
+#
+# DEPTH CAP = 80 km: the Japan Instaseis DB (Japan_JMA2001_PREM_coarse.bm = JMA2001 crust
+# 0-100km on FIXED PREM) + its 60-member theory-error ensemble perturb only 0-100km, so the
+# source prior is kept crustal (japan_fnet_mt.csv here is the <=80km subset).
+#
+# BOUNDS are a SUPERSET of the sampler support (the NPE FlexibleScaler is a non-clipping
+# min-max into [0,1]): source_location = arc box + margin, depth>=0; moment_tensor =
+# +/- ~sqrt(2)*M0_max, M0_max = 10**(1.5*mw_max+9.1) = 1.26e18 at mw_max=6 -> +/-2e18.
+#
+# Paths marked <PLACEHOLDER> need a real Japan Instaseis DB / station-components file for a
+# full run; the catalogue-prior wiring itself does not depend on them.
+
+run_name: japan_catalogue_npe
+output_directory: '/data/alex/fnet_japan/npe'
+job_name: catalogue_priors
+generate_dataset: True
+num_jobs: 30
+
+# log10(M0) magnitude + scale-invariant unit tensor; mt_log_decades must exceed
+# 1.5*(mw_max - mw_min) = 3.75 here (9.0 is ample). Use the SAME config at train + inference.
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 9.0
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZNE'
+  stations_path: './configs/japan/fnet_demo_stations.txt'
+  station_components_path: './configs/japan/components.json'   # <PLACEHOLDER>
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  syngine_address: '<PLACEHOLDER Japan JMA2001+PREM Instaseis DB>'   # from japan-1d-model-ensemble
+  processing:
+    filter:                       # F-net MT band: 15-50 s
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.0667
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    source_location:
+      #         [lat, lon, depth_km, time_shift_s]
+      fiducial: [38.0, 141.0, 15.0, 0.0]
+      stencil_deltas: [0.01, 0.01, 0.5, 0.1]
+      # superset of the main-arc catalogue extent + margin; depth capped at 80 km (+5 margin)
+      bounds: [[30.0, 127.5, 0.0, -2.0],
+               [46.5, 146.5, 85.0, 2.0]]
+    moment_tensor:
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15]
+      stencil_deltas: [1.e+11, 1.e+11, 1.e+11, 1.e+11, 1.e+11, 1.e+11]
+      bounds: [[-2.e+18, -2.e+18, -2.e+18, -2.e+18, -2.e+18, -2.e+18],
+               [ 2.e+18,  2.e+18,  2.e+18,  2.e+18,  2.e+18,  2.e+18]]
+  nuisance: {}
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    source_location:
+      type: catalogue_kde
+      catalogue: ./configs/japan/japan_fnet_mt.csv   # F-net MT, <=80 km (713 events)
+      std_x_km: 20.0         # east  Gaussian kernel width (km) — broad: robust to new events
+      std_y_km: 20.0         # north Gaussian kernel width (km)
+      std_z_km: 10.0         # depth Gaussian kernel width (km)
+      time_shift: uniform
+      use_event_errors: false
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 0.691         # Aki-MLE fit above completeness mc=3.8 (max-curvature ~3.75)
+      mc: 3.8                # completeness for the FIT only; sampling band is [mw_min, mw_max]
+      mw_min: 3.5
+      mw_max: 6.0            # point-source valid to Mw6 at the 10 s mesh (japan-1d-model-ensemble)
+      catalogue: ./configs/japan/japan_fnet_mt.csv
+      magnitude_conversion: identity   # F-net Mw already Mw
+  use_fisher_to_constrain_bounds: False
+
+compression:
+  ml_compressor:
+    path: ''
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian'
+      noise_level: 0.1
+
+jobs:
+  real_events: {}
+  simulations:
+    random_events: 100000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_noises: [0.1]
+  plots:
+    async_plotting: True
+    disable_plotting: False

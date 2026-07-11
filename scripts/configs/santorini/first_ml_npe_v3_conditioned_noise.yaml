@@ -1,0 +1,186 @@
+# first_ml_npe_v3_conditioned_noise.yaml
+# ============================================================
+# Santorini ML NPE — ITERATION v3: SOURCE-LOCATION UNCERTAINTY on top of v2's conditioning.
+#
+# Identical to first_ml_npe_v2_conditioned.yaml EXCEPT it adds a `source_location_error`
+# nuisance (stage: training_augmentation) that perturbs the source-location CONDITIONING vector
+# with per-coordinate Gaussian noise IN THE DATALOADER (fresh draw per sample). This emulates the
+# catalogue location error the conditioned model sees at inference (v2 conditioned on the EXACT
+# location → train/test mismatch). Dataloader-only ⇒ REUSES the same 100k sims (no regeneration);
+# inference / post-train eval are UNCHANGED (they already feed the catalogue location).
+#
+# Sigma derived from the Santorini catalogue (Santorini_catalog.csv, N=4088): ErrH median 0.99 km
+# / p75 1.82 km (horizontal radial), Errz median 1.22 km / p75 2.49 km (depth). At 36.6N,
+# 1deg lat=111.2 km, 1deg lon=89.3 km; per-axis horiz sigma ~ ErrH/sqrt2. Conservative choice
+# (~all-events p75): lat 0.010deg (~1.1 km), lon 0.013deg (~1.2 km), depth 1.5 km.
+#
+# Run (from scripts/ or repo root):
+#   python scripts/train_NPE.py --config scripts/configs/santorini/first_ml_npe_v3_conditioned_noise.yaml \
+#       --run_name santorini_first_ml_v3_condnoise --architecture tcn --epochs 200
+# Eval (feeds each event's catalogue source location as conditioning):
+#   python scripts/evaluate_model.py \
+#       --domain scripts/santorini_pathbreaker/eval_adapter.py:SantoriniDomain \
+#       --config scripts/configs/santorini/first_ml_npe_v3_conditioned_noise.yaml \
+#       --ckpt_dir /data/alex/santorini/npe/santorini_first_ml/results/santorini_first_ml_v3_condnoise
+# ============================================================
+
+run_name: santorini_first_ml
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: False              # REUSE the existing 100k sims (v3 is a dataloader-only change)
+num_jobs: 30
+
+ml_architecture: tcn
+
+# ---- SOURCE-LOCATION CONDITIONING (from v2) ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  syngine_address: "/data/shared/santorini5sb_fiducial_database/"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- v3: source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active); mirrors time_shift_error
+      bounds: [0.0, 1.0]
+      coordinate_std: [0.010, 0.013, 1.5]   # Gaussian sigma per conditioning coord [lat deg, lon deg, depth km]
+      stage: training_augmentation   # applied in the ML dataloader to source_vec (NOT the waveform)
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      uniform_offset: 2.0
+      gaussian_sigma: 2.0
+      lanczos_order: 5
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: training_augmentation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"
+    scattering_coda: "constant"
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini/catalogue/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    No14_id3250: /data/alex/santorini/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 100000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

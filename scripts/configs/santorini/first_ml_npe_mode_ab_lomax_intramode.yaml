@@ -1,0 +1,294 @@
+# first_ml_npe_mode_ab_lomax.yaml
+# ============================================================
+# Santorini ML NPE — MODE-A/MODE-B multimodel theory-error ensemble + LOMAX-15 stations/noise.
+# *** TCN-only final model on ONE 500k baked dataset. ***
+#
+# Derived from first_ml_npe_brustle_lomax_sweep.yaml.  Identical ML stack, baked nuisances,
+# lomax noise/event, sampling and flow/optimizer — the ONLY change is the DATA CONTEXT, which
+# swaps the single brustle ensemble for a PATH-SPECIFIC, two-mode multimodel Instaseis ensemble:
+#   * simulation_type: instaseis_multi_ensemble  (NEW dispatch -> InstaseisMultiModelSimulator).
+#   * Mode A (santorini_tomo_mode_a, 31 member DBs) serves the 9 ON-ISLAND Santorini receivers;
+#     Mode B (santorini_tomo_mode_b, 31 member DBs) serves the 6 OFF-ISLAND receivers.
+#     Each training sim draws an INDEPENDENT random member per mode (decorrelated regional theory
+#     error), so a single forward simulation bakes the regionally-varying theory error.
+#   * The Mode-A/B station split is computed from SANTORINI_ISLAND_BBOX (extract_1d_profiles.py):
+#     Mode A (9): CMBO SANT SAP3 SNT1 THERA THR3 THR5 THR8 AKRO
+#     Mode B (6): AMGA ANYD APE IOSI MHLO SERI
+#   * Fiducial is PER-MODE: with use_fiducial each region routes to its own mode's fiducial DB.
+#
+# Local target for the ensemble DBs (cluster archive is what the orchestrator path_remap points at):
+#   /data/alex/axisem_dbs/santorini_tomo_mode_a/  + /data/alex/axisem_dbs/santorini_tomo_mode_b/
+#   (cluster archive: compute-gpu-0-5:/share/gpu5/asaoulis/axisem_dbs/santorini_tomo_mode_{a,b}/)
+# The inline instaseis_multi_models DB paths are YAML string leaves -> the orchestrator's deep_remap
+# rewrites them to the gpu5 archive automatically.
+#
+# ---- LAUNCH (remote) — one gen, one tcn training off the SAME 500k dataset --------------------
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_mode_ab_lomax.yaml
+#   RUN=santorini_mode_ab_lomax
+#   python $ORCH --config $CFG avail
+#   python $ORCH --config $CFG sync --rev <branch>          # commit+push first
+#   # 500k CPU dataset generation (instaseis multimodel; shift+coda BAKED per sim):
+#   python $ORCH --config $CFG --run $RUN gen --partition CORES64 --ncpu 64 --wall_h 48 --nsims 500000
+#   # then AFTER gen completes, the single tcn training:
+#   python $ORCH --config $CFG --run $RUN train --train-name ${RUN}_tcn --arch tcn --epochs 60 --gpu l40s
+# ============================================================
+
+run_name: santorini_mode_ab_lomax_intramode    # keys the 500k baked sim set (distinct dataset namespace)
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: False              # orchestrator sets True for the gen stage, False for train
+num_jobs: 60
+# ML/NPE training trains its own embedding net on raw waveforms and never consumes the score/Fisher
+# compression stencil — and forking instaseis's numba-JIT forward model across the stencil's loky
+# workers crashes ('ReferenceError: underlying object has vanished'). Skip it for both gen + train.
+skip_compression_data: True
+
+ml_architecture: tcn                 # single final model (orchestrator --arch tcn also sets this)
+
+# ---- SOURCE-LOCATION CONDITIONING ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+# ---- per-station amplitude embedding ----
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+# ---- RFF station positional encoding (review §3.2) ----
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+# ---- §3.4 Set-Transformer PMA pooling head (pool_over=TOKENS) ----
+ml_pooling:
+  enabled: true
+  pool_over: tokens
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+# ---- NDE head (normalising-flow) sizing ----
+ml_flow:
+  num_transforms: 8
+
+# ---- optimizer / LR schedule ----
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: cosine
+
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+# ---- training-efficiency optimisations (see brustle sweep notes) ----
+# CLUSTER TORCH NOTE: build the env with torch 2.5.1+cu121 (env seismo-sbi-t25). Must stay <=2.6
+# (RHEL7/glibc-2.17 nodes; >=2.7 won't import). See [[hypatia-torch-glibc-ceiling]].
+ml_cache:
+  sims: true            # preload clean sims to RAM (~19 GB @500k float32); removes per-sample HDF5 load
+  noise: true           # preload the RealNoiseSampler window pool
+  dtype: float32        # float32 == model precision
+ml_perf:
+  sdpa: true            # fused scaled_dot_product_attention — NUMERICALLY IDENTICAL. ZERO-RISK.
+  amp: true             # bf16 autocast on the EMBEDDING net (flow head stays fp32). ~1.4x model step.
+  fused_adam: false
+# ---- ml_encoder: Nyquist decimation applied to the encoder (band-limited 0.03-0.08 Hz) ----
+ml_encoder:
+  input_decimate: 3
+  downsample: 2
+
+seismic_context:
+  simulation_type: 'instaseis_multi_ensemble'           # NEW: multimodel theory-error dispatch
+  resample_member_per_station: true                      # within-mode (intra-ensemble) per-station 1-D draw
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations_lomax.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components_lomax.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  # Mode A = on-island receivers -> santorini_tomo_mode_a; Mode B = off-island -> santorini_tomo_mode_b.
+  # DB paths are inline string leaves so the orchestrator deep_remap rewrites them to the gpu5 archive.
+  instaseis_multi_models:
+    - ensemble_dir: '/data/alex/axisem_dbs/santorini_tomo_mode_a/'
+      fiducial_dir:  '/data/alex/axisem_dbs/santorini_tomo_mode_a/fiducial/'
+      receivers: [CMBO, SANT, SAP3, SNT1, THERA, THR3, THR5, THR8, AKRO]   # Mode A (9, on island)
+    - ensemble_dir: '/data/alex/axisem_dbs/santorini_tomo_mode_b/'
+      fiducial_dir:  '/data/alex/axisem_dbs/santorini_tomo_mode_b/fiducial/'
+      receivers: [AMGA, ANYD, APE, IOSI, MHLO, SERI]                       # Mode B (6, off island)
+  # syngine_address is unused by the multimodel path but SimulationParameters requires it; point it
+  # at the mode_a dir (also remapped) so parsing succeeds.
+  syngine_address: '/data/alex/axisem_dbs/santorini_tomo_mode_a/'
+  syngine_fiducial_address: '/data/alex/axisem_dbs/santorini_tomo_mode_a/fiducial/'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      # Gaussian sigma per conditioning coord [lat deg, lon deg, depth km].
+      # 2026-06-16: tightened to the NEW NLL-SC catalogue's per-event formal location
+      # uncertainty (mean errH 0.58 km, errZ 0.76 km over the Mw>=3.5 in-window events),
+      # not the OLD<->NEW inter-catalogue scatter (which is inflated by the OLD catalogue's
+      # ~2x larger errors). Was [0.010, 0.013, 1.5] (~2-3x looser). Median alt: [0.004, 0.005, 0.5].
+      coordinate_std: [0.005, 0.006, 0.76]
+      stage: training_augmentation
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    # BAKED (this variant): one fixed draw per simulation at generation time — the effect's
+    # internal RNG still randomises shift/coda per sim; diversity comes from --nsims 500000.
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      # 2026-06-16: calibrated on measured QA best-fit lags (intramode+brustle models,
+      # ~1000 station-lags each; forward-sim first-guess at the event location, xcorr vs obs).
+      # The array-wide COMMON offset is PEAKED at 0 (not flat), so it is now GAUSSIAN
+      # (common_offset_dist) rather than uniform. Sigmas = cycle-skip-clipped std of the
+      # measured common offset (1.8 s) and per-station residual (2.3 s). The catalogue
+      # origin-time error (~0.1 s RMS) is negligible vs these -> this is theory/velocity error.
+      # Was: uniform_offset 3.0 + gaussian_sigma 3.0 (too broad & flat-topped in the core).
+      common_offset_dist: gaussian
+      common_offset_sigma: 1.8
+      gaussian_sigma: 2.3
+      lanczos_order: 5
+      stage: simulation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: simulation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      # MT magnitude prior is the explicit truncated-GR (b_value=1.1, mw 3.5-5.5); the catalogue
+      # is IGNORED when b_value is numeric (only used for b_value: fit). Kept as the legacy CSV so
+      # the MT sampling is byte-identical to the previous configs (user request). Only the
+      # source_location prior below uses the NEW NLL-SC catalogue.
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/20250506A_auth_ml_Santorini-Amorgos_Seismicity_20250101-20250228_NLL-SC_se4.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"        # BAKED: gate constant; effect RNG draws per sim
+    scattering_coda: "constant"         # BAKED: gate constant; effect RNG draws per sim
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini_lomax_stations/catalogue/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini_lomax_stations/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    # lomax event 14 (No14_id3250). 14/15 lomax stations present in the h5;
+    # variable-station packing handles the gap.
+    No14_id3250: /data/alex/santorini_lomax_stations/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 500000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini_lomax_stations/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

@@ -1,0 +1,303 @@
+# first_ml_npe_japan.yaml
+# ============================================================
+# Japan F-net ML NPE — main-arc demo (personal-page live earthquake NPE).
+#
+# DERIVED FROM two sources:
+#   * STRUCTURE  = scripts/configs/santorini/first_ml_npe_brustle_lomax_sweep.yaml
+#     (the "intramode" ML training recipe: instaseis_ensemble theory error + the full
+#      tcn / ml_conditioning / ml_variable_stations / amplitude-embedding / RFF
+#      positional-encoding / PMA-pooling / scale_shape-MT-scaler / augmentation stack).
+#   * PRIORS + data context = scripts/configs/japan/catalogue_npe.yaml (the F-net
+#     catalogue prior-demo stub): catalogue_kde source-location + gutenberg_richter M0
+#     over japan_fnet_mt.csv, the 21-station F-net demo set, and the 15-50 s band.
+#
+# DESIGN (differs from the japan stub, which wrongly put source_location under inference):
+#   * INFERENCE = MOMENT TENSOR ONLY (6 comps). Amortised MT NPE.
+#   * SOURCE LOCATION = a CONDITIONING input (ml_conditioning) AND a sampled-hidden
+#     NUISANCE (parameters.nuisance.source_location, drawn by catalogue_kde over the
+#     Japan arc), with a 10 km mislocation augmentation (source_location_error).
+#   * MT scaler uses the NEW dynamic window: mt_log_decades: auto fits the log10(M0)
+#     range to the GR prior [mw_min, mw_max] -> here (14.35, 18.10) = 1.5*[3.5,6.0]+9.1,
+#     so the sampled magnitude maps to u in [0,1] exactly (no hardcoded decade count).
+#
+# FORWARD MODEL = the japan10s theory-error ensemble (60 members + fiducial), one
+# smooth-perturbed 1-D Earth model drawn per station per sim (resample_member_per_station).
+# Local DB paths /data/alex/axisem_dbs/japan10s/{,fiducial/} are remapped by the training
+# orchestrator to the gpu5 archive /share/gpu5/asaoulis/axisem_dbs/japan10s/.
+#
+# NOISE = the F-net real-noise catalogue (generic-event mode, rescale:false). Local path
+# /data/alex/fnet_japan/catalogue/noise remaps to the gpu5 landing dir
+# /share/gpu5/asaoulis/seismo_data/japan_fnet/catalogue/noise (name flipped fnet_japan ->
+# japan_fnet; reconciled by the training_cluster_config.yaml path_remap entry).
+#
+# DATA-VECTOR CONTRACT (must match the built catalogue @ /data/alex/fnet_japan/catalogue):
+#   21 stations, ZNE, seismogram_duration 800 s @ 1.0 Hz -> 801 samples/component;
+#   bandpass 0.02-0.0667 Hz (15-50 s). Do NOT change these without rebuilding the catalogue.
+#
+# ---- LAUNCH (remote), see .claude/runs/personal-page/training-runs/plan.md ------------------
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/japan/first_ml_npe_japan.yaml
+#   python $ORCH --config $CFG avail
+#   python $ORCH --config $CFG sync --rev <branch>       # commit + push first
+#   python $ORCH --config $CFG push-data                 # noise/events/stations/components/CSV
+#   python $ORCH --config $CFG gen  --partition CORES64 --ncpu 64 --wall_h 48 --nsims 5000   # wiring probe
+#   python $ORCH --config $CFG train --gpu v100 --epochs 1 --train-name japan_smoke_val       # GPU mem probe
+#   # then the real dataset + run:
+#   python $ORCH --config $CFG gen  --nsims 100000
+#   python $ORCH --config $CFG train --gpu v100 --epochs 300 --train-name japan_v1
+# ============================================================
+
+run_name: japan_fnet_npe             # dataset run key (orchestrator --run overrides at submit)
+output_directory: '/data/alex/fnet_japan/npe'
+job_name: results
+generate_dataset: False              # orchestrator sets True for gen, False for train
+num_jobs: 60                         # CORES64 gen default (orchestrator aligns to --ncpu)
+# ML/NPE training trains its own embedding net on raw waveforms and never consumes the
+# score/Fisher compression stencil — and forking instaseis's numba-JIT forward model across
+# the stencil's loky workers crashes. Skip it for both gen + train (mandatory for ML+ensemble).
+skip_compression_data: True
+
+ml_architecture: tcn                 # per-station TCN encoder (orchestrator --arch can override)
+
+# ---- SOURCE-LOCATION CONDITIONING (location is a context input, not inferred) ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+# ---- per-station amplitude embedding ----
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+# ---- RFF station positional encoding ----
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+# ---- Set-Transformer PMA pooling head (pool_over=TOKENS) ----
+ml_pooling:
+  enabled: true
+  pool_over: tokens
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+# ---- NDE head (normalising-flow) sizing ----
+ml_flow:
+  num_transforms: 8
+
+# ---- optimizer / LR schedule ----
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: cosine
+
+# ---- MT scale/shape reparametrisation with a DYNAMIC log-M0 window ----
+# mt_log_decades: auto fits [log10 M0_min, log10 M0_max] to the GR prior's [mw_min, mw_max]
+# via M0 = 10**(1.5*Mw + 9.1); here mw 3.5-6.0 -> (14.35, 18.10). Use the SAME config at
+# train + inference so the scaling matches.
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: auto
+
+# ---- per-GPU batch sizing (DDP: global batch = train * devices) ----
+# Under 4-GPU DDP each rank consumes a FULL train batch, so these are PER-GPU sizes.
+# 800 s -> ~2800-token attention OOM'd a single 16 GB V100 at 128; 32 per GPU fits ~4 GB
+# and gives an effective 32*4 = 128 global batch (the originally-intended global batch).
+ml_batch:
+  train: 32             # per-GPU training batch (32 * 4 GPUs = 128 global)
+  val: 64               # per-GPU validation batch (kept within 16 GB)
+  num_workers: 8
+
+# ---- training-efficiency optimisations (preload caches + fused kernels) ----
+ml_cache:
+  sims: false           # MUST be false under 4-rank DDP: separate srun processes get NO
+                        #   copy-on-write, so the ~98 GB japan500k sim cache would be ~394 GB
+                        #   (4x) > the node's 376 GB RAM -> host OOM. Reads sims from disk instead.
+  noise: true           # preload the RealNoiseSampler window pool (~5 GB f32 x 4 ranks = ~18 GB, fine)
+  dtype: float32
+ml_perf:
+  sdpa: true            # fused scaled_dot_product_attention — numerically identical. ZERO-RISK.
+  amp: false            # V100 target has NO native bf16 -> fp32 (accept-slower, per the plan). The
+                        #   embedding-net bf16 autocast only wins on l40s/a100; on V100 it gives no
+                        #   tensor-core speedup. For an l40s/a100 rerun set amp: true (+ amp_dtype: float16
+                        #   on V100 if you must use AMP there).
+  fused_adam: false
+
+# ---- Nyquist decimation at model entry (band-limited 0.02-0.0667 Hz) ----
+# input_decimate 3: 801 -> 267 samples, LOSSLESS (post-decimation Nyquist 0.167 Hz >> 0.0667 Hz);
+# downsample 2: 267 -> ~134 tokens/station.  NB 800 s => ~4x the tokens vs 200 s => ~4x the
+# attention memory; if the V100 OOMs at train_batch_size 128, halve it (or bump input_decimate).
+ml_encoder:
+  input_decimate: 3
+  downsample: 2
+
+seismic_context:
+  simulation_type: 'instaseis_ensemble'                  # japan10s theory-error ensemble
+  resample_member_per_station: true                      # per-station independent 1-D member draw
+  components: 'ZNE'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/japan/fnet_demo_stations.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/japan/components.json'
+  seismogram_duration: 800          # DESIGN decision (scoping doc): covers Japan SW arrivals;
+                                    #   japan10s DBs support it (1000 s DB seismogram_length).
+                                    #   -> 801 samples/component; catalogue rebuilt at 800 s to match.
+  sampling_rate: 1.0
+  syngine_address: "/data/alex/axisem_dbs/japan10s/"              # ensemble parent (60 members + fiducial subdirs)
+  syngine_fiducial_address: "/data/alex/axisem_dbs/japan10s/fiducial/"
+  processing:
+    filter:                       # F-net MT band: 15-50 s
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.0667
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15]
+      stencil_deltas: [1.e+11, 1.e+11, 1.e+11, 1.e+11, 1.e+11, 1.e+11]
+      # +/- ~sqrt(2)*M0_max (M0_max = 10**(1.5*6.0+9.1) = 1.26e18 at mw_max=6) -> +/-2e18
+      bounds: [[-2.e+18, -2.e+18, -2.e+18, -2.e+18, -2.e+18, -2.e+18],
+               [ 2.e+18,  2.e+18,  2.e+18,  2.e+18,  2.e+18,  2.e+18]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde over the Japan arc); superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [38.0, 141.0, 15.0, 0.0]
+      bounds: [[30.0, 127.5, 0.0, -2.0],
+               [46.5, 146.5, 85.0, 2.0]]
+
+    # ---- source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      coordinate_std: [0.090, 0.114, 5.0]   # Gaussian sigma per conditioning coord: 10 km lat / 10 km lon @38N / 5 km depth
+      stage: training_augmentation
+
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, BAKED into sims
+      fiducial: [1.0]
+      bounds: [0.5, 5.0]             # widened to 5 s for Mw6 (per dataset scoping)
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    # BAKED (stage: simulation): one draw per simulation at generation time; the effect's
+    # internal RNG still randomises shift/coda per sim, so diversity comes from --nsims.
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      uniform_offset: 5.0
+      gaussian_sigma: 5.0
+      lanczos_order: 5
+      stage: simulation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: simulation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000              # score-compression auxiliary set (unused: skip_compression_data)
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 0.691                 # Aki-MLE fit above completeness mc=3.8
+      mc: 3.8                        # completeness for the FIT only; sampling band is [mw_min, mw_max]
+      mw_min: 3.5
+      mw_max: 6.0                    # point-source valid to Mw6 at the 10 s mesh
+      catalogue: /home/alex/work/seismo-sbi/scripts/configs/japan/japan_fnet_mt.csv
+      magnitude_conversion: identity # F-net Mw already Mw
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/configs/japan/japan_fnet_mt.csv   # F-net MT, <=80 km (713 events)
+      std_x_km: 20.0                 # east  Gaussian kernel width (km) — broad: robust to new events
+      std_y_km: 20.0                 # north Gaussian kernel width (km)
+      std_z_km: 10.0                 # depth Gaussian kernel width (km)
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"        # BAKED: gate constant; effect RNG draws per sim
+    scattering_coda: "constant"         # BAKED: gate constant; effect RNG draws per sim
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/fnet_japan/catalogue/noise   # unused (skip_compression_data); mirrors template
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/fnet_japan/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    # One F-net event for the data-vector shape / a real-event inversion sanity check
+    # (all 21 stations present; rescale:false => not required for covariance).
+    fnet_ev0: /data/alex/fnet_japan/catalogue/events/20260101T124623.h5
+  simulations:
+    random_events: 100000            # NPE training-set size (orchestrator --nsims overrides at gen)
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/fnet_japan/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

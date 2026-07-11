@@ -1,0 +1,154 @@
+# first_ml_npe_smoke.yaml
+# ============================================================
+# 1-epoch SMOKE of first_ml_npe.yaml: validates full wiring (full-Instaseis dataset gen +
+# catalogue_kde/GR sampling + STF + augmentation chain + un-rescaled real noise + variable
+# stations + scale_shape) on a small dataset, and times the 1000-sim generation so the 100k
+# ETA can be extrapolated (= t_1000 * 100 at num_jobs=30).
+#
+# Identical to first_ml_npe.yaml EXCEPT: smaller datasets + a separate output dir/run_name so
+# it does not collide with the full run's dataset.
+#
+#   python scripts/train_NPE.py --config scripts/configs/santorini/first_ml_npe_smoke.yaml \
+#       --run_name smoke --architecture tcn --epochs 1
+# ============================================================
+
+run_name: santorini_first_ml_smoke
+output_directory: '/data/alex/santorini/npe_smoke'
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+ml_architecture: tcn
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: absolute
+
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  syngine_address: "/data/shared/santorini5sb_fiducial_database/"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      uniform_offset: 2.0
+      gaussian_sigma: 2.0
+      lanczos_order: 5
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: training_augmentation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 200
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    amplitude_error: "constant"
+    time_shift_error: "constant"
+    scattering_coda: "constant"
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini/catalogue/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    No14_id3250: /data/alex/santorini/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 1000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

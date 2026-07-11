@@ -1,0 +1,103 @@
+run_name: croatia_event1_model2
+output_directory: '/data/alex/cps/alex'
+job_name: inverse_only
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps_precomputed' # 'instaseis' or 'cps'
+  # simulation_type: 'cps_precomputed' # 'instaseis' or 'cps
+  components: 'ZEN'
+  stations_path: './configs/croatia/model_2_test/event1_stations.txt'
+  station_components_path: './configs/croatia/components.json'
+  station_time_shifts_path: './configs/croatia/event1_station_shifts.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  # cps_GFs_path: '/data/alex/cps/cps_long_valley/tham_5pc'
+  # cps_GFs_fiducial_path: '/data/alex/cps/cps_long_valley/tham_fiducial'
+  cps_GFs_path: '/data/alex/cps/cps_croatia/model_2_test/kappa_0.1'
+  cps_GFs_fiducial_path: '/data/alex/cps/cps_croatia/model_2_test/kappa_0.1_fiducial/'
+  # cps_multi_models_path: './configs/croatia/multi_model.json'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [8.271500000000002e+16, -2680000000000000.0, -8.0035e+16, 1.5265e+16, 1.121e+16, 2.1075e+16]
+
+      # fiducial: [1.0e+17, 1.0e+17, 1.0e+17,1.0e+17,1.0e+17,1.0e+17]
+
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-1.2e+17, -1.2e+17, -1.2e+17, -1.2e+17, -1.2e+17, -1.2e+17],
+              [1.2e+17, 1.2e+17, 1.2e+17, 1.2e+17, 1.2e+17, 1.2e+17]]
+  nuisance: 
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [45.879, 16.028, 5, 0]
+      bounds: [45.879, 16.028, 5, 0]
+    velocity_model:
+      fiducial: '/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt'
+      bounds: ['/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt', 5]
+
+simulations:
+  num_simulations: 8000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: 15
+  iterative_least_squares:
+    max_iterations: 1
+    damping_factor: 1000.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: False
+
+
+compression: 
+  theory_optimal_score:
+    noise_level:  2.e-8
+    diag_regularisation_magnitude: 0.1
+    data_covariance: kolb
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model: 
+      type: 'gaussian_filtered'
+      noise_level: null
+
+  likelihood: 
+    run: True
+    ensemble: False
+    covariance: empirical
+    num_samples: 40000
+    walker_burn_in: 1000
+    move_size: [0.0001, 0.0001]
+
+
+jobs:
+  real_events:
+    event1_multi_manual: ./data/events/croatia_event1_filt_20_50_1hz.h5
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    # real_noise: './data/noise/azores_event_samples'
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [['theory_optimal_score', 'gaussian_filtered'], ['gaussian_likelihood', 'gaussian_filtered']]
+    disable_plotting: False

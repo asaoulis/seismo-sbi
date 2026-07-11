@@ -1,0 +1,174 @@
+# first_ml_npe.yaml
+# ============================================================
+# FIRST Santorini-crisis ML NPE training run (train_NPE.py).
+#
+# Folds in every new capability:
+#   * Inference target: MOMENT TENSOR ONLY.
+#   * source_location + stf_duration: SAMPLED-HIDDEN nuisances (varied per-sim, baked into the
+#     data, excluded from theta). Location conditioning is a LATER iteration.
+#   * Full Category-2 nuisance suite as training-time augmentation (amplitude / time-shift /
+#     coda / instrument dropout) + component dropout (post-noise).
+#   * Variable-station training (pad+mask) for robustness to per-event station drops.
+#   * scale_shape MT scaler tuned to the Gutenberg-Richter prior Mw 3.5-5.5.
+#   * Catalogue-driven priors: gutenberg_richter MT + catalogue_kde location.
+#   * Generic-event real noise (rescale: false) drawn from the noise catalogue.
+#
+# Because source_location AND stf_duration are sampled, the fast kernel-simulator shortcut is
+# OFF: every training sim is a full Instaseis forward run. Validate wiring with the 1-epoch
+# smoke (first_ml_npe_smoke.yaml) and check the extrapolated 100k ETA before committing.
+#
+# Run (from scripts/ or repo root):
+#   python scripts/train_NPE.py --config scripts/configs/santorini/first_ml_npe.yaml \
+#       --run_name santorini_first_ml_v1 --architecture tcn --epochs 200
+# ============================================================
+
+run_name: santorini_first_ml
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+# Per-station encoder (cnn | pno | tcn); CLI --architecture overrides. tcn = validated w/ variable stations.
+ml_architecture: tcn
+
+# Variable-station training: each sample uses a random subset of the 15-station master set
+# (pad+mask batching, per-sample coords). Robust to the per-event drops (events have 5-11 usable).
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: absolute      # 'relative' needs ml_conditioning (deferred to a later run)
+
+# Moment-tensor scaling: log10(M0) magnitude + scale-invariant unit tensor. MUST match at
+# inference. Tuned to Mw 3.5-5.5: bounds +/-5e17 -> log10 M0_max=17.55; mt_log_decades=4 ->
+# prior radius u in [0.20, 0.95]. n_decades > 1.5*(mw_max-mw_min)=3.0 satisfied.
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZEN'                   # matches the proven pathbreaker per-event config + components.json
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components.json'
+  seismogram_duration: 200           # matches the event h5 (301 samples @ 1 Hz)
+  sampling_rate: 1.0
+  syngine_address: "/data/shared/santorini5sb_fiducial_database/"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]      # depth >=1 km avoids near-surface Instaseis sources
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]                # 20% of stations mis-scaled per realisation
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    time_shift_error:
+      fiducial: [1.0]                # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      uniform_offset: 2.0            # array-wide common shift U(-2,2) s
+      gaussian_sigma: 2.0            # per-station shift N(0,2) s
+      lanczos_order: 5
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]                # 40% of stations get a coda tail
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: training_augmentation
+    instrument_dropout:
+      fiducial: [0.05]               # per-station prob. a whole station is zeroed
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]               # per-channel prob. a present component is zeroed
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise   # MUST be post-noise
+
+simulations:
+  num_simulations: 1000              # score-compression dataset (auxiliary); NPE set = jobs.random_events
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    amplitude_error: "constant"
+    time_shift_error: "constant"
+    scattering_coda: "constant"
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False   # explicit GR prior + bounds; avoids the Fisher leakage the pathbreaker hit
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:                         # proven Santorini score-compressor (empirical block cov from noise catalogue)
+  optimal_score:
+    empirical_block: /data/alex/santorini/catalogue_v2/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini/catalogue_v2/noise'
+      noise_level: 1.0e-06
+      rescale: false                 # generic-event mode: do NOT rescale noise to one event (Step 1 switch)
+  likelihood:
+    run: False
+
+jobs:
+  real_events:                       # >=1 required by train_NPE for the data-vector shape; No14 = best-recovered pilot
+    No14_id3250: /data/alex/santorini/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 100000            # NPE training-set size (generated by simulate_test_jobs)
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini/catalogue_v2/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

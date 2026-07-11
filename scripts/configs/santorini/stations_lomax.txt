@@ -1,0 +1,25 @@
+# Santorini lomax (auth_ml) BROADBAND-USABLE set: 14 v2-reuse + AKRO = 15 stations.
+# Source selection: examples/data/Santorini_NE_2025_GTSRCE_Stations_auth_ml_NO_NET.in
+# Dropped from the auth_ml list (non-broadband; incompatible with the 0.03-0.08 Hz HH
+# pipeline, user-confirmed 2026-06-09):
+#   THR2, THR9 (HT, EH short-period 3C), THR6 (HT, EHZ vertical-only),
+#   HER1, NAX1, SFR2 (HI, HN strong-motion accelerometers).
+# Dropped ANAF (2026-06-12): no usable continuous noise in the lomax catalogue
+#   (present in 0% of noise windows) -> a complete-station noise vector for the
+#   real_noise covariance never assembled (RealNoiseSampler RecursionError).
+# STATION NETWORK LAT LON
+AMGA HL 36.83156 25.89384
+ANYD HT 36.63001 25.67795
+APE HL 37.07274 25.52301
+CMBO HT 36.47090 25.40560
+IOSI HA 36.72247 25.28869
+MHLO HL 36.68984 24.40171
+SANT HL 36.37052 25.45926
+SAP3 HL 36.43560 25.34542
+SERI HA 37.16090 24.48530
+SNT1 HA 36.41590 25.42820
+THERA HL 36.36699 25.47526
+THR3 HT 36.40910 25.40080
+THR5 HT 36.41720 25.34790
+THR8 HT 36.40700 25.47877
+AKRO HT 36.35840 25.39670

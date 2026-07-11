@@ -1,0 +1,119 @@
+run_name: ridgecrest_aftershocks
+output_directory: .
+job_name: PLACEHOLDER_EVENT
+generate_dataset: true
+num_jobs: 20
+seismic_context:
+  simulation_type: cps_precomputed
+  components: ZEN
+  stations_path: ../scripts/configs/ridgecrest/stations.txt
+  station_components_path: ../scripts/configs/ridgecrest/components.json
+  seismogram_duration: 251
+  sampling_rate: 1.0
+  cps_path: /home/alex/work/cps/PROGRAMS.330/bin
+  cps_GFs_path: /data/alex/ridgecrest/cps_gfs/PLACEHOLDER
+  cps_GFs_fiducial_path: /data/alex/ridgecrest/cps_gfs/PLACEHOLDER_fiducial
+  syngine_address: dummy
+  processing:
+    filter:
+      type: bandpass
+      freqmin: 0.06
+      freqmax: 0.2
+      corners: 4
+      zerophase: false
+      time_shift: -30
+    sampling_rate: 1.0
+parameters:
+  inference:
+    moment_tensor:
+      fiducial:
+      - 1.0e+16
+      - 1.0e+16
+      - 1.0e+16
+      - 1.0e+16
+      - 1.0e+16
+      - 1.0e+16
+      stencil_deltas:
+      - 10000000000.0
+      - 10000000000.0
+      - 10000000000.0
+      - 10000000000.0
+      - 10000000000.0
+      - 10000000000.0
+      bounds:
+      - - -5.0e+16
+        - -5.0e+16
+        - -5.0e+16
+        - -5.0e+16
+        - -5.0e+16
+        - -5.0e+16
+      - - 5.0e+16
+        - 5.0e+16
+        - 5.0e+16
+        - 5.0e+16
+        - 5.0e+16
+        - 5.0e+16
+  nuisance:
+    source_location:
+      fiducial:
+      - 35.77
+      - -117.599
+      - 8
+      - 0
+      bounds:
+      - 35.77
+      - -117.599
+      - 8
+      - 0
+    velocity_model:
+      fiducial: ../examples/configs/SoCal.plain.txt
+      bounds:
+      - ../examples/configs/SoCal.plain.txt
+      - 5
+simulations:
+  num_simulations: 2000
+  sampling_method:
+    moment_tensor: uniform
+    source_location: constant
+    velocity_model: constant
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 0.1
+    dynamic_damping: false
+    mcmc_chain_for_mle: 0
+compression:
+  optimal_score:
+    kolb: /data/alex/ridgecrest/catalogue/noise
+inference:
+  sbi:
+    method: posterior
+    pipeline: single_event
+    noise_model:
+      type: real_noise
+      noise_catalogue_path: /data/alex/ridgecrest/catalogue/noise
+      noise_level: 3.0e-06
+  likelihood:
+    run: true
+    ensemble: false
+    covariance: empirical
+    num_samples: 10000
+    walker_burn_in: 2000
+    move_size: 0.0005
+jobs:
+  real_events:
+    PLACEHOLDER_EVENT: /data/alex/ridgecrest/catalogue/events/PLACEHOLDER.h5
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/ridgecrest/catalogue/noise
+  plots:
+    async_plotting: true
+    test_posteriors:
+      chain_consumer:
+      - - - optimal_score_kolb
+          - real_noise
+        - - gaussian_likelihood
+          - real_noise
+    disable_plotting: false

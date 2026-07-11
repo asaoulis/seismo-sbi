@@ -1,0 +1,21 @@
+# Santorini lomax event-14 (No14_id3250) station set: the 14 of 16 lomax stations
+# present in 20250210T201629.h5 (ANAF, IOSI have no data in this event). Used by the
+# single-event theory-error notebook (examples/santorini_theory_errors_brustle.ipynb),
+# whose non-ML theory_optimal_score path needs the config stations to match the event h5
+# exactly. The cluster ML config (first_ml_npe_brustle_lomax.yaml) keeps the full 16 —
+# variable-station packing handles per-event gaps there.
+# STATION NETWORK LAT LON
+AMGA HL 36.83156 25.89384
+ANYD HT 36.63001 25.67795
+APE HL 37.07274 25.52301
+CMBO HT 36.47090 25.40560
+MHLO HL 36.68984 24.40171
+SANT HL 36.37052 25.45926
+SAP3 HL 36.43560 25.34542
+SERI HA 37.16090 24.48530
+SNT1 HA 36.41590 25.42820
+THERA HL 36.36699 25.47526
+THR3 HT 36.40910 25.40080
+THR5 HT 36.41720 25.34790
+THR8 HT 36.40700 25.47877
+AKRO HT 36.35840 25.39670

@@ -1,89 +1,104 @@
 run_name: indo_pacific
 output_directory: .
-job_name: JAVA_INDONESIA_20240918_024106
+job_name: compare_ALL_likelihoods_sbi_fixed
 generate_dataset: True
 num_jobs: 20
 
 seismic_context:
   components: 'ZEN'
-  stations_path: './configs/indo_pacific/stations.txt'
+  stations_path: './configs/indo_pacific/stations_synthetic.txt'
   station_components_path: './configs/indo_pacific/components.json'
-  seismogram_duration: 1740
-  sampling_rate: 0.5
+  seismogram_duration: 200
+  sampling_rate: 1
   syngine_address: "/data/shared/prem_i_10s" # if no local version, can use "syngine://prem_i_2s"
   processing:
     filter:
       type: 'bandpass'
-      freqmin: 0.01
-      freqmax: 0.02
+      freqmin: 0.02
+      freqmax: 0.05
       corners: 4
       zerophase: False
-    sampling_rate: 0.5
+    sampling_rate: 1
 
 parameters:
   inference:
     moment_tensor:
       #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
-      fiducial: [1.e+14, 1.e+14, 1.e+14, 1.e+14, 1.e+14, 1.e+14]
+      fiducial: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
       stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
-      bounds: [[-5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16, -5.e+16],
-              [5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16, 5.e+16]]
+      bounds: [[-5.e+13, -5.e+13, -5.e+13, -5.e+13, -5.e+13, -5.e+13],
+              [5.e+13, 5.e+13, 5.e+13, 5.e+13, 5.e+13, 5.e+13]]
+  nuisance:
     source_location:
       #         [lat, long, depth, time]
-      fiducial: [ -7.2397, 107.5693, 24.5, 0]
-      stencil_deltas: [0.00001, 0.00001, 0.001, 0.001]
-      bounds: [[-7.2397, 107.5693, 8.5, -1],
-              [ -7.2397, 107.5693, 24.5, 1]]
-  nuisance: {}
+      fiducial: [37.636, -118.936, 5, 0]
+      bounds: [37.636, -118.936, 5, 0]
 
 
 
 simulations:
-  num_simulations: 1000
+  num_simulations: 5000
   sampling_method: 
     moment_tensor: "uniform"
-    source_location: "uniform"
-  use_fisher_to_constrain_bounds: 15
+    source_location: "constant"
+  use_fisher_to_constrain_bounds: null
   iterative_least_squares:
-    max_iterations: 12
-    damping_factor: 10.0
+    max_iterations: 2
+    damping_factor: 0.0
 
 
-compression: 
+compression:
 
-  optimal_score:
-    empirical_block:  '/data/alex/noise/indo_pacific/long_period_samples'
+  - optimal_score:
+      filtered_block:  '/data/alex/noise/indo_pacific/50_20s_200sec_samples_samples/'
+  - optimal_score: 
+      kolb:  '/data/alex/noise/indo_pacific/50_20s_200sec_samples_samples/'
+  # - optimal_score:
+  #     empirical_diagonal: '/data/alex/noise/indo_pacific/50_20s_200sec_samples_samples/'
+  - optimal_score:
+      empirical_block:  '/data/alex/noise/indo_pacific/50_20s_200sec_samples_samples/'
 
 inference:
   sbi:
     method: 'posterior'
+    pipeline: 'single_event'
+
 
     noise_model: 
       type: 'real_noise'
-      noise_catalogue_path: '/data/alex/noise/indo_pacific/long_period_samples'
+      noise_catalogue_path: '/data/alex/noise/indo_pacific/50_20s_200sec_samples_samples/'
       noise_level: 3.e-6
 
   likelihood: 
     run: True
     ensemble: False
     covariance: empirical
-    num_samples: 10000
+    num_samples: 20000
     walker_burn_in: 2000
-    move_size: 0.0005
+    move_size: 0.00003
 
 
 jobs:
-  real_events: 
-    real_java: /data/alex/indo_pacific/events_0.5hz/JAVA_INDONESIA_20240918_024106_Lat-7.2397_Lon107.5693_event_filtered_0.5hz.h5
+  real_events: {}
+    # real_java: /data/alex/indo_pacific/events_0.5hz/JAVA_INDONESIA_20240918_024106_Lat-7.2397_Lon107.5693_event_filtered_0.5hz.h5
   simulations:
-    random_events: 0
+    random_events: 2
     fixed_events: []
     custom_events: {}
   noise_models:
-    real_noise: '/data/alex/noise/indo_pacific/long_period_samples'
+    real_noise: '/data/alex/noise/indo_pacific/50_20s_200sec_samples_samples/'
   plots:
     async_plotting: True
     test_posteriors: 
       chain_consumer: 
-        - [[optimal_score, real_noise], [gaussian_likelihood, real_noise]]
+        # - [[optimal_score, real_noise], [gaussian_likelihood, real_noise]]
+        - [[optimal_score_filtered_block, real_noise], [optimal_score_kolb, real_noise]]
+        - [[optimal_score_filtered_block, real_noise], [gaussian_likelihood_optimal_score_filtered_block, real_noise]]
+        - [[optimal_score_filtered_block, real_noise], [optimal_score_empirical_block, real_noise]]
+        - [[gaussian_likelihood_optimal_score_filtered_block, real_noise], [gaussian_likelihood_optimal_score_kolb, real_noise]]
+        - [[gaussian_likelihood_optimal_score_filtered_block, real_noise], [gaussian_likelihood_optimal_score_empirical_block, real_noise]]
+        # - [[gaussian_likelihood_optimal_score_filtered_block, real_noise], [gaussian_likelihood_optimal_score_empirical_diagonal, real_noise]]
+
+        # - [[gaussian_likelihood_optimal_score, real_noise], [gaussian_likelihood_optimal_score_empirical_block, real_noise]]
+
     disable_plotting: False

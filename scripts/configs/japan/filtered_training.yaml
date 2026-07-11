@@ -1,0 +1,97 @@
+run_name: JMA_training
+output_directory: '/data/alex/cps/alex'
+job_name: model_training_5pc_long
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps_precomputed' # 'instaseis' or 'cps'
+  components: 'ZEN'
+  stations_path: './configs/japan/stations.txt'
+  station_components_path: './configs/japan/components.json'
+  # station_time_shifts_path: './configs/japan/station_shifts.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  cps_GFs_path: '/data/alex/cps/cps_japan/perturbations/kappa_5'
+  cps_GFs_fiducial_path: '/data/alex/cps/cps_japan/perturbations/kappa_5_fiducial'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+18, 1.e+18, 1.e+18, 1.e+18, 1.e+18, 1.e+18]
+      # fiducial: [1.0985209128388177e+18, -1.2581734406853128e+18, 2.229652527846495e+18, -8.380361649391023e+17, -3.985697520973377e+16, 4.0408647753592873e+18]
+      stencil_deltas: [1.e+12, 1.e+12, 1.e+12, 1.e+12, 1.e+12, 1.e+12]
+      bounds: [[-6.e+18, -6.e+18, -6.e+18, -6.e+18, -6.e+18, -6.e+18],
+              [6.e+18, 6.e+18, 6.e+18, 6.e+18, 6.e+18, 6.e+18]]
+  nuisance: 
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [33.968, 139.414, 8, 0]
+      bounds: [33.968, 139.414, 8, 0]
+    velocity_model:
+      fiducial: '/home/alex/work/seismo-sbi/scripts/data/JapanNakamichi.txt'
+      bounds: ['/home/alex/work/seismo-sbi/scripts/data/JapanNakamichi.txt', 5]
+
+simulations:
+  num_simulations: 1000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 4
+    damping_factor: 0.1
+
+compression: 
+  theory_optimal_score:
+    noise_level:  2.e-8
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model: 
+      type: 'gaussian_filtered'
+      noise_level: null
+
+  likelihood: 
+    run: True
+    ensemble: False
+    covariance: empirical
+    num_samples: 40000
+    walker_burn_in: 1000
+    move_size: [0.005, 0.001]
+
+
+jobs:
+  real_events: 
+    LV2: ./data/events/japan_event_filt_20_50_1hz.h5
+  simulations:
+    custom_events: {}
+      # synethic_dc_correct_model_2:
+      #   moment_tensor: [2.5679503714262864e+16, 4088315540457834.0, 2.143170060059789e+16, -3.33009612011787, -1.812819893559739e+16, 1.5021729089952764e+16]
+      #   source_location: [37.636, -118.936, 5, 0]
+      #   use_fiducial: True
+    random_events: 100000
+    fixed_events: []
+
+  noise_models:
+    # real_noise: './data/noise/azores_event_samples'
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [['theory_optimal_score', 'gaussian_noises_x1.0'], ['gaussian_likelihood', 'gaussian_noises_x1.0']]
+    disable_plotting: False

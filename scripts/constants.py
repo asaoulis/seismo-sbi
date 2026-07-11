@@ -149,7 +149,8 @@ INDO_DATA_FORMAT = {'AU_1': {'call_key': 'AU_1',
           'years': [2024]}}
 
 
-STATION_CODES_PATHS_INDO= {'GSI': 'GE_E',
+STATION_CODES_PATHS_INDO= {
+    # 'GSI': 'GE_E',
  'JOW': 'JP_E',
  'WRAB': 'II_1_00',
  'KAPI': 'II_1_00',

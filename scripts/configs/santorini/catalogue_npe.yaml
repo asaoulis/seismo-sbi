@@ -1,0 +1,113 @@
+# Worked example: catalogue-level NPE training with catalogue-driven priors.
+#
+# Demonstrates the dict-form `simulations.sampling_method` that selects the two
+# new catalogue priors (src/seismo_sbi/priors/):
+#   * source_location -> `catalogue_kde`     (Gaussian-mixture / KDE over the catalogue)
+#   * moment_tensor   -> `gutenberg_richter` (truncated-GR M0 + uniform-on-sphere)
+#
+# IMPORTANT — bounds must be a SUPERSET of the sampler support, because the NPE
+# scaler (FlexibleScaler/ZeroOneScaler) is a *non-clipping* min-max into [0,1] and
+# the posterior support is the unit hypercube. So:
+#   * source_location bounds  = catalogue extent + a few sigma (lat/lon/depth), depth>=0
+#   * moment_tensor bounds    = +/- ~sqrt(2)*M0_max per component,
+#                               M0_max = 10**(1.5*mw_max + 9.1); here mw_max=6 -> ~1.26e18,
+#                               so +/-2e18 is a safe box.
+#
+# Paths marked <PLACEHOLDER> must point at a real Instaseis DB / station files for a
+# full run; the catalogue-prior wiring itself does not depend on them.
+
+run_name: santorini_catalogue_npe
+output_directory: '/data/alex/santorini/npe'
+job_name: catalogue_priors
+generate_dataset: True
+num_jobs: 30
+
+# Moment-tensor scaling for the NDE (read by train_NPE.py and the ML inference helpers via
+# build_flexible_scaler — use the SAME config at train and inference so scaling matches):
+#   moment_tensor: "scale_shape"  -> log10(M0) magnitude + scale-invariant unit tensor
+#                                    (well-behaved when M0 spans many orders of magnitude)
+#                  "linear"       -> legacy per-component min-max (default)
+#   mt_log_decades: dynamic range; must exceed 1.5*(mw_max - mw_min) = 7.5 here.
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 9.0
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZNE'
+  stations_path: './configs/santorini/stations.txt'          # <PLACEHOLDER>
+  station_components_path: './configs/santorini/components.json'  # <PLACEHOLDER>
+  seismogram_duration: 300
+  sampling_rate: 1.0
+  syngine_address: "/data/shared/santorini5sb_fiducial_database"  # <PLACEHOLDER 5s DB>
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    # Both source location and moment tensor are inferred (catalogue-level NPE).
+    source_location:
+      #         [lat, lon, depth_km, time_shift_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      stencil_deltas: [0.01, 0.01, 0.5, 0.1]
+      # superset of catalogue extent (~36.1-36.95 lat, ~25.0-25.8 lon, depth<=50) + margin
+      bounds: [[36.0, 24.8, 0.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    moment_tensor:
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15]
+      stencil_deltas: [1.e+11, 1.e+11, 1.e+11, 1.e+11, 1.e+11, 1.e+11]
+      bounds: [[-2.e+18, -2.e+18, -2.e+18, -2.e+18, -2.e+18, -2.e+18],
+               [ 2.e+18,  2.e+18,  2.e+18,  2.e+18,  2.e+18,  2.e+18]]
+  nuisance: {}
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0          # east  Gaussian kernel width (km)
+      std_y_km: 1.0          # north Gaussian kernel width (km)
+      std_z_km: 0.5          # depth Gaussian kernel width (km)
+      time_shift: uniform    # or "constant"
+      use_event_errors: false  # set true to add ErrH/Errz in quadrature per event
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 0.7           # fit by Aki MLE above Mc, or give a float
+      mc: 3.2                # completeness magnitude for the fit (omit -> auto max-curvature)
+      mw_min: 3.0
+      mw_max: 5.3
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity   # Ml ~ Mw (configurable)
+  use_fisher_to_constrain_bounds: False
+
+compression:
+  ml_compressor:
+    path: ''
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian'
+      noise_level: 0.1
+
+jobs:
+  real_events: {}
+  simulations:
+    random_events: 100000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_noises: [0.1]
+  plots:
+    async_plotting: True
+    disable_plotting: False

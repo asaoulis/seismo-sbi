@@ -1,0 +1,227 @@
+# first_ml_npe_v3_allsta_amp_posenc_bigflow_constlr_pma_stations.yaml
+# ============================================================
+# Santorini ML NPE — v3 ALL-STATIONS — bigflow + constLR + §3.4 PMA pooling (pool_over=STATIONS).
+#
+# IDENTICAL to first_ml_npe_v3_allsta_amp_posenc_bigflow_constlr.yaml (amplitude embedding +
+# RFF station positional encoding + num_transforms=8 + constant post-warmup LR=1e-4, SAME 100k
+# 23-station sim set, run_name = santorini_v3_allsta) EXCEPT the addition of the new §3.4
+# Set-Transformer PMA pooling head in pool_over=STATIONS mode (a single-seed TimePool collapses
+# each station's time axis to one token, then k seeds PMA-pool over the N station tokens — the
+# "stations as a set" inductive bias, review §3.4b; learned concat->Linear combine).
+# The companion run uses pool_over=tokens; the ONLY difference between the two is pool_over.
+#
+# Launch (remote — reuses the existing santorini_v3_allsta sims, NO gen):
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_v3_allsta_amp_posenc_bigflow_constlr_pma_stations.yaml
+#   python $ORCH --config $CFG --run santorini_v3_allsta train \
+#       --train-name santorini_v3_allsta_amp_posenc_bigflow_constlr_pma_stations_v1 --arch tcn --epochs 200 --gpu l40s
+# ============================================================
+
+run_name: santorini_v3_allsta        # KEEP: keys the existing 100k 23-station sim set
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: False              # orchestrator sets True for the gen stage, False for train
+num_jobs: 30
+
+ml_architecture: tcn
+
+# ---- SOURCE-LOCATION CONDITIONING (from v2) ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+# ---- per-station amplitude embedding (the full ml_amplitude_embedding) ----
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+# ---- RFF station positional encoding (review §3.2) ----
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+# ---- NEW: §3.4 Set-Transformer PMA pooling head (pool_over=STATIONS) ----
+# A single-seed TimePool collapses each station's time axis to one token, then k seeds PMA-pool
+# over the N station tokens with a LEARNED concat->Linear combine ("stations as a set", §3.4b).
+# Enabling the head disables the in-block query cross-attention (the axial encoder is unchanged).
+ml_pooling:
+  enabled: true
+  pool_over: stations
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+# ---- NDE head (normalising-flow) sizing ----
+ml_flow:
+  num_transforms: 8
+
+# ---- optimizer / LR schedule ----
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: constant       # cosine (default; warmup->decay to lr*0.1) | constant | cyclic
+
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: 4.0
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations_v2_23.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components_v2_23.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  syngine_address: "/data/shared/santorini5sb_fiducial_database/"
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- v3: source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active); mirrors time_shift_error
+      bounds: [0.0, 1.0]
+      coordinate_std: [0.010, 0.013, 1.5]   # Gaussian sigma per conditioning coord [lat deg, lon deg, depth km]
+      stage: training_augmentation   # applied in the ML dataloader to source_vec (NOT the waveform)
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      uniform_offset: 2.0
+      gaussian_sigma: 2.0
+      lanczos_order: 5
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: training_augmentation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      mc: 3.5
+      mw_min: 3.5
+      mw_max: 5.5
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"
+    scattering_coda: "constant"
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini/catalogue_v2/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini/catalogue_v2/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    # Best v2 coverage = 21/23 (missing IOSI, SNT5); variable-station packing handles the gap.
+    No14_id3250: /data/alex/santorini/catalogue_v2/events/20250210T201629.h5
+  simulations:
+    random_events: 100000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini/catalogue_v2/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True
