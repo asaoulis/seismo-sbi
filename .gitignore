@@ -53,3 +53,15 @@ htmlcov/
 .coverage
 .coverage.*
 coverage.xml
+
+# HinetPy / F-net download intermediates (raw win32 chunks + channel tables).
+# The fetch_fnet.py adapter routes these to a /data scratch dir; this guards against
+# a manual/burst run leaving them under the repo (e.g. scripts/). Never commit them.
+*.cnt
+*.ch
+*.euc.ch
+
+# Local model checkpoints (fetched from the cluster / GitHub release assets, never committed)
+ml-checkpoints/
+# HinetPy win32 tools tarball — shipped to CI via the assets-v1 release, not the repo
+scripts/win32tools.tar.gz
