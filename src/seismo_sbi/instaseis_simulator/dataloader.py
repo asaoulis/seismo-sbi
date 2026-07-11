@@ -102,6 +102,53 @@ class SimulationDataLoader():
             self.receivers.receivers = saved
         return data, coords
 
+    def load_event_subset_with_components(self, sim_name, components_map, stacked=True):
+        """Load an event H5 for variable-station inference, KEEPING a per-station
+        component subset and ZERO-FILLING the dropped components.
+
+        ``components_map`` is the per-event QA ``components.json`` dict
+        ``{station: [kept components] | []}`` (the same structure
+        ``data_quality.components_from_verdicts`` writes): a station mapped to ``[]``
+        (or absent) is excluded entirely; a station mapped to a PARTIAL component list
+        keeps those channels and has its dropped channels replaced by zeros — exactly
+        the ``component_dropout`` nuisance the model trained on.
+
+        Returns ``(data, coords, kept_stations)``: ``data`` is ``(N, C, T)`` when ``stacked``
+        (``C`` = the station's master component count; dropped channels are zero rows),
+        ``coords`` is ``(N, 2)`` of ``(latitude, longitude)``, both ordered to match the
+        kept stations in master receiver order.
+
+        The channel ROW ORDER is by construction identical to :meth:`load_event_subset`
+        (each receiver's MASTER ``components`` order — the order the model trained on):
+        the full array is loaded exactly as ``load_event_subset`` would, then the dropped
+        channels are zeroed in array space, mirroring the training-time
+        ``component_dropout`` nuisance. The order of the lists inside ``components_map``
+        is irrelevant (membership only), and ``E``/``N`` are matched to their ``1``/``2``
+        aliases. [Fixed 2026-07: the previous implementation rebuilt receivers with the
+        CALLER's component-list order, silently swapping N/E whenever that order differed
+        from the master order — every components_map inference saw swapped horizontals.]
+        """
+        name_to_rec = {rec.station_name: rec for rec in self.receivers.iterate()}
+        master_order = [rec.station_name for rec in self.receivers.iterate()]
+        kept_stations = [s for s in master_order
+                         if components_map.get(s) and s in name_to_rec]
+        data, coords = self.load_event_subset(sim_name, kept_stations, stacked=True)
+
+        def _aliases(c):
+            return {c, c.replace('E', '1').replace('N', '2'),
+                    c.replace('1', 'E').replace('2', 'N')}
+
+        for i, s in enumerate(kept_stations):
+            kept = set()
+            for c in components_map[s]:
+                kept |= _aliases(c)
+            for ci, comp in enumerate(name_to_rec[s].components):
+                if comp not in kept:
+                    data[i, ci, :] = 0.0
+        if not stacked:
+            data = data.reshape(-1)
+        return data, coords, kept_stations
+
     def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False, fill_unused=False):
         """Convert simulation data map into seismogram array.
 
