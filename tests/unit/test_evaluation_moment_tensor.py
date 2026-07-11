@@ -48,16 +48,30 @@ def test_kagan_degenerate_returns_float():
 
 
 def test_pyrocko_mt_convention_signs():
-    # The convention re-signs Mrp (idx 4) and Mtp (idx 5).  Recover the same frame
-    # we constructed with the m_up_south_east accessor (pyrocko stores NED internally).
+    # m6 = [Mrr,Mtt,Mpp,Mrt,Mrp,Mtp] is standard GCMT up-south-east and maps 1:1 to
+    # pyrocko's m_up_south_east with NO sign flip (the old spurious Mrp/Mtp negation
+    # mirrored the mechanism — see moment_tensor.py history note).
     m6 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     M = pyrocko_mt(m6).m_up_south_east()
     assert M[0, 0] == pytest.approx(1.0)   # Mrr
     assert M[1, 1] == pytest.approx(2.0)   # Mtt
     assert M[2, 2] == pytest.approx(3.0)   # Mpp
     assert M[0, 1] == pytest.approx(4.0)   # Mrt
-    assert M[0, 2] == pytest.approx(-5.0)  # -Mrp (handedness fix)
-    assert M[1, 2] == pytest.approx(-6.0)  # -Mtp (handedness fix)
+    assert M[0, 2] == pytest.approx(5.0)   # Mrp (no flip — GCMT USE direct)
+    assert M[1, 2] == pytest.approx(6.0)   # Mtp
+
+
+def test_pyrocko_mt_roundtrips_known_mechanism():
+    # The decisive proof the no-flip convention is correct: a known mechanism's TRUE
+    # USE 6-vector must recover its own strike/dip/rake.
+    from pyrocko import moment_tensor as pmt
+    for s, d, r in [(0.0, 90.0, 0.0), (30.0, 60.0, -90.0), (115.0, 50.0, -70.0)]:
+        M = pmt.MomentTensor(strike=s, dip=d, rake=r).m_up_south_east()
+        m6 = np.array([M[0, 0], M[1, 1], M[2, 2], M[0, 1], M[0, 2], M[1, 2]])
+        planes = pyrocko_mt(m6).both_strike_dip_rake()
+        ok = any(np.allclose([round(a) % 360, round(b), (round(c) + 180) % 360 - 180],
+                             [s % 360, d, r], atol=2) for a, b, c in planes)
+        assert ok, f"sdr {(s, d, r)} not recovered; got {planes}"
 
 
 def test_recovered_mt_samples_slices_first_six():
