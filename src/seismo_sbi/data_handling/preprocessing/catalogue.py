@@ -66,7 +66,7 @@ def build_event_catalogue(
     duration_s: float,
     sampling_rate: float,
     covariance_window_s: float = 200.0,
-    pre_event_window_s: float = 0.0,
+    pre_event_window_s: float = 60.0,   # = wrapper.SYNTHETICS_PRE_EVENT_PAD_S: sims place the
     prefilter_kwargs: Optional[dict] = None,
     filter_kwargs: Optional[dict] = None,
     channel_glob: str = "BH?",
@@ -90,8 +90,13 @@ def build_event_catalogue(
         sampling_rate: Target sampling rate (Hz).
         covariance_window_s: Pre-event covariance window length (s).
         pre_event_window_s: Start the event window this many seconds *before*
-            the origin time (default 0).  Useful for local/regional events
-            where filtering shifts the effective onset.
+            the origin time.  DEFAULTS TO 60 s to match the pre-origin pad every
+            Instaseis synthetic carries (``SyntheticsPreprocessing`` /
+            ``SYNTHETICS_PRE_EVENT_PAD_S`` in ``instaseis_simulator/wrapper.py``):
+            the sims place the origin at t=+60 s, so the observations MUST too or
+            obs and synthetics are misaligned by 60 s (an out-of-distribution shift
+            ~12x beyond the training time-shift augmentation).  Pass 0 only for a
+            non-Instaseis convention.
         prefilter_kwargs: Override for ``deconvolve_and_filter`` pre-filter.
         filter_kwargs: Override for ``deconvolve_and_filter`` bandpass.
         channel_glob: Glob for mseed channel codes (default ``'BH?'``).

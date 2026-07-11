@@ -10,6 +10,13 @@ from .utils import compute_data_vector_length
 
 import instaseis
 
+# Seconds of pre-origin pad every simulated seismogram carries: the final trims below place the
+# source origin at t = +this in the exported window. The OBSERVED event catalogue MUST be windowed
+# with the same lead (build_event_catalogue ``pre_event_window_s`` defaults to this), or obs and
+# synthetics are misaligned by this many seconds -> out-of-distribution inference. Single source of
+# truth for that convention.
+SYNTHETICS_PRE_EVENT_PAD_S = 60.0
+
 class SyntheticsPreprocessing:
 
     def __init__(self, processing_config):
@@ -25,8 +32,9 @@ class SyntheticsPreprocessing:
         # seismograms = seismograms.filter('bandpass', freqmin=0.04, freqmax=0.07, corners=4, zerophase=False)
         seismograms = seismograms.filter(**self.processing_config['filter'])
 
-        seismograms = seismograms.trim(starttime=start-60, endtime=end - length * 0.1)
-        seismograms = seismograms.trim(starttime=start-60, endtime=end-60, pad=True, fill_value=0)
+        pad = SYNTHETICS_PRE_EVENT_PAD_S
+        seismograms = seismograms.trim(starttime=start - pad, endtime=end - length * 0.1)
+        seismograms = seismograms.trim(starttime=start - pad, endtime=end - pad, pad=True, fill_value=0)
 
         return seismograms
 
