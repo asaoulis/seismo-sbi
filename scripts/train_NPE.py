@@ -445,6 +445,49 @@ def main():
         'cache_dtype': cache_dtype,
         'cache_preload_workers': cache_workers,
     }
+    # ---- Misspecification-robust MMD auxiliary loss (top-level 'ml_mmd' block; opt-in).
+    # Aligns summaries of QA-cleaned REAL events with a POSTERIOR-MATCHED sim suite in
+    # embedding space (unbiased mixture-RBF MMD; see sbi/compression/ML/mmd.py and the
+    # ml-architectures/model-misspec-mmd task). Absent/disabled => byte-identical legacy loss.
+    #   ml_mmd:
+    #     enabled: true
+    #     real_events_manifest: /data/.../mmd_manifest.json   # from the QA'd catalogue run
+    #     psim_data_folder: /data/.../psim_suite              # generate_psim_suite.py output
+    #     lambda_mmd: 0.05       # weight after ramp (paper range 0.01-0.1)
+    #     warmup_epochs: 5       # NLL-only epochs before the ramp
+    #     ramp_epochs: 5         # linear ramp 0 -> lambda_mmd
+    #     every_n_steps: 1       # compute the MMD term every N optimizer steps
+    #     batch_size: 64         # sub-batch per side per MMD evaluation
+    #     clean_only: true       # exclude neighbour/contamination-flagged events
+    _mmd_cfg = _raw_cfg.get("ml_mmd") or {}
+    if _mmd_cfg.get("enabled", False):
+        from seismo_sbi.sbi.compression.ML.mmd_data import (
+            build_real_context, build_psim_loader)
+        real_ctx = build_real_context(
+            _mmd_cfg["real_events_manifest"],
+            sbi_pipeline.data_manager.data_loader,
+            clean_only=bool(_mmd_cfg.get("clean_only", True)),
+            # optional host-portable override: the manifest stores absolute paths from
+            # the machine that built it; this key is a plain YAML leaf, so the cluster
+            # orchestrator's path remap covers it.
+            events_h5_dir=_mmd_cfg.get("events_h5_dir"))
+        psim_loader = build_psim_loader(
+            _mmd_cfg["psim_data_folder"], _mmd_cfg["real_events_manifest"],
+            data_loader=sbi_pipeline.data_manager.data_loader,
+            synthetic_noise_model_sampler=sbi_pipeline.training_noise_sampler,
+            augmentation_chain=augmentation_chain,
+            augmentation_nuisance_params=augmentation_nuisance_params,
+            conditioning_param_map=conditioning_param_map,
+            batch_size=int(_mmd_cfg.get("batch_size", 64)),
+            clean_only=bool(_mmd_cfg.get("clean_only", True)))
+        trainer.model.enable_mmd(_mmd_cfg, real_ctx, psim_loader)
+        # model_config is held by reference in CompressionTrainer -> recorded in the
+        # model_meta.json sidecar so a checkpoint knows how it was trained.
+        model_config["mmd"] = {k: v for k, v in _mmd_cfg.items() if k != "enabled"}
+        print(f"MMD auxiliary loss enabled: N_real={real_ctx.shape[0]}, "
+              f"N_psim={len(psim_loader.dataset)}, lambda={_mmd_cfg.get('lambda_mmd', 0.05)}, "
+              f"warmup={_mmd_cfg.get('warmup_epochs', 5)}+ramp={_mmd_cfg.get('ramp_epochs', 5)} epochs")
+
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
     # Default logging is W&B (cloud; also writes a readable wandb-summary.json locally).

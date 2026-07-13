@@ -521,6 +521,87 @@ class NPELightningModule(pl.LightningModule):
             self._log_prob_fn = torch.compile(self._log_prob)
         elif compile_flow and hasattr(torch, "compile"):
             self._flow_tail_fn = torch.compile(self._flow_log_prob_from_embedded)
+        # Misspecification-robust MMD auxiliary loss (opt-in via enable_mmd; None = legacy).
+        self._mmd_cfg = None
+        self._mmd_psim_loader = None
+        self._mmd_psim_iter = None
+        self._mmd_bandwidth_ema = None
+
+    def enable_mmd(self, mmd_config: dict, real_context, psim_loader):
+        """Arm the summary-space MMD auxiliary loss (Huang et al. 2023-style, two-sample).
+
+        ``real_context``: pre-packed context tensor (N_real, W) of the QA-cleaned real
+        events — registered as a NON-persistent buffer (moves with the module to GPU;
+        checkpoints stay lean, the caller re-supplies it on reload). ``psim_loader``: a
+        DataLoader over the posterior-matched simulation suite that reproduces the
+        training-time augmentation path (noise + amplitude + per-parent-event masks) and
+        yields ``(theta, context)`` batches — iterated cyclically, one batch per MMD step.
+
+        The total loss becomes ``nll + lambda(t) * MMD^2_u(embed(real), embed(psim))``
+        with lambda ramped 0 -> lambda_mmd after ``warmup_epochs`` over ``ramp_epochs``.
+        Checkpoint selection stays on the NLL-only ``val_loss``; the MMD is logged as a
+        diagnostic (``train_mmd2`` / ``val_mmd2``). Designed for single-device training
+        (each DDP rank would draw independent sub-batches — fine, but the logged MMD is
+        then per-rank).
+        """
+        from .mmd import DEFAULT_BANDWIDTH_SCALES
+        cfg = dict(mmd_config or {})
+        self._mmd_cfg = {
+            "lambda_mmd": float(cfg.get("lambda_mmd", 0.05)),
+            "warmup_epochs": int(cfg.get("warmup_epochs", 5)),
+            "ramp_epochs": int(cfg.get("ramp_epochs", 5)),
+            "every_n_steps": max(1, int(cfg.get("every_n_steps", 1))),
+            "batch_size": int(cfg.get("batch_size", 64)),
+            "bandwidth_scales": tuple(cfg.get("bandwidth_scales",
+                                              DEFAULT_BANDWIDTH_SCALES)),
+            "bandwidth_ema": float(cfg.get("bandwidth_ema", 0.9)),
+        }
+        self.register_buffer("mmd_real_context",
+                             torch.as_tensor(real_context), persistent=False)
+        self._mmd_psim_loader = psim_loader
+        self._mmd_psim_iter = None
+        self._mmd_bandwidth_ema = None
+
+    def _next_psim_context(self):
+        if self._mmd_psim_iter is None:
+            self._mmd_psim_iter = iter(self._mmd_psim_loader)
+        try:
+            _, ctx = next(self._mmd_psim_iter)
+        except StopIteration:
+            self._mmd_psim_iter = iter(self._mmd_psim_loader)
+            _, ctx = next(self._mmd_psim_iter)
+        return ctx.to(device=self.device, dtype=self.mmd_real_context.dtype)
+
+    def _mmd_lambda(self):
+        cfg = self._mmd_cfg
+        epoch = int(self.current_epoch)
+        if epoch < cfg["warmup_epochs"]:
+            return 0.0
+        ramp = max(1, cfg["ramp_epochs"])
+        frac = min(1.0, (epoch - cfg["warmup_epochs"] + 1) / ramp)
+        return cfg["lambda_mmd"] * frac
+
+    def _mmd_term(self):
+        """One MMD^2_u evaluation between fresh real/psim summary sub-batches.
+
+        Summaries are cast to float32 before the kernel (the embedding may run under
+        bf16 autocast via the perf toggles; the O(B^2) kernel is cheap in fp32 and the
+        estimator is noise-sensitive). Bandwidth = median heuristic on the pooled
+        sub-batches, EMA-smoothed across steps, detached from the graph.
+        """
+        from .mmd import median_bandwidth, rbf_mixture_mmd2_unbiased
+        cfg = self._mmd_cfg
+        n_real = self.mmd_real_context.shape[0]
+        b = min(cfg["batch_size"], n_real)
+        idx = torch.randperm(n_real, device=self.mmd_real_context.device)[:b]
+        z_real = self.flow._embedding_net(self.mmd_real_context[idx]).float()
+        z_psim = self.flow._embedding_net(self._next_psim_context()).float()
+        beta = median_bandwidth(z_real, z_psim)
+        ema = cfg["bandwidth_ema"]
+        self._mmd_bandwidth_ema = (beta if self._mmd_bandwidth_ema is None
+                                   else ema * self._mmd_bandwidth_ema + (1 - ema) * beta)
+        bandwidths = [self._mmd_bandwidth_ema * s for s in cfg["bandwidth_scales"]]
+        return rbf_mixture_mmd2_unbiased(z_real, z_psim, bandwidths)
 
     def _log_prob(self, theta, x):
         return self.flow.log_prob(theta, context=x)
@@ -544,6 +625,14 @@ class NPELightningModule(pl.LightningModule):
         theta, x = batch
         log_prob = self.forward(x, theta)
         loss = -log_prob.mean()
+        # MMD auxiliary loss (armed via enable_mmd; absent => byte-identical legacy loss).
+        if self._mmd_cfg is not None and self.global_step % self._mmd_cfg["every_n_steps"] == 0:
+            lam = self._mmd_lambda()
+            mmd2 = self._mmd_term()
+            self.log("train_mmd2", mmd2, prog_bar=True)
+            self.log("mmd_lambda", lam)
+            if lam > 0:
+                loss = loss + lam * mmd2
         self.log("loss", loss, prog_bar=True)
         self.log("log_prob", log_prob.mean())
         return loss
@@ -555,8 +644,13 @@ class NPELightningModule(pl.LightningModule):
         # sync_dist=True averages across DDP ranks so ModelCheckpoint's monitored
         # val_loss is the true mean over the whole val split (not just rank 0's shard).
         # No-op on a single device ⇒ single-GPU/CPU behaviour is unchanged.
+        # NOTE: val_loss stays NLL-ONLY even with MMD armed — checkpoint selection must
+        # keep tracking posterior quality; val_mmd2 (below) is a diagnostic.
         self.log("val_loss", val_loss, prog_bar=True, sync_dist=True)
         self.log("val_log_prob", log_prob.mean(), sync_dist=True)
+        if self._mmd_cfg is not None and batch_idx == 0:
+            with torch.no_grad():
+                self.log("val_mmd2", self._mmd_term(), sync_dist=True)
         return val_loss
 
     def configure_optimizers(self):

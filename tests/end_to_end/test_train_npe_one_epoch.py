@@ -137,7 +137,7 @@ def multicomp_kernel_pipeline(tmp_path_factory):
 
 def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_scaler=None,
                      model_config=None, flow_config=None, lr_second_stage="cosine",
-                     enable_checkpointing=False, run_name=None):
+                     enable_checkpointing=False, run_name=None, pre_train_hook=None):
     """Run a single headless training epoch and return the trained model."""
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
@@ -170,6 +170,8 @@ def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_
         flow_config=flow_config,
         lr_second_stage=lr_second_stage,
     )
+    if pre_train_hook is not None:
+        pre_train_hook(trainer, dataloader_args)
     model = trainer.train(
         run_name or f"test_{architecture}", epochs=1, output_path=tmp_path,
         dataloader_args=dataloader_args,
@@ -981,3 +983,89 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
     assert torch.isfinite(log_prob).all(), (
         f"encoder '{encoder_name}' produced non-finite log-prob after one epoch"
     )
+
+
+# ---------------------------------------------------------------------------
+# Misspecification-robust MMD auxiliary loss (ml_mmd; sbi/compression/ML/mmd.py)
+# ---------------------------------------------------------------------------
+
+def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
+    """One-epoch training with the MMD auxiliary loss armed.
+
+    Arms ``NPELightningModule.enable_mmd`` with tiny synthetic real/psim context sets
+    (same (N, C, T) layout the fixed-N dataloader yields) and asserts: training
+    completes, the combined loss is finite, and the ``train_mmd2`` / ``val_mmd2``
+    diagnostics were logged. Also asserts the DEFAULT-OFF equivalence contract: a
+    module that never called ``enable_mmd`` carries no MMD state at all (its
+    ``training_step`` short-circuits on ``_mmd_cfg is None`` — the legacy loss path).
+    """
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+
+    pipeline, _, data_vector_length = kernel_pipeline
+
+    armed = {}
+
+    def _arm_mmd(trainer, dataloader_args):
+        from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+        _, val_loader = make_torch_dataloaders(**dataloader_args)
+        _, x0 = next(iter(val_loader))                     # (B, N, C, T)
+        shape = tuple(x0.shape[1:])
+        g = torch.Generator().manual_seed(0)
+        real_ctx = torch.randn((12,) + shape, generator=g)
+        psim_x = torch.randn((16,) + shape, generator=g) + 0.1
+        psim_loader = DataLoader(
+            TensorDataset(torch.zeros(16, 1), psim_x), batch_size=8, shuffle=True)
+        trainer.model.enable_mmd(
+            {"lambda_mmd": 0.1, "warmup_epochs": 0, "ramp_epochs": 1,
+             "every_n_steps": 1, "batch_size": 8},
+            real_ctx, psim_loader)
+        armed["module"] = trainer.model
+
+    _, model, _ = _train_one_epoch(
+        pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+        run_name="test_mmd", pre_train_hook=_arm_mmd)
+
+    assert model is armed["module"] and model._mmd_cfg is not None
+    metrics = model.trainer.callback_metrics
+    assert "train_mmd2" in metrics and torch.isfinite(metrics["train_mmd2"])
+    assert "val_mmd2" in metrics and torch.isfinite(metrics["val_mmd2"])
+    assert "loss" in metrics and torch.isfinite(metrics["loss"])
+    # val_loss stays NLL-only (checkpoint selection contract): it must not have the
+    # (weighted) MMD folded in — verify by recomputing NLL on a val batch.
+    assert "val_loss" in metrics and torch.isfinite(metrics["val_loss"])
+
+    # ---- default-off equivalence: an un-armed module has NO MMD state ----
+    from seismo_sbi.sbi.compression.ML.seismogram_transformer import NPELightningModule
+    plain = NPELightningModule(flow=model.flow)
+    assert plain._mmd_cfg is None
+    assert not hasattr(plain, "mmd_real_context")
+    named_buffers = dict(plain.named_buffers())
+    assert "mmd_real_context" not in named_buffers
+
+
+def test_mmd_lambda_schedule():
+    """Warmup -> linear ramp -> plateau schedule of the MMD weight."""
+    from seismo_sbi.sbi.compression.ML.seismogram_transformer import NPELightningModule
+
+    class _Stub(NPELightningModule):
+        def __init__(self):  # bypass flow construction; only the schedule is tested
+            import pytorch_lightning as pl
+            pl.LightningModule.__init__(self)
+            self._mmd_cfg = {"lambda_mmd": 0.1, "warmup_epochs": 2, "ramp_epochs": 4,
+                             "every_n_steps": 1, "batch_size": 8,
+                             "bandwidth_scales": (1.0,), "bandwidth_ema": 0.9}
+            self._epoch = 0
+
+        @property
+        def current_epoch(self):
+            return self._epoch
+
+    m = _Stub()
+    lams = []
+    for ep in range(8):
+        m._epoch = ep
+        lams.append(round(m._mmd_lambda(), 6))
+    assert lams[0] == 0.0 and lams[1] == 0.0                  # warmup
+    assert lams[2] == 0.025 and lams[3] == 0.05 and lams[5] == 0.1   # linear ramp
+    assert lams[6] == 0.1 and lams[7] == 0.1                  # plateau

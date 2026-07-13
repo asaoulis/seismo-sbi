@@ -65,8 +65,24 @@ class TorchSimulationDataset(Dataset):
         cache_in_memory: bool = False,
         cache_preload_workers: int = 16,
         cache_dtype: str = "float32",
+        fixed_item_masks=None,
     ):
         self.data_loader = data_loader
+
+        # Per-item FIXED masks (MMD posterior-matched sim suite): a sequence aligned with
+        # the sorted glob order of ``paths``, each entry ``(keep_indices, zero_channels)``
+        # where ``keep_indices`` indexes the master station axis and ``zero_channels`` is a
+        # list of (master_station_idx, component_idx) pairs zeroed post-noise (the parent
+        # real event's QA component zero-fill). When set it REPLACES the random
+        # station_subsampler / component-dropout for that item, so each psim sample
+        # reproduces exactly its parent event's station/component availability. None (the
+        # default) leaves every existing path unchanged.
+        self.fixed_item_masks = fixed_item_masks
+        # Companion per-item conditioning override (same alignment): the psim sims STORE
+        # their scattered true source location, but the model must be conditioned on the
+        # parent event's CATALOGUE location (cond - truth ~ the location error, exactly
+        # as at inference on real events). None => conditioning loads from the sim file.
+        self.fixed_conditioning = None
 
         # Variable-station augmentation: when a subsampler is supplied, __getitem__ draws a
         # (possibly partial) subset of stations per sample and returns a tuple
@@ -255,11 +271,28 @@ class TorchSimulationDataset(Dataset):
         # Optional raw source-conditioning vector (shared by both return paths).
         source_vec = None
         if self.conditioning_param_map:
-            cache_cond = getattr(self, "_cache_cond", None)
-            raw_cond = (cache_cond[idx] if cache_cond is not None
-                        else self._load_conditioning(sim_path))
+            fixed_cond = getattr(self, "fixed_conditioning", None)
+            if fixed_cond is not None:
+                raw_cond = np.asarray(fixed_cond[idx], dtype=float)
+            else:
+                cache_cond = getattr(self, "_cache_cond", None)
+                raw_cond = (cache_cond[idx] if cache_cond is not None
+                            else self._load_conditioning(sim_path))
             source_vec = torch.as_tensor(raw_cond, dtype=self.torch_dtype)
             source_vec = self._perturb_conditioning(source_vec)
+
+        # --- Fixed per-item masks (MMD psim suite): parent event's QA availability ---
+        # getattr keeps datasets built via __new__ (test stubs) working without this attr.
+        fixed_masks = getattr(self, "fixed_item_masks", None)
+        if fixed_masks is not None:
+            keep, zero_channels = fixed_masks[idx]
+            for (si, ci) in (zero_channels or ()):
+                x[si, ci, :] = 0.0
+            keep = np.asarray(keep, dtype=int)
+            x_sub = x[keep]
+            coords_sub = torch.as_tensor(
+                self.station_coords[keep], dtype=self.torch_dtype)
+            return theta, (x_sub, coords_sub, source_vec)
 
         # --- Variable-station path: subsample stations, carry per-sample coords ---
         # getattr keeps datasets built via __new__ (test stubs) working without this attr.

@@ -56,6 +56,13 @@ from .serialization import (
     write_verdicts_json,
 )
 from .aggregate import StationReliability, station_reliability
+from .guards import (
+    compose_component_qa,
+    data_qa_thresholds,
+    neighbour_window_flag,
+    obs_dead_components,
+    read_noise_sigma,
+)
 
 __all__ = [
     # metrics
@@ -76,4 +83,7 @@ __all__ = [
     "write_components_json", "write_time_shifts_json", "write_verdicts_json",
     # aggregate
     "StationReliability", "station_reliability",
+    # guards (calibrated presets + model-free guards + gate composition)
+    "compose_component_qa", "data_qa_thresholds", "neighbour_window_flag",
+    "obs_dead_components", "read_noise_sigma",
 ]

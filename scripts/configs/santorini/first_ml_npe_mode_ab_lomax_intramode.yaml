@@ -180,8 +180,8 @@ parameters:
       # 2026-06-16: tightened to the NEW NLL-SC catalogue's per-event formal location
       # uncertainty (mean errH 0.58 km, errZ 0.76 km over the Mw>=3.5 in-window events),
       # not the OLD<->NEW inter-catalogue scatter (which is inflated by the OLD catalogue's
-      # ~2x larger errors). Was [0.010, 0.013, 1.5] (~2-3x looser). Median alt: [0.004, 0.005, 0.5].
-      coordinate_std: [0.005, 0.006, 0.76]
+      # ~2x larger errors). Was [0.010, 0.013, 1.5] (~2-3x looser). Median alt: [0.004, 0.005, 0.5]. REVERTED NOW - those were rel errors
+      coordinate_std: [0.01, 0.013, 1.5]
       stage: training_augmentation
 
     # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
