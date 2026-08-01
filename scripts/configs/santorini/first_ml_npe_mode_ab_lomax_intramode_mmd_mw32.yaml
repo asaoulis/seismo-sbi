@@ -228,6 +228,14 @@ ml_encoder:
 seismic_context:
   simulation_type: 'instaseis_multi_ensemble'           # NEW: multimodel theory-error dispatch
   resample_member_per_station: true                      # within-mode (intra-ensemble) per-station 1-D draw
+  # ---- per-worker Instaseis open-DB cache cap (dataset generation memory budget) ----
+  # 2026-08-01: the 500k gen for this run OOM-killed a joblib worker at 47% (SIGKILL) because the
+  # per-process querier LRU cache holds an open handle per ensemble member at ~55 MB EACH, and the
+  # cap auto-grew to the ensemble size: 31+31=62 members x 60 workers x 55 MB ~= 206 GB steady state,
+  # marginal against the gen node's ceiling. Capping to 20 handles/worker => ~67 GB total.
+  # Pure memory/wall-clock trade: a cache miss costs one instaseis.open_db (~168 ms vs ~7 ms for a
+  # cached read) and CANNOT change the simulated output. Raise it if the gen node has more headroom.
+  querier_cache_maxsize: 20
   components: 'ZEN'
   stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations_lomax.txt'
   station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components_lomax.json'

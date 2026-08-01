@@ -42,6 +42,14 @@ class SimulationParameters(NamedTuple):
     # INDEPENDENT 1-D ensemble member per event instead of one member shared across all stations.
     # Applies to 'instaseis_ensemble' and (per region) 'instaseis_multi_ensemble'.
     resample_member_per_station: bool = False
+    # Hard cap on open Instaseis DB handles cached PER WORKER PROCESS (ensemble._QUERIER_CACHE).
+    # None => the module default, which auto-grows to the ensemble size (fastest, unbounded memory).
+    # An open handle costs ~55 MB resident, so dataset generation costs
+    # n_workers * min(cap, n_members) * 55 MB: a 62-member Mode-A/B ensemble at 60 joblib workers
+    # is ~206 GB and OOM-killed a 500k gen at 47%. Setting this is a pure memory/wall-clock trade —
+    # a miss costs one instaseis.open_db (~168 ms vs ~7 ms cached) and never changes the output.
+    # Applied by exporting SEISMO_QUERIER_CACHE_MAXSIZE before workers are spawned (see train_NPE).
+    querier_cache_maxsize: Optional[int] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
 

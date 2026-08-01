@@ -76,6 +76,25 @@ def main():
     config.parse_config_file(config_path)
     print("Successfully parsed config file.")
 
+    # Optional per-worker cap on the open-Instaseis-DB LRU cache, from
+    # `seismic_context.querier_cache_maxsize`. MUST be exported into the ENVIRONMENT (not just set
+    # as a module global) and BEFORE any simulator is constructed: joblib/loky starts its workers
+    # via spawn, so a runtime module global set in the parent would NOT reach them, whereas the
+    # environment is inherited.
+    #
+    # WHY IT EXISTS: each cached handle costs ~55 MB resident and the cache is per worker process,
+    # so an unbounded cap costs n_workers * n_members * 55 MB — ~206 GB for a 62-member Mode-A/B
+    # ensemble at 60 workers, which OOM-killed a 500k dataset gen at 47% (SIGKILL'd loky worker).
+    # See the memory-budget note in seismo_sbi/instaseis_simulator/ensemble.py. Purely a
+    # memory/wall-clock trade: a miss costs one instaseis.open_db, never a different result.
+    import yaml as _yaml_cap
+    _qcap = (_yaml_cap.safe_load(Path(config_path).read_text())
+             .get("seismic_context", {}) or {}).get("querier_cache_maxsize")
+    if _qcap is not None:
+        os.environ["SEISMO_QUERIER_CACHE_MAXSIZE"] = str(int(_qcap))
+        print(f"Instaseis querier cache capped at {int(_qcap)} open handles/worker "
+              f"(~{int(_qcap) * 55 / 1024:.1f} GB per worker process).")
+
     # Optional dataset-size override (remote gen-submit stage). DatasetGenerationParameters
     # is a NamedTuple, so _replace gives a clean immutable override.
     if args.num_simulations is not None:

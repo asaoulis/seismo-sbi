@@ -29,15 +29,36 @@ PER_STATION_SEED_STRIDE = 10_000
 _QUERIER_CACHE = OrderedDict()
 
 #: LRU cap on :data:`_QUERIER_CACHE` (open DB handles held per process). Default comfortably covers a
-#: Mode-A + Mode-B multi-model ensemble (~30 + ~30); each ``InstaseisEnsembleSimulator.__init__``
-#: bumps it to at least its own member count so a single large ensemble never thrashes. Override with
-#: env ``SEISMO_QUERIER_CACHE_MAXSIZE``.
+#: Mode-A + Mode-B multi-model ensemble (~30 + ~30); when left at the default, each
+#: ``InstaseisEnsembleSimulator.__init__`` bumps it to at least its own member count so a single
+#: large ensemble never thrashes. Override with env ``SEISMO_QUERIER_CACHE_MAXSIZE``.
+#:
+#: *** MEMORY BUDGET — an open handle costs ~55 MB RESIDENT (measured: 53 MB at open, 55 MB after
+#: real reads; independent of instaseis ``buffer_size_in_mb``, so this is DB metadata, not the GF
+#: buffer). The cache is PER WORKER PROCESS, so dataset generation costs
+#: ``n_workers * min(cap, n_members) * 55 MB``. At the default cap with a 62-member Mode-A/B
+#: ensemble and 60 joblib workers that is ~206 GB, which OOM-killed a 500k gen at 47%
+#: (SIGKILL'd loky worker). Set an explicit cap on memory-constrained gen nodes: cap 20 x 60
+#: workers ~= 67 GB. The cost of a miss is one ``instaseis.open_db`` (~168 ms vs ~7 ms for a
+#: cached read), so trade cap against wall-clock, not correctness — output is unaffected. ***
 _QUERIER_CACHE_MAXSIZE = max(1, int(os.environ.get("SEISMO_QUERIER_CACHE_MAXSIZE", "64")))
+
+#: True when the cap above came from an EXPLICIT ``SEISMO_QUERIER_CACHE_MAXSIZE``. An explicit
+#: operator cap is a memory BUDGET and must be authoritative: auto-growing past it (as this module
+#: did unconditionally before) silently reinstated the very OOM the operator set it to avoid.
+_QUERIER_CACHE_MAXSIZE_IS_EXPLICIT = "SEISMO_QUERIER_CACHE_MAXSIZE" in os.environ
 
 
 def _ensure_querier_cache_capacity(n_members: int) -> None:
-    """Grow the global LRU cap to hold at least one full ensemble's worth of handles."""
+    """Grow the global LRU cap to hold at least one full ensemble's worth of handles.
+
+    No-op when the cap was set explicitly via ``SEISMO_QUERIER_CACHE_MAXSIZE`` — that is a hard
+    memory budget (see :data:`_QUERIER_CACHE_MAXSIZE`), and honouring it costs only cache misses,
+    never correctness. Behaviour is unchanged when the env var is unset.
+    """
     global _QUERIER_CACHE_MAXSIZE
+    if _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT:
+        return
     if n_members > _QUERIER_CACHE_MAXSIZE:
         _QUERIER_CACHE_MAXSIZE = n_members
 
