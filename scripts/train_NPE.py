@@ -9,6 +9,28 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
+# Give numba an explicitly writable on-disk cache directory.
+#
+# instaseis JITs with @njit(cache=True) (finite_elem_mapping), so on the FIRST instaseis.open_db
+# numba must resolve a cache "locator". Its fallback chain is: NUMBA_CACHE_DIR -> the source
+# directory (site-packages/instaseis/) -> the user-wide cache (~/.cache). On a cluster the conda
+# env AND ~/.cache both live in $HOME, so the moment HOME is full, read-only, or over quota EVERY
+# locator fails and numba raises, killing the job at simulator-construction time:
+#     RuntimeError: cannot cache function 'compute_theta_r': no locator available for file ...
+# That took down two 500k dataset-generation jobs before they ran a single simulation.
+#
+# A compute job must not depend on a writable HOME for a JIT cache, so default it to node-local
+# temp (TMPDIR-aware; per-user to avoid collisions on shared nodes). setdefault means an explicit
+# NUMBA_CACHE_DIR from the submit script or the operator still wins. This MUST run before numba is
+# first imported — numba reads the cache dir into numba.core.config at import — hence its position
+# above the seismo_sbi imports, alongside the thread-count block.
+if not os.environ.get("NUMBA_CACHE_DIR"):
+    import tempfile as _tempfile
+    _numba_cache = os.path.join(_tempfile.gettempdir(),
+                                f"numba_cache_{os.environ.get('USER', 'seismo')}")
+    os.makedirs(_numba_cache, exist_ok=True)
+    os.environ["NUMBA_CACHE_DIR"] = _numba_cache
+
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
