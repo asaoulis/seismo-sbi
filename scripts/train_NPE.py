@@ -160,6 +160,14 @@ def main():
     print(f"Using per-station encoder (station_encoder): {architecture}")
 
     model_config = {"station_encoder": architecture}
+    # Pin the theta scaling INTO the checkpoint. `model_config` is held by reference by
+    # CompressionTrainer and dumped to model_meta.json, so the checkpoint is self-describing.
+    # Without it the inverse transform is rebuilt at inference from whatever YAML is passed,
+    # and an `ml_scaler`/`bounds` edit after training silently biases every recovered moment
+    # by a constant factor instead of raising.
+    from seismo_sbi.sbi.scalers import scaler_provenance
+    model_config["theta_scaler"] = scaler_provenance(data_scaler)
+    print(f"theta scaler provenance recorded: {model_config['theta_scaler']}")
 
     # Optional per-station encoder hyperparameters via a top-level 'ml_encoder' YAML block,
     # forwarded verbatim to the encoder __init__ (see station_encoders.py). Example:

@@ -216,6 +216,69 @@ class FlexibleScaler:
         return X
 
 
+def scaler_provenance(scaler) -> dict:
+    """A JSON-able fingerprint of the theta scaling ACTUALLY in force.
+
+    Recorded into ``model_meta.json`` at training time and re-derived at inference, so a
+    checkpoint carries the scaling it was trained under.  Without this the inverse transform
+    is rebuilt from whatever YAML happens to be passed at inference time: edit
+    ``ml_scaler``/``bounds`` after training and every recovered moment is silently wrong,
+    with no error anywhere.  Compare with :func:`check_scaler_provenance`.
+
+    Captures the resolved NUMBERS (the log10 M0 window), not the config spelling, so
+    ``mt_log_decades: auto`` and the equivalent explicit value compare equal — what matters
+    is the map, not how it was written.
+    """
+    out = {"moment_tensor": "linear"}
+    mt = getattr(scaler, "mt_scaler", None) or getattr(scaler, "_mt_scaler", None)
+    if mt is None:
+        # A real FlexibleScaler keeps its per-block sub-scalers in the LIST `self.scalers`,
+        # so scanning vars() alone never matches (the list is not a MomentTensorScaler) and
+        # every checkpoint would record "linear" — the exact silent failure this function
+        # exists to prevent. Search the list first, then fall back to plain attributes for
+        # any other scaler shape.
+        for candidate in list(getattr(scaler, "scalers", None) or []) + list(vars(scaler).values()):
+            if isinstance(candidate, MomentTensorScaler):
+                mt = candidate
+                break
+    if isinstance(mt, MomentTensorScaler):
+        out = {"moment_tensor": "scale_shape",
+               "log10_m0_min": round(float(mt.log10_m0_min), 9),
+               "log10_m0_max": round(float(mt.log10_m0_max), 9)}
+    return out
+
+
+def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool:
+    """Compare a checkpoint's recorded theta scaling against the one about to be used.
+
+    ``meta`` is the parsed ``model_meta.json``.  Returns True when they agree (or when the
+    checkpoint predates the record and nothing can be checked).  A mismatch is the failure
+    mode that motivated this: it produces a silent, constant magnitude offset rather than a
+    crash, so it is reported loudly and — with ``strict`` — fatally.
+    """
+    recorded = (meta or {}).get("theta_scaler") or \
+        ((meta or {}).get("model_config") or {}).get("theta_scaler")
+    if not recorded:
+        print("WARNING: checkpoint records no theta_scaler provenance (trained before it was "
+              "added); the scaling being used cannot be verified against training.")
+        return True
+    current = scaler_provenance(scaler)
+    same = (recorded.get("moment_tensor") == current.get("moment_tensor")
+            and all(abs(float(recorded.get(k, 0.0)) - float(current.get(k, 0.0))) < 1e-6
+                    for k in ("log10_m0_min", "log10_m0_max")
+                    if k in recorded or k in current))
+    if not same:
+        msg = ("theta-scaler MISMATCH between checkpoint and config.\n"
+               f"    trained with : {recorded}\n"
+               f"    about to use : {current}\n"
+               "  Recovered moments will be WRONG by a constant factor. Use the config the "
+               "checkpoint was trained with, or retrain.")
+        if strict:
+            raise ValueError(msg)
+        print(f"WARNING: {msg}")
+    return same
+
+
 def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None) -> FlexibleScaler:
     """Build a :class:`FlexibleScaler`, honouring an optional top-level ``ml_scaler`` block.
 
