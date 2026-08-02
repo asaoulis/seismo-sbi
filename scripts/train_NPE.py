@@ -530,9 +530,13 @@ def main():
             batch_size=int(_mmd_cfg.get("batch_size", 64)),
             clean_only=bool(_mmd_cfg.get("clean_only", True)))
         trainer.model.enable_mmd(_mmd_cfg, real_ctx, psim_loader)
-        # model_config is held by reference in CompressionTrainer -> recorded in the
-        # model_meta.json sidecar so a checkpoint knows how it was trained.
+        # Record the MMD block in the model_meta.json sidecar so a checkpoint knows how it
+        # was trained. MUST go through record_model_config: CompressionTrainer.__init__
+        # MERGES model_config into a NEW dict, so mutating our own copy here (as this used
+        # to do) never reached the sidecar — every MMD checkpoint was metadata-identical to
+        # a non-MMD one, and a lambda sweep would be unattributable after the fact.
         model_config["mmd"] = {k: v for k, v in _mmd_cfg.items() if k != "enabled"}
+        trainer.record_model_config(mmd=model_config["mmd"])
         print(f"MMD auxiliary loss enabled: N_real={real_ctx.shape[0]}, "
               f"N_psim={len(psim_loader.dataset)}, lambda={_mmd_cfg.get('lambda_mmd', 0.05)}, "
               f"warmup={_mmd_cfg.get('warmup_epochs', 5)}+ramp={_mmd_cfg.get('ramp_epochs', 5)} epochs")

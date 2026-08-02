@@ -90,6 +90,9 @@ class CompressionTrainer:
         self.weight_decay = weight_decay
         self.lr_second_stage = lr_second_stage
         # Store resolved configs + station locations for checkpoint metadata and rebuild.
+        # NB this is the MERGED dict built above, a NEW object — not the caller's. Anything
+        # the caller adds to its own dict AFTER constructing the trainer is therefore NOT
+        # recorded in model_meta.json; use :meth:`record_model_config` for that.
         self._model_config = model_config
         self._flow_config = flow_config
         self._feature_length = feature_length
@@ -165,6 +168,19 @@ class CompressionTrainer:
             embedding_net=embedding_net,
             **flow_kwargs,
         )
+
+    def record_model_config(self, **entries):
+        """Merge extra entries into the ``model_config`` recorded in ``model_meta.json``.
+
+        ``__init__`` MERGES the caller's ``model_config`` into a new dict, so mutating the
+        caller's own dict after construction does not reach the sidecar. Settings that can
+        only be resolved once the trainer exists (e.g. the MMD auxiliary-loss block, which
+        needs ``trainer.model.enable_mmd``) must be registered through here instead, or the
+        checkpoint silently loses them: an MMD-trained checkpoint then looks identical to a
+        non-MMD one in its metadata, and a lambda sweep becomes unattributable after the fact.
+        """
+        self._model_config.update(entries)
+        return self._model_config
 
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
               logger="wandb", enable_checkpointing=True, enable_progress_bar=True,
