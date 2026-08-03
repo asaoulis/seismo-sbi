@@ -526,6 +526,9 @@ class NPELightningModule(pl.LightningModule):
         self._mmd_psim_loader = None
         self._mmd_psim_iter = None
         self._mmd_bandwidth_ema = None
+        self._mmd_last_beta = float("nan")
+        self._mmd_last_beta_ema = float("nan")
+        self._mmd_last_z_scale = float("nan")
 
     def enable_mmd(self, mmd_config: dict, real_context, psim_loader):
         """Arm the summary-space MMD auxiliary loss (Huang et al. 2023-style, two-sample).
@@ -600,6 +603,20 @@ class NPELightningModule(pl.LightningModule):
         ema = cfg["bandwidth_ema"]
         self._mmd_bandwidth_ema = (beta if self._mmd_bandwidth_ema is None
                                    else ema * self._mmd_bandwidth_ema + (1 - ema) * beta)
+        # Degeneracy diagnostics (logged by the caller, never fed back into the loss).
+        # MMD^2 is exactly invariant to a GLOBAL rescale of the summaries, because beta
+        # is a median heuristic on those same summaries — so "shrink everything" is not
+        # a way to cheat the penalty in steady state. It IS a way to cheat *transiently*:
+        # the EMA lags by ~1/(1-ema) steps, so an embedding contracting faster than that
+        # leaves beta stale-and-too-large, every d^2/beta^2 -> 0, every kernel -> 1 and
+        # MMD^2_u -> 0 with no alignment whatsoever. Record the instantaneous beta (which
+        # tracks the true scale) alongside the lagged EMA actually used: a widening gap
+        # between them, or a collapsing z-scale, is the signature of that failure.
+        self._mmd_last_beta = beta
+        self._mmd_last_beta_ema = self._mmd_bandwidth_ema
+        with torch.no_grad():
+            self._mmd_last_z_scale = float(
+                torch.cat([z_real, z_psim], dim=0).pow(2).mean().sqrt())
         bandwidths = [self._mmd_bandwidth_ema * s for s in cfg["bandwidth_scales"]]
         return rbf_mixture_mmd2_unbiased(z_real, z_psim, bandwidths)
 
@@ -631,6 +648,9 @@ class NPELightningModule(pl.LightningModule):
             mmd2 = self._mmd_term()
             self.log("train_mmd2", mmd2, prog_bar=True)
             self.log("mmd_lambda", lam)
+            self.log("mmd_beta", self._mmd_last_beta)
+            self.log("mmd_beta_ema", self._mmd_last_beta_ema)
+            self.log("mmd_z_scale", self._mmd_last_z_scale)
             if lam > 0:
                 loss = loss + lam * mmd2
         self.log("loss", loss, prog_bar=True)
