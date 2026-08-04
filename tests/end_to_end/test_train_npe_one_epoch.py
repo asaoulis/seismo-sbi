@@ -1044,6 +1044,63 @@ def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
     assert "mmd_real_context" not in named_buffers
 
 
+def test_mmd_one_epoch_through_a_summary_bottleneck(kernel_pipeline, tmp_path):
+    """One epoch with MMD armed AND a narrow summary bottleneck (``ml_summary_bottleneck``).
+
+    MMD's sample complexity grows with dimension while the term compares only
+    ``batch_size`` summaries per side, so the bottleneck narrows the space the kernel
+    lives in. The point of the design is that it is a CONTROLLED change, so this gate
+    pins the contract end-to-end on a real trained model:
+
+    * MMD reads the NARROW vector (``summary_bottleneck`` width), while
+    * the flow still receives a ``latent_dim``-wide context, so its conditioner widths and
+      parameter count are unchanged (lowering ``channels`` instead would shrink the flow
+      too, because ``train_NPE`` ties the flow's hidden width to the embedding width).
+    """
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    bneck = 4
+
+    armed = {}
+
+    def _arm_mmd(trainer, dataloader_args):
+        from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+        _, val_loader = make_torch_dataloaders(**dataloader_args)
+        _, x0 = next(iter(val_loader))
+        shape = tuple(x0.shape[1:])
+        g = torch.Generator().manual_seed(0)
+        real_ctx = torch.randn((12,) + shape, generator=g)
+        psim_x = torch.randn((16,) + shape, generator=g) + 0.1
+        psim_loader = DataLoader(
+            TensorDataset(torch.zeros(16, 1), psim_x), batch_size=8, shuffle=True)
+        trainer.model.enable_mmd(
+            {"lambda_mmd": 0.1, "warmup_epochs": 0, "ramp_epochs": 1,
+             "every_n_steps": 1, "batch_size": 8},
+            real_ctx, psim_loader)
+        armed["ctx"] = real_ctx
+
+    _, model, _ = _train_one_epoch(
+        pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+        run_name="test_mmd_bottleneck",
+        model_config={"summary_bottleneck": {"dim": bneck}},
+        pre_train_hook=_arm_mmd)
+
+    metrics = model.trainer.callback_metrics
+    assert "train_mmd2" in metrics and torch.isfinite(metrics["train_mmd2"])
+    assert "loss" in metrics and torch.isfinite(metrics["loss"])
+
+    emb = model.flow._embedding_net
+    assert emb.summary_bottleneck_dim == bneck
+    with torch.no_grad():
+        x = armed["ctx"][:3].to(next(emb.parameters()).device)
+        z_mmd = emb.summary_bottleneck(x)      # what the kernel sees
+        ctx = emb(x)                            # what the flow sees
+    assert z_mmd.shape[-1] == bneck, "MMD is not reading the narrow summary"
+    assert ctx.shape[-1] == _MODEL_DIM, "flow context width changed — flow capacity would too"
+
+
 def test_mmd_lambda_schedule():
     """Warmup -> linear ramp -> plateau schedule of the MMD weight."""
     from seismo_sbi.sbi.compression.ML.seismogram_transformer import NPELightningModule

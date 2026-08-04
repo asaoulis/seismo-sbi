@@ -358,6 +358,19 @@ def main():
         }
         print(f"Set-Transformer PMA pooling head enabled: {model_config['pma_pooling']}")
 
+    # Optional summary BOTTLENECK via a top-level 'ml_summary_bottleneck' block:
+    #   ml_summary_bottleneck:
+    #     dim: 32                  # width of the summary the MMD loss compares
+    # Narrows ONLY the summary: the encoder keeps its channel width and the flow keeps its
+    # `latent_dim`-wide context, so neither capacity changes (do NOT lower `channels` for this
+    # — model_dim ties the flow's hidden width too, so that would shrink the flow as well and
+    # confound a latent-dim result with a capacity result). Absent => unchanged behaviour.
+    _bneck_cfg = _raw_cfg.get("ml_summary_bottleneck")
+    if _bneck_cfg and _bneck_cfg.get("dim"):
+        model_config["summary_bottleneck"] = {"dim": int(_bneck_cfg["dim"])}
+        print(f"Summary bottleneck enabled: {model_config['summary_bottleneck']} "
+              f"(flow context stays {model_dim}-wide)")
+
     # Optional NDE-head (normalising-flow) overrides via a top-level 'ml_flow' block:
     #   ml_flow:
     #     num_transforms: 8          # flow coupling-transform depth (default 5). 8->5 is a

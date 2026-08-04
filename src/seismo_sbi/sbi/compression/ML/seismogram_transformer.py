@@ -100,10 +100,38 @@ class SeismogramTransformer(nn.Module):
         # conditioning / variable-station setup) so the opt-in §3.2 RFF positional encoder can be
         # told whether station coordinates are source-relative or absolute (posemb_coords_kind).
 
+        # --- Optional summary BOTTLENECK (model_config["summary_bottleneck"]) --------------
+        # Narrows the summary the MMD auxiliary loss lives in WITHOUT touching either the
+        # encoder or the flow.  MMD's sample complexity grows with dimension, and the training
+        # term compares only `batch_size` (64) samples per side, so a 256-d summary is a
+        # weakly-powered, high-variance regime for the estimator.
+        #
+        # The head becomes  d_model -> d_model -> bottleneck -> num_outputs:
+        #   * the encoder is untouched (d_model unchanged),
+        #   * the flow still receives a `num_outputs`-wide context, so its conditioner widths
+        #     and parameter count are UNCHANGED (train_NPE ties the flow's hidden width to the
+        #     embedding channel width, so shrinking `channels` instead would silently shrink
+        #     the flow too — see train_NPE.py:369),
+        #   * everything downstream is a deterministic function of `bottleneck` numbers, so the
+        #     summary really is that many dimensions.
+        # Absent => byte-identical to the previous two-layer head.
+        _bneck_cfg = (transformer_config or {}).get("summary_bottleneck") or {}
+        bneck = _bneck_cfg.get("dim") if isinstance(_bneck_cfg, dict) else _bneck_cfg
+        self.summary_bottleneck_dim = int(bneck) if bneck else None
+        _head_out = self.summary_bottleneck_dim or num_outputs
         self.source_param_predictor = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.ReLU(),
-            nn.Linear(d_model, num_outputs)
+            nn.Linear(d_model, _head_out)
+        )
+        # LayerNorm on the bottleneck: the pooling head already normalises its output "for a
+        # consistent scale into the flow", and the same argument applies with more force here —
+        # the MMD kernel bandwidth is a median heuristic over these vectors, so a drifting scale
+        # is exactly what destabilises it.
+        self.summary_expand = (
+            nn.Sequential(nn.LayerNorm(self.summary_bottleneck_dim),
+                          nn.Linear(self.summary_bottleneck_dim, num_outputs))
+            if self.summary_bottleneck_dim else None
         )
 
         # --- Optional source-location conditioning (opt-in; see source_conditioning.py) ---
@@ -259,10 +287,29 @@ class SeismogramTransformer(nn.Module):
             with torch.autocast("cuda", dtype=self._amp_dtype):
                 aggregated_station_info = self.embed(x)
                 outputs = self.source_param_predictor(aggregated_station_info)
+                if self.summary_expand is not None:
+                    outputs = self.summary_expand(outputs)
             return outputs.float()
         aggregated_station_info = self.embed(x)
         outputs = self.source_param_predictor(aggregated_station_info)
+        if self.summary_expand is not None:
+            outputs = self.summary_expand(outputs)
         return outputs
+
+    def summary_bottleneck(self, x: torch.Tensor) -> torch.Tensor:
+        """The vector the MMD auxiliary loss should compare.
+
+        With ``summary_bottleneck`` configured this is the NARROW pre-expansion summary
+        (``summary_bottleneck_dim`` wide); without it, it is the ordinary ``forward`` output,
+        so callers need no branch and behaviour is unchanged for existing configs.
+        """
+        if self.summary_expand is None:
+            return self.forward(x)
+        if self._amp and x.is_cuda:
+            with torch.autocast("cuda", dtype=self._amp_dtype):
+                z = self.source_param_predictor(self.embed(x))
+            return z.float()
+        return self.source_param_predictor(self.embed(x))
 
     def embed(self, x: torch.Tensor):
         # Unpack source conditioning if the context is packed (2-D). With no conditioning
@@ -597,8 +644,14 @@ class NPELightningModule(pl.LightningModule):
         n_real = self.mmd_real_context.shape[0]
         b = min(cfg["batch_size"], n_real)
         idx = torch.randperm(n_real, device=self.mmd_real_context.device)[:b]
-        z_real = self.flow._embedding_net(self.mmd_real_context[idx]).float()
-        z_psim = self.flow._embedding_net(self._next_psim_context()).float()
+        # Read the summary BOTTLENECK when the embedding net has one, so the kernel lives in
+        # the narrow space rather than the flow-facing expansion (which is a rank-limited
+        # linear image of it, and so would reintroduce the wide-space geometry the bottleneck
+        # exists to avoid). Falls back to the plain forward otherwise -> unchanged behaviour.
+        _emb = self.flow._embedding_net
+        _summarise = getattr(_emb, "summary_bottleneck", _emb)
+        z_real = _summarise(self.mmd_real_context[idx]).float()
+        z_psim = _summarise(self._next_psim_context()).float()
         beta = median_bandwidth(z_real, z_psim)
         ema = cfg["bandwidth_ema"]
         self._mmd_bandwidth_ema = (beta if self._mmd_bandwidth_ema is None
