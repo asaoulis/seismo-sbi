@@ -470,7 +470,7 @@ ml_mmd:
   # Run at 60 epochs (matched budget). The earlier "--epochs 20" note is stale: the
   # 20-vs-60 budget control showed that confound accounted for the whole of the original
   # "lambda=50 is worse" reading.
-  # *** lambda = 0.5 ***  (2026-08-06) This arm fills the remaining OCTAVE-SCALE GAP in the
+  # *** lambda = 0.5 ***  (2026-08-06) This arm fills the remaining FACTOR-100 GAP in the
   # sweep. Measured so far, all on the regenerated psim: 0.05 numerically INERT (0.004% of the
   # objective, catalogue indistinguishable from no-MMD); 5.0 ENGAGED (lune_area95 .0389 ->
   # .0250, confident -ISO 9 -> 27, orientation vs the reference catalogues PRESERVED); 50.0
