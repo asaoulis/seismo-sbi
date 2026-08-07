@@ -146,8 +146,10 @@ def _build_triangular_stf(half_duration: float, dt: float) -> np.ndarray:
         sliprate(t) = t / T_half²             for 0 ≤ t ≤ T_half
         sliprate(t) = (2·T_half − t) / T_half²  for T_half < t ≤ 2·T_half
 
-    The analytical area equals 1 (unit moment), so Instaseis's
-    ``set_sliprate(..., normalize=True)`` call is a no-op in exact arithmetic.
+    The analytical area equals 1 (unit moment), but the *discrete* area generally does not, so
+    :func:`build_stf_sliprate` renormalises by the DC convention ``sum * dt`` before returning.
+    Note this is emphatically **not** a no-op for an under-resolved triangle, and the caller
+    must pass ``normalize=False`` to ``set_sliprate`` (see :func:`_unit_moment_dirac`).
 
     Parameters
     ----------
@@ -171,6 +173,29 @@ def _build_triangular_stf(half_duration: float, dt: float) -> np.ndarray:
         np.maximum(0.0, (2.0 * half_duration - t) / half_duration ** 2),
     )
     return sliprate.astype(np.float64)
+
+
+def _unit_moment_dirac(dt: float) -> np.ndarray:
+    """Discrete Dirac sliprate carrying exactly unit moment.
+
+    A sliprate is a *normalised moment-rate* function: ``∫ sliprate dt = 1``, so that the
+    released moment is exactly M₀.  For a discrete FFT convolution the relevant area is the
+    DC component ``sliprate.sum() * dt``, so a unit-moment impulse has height ``1/dt`` — the
+    same convention as Instaseis's own :meth:`instaseis.source.SourceTimeFunction.set_sliprate_dirac`.
+
+    .. warning::
+
+       Do **not** build this as a unit-height spike and delegate normalisation to
+       ``set_sliprate(..., normalize=True)``.  Instaseis normalises by ``np.trapz``, whose
+       trapezoidal rule half-weights the *endpoints*; a spike on the first sample integrates
+       to ``dt/2`` rather than ``dt``, so the impulse comes back as ``2/dt`` — carrying
+       **twice** the intended moment and making every synthetic exactly 2x too loud
+       (``dMw = -(2/3)·log10 2 = -0.2007``).  That was a real bug here; see
+       ``.claude/runs/santorini-paper-prep/mw-bias-investigation/artifacts/ROOT_CAUSE.md``.
+    """
+    sliprate = np.zeros(_MIN_STF_SAMPLES)
+    sliprate[0] = 1.0 / dt
+    return sliprate
 
 
 def build_stf_sliprate(
@@ -215,8 +240,10 @@ def build_stf_sliprate(
     Returns
     -------
     np.ndarray
-        1-D float64 array of length ≥ :data:`_MIN_STF_SAMPLES`.  Non-negative;
-        Instaseis normalises the area to 1 via ``set_sliprate(..., normalize=True)``.
+        1-D float64 array of length ≥ :data:`_MIN_STF_SAMPLES`.  Non-negative, and **already
+        normalised to unit moment** (``sliprate.sum() * dt == 1``).  Pass it to Instaseis with
+        ``set_sliprate(..., normalize=False)`` — letting Instaseis normalise via ``np.trapz``
+        doubles a Dirac impulse (see :func:`_unit_moment_dirac`).
 
     Raises
     ------
@@ -224,9 +251,7 @@ def build_stf_sliprate(
         If ``stf_duration`` is not ``None`` and ``gcmt_half_duration <= 0``.
     """
     if stf_duration is None:
-        sliprate = np.zeros(_MIN_STF_SAMPLES)
-        sliprate[0] = 1.0
-        return sliprate
+        return _unit_moment_dirac(dt)
 
     scale = float(np.squeeze(stf_duration))
     if gcmt_half_duration <= 0.0:
@@ -239,15 +264,21 @@ def build_stf_sliprate(
     sliprate = _build_triangular_stf(effective_half, dt)
     if len(sliprate) < _MIN_STF_SAMPLES:
         sliprate = np.concatenate([sliprate, np.zeros(_MIN_STF_SAMPLES - len(sliprate))])
-    # A half-duration at or below ~dt/2 discretises to a (near-)zero-area triangle, which
-    # Instaseis set_sliprate(..., normalize=True) would divide by ~0 -> NaN seismograms. Such
-    # an STF is unresolvable at this sample interval (physically a delta), so fall back to the
-    # Dirac impulse. This keeps stf_duration sampling numerically safe at coarse dt / long
-    # periods, where a sub-sample STF has no effect on the band-limited waveform anyway.
-    if not np.trapz(sliprate, dx=dt) > 0.0:
-        sliprate = np.zeros(_MIN_STF_SAMPLES)
-        sliprate[0] = 1.0
-    return sliprate
+    # A half-duration at or below ~dt/2 discretises to a (near-)zero-area triangle, which would
+    # divide by ~0 -> NaN seismograms. Such an STF is unresolvable at this sample interval
+    # (physically a delta), so fall back to the Dirac impulse. This keeps stf_duration sampling
+    # numerically safe at coarse dt / long periods, where a sub-sample STF has no effect on the
+    # band-limited waveform anyway.
+    #
+    # Normalise to unit moment HERE, using the DC convention (sum * dt) rather than np.trapz --
+    # the discrete FFT convolution's long-period gain is exactly sum*dt, and trapz half-weights
+    # endpoints. The caller must therefore pass normalize=False to set_sliprate. For a
+    # well-resolved triangle (which starts and ends at zero) the two conventions agree; they
+    # differ by exactly 2x for a boundary spike, which is what made every synthetic 2x too loud.
+    area = float(sliprate.sum()) * dt
+    if not area > 0.0:
+        return _unit_moment_dirac(dt)
+    return sliprate / area
 
 
 class InstaseisDBQuerier:
@@ -350,7 +381,10 @@ class InstaseisDBQuerier:
         # into the STF — no upstream plumbing changes required.
         gcmt_t_half = _gcmt_half_duration(m_tensor) if stf_duration is not None else 0.0
         sliprate = build_stf_sliprate(stf_duration, self._dt, gcmt_half_duration=gcmt_t_half)
-        instaseis_source.set_sliprate(sliprate, self._dt, time_shift=location.time_shift, normalize=True)
+        # normalize=False: build_stf_sliprate already normalises to unit moment using the DC
+        # convention (sum*dt). Instaseis's normalize=True uses np.trapz, which half-weights
+        # endpoints and so doubles a boundary-spike Dirac -> synthetics 2x too loud (dMw -0.2007).
+        instaseis_source.set_sliprate(sliprate, self._dt, time_shift=location.time_shift, normalize=False)
 
         return instaseis_source
     

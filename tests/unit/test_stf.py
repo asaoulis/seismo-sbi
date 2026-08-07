@@ -323,9 +323,10 @@ class TestBuildStfSliprateWithGcmt:
         """A half-duration at/below ~dt/2 is unresolvable and would discretise to a
         zero-area triangle (NaN under Instaseis set_sliprate(normalize=True)); it must fall
         back to a Dirac impulse instead."""
-        s = build_stf_sliprate(1.0, dt=1.0, gcmt_half_duration=0.1)
-        assert s[0] == pytest.approx(1.0)
-        assert np.all(s[1:] == 0.0)
+        for dt in (0.5, 1.0, 1.202625, 2.346442):
+            s = build_stf_sliprate(1.0, dt=dt, gcmt_half_duration=0.1 * dt)
+            assert s[0] == pytest.approx(1.0 / dt)
+            assert np.all(s[1:] == 0.0)
 
     def test_always_positive_finite_area_at_1hz(self):
         """Across the small-Mw regime the sliprate must have positive, finite area at the
@@ -338,6 +339,52 @@ class TestBuildStfSliprateWithGcmt:
                 assert np.isfinite(area) and area > 0.0, (gcmt_half, scale, area)
 
 
+class TestSliprateCarriesUnitMoment:
+    """Regression guard for the factor-2 amplitude bug (2026-08-07).
+
+    Every sliprate this module returns must satisfy ``sum * dt == 1``, on BOTH the Dirac and
+    triangular branches and at every (dt, Mw, scale) the production prior can reach. The DC
+    component of the discrete FFT convolution is exactly ``sum * dt``, so it *is* the
+    long-period amplitude gain — any departure from 1 scales M0 directly and shifts Mw by
+    ``-(2/3)*log10(area)``.
+
+    History: the Dirac branch used to return a unit-HEIGHT spike normalised by Instaseis via
+    ``np.trapz``, which half-weights endpoints -> area 2 -> every synthetic 2x too loud ->
+    a flat -0.2007 Mw deficit against every reference catalogue, in two independent regions.
+    See artifacts/ROOT_CAUSE.md in the mw-bias-investigation task.
+    """
+
+    #: real production sample intervals: santorini 5s meshes, japan10s
+    DTS = (0.5, 1.0, 1.202625, 2.346442)
+
+    def test_dirac_branch_unit_moment(self):
+        for dt in self.DTS:
+            s = build_stf_sliprate(None, dt=dt)
+            assert s.sum() * dt == pytest.approx(1.0), dt
+
+    def test_triangle_branch_unit_moment_across_the_prior(self):
+        """Covers resolved, marginal and under-resolved (Dirac-fallback) triangles alike."""
+        for dt in self.DTS:
+            for mw in (3.2, 3.8, 4.4, 5.0, 5.6):
+                m0 = 10.0 ** (1.5 * mw + 9.1)
+                t_half = GCMT_SCALE_FACTOR * m0 ** (1.0 / 3.0)
+                for scale in (0.5, 1.0, 2.0):
+                    s = build_stf_sliprate(scale, dt=dt, gcmt_half_duration=t_half)
+                    assert s.sum() * dt == pytest.approx(1.0), (dt, mw, scale)
+
+    def test_unit_height_spike_would_be_twice_too_loud(self):
+        """Pin the actual mechanism, so the bug cannot silently return.
+
+        This is what the old code did; it must remain visibly wrong by exactly 2x.
+        """
+        dt = 1.202625
+        old = np.zeros(_MIN_STF_SAMPLES)
+        old[0] = 1.0
+        old_normalised = old / np.trapz(old, dx=dt)   # what set_sliprate(normalize=True) does
+        assert old_normalised.sum() * dt == pytest.approx(2.0)
+        assert -(2 / 3) * np.log10(old_normalised.sum() * dt) == pytest.approx(-0.2007, abs=1e-4)
+
+
 # ===========================================================================
 # Section 3: Dirac delta backward-compat path
 # ===========================================================================
@@ -346,9 +393,19 @@ class TestBuildStfSliprateWithGcmt:
 class TestBuildStfSliprateDirac:
     """Tests for the Dirac-delta (``stf_duration=None``) branch."""
 
-    def test_none_produces_spike_at_zero(self):
-        s = build_stf_sliprate(None, dt=0.5)
-        assert s[0] == pytest.approx(1.0)
+    def test_none_produces_unit_moment_spike_at_zero(self):
+        """The Dirac spike must have height 1/dt, NOT 1.0.
+
+        A sliprate is a normalised moment-rate function, so ``sum * dt == 1``. Building a
+        unit-HEIGHT spike and delegating normalisation to Instaseis's
+        ``set_sliprate(..., normalize=True)`` is what caused the factor-2 amplitude bug:
+        ``np.trapz`` half-weights endpoints, so a boundary spike integrates to dt/2 and comes
+        back at 2/dt — twice the intended moment, i.e. dMw = -0.2007 on every synthetic.
+        """
+        for dt in (0.5, 1.202625, 2.346442):
+            s = build_stf_sliprate(None, dt=dt)
+            assert s[0] == pytest.approx(1.0 / dt)
+            assert s.sum() * dt == pytest.approx(1.0)
 
     def test_none_zeros_elsewhere(self):
         s = build_stf_sliprate(None, dt=0.5)
@@ -365,7 +422,7 @@ class TestBuildStfSliprateDirac:
     def test_none_ignores_gcmt_half_duration(self):
         """gcmt_half_duration is irrelevant when stf_duration is None."""
         s = build_stf_sliprate(None, dt=0.5, gcmt_half_duration=5.0)
-        assert s[0] == pytest.approx(1.0)
+        assert s[0] == pytest.approx(1.0 / 0.5)
         assert np.all(s[1:] == 0.0)
 
 
