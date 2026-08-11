@@ -412,22 +412,27 @@ def main():
     #   ml_optimizer:
     #     lr: 1.0e-4
     #     weight_decay: 1.0e-4
-    #     lr_schedule: constant      # cosine (default; warmup->decay to lr*0.1) | constant | cyclic
-    # Absent => lr=1e-4, weight_decay=1e-4, cosine (the legacy schedule).
+    #     lr_schedule: constant      # cosine (default; warmup->decay to lr*lr_min_factor) | constant | cyclic
+    #     lr_min_factor: 0.2         # cosine floor as a fraction of lr: eta_min = lr*factor.
+    #                                #   0.1 = legacy (lr/10); 0.2 = lr/5. Cosine branch only.
+    # Absent => lr=1e-4, weight_decay=1e-4, cosine to lr/10 (the legacy schedule).
     _opt_cfg = _raw_cfg.get("ml_optimizer") or {}
     lr = float(_opt_cfg.get("lr", 1e-4))
     weight_decay = float(_opt_cfg.get("weight_decay", 1e-4))
     lr_second_stage = _opt_cfg.get("lr_schedule", "cosine")
+    lr_min_factor = float(_opt_cfg.get("lr_min_factor", 0.1))
     if _opt_cfg:
         print(f"Optimizer overrides: lr={lr}, weight_decay={weight_decay}, "
-              f"lr_schedule={lr_second_stage}")
+              f"lr_schedule={lr_second_stage}, lr_min_factor={lr_min_factor} "
+              f"(cosine eta_min={lr * lr_min_factor:.3e})")
 
     trainer = CompressionTrainer(components, station_locations, channels=model_dim, latent_dim=model_dim,
                                  trace_length=sbi_pipeline.trace_length,
                                  model_config=model_config,
                                  flow_config=flow_config,
                                  lr=lr, weight_decay=weight_decay,
-                                 lr_second_stage=lr_second_stage)
+                                 lr_second_stage=lr_second_stage,
+                                 lr_min_factor=lr_min_factor)
     # Build the training-time nuisance augmentation chain from the config: only
     # nuisances staged `training_augmentation` (Category-2 post-processing effects)
     # are folded in per-batch on the clean simulations. Empty chain ⇒ no augmentation.

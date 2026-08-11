@@ -1,0 +1,521 @@
+# first_ml_npe_brustle_lomax_intramode_mw32_stffix.yaml
+# ============================================================================
+# POST-STF-FIX BRUSTLE ARM — AMENDMENT 3 of santorini-paper-prep/mw-fix-training-runs
+# (user, 2026-08-11). ONE fresh 500k dataset + ONE 100-epoch tcn training, MMD OFF.
+#
+# Derived from first_ml_npe_brustle_lomax_intramode_mw32.yaml with exactly TWO changes:
+#
+#  1. run_name -> ..._stffix   NEW dataset namespace, and a MANDATORY one. The STF fix
+#     (e90d683) changed the amplitude of every synthetic by a factor of 2, so the pre-fix
+#     brustle sims under santorini_brustle_lomax_intramode_mw32 are 2x too loud and must
+#     NEVER mix with these. The generator SKIPS files that already exist, so pointing at
+#     the old namespace would silently interleave two forward models in one dataset.
+#     The bug: build_stf_sliprate returned a unit-HEIGHT Dirac normalised by instaseis via
+#     np.trapz, which half-weights endpoints -> area 2. See
+#     .claude/runs/santorini-paper-prep/mw-bias-investigation/artifacts/ROOT_CAUSE.md
+#
+#  2. ml_optimizer.lr_min_factor: 0.2   cosine floor lr/5, was a hard-coded lr/10. Shared
+#     with the three ep100 encoder arms so all four amendment-3 runs are schedule-matched.
+#
+# WHAT THIS ARM IS FOR. It is the FORWARD-MODEL axis of amendment 3, orthogonal to the
+# encoder axis: brustle-tcn-ep100 vs mode_ab-tcn-ep100 isolates the theory-error model
+# (single global Brustle 1-D uncertainty ensemble vs the path-specific mode-A/B pair) with
+# encoder, budget, schedule and priors all held fixed. `resample_member_per_station: true`
+# is retained, so every station still draws an INDEPENDENT 1-D Earth model (intra-ensemble
+# theory error) — that per-station draw is the point of the comparison, not an incidental.
+#
+# LAUNCH:
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_brustle_lomax_intramode_mw32_stffix.yaml
+#   RUN=santorini_brustle_lomax_intramode_mw32_stffix
+#   python $ORCH --config $CFG --run $RUN status   # ALWAYS: submits are NOT idempotent
+#   python $ORCH --config $CFG --run $RUN gen --partition CORES64 --ncpu 64 --wall_h 48 \
+#          --nsims 500000
+#   GEN MEMORY IS ALREADY HANDLED — do not hand-tune it. submit_gen.sh asks --mem=0 (the
+#   WHOLE node, ~500G on CORES64) and exports SEISMO_QUERIER_CACHE_MAXSIZE=24, capping the
+#   per-worker open-Instaseis-handle LRU at ~84 GB across 64 workers. Without that cap the
+#   cap auto-grows to the ensemble size (61 members here) and SIGKILLs loky workers partway
+#   through a 500k gen. Keep --ncpu 64; never cut workers to buy memory.
+#   # then AFTER gen completes:
+#   python $ORCH --config $CFG --run $RUN train --train-name ${RUN}_ep100_tcn \
+#          --arch tcn --epochs 100 --gpu l40s --ngpu 1
+#
+# LOG CHECK that the new schedule landed (it fails SILENTLY otherwise):
+#   "Optimizer overrides: ... lr_min_factor=0.2 (cosine eta_min=2.000e-05)"
+#   At --epochs 100, warmup = int(0.05*100) = 5 epochs, 2e-05 -> 1e-04, then cosine to
+#   2e-05 (NOT 1e-05). 0.1/1.000e-05 => the cluster rev predates the lr_min_factor commit.
+# ============================================================================
+# ---------------------------------------------------------------------------
+# Inherited header from the pre-STF-fix mw32 Brustle config:
+# ---------------------------------------------------------------------------
+# "mw32" CAMPAIGN, config B of 2 (santorini-paper-prep/first-training-runs, 2026-08-01).
+#
+# THE FORWARD-MODEL SIBLING of config A (first_ml_npe_mode_ab_lomax_intramode_mmd_mw32.yaml).
+# Byte-identical to A — same stations, noise, nuisance chain, priors, ML stack, flow, optimizer,
+# batch sizing and the same four mw32 deltas — EXCEPT for exactly two things:
+#
+#   (i)  seismic_context swaps the two-mode multimodel Instaseis ensemble for the SINGLE
+#        Brustle 1-D uncertainty ensemble (`instaseis_ensemble`, 60 members + fiducial,
+#        /data/alex/axisem_dbs/santorini_tomo_brustle -> gpu5 archive). The
+#        `instaseis_multi_models` list is dropped; `resample_member_per_station: true` is kept,
+#        so each station still draws an independent 1-D member (intra-ensemble theory error).
+#   (ii) ml_mmd.enabled: false — the psim suite was generated with the MODE-A/B forward model,
+#        so MMD-aligning a Brustle model against it is a forward-model mismatch. See the
+#        ml_mmd block near the bottom for the full reasoning.
+#
+# Purpose: isolate the effect of the THEORY-ERROR MODEL. A-tcn vs B-tcn is a controlled
+# comparison of the mode-A/B path-specific ensemble against the single global Brustle ensemble,
+# with everything else held fixed. (A's three encoders — tcn/cnn/pno — are the orthogonal
+# comparison, holding the forward model fixed instead.) This config trains ONE model: tcn.
+#
+# Inherited from config A (the deltas vs the original mmd base), for reference:
+#
+#   1. mw_min 3.5 -> 3.2 in the gutenberg_richter MT sampler (mc likewise, though inert).
+#      The ONLY dataset-affecting change carried over from the base — but this config would
+#      need its own gen regardless, because the forward model itself differs.
+#   2. ml_scaler.mt_log_decades stays `auto`, which now derives a 3.45-decade window
+#      log10 M0 in [13.900, 17.350] from Mw [3.2, 5.5] (was 3.00 decades at mw_min 3.5).
+#   3. source_location_error.coordinate_std HALVED to [0.005, 0.0065, 0.75].
+#   4. ml_perf amp + fused_adam ON (these run on l40s = Ada, native bf16; the base's
+#      `false` was a V100 workaround).
+#   5. parameters.inference.moment_tensor.bounds UNCHANGED at +/-5e17 — re-verified
+#      sufficient for the widened prior (see the comment there).
+#
+# All /data/alex/... leaves below are remapped by the cluster orchestrator's path_remap to
+# /share/gpu5/asaoulis/seismo_data/... . Data prerequisites on the cluster — ALL already
+# present from the completed santorini_mode_ab_lomax_intramode MMD run, since this config
+# references the SAME paths:
+#   noise catalogue (3.5G): /data/alex/santorini_lomax_stations/catalogue/noise
+#   event h5:               /data/alex/santorini_lomax_stations/catalogue/events/...
+#   priors:                 the two catalogue CSVs (mapped to seismo_data/santorini/priors)
+# The Brustle ensemble DBs (~36 GB) map OUTSIDE DATA_ROOT and are already in the gpu5
+# axisem_dbs archive (rebuilt 2026-06-12 to 60 members + fiducial, all read-verified).
+# NOTE: `push-data` with no --keys ABORTS on any DIRECTORY asset — _push_directory diffs via
+# the gatekeeper's `view find`, which is confined to RESULTS_ROOT while the path is
+# DATA_ROOT-relative (find exits 1 -> set -e -> raise). Push the FILE assets only, via --keys.
+#
+# ---- LAUNCH (remote: 1 gen + 1 tcn training) ------------------------------------------
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_brustle_lomax_intramode_mw32.yaml
+#   RUN=santorini_brustle_lomax_intramode_mw32              # OWN dataset namespace
+#   python $ORCH --config $CFG avail                        # ALWAYS check before a GPU submit
+#   python $ORCH --config $CFG --run $RUN sync              # commit+push first!
+#   python $ORCH --config $CFG --run $RUN push-data --keys \
+#     jobs.real_events.*,seismic_context.stations_path,seismic_context.station_components_path,\
+#     simulations.sampling_method.source_location.catalogue,\
+#     simulations.sampling_method.moment_tensor.catalogue
+#   python $ORCH --config $CFG --run $RUN gen --partition CORES64 --ncpu 64 --wall_h 48 --nsims 500000
+#   # Watch the FIRST 15 MIN of the gen log: it is the authoritative check that no truncated
+#   # Brustle member survives in the archive ("PZ no nc4" / "truncated file" / "Could not
+#   # extract valid slip and sliprates" => cancel, fix the archive, resubmit).
+#   # then AFTER gen completes — the single tcn training (--gpu l40s is MANDATORY; gpu_fallback
+#   # would otherwise pick v100). Submits are NOT idempotent: read `status` first.
+#   python $ORCH --config $CFG --run $RUN status
+#   python $ORCH --config $CFG --run $RUN train --train-name ${RUN}_tcn \
+#          --arch tcn --epochs 60 --gpu l40s --ngpu 1
+# ============================================================
+
+# first_ml_npe_mode_ab_lomax.yaml
+# ============================================================
+# Santorini ML NPE — MODE-A/MODE-B multimodel theory-error ensemble + LOMAX-15 stations/noise.
+# *** TCN-only final model on ONE 500k baked dataset. ***
+#
+# Derived from first_ml_npe_brustle_lomax_sweep.yaml.  Identical ML stack, baked nuisances,
+# lomax noise/event, sampling and flow/optimizer — the ONLY change is the DATA CONTEXT, which
+# swaps the single brustle ensemble for a PATH-SPECIFIC, two-mode multimodel Instaseis ensemble:
+#   * simulation_type: instaseis_multi_ensemble  (NEW dispatch -> InstaseisMultiModelSimulator).
+#   * Mode A (santorini_tomo_mode_a, 31 member DBs) serves the 9 ON-ISLAND Santorini receivers;
+#     Mode B (santorini_tomo_mode_b, 31 member DBs) serves the 6 OFF-ISLAND receivers.
+#     Each training sim draws an INDEPENDENT random member per mode (decorrelated regional theory
+#     error), so a single forward simulation bakes the regionally-varying theory error.
+#   * The Mode-A/B station split is computed from SANTORINI_ISLAND_BBOX (extract_1d_profiles.py):
+#     Mode A (9): CMBO SANT SAP3 SNT1 THERA THR3 THR5 THR8 AKRO
+#     Mode B (6): AMGA ANYD APE IOSI MHLO SERI
+#   * Fiducial is PER-MODE: with use_fiducial each region routes to its own mode's fiducial DB.
+#
+# Local target for the ensemble DBs (cluster archive is what the orchestrator path_remap points at):
+#   /data/alex/axisem_dbs/santorini_tomo_mode_a/  + /data/alex/axisem_dbs/santorini_tomo_mode_b/
+#   (cluster archive: compute-gpu-0-5:/share/gpu5/asaoulis/axisem_dbs/santorini_tomo_mode_{a,b}/)
+# The inline instaseis_multi_models DB paths are YAML string leaves -> the orchestrator's deep_remap
+# rewrites them to the gpu5 archive automatically.
+#
+# ---- LAUNCH (remote) — one gen, one tcn training off the SAME 500k dataset --------------------
+#   ORCH=.claude/cluster/run_remote_training.py
+#   CFG=scripts/configs/santorini/first_ml_npe_mode_ab_lomax.yaml
+#   RUN=santorini_mode_ab_lomax
+#   python $ORCH --config $CFG avail
+#   python $ORCH --config $CFG sync --rev <branch>          # commit+push first
+#   # 500k CPU dataset generation (instaseis multimodel; shift+coda BAKED per sim):
+#   python $ORCH --config $CFG --run $RUN gen --partition CORES64 --ncpu 64 --wall_h 48 --nsims 500000
+#   # then AFTER gen completes, the single tcn training:
+#   python $ORCH --config $CFG --run $RUN train --train-name ${RUN}_tcn --arch tcn --epochs 60 --gpu l40s
+# ============================================================
+
+run_name: santorini_brustle_lomax_intramode_mw32_stffix   # OWN dataset namespace: a different forward
+                                                   # model (Brustle single ensemble), the mw_min 3.2
+                                                   # prior, AND the corrected STF normalisation — so
+                                                   # these sims share nothing with config A's set NOR
+                                                   # with the pre-fix (2x too loud) brustle mw32 set.
+output_directory: '/data/alex/santorini/npe'
+job_name: results
+generate_dataset: False              # orchestrator sets True for the gen stage, False for train
+num_jobs: 60
+# ML/NPE training trains its own embedding net on raw waveforms and never consumes the score/Fisher
+# compression stencil — and forking instaseis's numba-JIT forward model across the stencil's loky
+# workers crashes ('ReferenceError: underlying object has vanished'). Skip it for both gen + train.
+skip_compression_data: True
+
+ml_architecture: tcn                 # single final model (orchestrator --arch tcn also sets this)
+
+# ---- SOURCE-LOCATION CONDITIONING ----
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative      # source-relative (distance, azimuth); needs ml_conditioning
+
+# ---- per-station amplitude embedding ----
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+# ---- RFF station positional encoding (review §3.2) ----
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+# ---- §3.4 Set-Transformer PMA pooling head (pool_over=TOKENS) ----
+ml_pooling:
+  enabled: true
+  pool_over: tokens
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+# ---- NDE head (normalising-flow) sizing ----
+ml_flow:
+  num_transforms: 8
+
+# ---- optimizer / LR schedule ----
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: cosine
+  # Cosine floor as a fraction of lr: eta_min = lr * lr_min_factor. 0.1 (lr/10) was
+  # HARD-CODED for every run before 2026-08-11 and is still the default; 0.2 = lr/5, shared
+  # with the three ep100 encoder arms so all four amendment-3 runs are schedule-matched.
+  lr_min_factor: 0.2
+
+ml_scaler:
+  moment_tensor: scale_shape
+  # `auto` derives the log10-M0 window from the gutenberg_richter sampler's [mw_min, mw_max]
+  # so the sampled magnitude maps to u in [0,1] EXACTLY, instead of an arbitrary fixed decade
+  # count (the old 4.0 put the prior at u in [0.200, 0.950], wasting a quarter of the range).
+  #
+  # RESOLVED WINDOW FOR THIS CONFIG (mw_min 3.2, mw_max 5.5, magnitude_conversion identity):
+  #   M0 = 10**(1.5*Mw + 9.1)  =>  log10 M0 in [13.900, 17.350]  =  3.45 decades.
+  #
+  # COUPLED TO THE PRIOR — read before retraining. `auto` makes the representable Mw range
+  # EQUAL the prior range, and MomentTensorScaler.transform CLIPS u to [0,1]: nothing below
+  # mw_min can be expressed at all. That coupling is precisely why the floor was lowered here.
+  # In the delivered catalogue ~30% of events have a median Mw BELOW 3.5 (the flow was already
+  # extrapolating past the old prior floor), so at mw_min=3.5 those would be CLAMPED to exactly
+  # 3.5 — a hard floor stamped onto the low-magnitude tail. At 3.2 they are representable.
+  # (This is NOT expected to move the ~0.21 Mw deficit vs the reference catalogues, which was
+  # traced to the Green's-function amplitude, not the prior floor — see the
+  # santorini-mw-deficit-forward-model note. Lowering the floor stops the CLAMPING, no more.)
+  #
+  # The window actually in force at training time is now recorded into model_meta.json by
+  # scalers.scaler_provenance, and re-checked at inference by scalers.check_scaler_provenance,
+  # so an ml_scaler/bounds edit after training raises instead of silently biasing every
+  # recovered moment by a constant factor. Inference against a checkpoint MUST use the config
+  # it was trained with: the older santorini_mode_ab_lomax_intramode_mmd_tcn checkpoint was
+  # trained at mt_log_decades 4.0 and is NOT interchangeable with these.
+  mt_log_decades: auto
+
+# ---- training-efficiency optimisations (see brustle sweep notes) ----
+# CLUSTER TORCH NOTE: build the env with torch 2.5.1+cu121 (env seismo-sbi-t25). Must stay <=2.6
+# (RHEL7/glibc-2.17 nodes; >=2.7 won't import). See [[hypatia-torch-glibc-ceiling]].
+ml_cache:
+  sims: true            # preload clean sims to RAM; removes the per-sample HDF5 load
+  noise: true           # preload the RealNoiseSampler window pool
+  dtype: float16        # SINGLE-GPU runs (one cache, not 4 DDP copies) but submit_train.sh asks
+                        # --mem=64G for ngpu=1, TIGHTER than the 96G the 4-rank MMD run had.
+                        # f16 halves the 500k cache (18.4G -> ~9.2G); its ~1e-3 rounding is far
+                        # below the injected noise. float32 is the revert if quality regresses.
+ml_perf:
+  sdpa: true            # fused scaled_dot_product_attention — NUMERICALLY IDENTICAL. ZERO-RISK.
+  # 2026-08-01: amp/fused_adam flipped ON for this campaign. The base's `false` was a V100
+  # workaround (pre-Ampere: no native bf16, so autocast EMULATES it and fp32 wins). These runs
+  # are on l40s = Ada, which HAS native bf16, and bf16 AMP + fused SDPA is the validated
+  # brustle-encoder-sweep regime on that node. AMP-safe for all three encoders: the pno
+  # SpectralConv1d FFT runs fp32 inside the autocast region (sweep fix), so --arch pno no
+  # longer crashes under bf16. If a run's val_loss is visibly worse than the fp32 baseline,
+  # `amp: false` is the one-line revert.
+  amp: true
+  fused_adam: true
+# ---- ml_encoder: Nyquist decimation applied to the encoder (band-limited 0.03-0.08 Hz) ----
+ml_encoder:
+  input_decimate: 3
+  downsample: 2
+
+seismic_context:
+  simulation_type: 'instaseis_ensemble'                  # SINGLE-ensemble theory-error dispatch
+                                                         # (-> InstaseisEnsembleSimulator), NOT the
+                                                         # mode-A/B InstaseisMultiModelSimulator.
+  resample_member_per_station: true                      # intra-ensemble per-station 1-D draw; the
+                                                         # single-ensemble simulator supports this
+                                                         # identically to the multimodel one.
+  # ---- per-worker Instaseis open-DB cache cap (dataset generation memory budget) ----
+  # 2026-08-01: the 500k gen for this run OOM-killed a joblib worker at 47% (SIGKILL) because the
+  # per-process querier LRU cache holds an open handle per ensemble member at ~55 MB EACH, and the
+  # cap auto-grew to the ensemble size: 61 members x 60 workers x 55 MB ~= 203 GB steady state,
+  # marginal against the gen node's ceiling. Capping to 20 handles/worker => ~67 GB total.
+  # Pure memory/wall-clock trade: a cache miss costs one instaseis.open_db (~168 ms vs ~7 ms for a
+  # cached read) and CANNOT change the simulated output. Raise it if the gen node has more headroom.
+  querier_cache_maxsize: 20
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/stations_lomax.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/santorini/components_lomax.json'
+  seismogram_duration: 200
+  sampling_rate: 1.0
+  # The `instaseis_multi_models` list of config A is DELIBERATELY ABSENT: the single-ensemble
+  # dispatch ignores it, and leaving it would falsely suggest a mode-A/B split is in play.
+  # Here syngine_address IS the live ensemble dir (not a parse-only placeholder). Both are
+  # inline string leaves, so the orchestrator's deep_remap rewrites them to the gpu5 archive
+  # /share/gpu5/asaoulis/axisem_dbs/santorini_tomo_brustle{,/fiducial} — which maps OUTSIDE
+  # DATA_ROOT, so push-data correctly skips the ~36 GB of DBs (already archived on gpu5).
+  syngine_address: '/data/alex/axisem_dbs/santorini_tomo_brustle/'
+  syngine_fiducial_address: '/data/alex/axisem_dbs/santorini_tomo_brustle/fiducial/'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.03
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:                   # ONLY inferred parameter
+      #         [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13, 1.e+13]
+      # UNCHANGED for the mw32 campaign, and re-verified against the WIDENED prior: the
+      # largest tensor the Mw 5.5 ceiling can produce has norm sqrt(2)*M0(5.5) = 3.166e17,
+      # comfortably inside +/-5e17. (Lowering mw_min only shrinks the small end: M0(3.2) =
+      # 7.94e13.) These bounds also define the MomentTensorScaler's unit-tensor block, so
+      # changing them would silently change the theta scaling — don't touch without retraining.
+      bounds: [[-5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17, -5.e+17],
+               [ 5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17,  5.e+17]]
+  nuisance:
+    source_location:                 # SAMPLED-HIDDEN (catalogue_kde); 2-row superset box for the clip
+      #         [lat, lon, depth_km, time_s]
+      fiducial: [36.45, 25.55, 12.0, 0.0]
+      bounds: [[36.0, 24.8, 1.0, -2.0],
+               [37.0, 26.0, 55.0, 2.0]]
+    stf_duration:                    # Category-1 simulator nuisance; sampled uniform, baked into sims
+      fiducial: [1.0]
+      bounds: [0.5, 2.0]
+
+    # ---- source-location uncertainty (perturbs the CONDITIONING vector in the dataloader) ----
+    source_location_error:
+      fiducial: [1.0]                # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      # Gaussian sigma per conditioning coord [lat deg, lon deg, depth km].
+      #
+      # 2026-08-01 (mw32 campaign): HALVED from [0.010, 0.013, 1.5] to [0.005, 0.0065, 0.75].
+      # Rationale: the previous value came from the NEW NLL-SC catalogue's per-event FORMAL
+      # location uncertainty (mean errH 0.58 km, errZ 0.76 km over the in-window events), which
+      # is the ABSOLUTE error. What the conditioning vector actually needs to tolerate is closer
+      # to the RELATIVE (relocation) error, whose medians are ~[0.004, 0.005, 0.5]. Halving
+      # lands just ABOVE those medians — deliberately still conservative, so the network is
+      # trained to be robust to somewhat more location error than the relocations imply, without
+      # the ~2x over-broadening that the formal errors imposed.
+      #   lat 0.005 deg ~ 0.56 km · lon 0.0065 deg ~ 0.58 km at 36.5N · depth 0.75 km.
+      #
+      # Dataloader-side (stage: training_augmentation), so this does NOT affect the baked sims
+      # and is NOT why this campaign regenerates the dataset (that is mw_min alone).
+      coordinate_std: [0.005, 0.0065, 0.75]
+      stage: training_augmentation
+
+    # ---- Category-2 nuisances applied as TRAINING-TIME AUGMENTATION (per-batch, pre-noise) ----
+    amplitude_error:
+      fiducial: [0.2]
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    # BAKED (this variant): one fixed draw per simulation at generation time — the effect's
+    # internal RNG still randomises shift/coda per sim; diversity comes from --nsims 500000.
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      # 2026-06-16: calibrated on measured QA best-fit lags (intramode+brustle models,
+      # ~1000 station-lags each; forward-sim first-guess at the event location, xcorr vs obs).
+      # The array-wide COMMON offset is PEAKED at 0 (not flat), so it is now GAUSSIAN
+      # (common_offset_dist) rather than uniform. Sigmas = cycle-skip-clipped std of the
+      # measured common offset (1.8 s) and per-station residual (2.3 s). The catalogue
+      # origin-time error (~0.1 s RMS) is negligible vs these -> this is theory/velocity error.
+      # Was: uniform_offset 3.0 + gaussian_sigma 3.0 (too broad & flat-topped in the core).
+      common_offset_dist: gaussian
+      common_offset_sigma: 1.8
+      gaussian_sigma: 2.3
+      lanczos_order: 5
+      stage: simulation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: simulation
+    instrument_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.1
+      # 2026-08-01 (mw32 campaign): floor LOWERED 3.5 -> 3.2. *** THE ONLY DATASET-AFFECTING
+      # CHANGE in this config — hence the new run_name and a fresh 500k gen. *** ~30% of the
+      # delivered catalogue's events have a median Mw below 3.5, and with mt_log_decades: auto
+      # the representable range EQUALS this prior range (MomentTensorScaler clips u to [0,1]),
+      # so at 3.5 that tail was being clamped onto the floor. `mc` is INERT while b_value is
+      # numeric — it is read only by _resolve_b_value for `b_value: fit` — but is moved in step
+      # with mw_min for internal consistency.
+      mc: 3.2
+      mw_min: 3.2
+      mw_max: 5.5
+      # MT magnitude prior is the explicit truncated-GR (b_value=1.1, mw 3.2-5.5); the catalogue
+      # is IGNORED when b_value is numeric (only used for b_value: fit). Kept as the legacy CSV so
+      # the MT sampling stays comparable with the previous configs. Only the source_location
+      # prior below uses the NEW NLL-SC catalogue.
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/Santorini_catalog.csv
+      magnitude_conversion: identity
+    source_location:
+      type: catalogue_kde
+      catalogue: /home/alex/work/seismo-sbi/scripts/santorini_pathbreaker/catalogue/20250506A_auth_ml_Santorini-Amorgos_Seismicity_20250101-20250228_NLL-SC_se4.csv
+      std_x_km: 1.0
+      std_y_km: 1.0
+      std_z_km: 0.5
+      time_shift: uniform
+      use_event_errors: false
+    stf_duration: "uniform"
+    source_location_error: "constant"   # dataloader-applied; never sampled into a sim
+    amplitude_error: "constant"
+    time_shift_error: "constant"        # BAKED: gate constant; effect RNG draws per sim
+    scattering_coda: "constant"         # BAKED: gate constant; effect RNG draws per sim
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: False
+  iterative_least_squares:
+    max_iterations: 6
+    damping_factor: 1.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: 0
+
+compression:
+  optimal_score:
+    empirical_block: /data/alex/santorini_lomax_stations/catalogue/noise
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'real_noise'
+      noise_catalogue_path: '/data/alex/santorini_lomax_stations/catalogue/noise'
+      noise_level: 1.0e-06
+      rescale: false
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    # lomax event 14 (No14_id3250). 14/15 lomax stations present in the h5;
+    # variable-station packing handles the gap.
+    No14_id3250: /data/alex/santorini_lomax_stations/catalogue/events/20250210T201629.h5
+  simulations:
+    random_events: 500000
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    real_noise: /data/alex/santorini_lomax_stations/catalogue/noise
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True
+
+
+# ---- Misspecification-robust MMD auxiliary loss (see scripts/train_NPE.py ml_mmd docs) ----
+ml_mmd:
+  # *** DISABLED for the Brustle sibling — deliberate, not an oversight. ***
+  # The psim suite below was generated with the MODE-A/B multimodel forward model. MMD aligns
+  # the embedding distribution of real events against that of the psims, so with a DIFFERENT
+  # forward model (the Brustle single ensemble) the term would be pulling this model's summary
+  # space toward simulations it was never trained to produce — a forward-model mismatch, not a
+  # misspecification correction. The block is kept (paths intact) so that re-enabling it is a
+  # one-line change IF a Brustle-generated psim suite is ever produced.
+  enabled: false
+  real_events_manifest: /data/alex/santorini/npe/lomax_runs/intramode_tcn_qa_ported/mmd_manifest.json
+  # host-portable overrides (the manifest embeds absolute LOCAL paths; these two YAML
+  # leaves are path-remapped by the orchestrator and take precedence):
+  events_h5_dir: /data/alex/santorini_lomax_stations/catalogue_ml35_new/events
+  psim_data_folder: /data/alex/santorini/npe/sims/psim_qa_ported
+  lambda_mmd: 0.05        # paper working range 0.01-0.1; sweep candidate
+  warmup_epochs: 5        # NLL-only epochs before the ramp
+  ramp_epochs: 5          # linear ramp 0 -> lambda_mmd
+  every_n_steps: 4        # (inert while disabled) psim batch is main-process CPU work. Because
+                          # MMD is OFF here, this run needs no --ncpu bump: the validated
+                          # default 8 is right, unlike config A's --ncpu 12.
+  batch_size: 64          # per-side sub-batch per MMD evaluation
+  clean_only: true        # neighbour-excluded events (delta_ml>=0, dt[-30,100]) stay out
+  # WHY THIS SURVIVES THE mw32 PRIOR CHANGE UNTOUCHED: the MMD term is computed in EMBEDDING
+  # SPACE ON x ONLY (real-event waveforms vs psim waveforms) and never sees theta, so neither
+  # the widened magnitude prior nor the theta-scaler window affects it. The psim suite was
+  # generated under the old mw_min=3.5 prior, which only shifts the 20% prior-mix tail's
+  # magnitude distribution slightly. What WOULD matter is a forward-model change — which is
+  # exactly why config B (Brustle) disables this block rather than reusing the suite.
+
+# ---- batch sizing: SINGLE-GPU l40s (--ngpu 1), so `train` is the GLOBAL batch ----
+# NUMBERS UNCHANGED from the base config, but the meaning is different and the base's comment
+# was misleading: there, 128 was PER RANK across 4 V100s (global 512). Here there is one rank,
+# so global batch = 128 — exactly the validated single-GPU regime. (The brustle encoder sweep
+# and both mode_ab configs carry no ml_batch block at all and so took train_NPE.py's defaults,
+# which are precisely train=128 / val=2*train=256.) num_workers stays at the default 8.
+ml_batch:
+  train: 128
+  val: 256

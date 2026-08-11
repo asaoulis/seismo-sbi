@@ -63,15 +63,19 @@ class CompressionTrainer:
     def __init__(self, components, station_locations, channels=128, latent_dim=128,
                  architecture="seismogram_transformer", trace_length=200,
                  num_dims=6, feature_length=128, lr=1e-4, weight_decay=1e-4,
-                 model_config=None, flow_config=None, lr_second_stage="cosine"):
+                 model_config=None, flow_config=None, lr_second_stage="cosine",
+                 lr_min_factor=0.1):
         """Build the embedding net + conditional normalising flow.
 
         trace_length: per-trace sample count of the data (CNN input length). Defaults to
             200 for backward compatibility; pass the pipeline's real ``trace_length``.
         model_config / flow_config: optional overrides merged over DEFAULT_MODEL_CONFIG /
             DEFAULT_FLOW_CONFIG.
-        lr_second_stage: LR schedule after warmup — "cosine" (default; decay to lr*0.1),
-            "constant" (held flat at lr), or "cyclic". Forwarded to the Lightning module.
+        lr_second_stage: LR schedule after warmup — "cosine" (default; decay to
+            lr*lr_min_factor), "constant" (held flat at lr), or "cyclic". Forwarded to the
+            Lightning module.
+        lr_min_factor: cosine floor as a fraction of the base LR (eta_min = lr*factor).
+            0.1 = legacy (lr/10); 0.2 = lr/5. Ignored by the constant/cyclic schedules.
         """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -89,6 +93,7 @@ class CompressionTrainer:
         self.lr = lr
         self.weight_decay = weight_decay
         self.lr_second_stage = lr_second_stage
+        self.lr_min_factor = float(lr_min_factor)
         # Store resolved configs + station locations for checkpoint metadata and rebuild.
         # NB this is the MERGED dict built above, a NEW object — not the caller's. Anything
         # the caller adds to its own dict AFTER constructing the trainer is therefore NOT
@@ -126,6 +131,7 @@ class CompressionTrainer:
             lr=lr,
             weight_decay=weight_decay,
             lr_second_stage=lr_second_stage,
+            lr_min_factor=lr_min_factor,
             fused_adam=bool(_perf.get("fused_adam", False)),
             compile_forward=bool(_perf.get("compile", False)),
             compile_flow=bool(_perf.get("compile_flow", False)),

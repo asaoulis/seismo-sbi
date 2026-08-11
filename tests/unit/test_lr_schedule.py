@@ -20,15 +20,16 @@ from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
 pytestmark = pytest.mark.unit
 
 
-def _tiny_module(stage, lr=1e-4):
+def _tiny_module(stage, lr=1e-4, lr_min_factor=0.1):
     """A minimal NPELightningModule with a real (tiny) flow and a mocked trainer."""
     flow = build_nsf(dim=6, conditional_dim=8, hidden_features=32, num_transforms=2)
-    mod = NPELightningModule(flow, lr=lr, lr_second_stage=stage)
+    mod = NPELightningModule(flow, lr=lr, lr_second_stage=stage,
+                             lr_min_factor=lr_min_factor)
     return mod
 
 
-def _lr_curve(stage, max_epochs=40, lr=1e-4):
-    mod = _tiny_module(stage, lr=lr)
+def _lr_curve(stage, max_epochs=40, lr=1e-4, lr_min_factor=0.1):
+    mod = _tiny_module(stage, lr=lr, lr_min_factor=lr_min_factor)
     # configure_optimizers reads only trainer.max_epochs (epoch schedule); mock it.
     mod.trainer = types.SimpleNamespace(
         max_epochs=max_epochs,
@@ -109,3 +110,60 @@ def test_compression_trainer_lr_second_stage_defaults_cosine():
     )
     assert trainer.lr_second_stage == "cosine"
     assert trainer.model.lr_second_stage == "cosine"
+    # Legacy cosine floor: lr/10 unless explicitly overridden.
+    assert trainer.lr_min_factor == pytest.approx(0.1)
+    assert trainer.model.lr_min_factor == pytest.approx(0.1)
+
+
+# ---------------------------------------------------------------------------
+# lr_min_factor — configurable cosine floor (santorini mw-fix campaign, 2026-08-11).
+# Every run before this annealed to a HARD-CODED lr*0.1; the campaign asked for lr/5.
+# ---------------------------------------------------------------------------
+
+def test_cosine_floor_follows_lr_min_factor():
+    """eta_min tracks lr*lr_min_factor: lr/5 must end ~2x higher than the legacy lr/10."""
+    base_lr = 1e-4
+    legacy = _lr_curve("cosine", lr=base_lr, lr_min_factor=0.1)
+    fifth = _lr_curve("cosine", lr=base_lr, lr_min_factor=0.2)
+
+    assert fifth[-1] > legacy[-1], "lr/5 must floor ABOVE lr/10"
+    # Both are one cosine step short of eta_min at the last sampled epoch, so compare
+    # the scheduler's own eta_min rather than relying on the sampled tail alone.
+    assert fifth[-1] == pytest.approx(base_lr * 0.2, rel=0.2)
+    assert legacy[-1] == pytest.approx(base_lr * 0.1, rel=0.2)
+
+
+def test_cosine_eta_min_is_exactly_lr_times_factor():
+    """The CosineAnnealingLR stage carries eta_min = lr*factor exactly (no drift)."""
+    base_lr = 1e-4
+    for factor in (0.1, 0.2, 0.5):
+        mod = _tiny_module("cosine", lr=base_lr, lr_min_factor=factor)
+        mod.trainer = types.SimpleNamespace(
+            max_epochs=100, estimated_stepping_batches=1000, num_training_batches=10)
+        (_opt,), (sch_cfg,) = mod.configure_optimizers()
+        # SequentialLR holds [warmup, cosine]; the cosine stage is the second.
+        cosine = sch_cfg["scheduler"]._schedulers[1]
+        assert cosine.eta_min == pytest.approx(base_lr * factor, rel=1e-12)
+
+
+def test_lr_min_factor_ignored_by_constant_schedule():
+    """A non-default floor must not perturb the flat schedule (cosine branch only)."""
+    base_lr = 1e-4
+    lrs = _lr_curve("constant", lr=base_lr, lr_min_factor=0.2)
+    warmup_epochs = max(1, int(0.05 * 40))
+    assert all(abs(x - base_lr) < 1e-12 for x in lrs[warmup_epochs:])
+
+
+def test_compression_trainer_forwards_lr_min_factor():
+    station_locations = torch.tensor([[10.0, 20.0]], dtype=torch.float32).numpy()
+    trainer = CompressionTrainer(
+        components="Z",
+        station_locations=station_locations,
+        channels=16, latent_dim=16, num_dims=6,
+        architecture="seismogram_transformer",
+        trace_length=200,
+        lr=1e-4,
+        lr_min_factor=0.2,
+    )
+    assert trainer.lr_min_factor == pytest.approx(0.2)
+    assert trainer.model.lr_min_factor == pytest.approx(0.2)

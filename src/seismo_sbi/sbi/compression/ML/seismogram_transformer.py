@@ -540,16 +540,22 @@ class LightningModel(pl.LightningModule):
 
 class NPELightningModule(pl.LightningModule):
     def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine",
+                 lr_min_factor=0.1,
                  fused_adam=False, compile_forward=False, compile_flow=False, **kwargs):
         super().__init__()
         self.flow = flow
         self.lr = lr
         self.weight_decay = weight_decay
         # Second-stage LR schedule applied AFTER the linear warmup:
-        #   "cosine"   (default) — anneal down to lr*0.1 over the remaining epochs;
+        #   "cosine"   (default) — anneal down to lr*lr_min_factor over the remaining epochs;
         #   "constant"           — hold flat at the base lr (no decay);
         #   "cyclic"             — triangular CyclicLR (step-based).
         self.lr_second_stage = lr_second_stage
+        # Cosine floor as a fraction of the base LR: eta_min = lr * lr_min_factor.
+        # 0.1 is the legacy value (every run before 2026-08-11 annealed to lr/10); the
+        # santorini mw-fix campaign moved to 0.2 (lr/5) so the tail of a 100-epoch run keeps
+        # a usefully large step. Only read by the "cosine" branch.
+        self.lr_min_factor = float(lr_min_factor)
         self.cyclic_period_steps = 8000
         # --- Optional perf toggles (opt-in via model_config['perf']; default-off = legacy) ---
         # fused_adam: one fused CUDA optimizer kernel instead of a per-parameter launch storm
@@ -810,8 +816,9 @@ class NPELightningModule(pl.LightningModule):
                 "frequency": 1,
             }]
 
-        # Cosine annealing down to 10% of base LR
-        cosine = CosineAnnealingLR(optimizer, T_max=cosine_epochs, eta_min=self.lr * 0.1)
+        # Cosine annealing down to lr_min_factor * base LR (0.1 legacy, 0.2 = lr/5)
+        cosine = CosineAnnealingLR(optimizer, T_max=cosine_epochs,
+                                   eta_min=self.lr * self.lr_min_factor)
 
         # Combine: warmup → cosine
         scheduler = SequentialLR(
