@@ -538,6 +538,29 @@ class LightningModel(pl.LightningModule):
         sch = {"scheduler": sch, "interval": "epoch", "monitor": "val_loss"}
         return [opt], [sch]
 
+def fused_adam_supported(params):
+    """True if every parameter satisfies torch's fused-AdamW preconditions.
+
+    Checked eagerly because torch validates them LAZILY, inside the first
+    ``optimizer.step()`` — so wrapping the ``AdamW(..., fused=True)`` constructor in a
+    try/except catches neither failure. Both have bitten real runs:
+
+    * **device** — some torch versions accept fused CPU params at construction and only
+      reject them at step time.
+    * **dtype** — torch >= 2.5 (``_device_dtype_check_for_fused``) rejects COMPLEX params.
+      The pno encoder's ``SpectralConv1d`` spectral weights are ``complex64``.
+
+    Falling back to unfused AdamW is mathematically identical (same update rule); fused
+    only saves per-parameter kernel launches. So this returns a plain bool and the caller
+    silently takes the slower, always-correct path.
+    """
+    params = list(params)
+    if not params:
+        return False
+    return (all(p.is_cuda for p in params)
+            and not any(p.is_complex() for p in params))
+
+
 class NPELightningModule(pl.LightningModule):
     def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine",
                  lr_min_factor=0.1,
@@ -734,10 +757,20 @@ class NPELightningModule(pl.LightningModule):
 
     def configure_optimizers(self):
         # Optimizer. fused=True is numerically equivalent (same update rule, fused kernel).
-        # Guard on all-CUDA params explicitly: some torch versions only fail fused CPU
-        # params at step() time, not at construction — never rely on the constructor raising.
+        # Guard the fused PRECONDITIONS up front — torch checks them lazily, inside the first
+        # optimizer.step(), so the try/except around the constructor below never sees them.
+        # There are two, and both are real failures we have hit:
+        #   * device: some torch versions only reject fused CPU params at step() time.
+        #   * dtype: torch >= 2.5's _device_dtype_check_for_fused rejects COMPLEX params
+        #     ("`fused=True` requires all the params to be floating point Tensors ... but
+        #     torch.complex64 and cuda"). The pno encoder's SpectralConv1d spectral weights
+        #     are complex64, so `--arch pno` with ml_perf.fused_adam died on its first step
+        #     after ~70 min of cache preload (job 1342786). Falling back to the unfused
+        #     AdamW is exactly equivalent mathematically — it costs kernel launches, not
+        #     correctness — so a complex-parameter model should quietly take that path
+        #     rather than force every pno config to special-case ml_perf.
         optimizer = None
-        if self._fused_adam and all(p.is_cuda for p in self.parameters()):
+        if self._fused_adam and fused_adam_supported(self.parameters()):
             try:
                 optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr,
                                               weight_decay=self.weight_decay, fused=True)
