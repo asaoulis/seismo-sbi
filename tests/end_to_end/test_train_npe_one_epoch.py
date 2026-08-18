@@ -1126,3 +1126,67 @@ def test_mmd_lambda_schedule():
     assert lams[0] == 0.0 and lams[1] == 0.0                  # warmup
     assert lams[2] == 0.025 and lams[3] == 0.05 and lams[5] == 0.1   # linear ramp
     assert lams[6] == 0.1 and lams[7] == 0.1                  # plateau
+
+
+def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline, tmp_path):
+    """`load_warm_start_weights` transfers weights only, and keeps the model fit-able.
+
+    This is the continuation path used by `ml_warm_start.from_run_name` (train_NPE.py): a run
+    that was wall-killed mid-schedule is carried on under a NEW train-name with a fresh
+    optimizer and a fresh LR budget. Asserts the four things that make it a real continuation
+    rather than a run that merely looks like one:
+      1. every parameter matches the source checkpoint bit-for-bit after loading;
+      2. the model is still TRAINABLE — `load_best` freezes + evals, which would leave the
+         optimizer with nothing to update and silently train nothing;
+      3. an architecture mismatch RAISES (strict=True) instead of half-loading;
+      4. a missing source run RAISES instead of quietly starting from scratch.
+    """
+    import torch
+    from seismo_sbi.sbi.compression.ML.train import (
+        load_warm_start_weights, find_best_checkpoint_path,
+    )
+
+    pipeline, _, data_vector_length = kernel_pipeline
+    components = pipeline.data_manager.data_loader.components
+    station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
+    trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
+
+    run_name = "warmstart_source"
+    trainer, _, _ = _train_one_epoch(
+        pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+        enable_checkpointing=True, run_name=run_name,
+    )
+    source_state = {k: v.detach().clone() for k, v in trainer.model.state_dict().items()}
+
+    # A fresh trainer of the SAME shape — different random init, and a different lr to prove the
+    # warm start carries weights WITHOUT dragging the source run's optimizer settings along.
+    fresh = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length, lr=3.5e-5,
+    )
+    assert any(not torch.equal(v, source_state[k])
+               for k, v in fresh.model.state_dict().items()
+               if v.dtype.is_floating_point), "fresh init already matched the source"
+
+    ckpt_path = load_warm_start_weights(fresh.model, tmp_path / run_name)
+    assert ckpt_path == find_best_checkpoint_path(tmp_path / run_name)
+    for k, v in fresh.model.state_dict().items():
+        assert torch.equal(v, source_state[k]), f"warm start did not transfer {k}"
+
+    # (2) still trainable: load_best()'s .eval()+.freeze() would break the continuation.
+    assert fresh.model.training is True
+    assert any(p.requires_grad for p in fresh.model.parameters())
+    assert fresh.model.lr == 3.5e-5          # the NEW schedule's lr, not the source run's
+
+    # (3) architecture mismatch must raise, not partially load.
+    mismatched = CompressionTrainer(
+        components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
+        architecture="seismogram_transformer", trace_length=trace_length,
+        flow_config={"num_transforms": 8},
+    )
+    with pytest.raises(RuntimeError):
+        load_warm_start_weights(mismatched.model, tmp_path / run_name)
+
+    # (4) missing source run must raise, not silently start from scratch.
+    with pytest.raises(FileNotFoundError):
+        load_warm_start_weights(fresh.model, tmp_path / "no_such_run")

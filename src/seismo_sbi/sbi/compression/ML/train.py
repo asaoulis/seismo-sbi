@@ -272,28 +272,44 @@ class CompressionTrainer:
         # Guard on rank 0 so the 4 DDP ranks don't race-write the same sidecar
         # (is_global_zero is True on the single-device path, so this is a no-op there).
         if enable_checkpointing and trainer.is_global_zero:
-            meta = {
-                "architecture": self.architecture,
-                "model_config": self._model_config,
-                "flow_config": self._flow_config,
-                "trace_length": self.trace_length,
-                "num_seismic_components": self.num_seismic_components,
-                "num_dims": self.num_dims,
-                "latent_dim": self.latent_dim,
-                "feature_length": self._feature_length,
-                "station_locations_shape": self._station_locations_shape,
-                # Store the actual coordinates so the sidecar is self-describing and
-                # load_best can rebuild the embedding net without re-supplying them.
-                "station_locations": np.asarray(self._station_locations).tolist(),
-            }
-            meta_path = output_path / "model_meta.json"
-            meta_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(meta_path, "w") as f:
-                # default=str guards against a non-JSON value sneaking into a config dict
-                # aborting the dump after a (possibly long) successful training run.
-                json.dump(meta, f, indent=2, default=str)
+            self.write_model_meta(output_path)
 
         return self.model
+
+    def write_model_meta(self, output_path: Path) -> Path:
+        """Write the ``model_meta.json`` sidecar describing this trainer's architecture.
+
+        :meth:`train` calls this once ``trainer.fit`` returns, but it is exposed separately
+        so the sidecar can be written for a checkpoint whose run never got that far: a SLURM
+        wall-clock kill leaves perfectly good best-val .ckpt files with NO sidecar, and
+        :meth:`load_best` then silently falls back to whatever architecture THIS object was
+        constructed with instead of the one that was trained. Recover by building the trainer
+        from the SAME config the run used and calling this
+        (``train_NPE.py --write_meta_only`` does exactly that), never by hand-editing a
+        sidecar copied from another run.
+        """
+        output_path = Path(output_path)
+        meta = {
+            "architecture": self.architecture,
+            "model_config": self._model_config,
+            "flow_config": self._flow_config,
+            "trace_length": self.trace_length,
+            "num_seismic_components": self.num_seismic_components,
+            "num_dims": self.num_dims,
+            "latent_dim": self.latent_dim,
+            "feature_length": self._feature_length,
+            "station_locations_shape": self._station_locations_shape,
+            # Store the actual coordinates so the sidecar is self-describing and
+            # load_best can rebuild the embedding net without re-supplying them.
+            "station_locations": np.asarray(self._station_locations).tolist(),
+        }
+        meta_path = output_path / "model_meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(meta_path, "w") as f:
+            # default=str guards against a non-JSON value sneaking into a config dict
+            # aborting the dump after a (possibly long) successful training run.
+            json.dump(meta, f, indent=2, default=str)
+        return meta_path
 
     def load_best(self, output_path: Path) -> Path:
         """
@@ -397,3 +413,30 @@ def find_best_checkpoint_path(output_path: Path) -> Path:
         return float(m.group(1)) if m else float("inf")
     best = min(candidates, key=score_from_name)
     return best
+
+def load_warm_start_weights(model, source_path: Path) -> Path:
+    """Load the best checkpoint under ``<source_path>/checkpoints`` into ``model``'s weights.
+
+    This is a WARM START, not a Lightning resume: only the ``state_dict`` is transferred, so
+    the optimizer moments, the LR-schedule position and the epoch counter all start fresh.
+    That is deliberate — a continuation run re-declares its own ``--epochs`` budget, and
+    ``seismogram_transformer.configure_optimizers`` derives BOTH the warmup length and the
+    cosine ``T_max`` from it, so a restored scheduler would fight the new budget.
+
+    ``strict=True``: a warm start whose architecture does not match the source checkpoint is a
+    silently different experiment, so a key/shape mismatch must raise rather than load a
+    partially-initialised flow. Keep every architecture block (``ml_architecture``,
+    ``ml_conditioning``, ``ml_variable_stations``, ``ml_amplitude_embedding``,
+    ``ml_positional_encoding``, ``ml_pooling``, ``ml_flow``, ``ml_encoder``) identical to the
+    source run; only optimizer/batch/epoch settings may differ.
+
+    Returns the checkpoint path that was loaded (log it — provenance for the new run).
+    """
+    ckpt_path = find_best_checkpoint_path(source_path)
+    # weights_only=False: a Lightning .ckpt carries non-tensor entries (hyper_parameters,
+    # callback state) beside the weights, which the weights_only unpickler rejects.
+    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    if "state_dict" not in state:
+        raise KeyError(f"{ckpt_path} has no 'state_dict' — not a Lightning checkpoint")
+    model.load_state_dict(state["state_dict"], strict=True)
+    return ckpt_path

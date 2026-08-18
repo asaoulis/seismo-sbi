@@ -35,7 +35,7 @@ from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
 from seismo_sbi.sbi import utils as utils
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.compression.ML.train import CompressionTrainer, load_warm_start_weights
 from seismo_sbi.sbi.scalers import ZeroOneScaler, FlexibleScaler, build_flexible_scaler
 from seismo_sbi.instaseis_simulator.post_processing import build_augmentation_chain_from_parameters
 
@@ -83,6 +83,15 @@ def parse_arguments():
     parser.add_argument('--val-batch-size', dest='val_batch_size', type=int, default=None,
                         help="Per-GPU validation batch size. Overrides the config's ml_batch.val "
                              "(default 2 * train_batch_size).")
+    parser.add_argument('--write_meta_only', action='store_true',
+                        help="Build the model exactly as a training run would, write the "
+                             "model_meta.json sidecar next to the checkpoints, and exit WITHOUT "
+                             "training. Recovers the sidecar for a run whose trainer.fit never "
+                             "returned (e.g. a SLURM wall-clock kill), whose .ckpt files are fine "
+                             "but which load_best would otherwise reload against default "
+                             "architecture settings. MUST be given the same config (and "
+                             "--architecture / --run_name) the run used; nothing is trained and no "
+                             "checkpoint is touched, so it is safe to re-run.")
     args = parser.parse_args()
     return args
 
@@ -480,7 +489,12 @@ def main():
     if args.devices > 1:
         print(f"DDP enabled: devices={args.devices}, per-GPU train_batch_size={train_bs} "
               f"(global batch {train_bs * args.devices}), val_batch_size={val_bs}")
-    if cache_noise and hasattr(sbi_pipeline.training_noise_sampler, "preload_cache"):
+    # The noise pool is training data, not metadata: --write_meta_only exits before any
+    # dataloader is built, so preloading it would burn ~30 min (4.2 GB for this config) to
+    # produce a file that does not contain a single noise-derived field.
+    if cache_noise and args.write_meta_only:
+        print("[write_meta_only] skipping the RealNoiseSampler cache preload (unused by the sidecar)")
+    elif cache_noise and hasattr(sbi_pipeline.training_noise_sampler, "preload_cache"):
         sbi_pipeline.training_noise_sampler.preload_cache(max_workers=cache_workers)
     if _cache_cfg:
         print(f"ML in-RAM cache: sims={cache_sims} noise={cache_noise} dtype={cache_dtype}")
@@ -561,6 +575,37 @@ def main():
 
     run_name = args.run_name
     data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
+
+    # Sidecar-only recovery path: everything above has built the model exactly as a real run
+    # would (architecture, model_config incl. the theta-scaler provenance and any MMD block,
+    # flow_config, trace_length, station locations), so writing the sidecar here yields the
+    # SAME file trainer.train() would have written. Placed after the MMD branch so an
+    # MMD-trained run's block is included. No dataloaders are built and no .ckpt is touched.
+    if args.write_meta_only:
+        meta_path = trainer.write_model_meta(Path(data_path) / run_name)
+        print(f"[write_meta_only] wrote {meta_path} (no training performed)")
+        return
+
+    # Optional WARM START via a top-level 'ml_warm_start' block:
+    #   ml_warm_start:
+    #     from_run_name: japan_stffix_v1_tcn   # a training run under THIS data_path
+    # Loads that run's best checkpoint into the freshly-built flow and trains on from there.
+    # Deliberately keyed by run NAME, not an absolute path, so the same config works locally
+    # and on the cluster (data_path is already per-machine via output_directory).
+    # NOT a Lightning resume: optimizer moments / LR position / epoch counter start fresh, so
+    # --epochs is a brand-new schedule budget (warmup = 5% of it, cosine T_max = the rest).
+    # Missing checkpoint or any key/shape mismatch RAISES: a continuation that silently fell
+    # back to random init would look like a continuation in every log but the weights.
+    _ws_cfg = _raw_cfg.get("ml_warm_start") or {}
+    _ws_from = _ws_cfg.get("from_run_name")
+    if _ws_from:
+        _ws_ckpt = load_warm_start_weights(trainer.model, Path(data_path) / _ws_from)
+        print(f"Warm start: loaded {_ws_ckpt} into the flow (strict=True); "
+              f"optimizer + LR schedule start FRESH at lr={lr} over {args.epochs} epochs")
+        # Provenance into model_meta.json — without this the continuation checkpoint is
+        # indistinguishable from a from-scratch run at the same lr (see write_model_meta).
+        trainer.record_model_config({"warm_start_checkpoint": str(_ws_ckpt)})
+
     # Default logging is W&B (cloud; also writes a readable wandb-summary.json locally).
     # --csv_logger ADDS a deterministic on-disk metrics.csv (beside the checkpoints at
     # data_path/run_name/) ALONGSIDE W&B, so the remote `train-monitor` verb can parse
