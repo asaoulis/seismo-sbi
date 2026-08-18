@@ -604,7 +604,7 @@ def main():
               f"optimizer + LR schedule start FRESH at lr={lr} over {args.epochs} epochs")
         # Provenance into model_meta.json — without this the continuation checkpoint is
         # indistinguishable from a from-scratch run at the same lr (see write_model_meta).
-        trainer.record_model_config({"warm_start_checkpoint": str(_ws_ckpt)})
+        trainer.record_model_config(warm_start_checkpoint=str(_ws_ckpt))
 
     # Default logging is W&B (cloud; also writes a readable wandb-summary.json locally).
     # --csv_logger ADDS a deterministic on-disk metrics.csv (beside the checkpoints at

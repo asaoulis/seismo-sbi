@@ -45,10 +45,19 @@ def test_record_model_config_returns_the_config_and_accepts_several_entries():
 
 
 def test_the_sidecar_serialises_the_recorded_model_config():
-    """meta['model_config'] is self._model_config, so recorded entries land in the JSON."""
-    src = inspect.getsource(CompressionTrainer.train)
+    """meta['model_config'] is self._model_config, so recorded entries land in the JSON.
+
+    The dict lives in ``write_model_meta`` (which ``train`` delegates to, and which the
+    wall-kill recovery path calls directly) — both are asserted so the guarantee cannot be
+    lost by the sidecar being built somewhere that only one entry point reaches.
+    """
+    src = inspect.getsource(CompressionTrainer.write_model_meta)
     assert '"model_config": self._model_config' in src, (
         "sidecar must serialise the trainer's own merged config, not a caller-supplied one"
+    )
+    assert "self.write_model_meta(" in inspect.getsource(CompressionTrainer.train), (
+        "train must write the sidecar through write_model_meta so a training run and the "
+        "recovery path emit the same metadata"
     )
 
 
@@ -61,3 +70,29 @@ def test_train_npe_registers_mmd_through_the_recorder():
         "train_NPE must register the MMD block via record_model_config, or MMD checkpoints "
         "lose it from model_meta.json"
     )
+
+
+def test_every_record_model_config_call_site_uses_keywords():
+    """`record_model_config(self, **entries)` is KEYWORD-ONLY — a positional dict raises
+    TypeError at runtime.
+
+    Regression guard for a real failure: `record_model_config({"warm_start_checkpoint": ...})`
+    reached the cluster and killed a 2-GPU training job ~2 minutes in. Neither the unit tests
+    (which call the trainer method directly) nor the smoke gate (which never invokes
+    `train_NPE.main`) executed that line, so a source-level pin is the cheap guard — the same
+    reason `test_train_npe_registers_mmd_through_the_recorder` exists.
+    """
+    import re
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[2] / "scripts" / "train_NPE.py"
+    calls = re.findall(r"record_model_config\(([^)]*)", src.read_text())
+    assert calls, "expected at least one record_model_config call site in train_NPE.py"
+    for arg in calls:
+        arg = arg.strip()
+        assert not arg.startswith("{"), (
+            f"record_model_config takes **entries, not a positional dict: "
+            f"record_model_config({arg}...) raises TypeError at runtime"
+        )
+        assert re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=", arg), (
+            f"record_model_config call site must pass keyword arguments, got: {arg}"
+        )
