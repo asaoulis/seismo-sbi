@@ -22,7 +22,16 @@ options are **off by default and RNG-identical on the legacy path** (`tests/unit
 Run B (later, if needed) = the same YAML with `syngine_address`/`syngine_fiducial_address` → the rebuilt
 `japan_patch10s` DBs; it is **not** part of this runbook.
 
-## 1. Prerequisite: commit + push the src bundle (USER-gated: ask before pushing)
+## 1. Prerequisite: commit + push the src bundle — **DONE 2026-08-25**
+
+Commit **`9469342`** on `public-lib-refactor`, pushed to origin (fast gate 1812 green first).
+Use that SHA (or a later pushed one) for the cluster `sync --rev`. Contents: the seven src files
+below, the three unit-test files (incl. `test_anisotropy_effects.py` — the previously uncommitted
+anisotropy effects in `post_processing.py` ride along), and this runbook. NOT in git, by the repo's
+own convention (`scripts/axisem/` and `*.yaml` are gitignored; the whole AxiSEM pipeline lives
+untracked): `build_japan_patched_ensemble.py`, `depthdep_perturb.py`, the two
+`ensemble_config_japan_patch*.yaml`, and `first_ml_npe_japan_2050.yaml` (the orchestrator pushes
+the local YAML itself). Original checklist, for reference:
 
 Uncommitted in the working tree and required on the cluster: `src/seismo_sbi/instaseis_simulator/
 post_processing.py` (AmplitudeErrorEffect options, TimeShiftErrorEffect distance keys — inert,
@@ -34,10 +43,9 @@ DispersionSpreadEffect — unused, ScatteringCodaEffect distance_mode from sessi
 ```bash
 conda run -n seismo-sbi python -m pytest tests/unit tests/integration -x -q     # 1812 passed on 2026-08-25
 ```
-Then `git add` the files above, commit on `public-lib-refactor`, and **`git push origin public-lib-refactor`**
-(needs the ssh-agent — memory `github-push-ssh-agent`). Record `git rev-parse HEAD`: the cluster sync
-must use that SHA (memory `commit-push-before-tsync`: a branch name resolves to the cluster's stale
-local branch).
+(Completed as above; for any FURTHER src change: commit, push with the ssh-agent — memory
+`github-push-ssh-agent` — and sync with the new SHA, never the branch name — memory
+`commit-push-before-tsync`.)
 
 ## 2. Rebuild the noise pool at 20–50 s (LOCAL, no download needed)
 
