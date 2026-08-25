@@ -163,34 +163,58 @@ def _apply_per_station_gated(seismograms_map: dict, probability, transform) -> d
 
 
 class AmplitudeErrorEffect(SeismogramEffect):
-    """Per-station stochastic amplitude modulation.
+    """Stochastic amplitude modulation — per-station gated (legacy) or per-trace always-on.
 
-    Two-stage model for each station, applied independently:
+    **Legacy model** (``distribution='uniform'``, ``per_component=False``,
+    ``always_on=False`` — the defaults; RNG call order byte-identical to the original):
 
     1. **Dropout stage** — decide whether to apply modulation at all.
        The probability is ``amplitude_error`` (a value in ``[0, 1]``).
        ``amplitude_error = 0.0`` → no station is ever modulated (identity).
        ``amplitude_error = 1.0`` → every station is modulated.
+    2. **Scale stage** — if the station is selected, multiply all its component
+       traces by ONE scale factor drawn uniformly from ``[scale_low, scale_high]``.
 
-    2. **Scale stage** — if the station is selected, multiply all its
-       component traces by a scale factor drawn uniformly from
-       ``[scale_low, scale_high]``.  The default range is
-       ``[DEFAULT_SCALE_LOW, DEFAULT_SCALE_HIGH]``.  Each station gets an
-       **independent** draw, so different stations can have different scales
-       within the same simulation.
+    **Recalibrated model** (Japan forensics N14 §4 / N17a, 2026-08-25): the measured
+    per-trace amplitude error of real regional records against 1-D synthetics is
+    log-normal with σ ≈ 0.3 dex, *independent between the components of a station*
+    (σ(R−Z) 0.16 dex, σ(T−Z) 0.30 dex) and present on every trace — while the legacy
+    model applies one flat-in-frequency factor per station, identical on all
+    components, to a Bernoulli-gated minority of stations.  On a frozen network the
+    per-trace structure at σ = 0.35 dex reproduces ~37 % of the observed ISO
+    displacement and half the posterior-width excess; the per-station structure at
+    the same σ reproduces none of it.  Three switches express the measured structure:
 
-    Nuisance key: ``amplitude_error`` — a probability in ``[0, 1]``.
+    * ``distribution='lognormal'`` — ``g = 10 ** (σ · N(0, 1))`` with
+      ``σ = log_sigma_dex`` (default :data:`DEFAULT_LOG_SIGMA_DEX`) instead of
+      ``U(scale_low, scale_high)``.
+    * ``per_component=True`` — an independent draw per (station, component) trace
+      instead of one draw per station.
+    * ``always_on=True`` — no Bernoulli gate: every station is modulated, and the
+      nuisance value ``amplitude_error`` becomes a **strength multiplier** on σ
+      (``0`` → identity, ``1`` → the configured σ, ``2`` → double), the same
+      convention as :class:`ScatteringCodaEffect` in distance mode.  With the
+      uniform distribution the multiplier only switches the effect on/off.
 
-    If ``amplitude_error`` is absent from ``nuisance_params`` the input map is
-    returned unchanged.
+    Nuisance key: ``amplitude_error`` — a probability in ``[0, 1]`` (legacy) or a
+    strength multiplier (``always_on``).  If ``amplitude_error`` is absent from
+    ``nuisance_params`` the input map is returned unchanged.
 
     Parameters
     ----------
     scale_range:
-        Optional ``(low, high)`` tuple overriding the default scale factor
-        range.  Useful in tests to make the output deterministic (e.g.
+        Optional ``(low, high)`` tuple overriding the default uniform scale range.
+        Useful in tests to make the output deterministic (e.g.
         ``scale_range=(2.0, 2.0)`` always applies a factor of exactly 2).
         Defaults to ``(DEFAULT_SCALE_LOW, DEFAULT_SCALE_HIGH)``.
+    distribution:
+        ``'uniform'`` (default, legacy) or ``'lognormal'``.
+    log_sigma_dex:
+        Width of the log-normal in dex (``distribution='lognormal'`` only).
+    per_component:
+        Draw independently per component trace instead of once per station.
+    always_on:
+        Disable the per-station Bernoulli gate; nuisance value = strength multiplier.
 
     Note
     ----
@@ -203,16 +227,51 @@ class AmplitudeErrorEffect(SeismogramEffect):
     DEFAULT_SCALE_LOW: float = 0.5
     #: Default upper bound of the per-station scale factor distribution.
     DEFAULT_SCALE_HIGH: float = 2.0
+    #: Default log-normal width in dex (``distribution='lognormal'``): the measured
+    #: per-trace σ on Japan F-net records is 0.31–0.38 dex (N14 §4).
+    DEFAULT_LOG_SIGMA_DEX: float = 0.3
+    VALID_DISTRIBUTIONS = ("uniform", "lognormal")
 
     def __init__(
         self,
         scale_range: tuple[float, float] | None = None,
+        distribution: str = "uniform",
+        log_sigma_dex: Optional[float] = None,
+        per_component: bool = False,
+        always_on: bool = False,
     ) -> None:
         if scale_range is not None:
             self._scale_low, self._scale_high = float(scale_range[0]), float(scale_range[1])
         else:
             self._scale_low = self.DEFAULT_SCALE_LOW
             self._scale_high = self.DEFAULT_SCALE_HIGH
+        self._distribution = str(distribution).lower()
+        if self._distribution not in self.VALID_DISTRIBUTIONS:
+            raise ValueError(
+                f"distribution must be one of {self.VALID_DISTRIBUTIONS}; got {distribution!r}"
+            )
+        self._log_sigma = (
+            float(log_sigma_dex) if log_sigma_dex is not None else self.DEFAULT_LOG_SIGMA_DEX
+        )
+        if self._log_sigma < 0.0:
+            raise ValueError("log_sigma_dex must be >= 0")
+        self._per_component = bool(per_component)
+        self._always_on = bool(always_on)
+
+    def _draw_scale(self, multiplier: float) -> float:
+        """One scale factor.  Uniform ignores ``multiplier`` (legacy RNG call preserved)."""
+        if self._distribution == "lognormal":
+            return float(10.0 ** (multiplier * self._log_sigma * np.random.normal()))
+        return float(np.random.uniform(self._scale_low, self._scale_high))
+
+    def _scale_components(self, components: dict, multiplier: float) -> dict:
+        if self._per_component:
+            return {
+                comp: trace.astype(np.float64) * self._draw_scale(multiplier)
+                for comp, trace in components.items()
+            }
+        scale = self._draw_scale(multiplier)
+        return {comp: trace.astype(np.float64) * scale for comp, trace in components.items()}
 
     def __call__(
         self,
@@ -225,10 +284,18 @@ class AmplitudeErrorEffect(SeismogramEffect):
         if amplitude_error is None:
             return seismograms_map
 
+        if self._always_on:
+            multiplier = float(amplitude_error)
+            if multiplier == 0.0:
+                return seismograms_map
+            return {
+                station: self._scale_components(components, multiplier)
+                for station, components in seismograms_map.items()
+            }
+
         def _scale(components):
-            # Independent per-station scale factor
-            scale = np.random.uniform(self._scale_low, self._scale_high)
-            return {comp: trace.astype(np.float64) * scale for comp, trace in components.items()}
+            # Independent per-station (or per-trace) scale factor
+            return self._scale_components(components, 1.0)
 
         return _apply_per_station_gated(seismograms_map, amplitude_error, _scale)
 
@@ -514,6 +581,11 @@ class TimeShiftErrorEffect(SeismogramEffect):
         Standard deviation of the per-station Gaussian time-shift distribution
         in seconds.  Defaults to ``DEFAULT_GAUSSIAN_SIGMA`` (1.0 s).  Set via
         the YAML key ``gaussian_sigma``.
+    sigma_per_1000km, distance_cap_km:
+        Distance scaling of the per-station sigma (seconds per 1000 km, optional cap in km);
+        ``0`` (default) keeps the flat legacy sigma.  Requires the source location (nuisance
+        dict ``source_location`` at the simulation stage, or ``source_latitude`` /
+        ``source_longitude`` in the effect config).
     lanczos_order:
         Lanczos kernel order.  Higher values are more accurate but slower.
         Defaults to ``DEFAULT_LANCZOS_ORDER`` (5).  Set via YAML key
@@ -554,8 +626,25 @@ class TimeShiftErrorEffect(SeismogramEffect):
         lanczos_order: Optional[int] = None,
         common_offset_dist: Optional[str] = None,
         common_offset_sigma: Optional[float] = None,
+        sigma_per_1000km: float = 0.0,
+        distance_cap_km: Optional[float] = None,
+        source_latitude: Optional[float] = None,
+        source_longitude: Optional[float] = None,
     ) -> None:
         self._sampling_rate = float(sampling_rate)
+        # Distance-scaled per-station sigma (Japan forensics N9/N11/N14, 2026-08-25): the
+        # measured per-station timing error of 1-D synthetics grows with path length —
+        # σ ≈ 4 s inside 400 km rising to ≈ 15 s beyond 1200 km at 20–30 s — so the
+        # per-station Gaussian width is sigma(D) = gaussian_sigma + sigma_per_1000km * min(D, cap)/1000.
+        # Inert by default (0 slope → legacy behaviour and RNG order). Needs the source
+        # location (nuisance dict ``source_location`` — forwarded at the simulation stage —
+        # or the constructor), exactly like ScatteringCodaEffect(distance_mode=True).
+        self._sigma_per_1000km = float(sigma_per_1000km)
+        if self._sigma_per_1000km < 0.0:
+            raise ValueError("sigma_per_1000km must be >= 0")
+        self._distance_cap = None if distance_cap_km is None else float(distance_cap_km)
+        self._src = (None if source_latitude is None or source_longitude is None
+                     else (float(source_latitude), float(source_longitude)))
         self._uniform_offset = (
             float(uniform_offset)
             if uniform_offset is not None
@@ -590,17 +679,39 @@ class TimeShiftErrorEffect(SeismogramEffect):
             else self._uniform_offset
         )
 
+    def station_sigmas(self, receivers, source_location=None) -> dict:
+        """``{station_name: sigma_s}`` — the per-station Gaussian width, distance-scaled if
+        ``sigma_per_1000km > 0`` (otherwise the flat ``gaussian_sigma`` for every station)."""
+        if self._sigma_per_1000km <= 0.0:
+            return {}
+        src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
+               if source_location is not None else self._src)
+        if src is None:
+            raise ValueError(
+                "TimeShiftErrorEffect(sigma_per_1000km > 0) is active but no source location "
+                "is available (pass source_location in nuisance_params or "
+                "source_latitude/longitude in the effect config)")
+        out = {}
+        for r in receivers.iterate():
+            _, dist = _bearing_and_distance_km(src[0], src[1], r.latitude, r.longitude)
+            d = dist if self._distance_cap is None else min(dist, self._distance_cap)
+            out[r.station_name] = self._sigma + self._sigma_per_1000km * d / 1000.0
+        return out
+
     def __call__(
         self,
         seismograms_map: dict,
         receivers,
         *,
         time_shift_error: Optional[float] = None,
+        source_location=None,
         **_ignored,
     ) -> dict:
         # On/off switch: absent or 0.0 ⇒ identity (back-compat).
         if time_shift_error is None or float(time_shift_error) == 0.0:
             return seismograms_map
+
+        station_sigma = self.station_sigmas(receivers, source_location)
 
         # One array-wide common offset for this call, from the chosen distribution.
         if self._common_dist == "gaussian":
@@ -618,7 +729,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
         result = {}
         for station, components in seismograms_map.items():
             # One per-station Normal draw, in map order (RNG order preserved).
-            station_shift_s = common_offset_s + np.random.normal(0.0, self._sigma)
+            station_shift_s = common_offset_s + np.random.normal(
+                0.0, station_sigma.get(station, self._sigma))
             shift_samples = station_shift_s * self._sampling_rate
             comps = list(components)
             if not comps:
@@ -770,6 +882,100 @@ def _apply_random_coda_filter(
     return np.convolve(trace_f, kernel)[:n]
 
 
+
+# ---------------------------------------------------------------------------
+# Distance-scaled scattering (far-path decoherence + incoherent coda energy)
+# ---------------------------------------------------------------------------
+
+def distance_scaled_alpha(
+    dist_km,
+    alpha_intercept: float = 0.0,
+    alpha_per_1000km: float = 0.0,
+    distance_cap_km: Optional[float] = None,
+):
+    """Coda strength as a function of source–station distance.
+
+    ``alpha(D) = alpha_intercept + alpha_per_1000km * min(D, cap) / 1000``, clipped to
+    ``[0, 1]``.  A linear growth with path length is the first-order scattering-theory
+    expectation: the scattered (coda) energy fraction accumulates as ``D / l`` with ``l``
+    the mean free path (Sato, Fehler & Maeda 2012, ch. 3), so the strength of the
+    delayed-replica kernel grows with the path.  The cap lets the far-field saturate.
+    Vectorised in ``dist_km``.
+    """
+    d = np.asarray(dist_km, dtype=np.float64)
+    if distance_cap_km is not None:
+        d = np.minimum(d, float(distance_cap_km))
+    a = float(alpha_intercept) + float(alpha_per_1000km) * d / 1000.0
+    return np.clip(a, 0.0, 1.0)
+
+
+def distance_tail_energy(
+    dist_km,
+    excess_dex_per_1000km: float = 0.0,
+    distance_cap_km: Optional[float] = None,
+):
+    """Target coda (tail) energy relative to the direct arrival, from a distance ramp.
+
+    The kernel of :func:`_apply_distance_coda_kernel` is ``[1, tail]`` with
+    ``||tail||^2 = E_tail``; for a broadband input the output energy is ``(1 + E_tail)``
+    times the input energy, i.e. an RMS excess of ``0.5 log10(1 + E_tail)`` dex.  Inverting
+    a linear RMS-dex ramp ``excess_dex_per_1000km * min(D, cap) / 1000`` gives
+
+        E_tail(D) = 10^(2 * excess_dex_per_1000km * min(D, cap) / 1000) - 1 .
+
+    This is the *kernel-level* target; the excess measured in a group-velocity window
+    of a real seismogram also depends on the trace's own time structure, so the
+    per-1000 km value must be calibrated against the same window diagnostics used on
+    the data (not read off this formula).  Vectorised in ``dist_km``.
+    """
+    d = np.asarray(dist_km, dtype=np.float64)
+    if distance_cap_km is not None:
+        d = np.minimum(d, float(distance_cap_km))
+    e = 10.0 ** (2.0 * float(excess_dex_per_1000km) * d / 1000.0) - 1.0
+    return np.maximum(e, 0.0)
+
+
+def _apply_distance_coda_kernel(
+    trace: np.ndarray,
+    alpha: float,
+    tail_energy: float,
+    max_coda_fraction: float = DEFAULT_CODA_FRACTION,
+) -> np.ndarray:
+    """Delayed-replica (multipath) coda kernel with prescribed tail energy.
+
+    Same construction as :func:`_apply_random_coda_filter` — a unit spike at lag 0 (direct
+    arrival pinned: no bulk time shift) followed by an exponentially decaying tail of
+    i.i.d. ``U(-1, 1)`` taps whose length is ``round(alpha * max_coda_fraction * n)`` —
+    but the tail is scaled to ``||tail||^2 = tail_energy`` and the kernel is **not**
+    re-normalised.  Convolution therefore adds a superposition of delayed, randomly
+    weighted replicas of the signal (single-scattering / multipathing picture), which
+    both decorrelates the waveform from the unperturbed one (coherence loss growing with
+    ``alpha`` and ``tail_energy``) and *adds* incoherent energy behind every arrival —
+    the two far-path signatures measured on F-net data (cross-correlation with the 1-D
+    synthetic falling with distance while the surface-wave-window energy exceeds the
+    prediction).  ``tail_energy <= 0`` or ``alpha <= 0`` is the identity.
+
+    RNG: exactly one ``np.random.uniform`` call of size ``coda_len + 1`` (as the legacy
+    kernel), so per-station seeding behaves identically.
+    """
+    n = len(trace)
+    trace_f = trace.astype(np.float64)
+    if alpha <= 0.0 or tail_energy <= 0.0:
+        return trace_f.copy()
+    coda_len = max(1, int(round(alpha * max_coda_fraction * n)))
+    taps = np.arange(coda_len + 1, dtype=np.float64)
+    envelope = np.exp(-taps / max(coda_len / 3.0, 1.0))
+    tail = np.random.uniform(-1.0, 1.0, size=coda_len + 1) * envelope
+    tail[0] = 0.0
+    norm = np.linalg.norm(tail)
+    if norm <= 0.0:
+        return trace_f.copy()
+    tail *= np.sqrt(float(tail_energy)) / norm
+    kernel = tail
+    kernel[0] = 1.0  # unit spike at lag 0 -> direct arrival preserved, energy ADDED by the tail
+    return np.convolve(trace_f, kernel)[:n]
+
+
 class ScatteringCodaEffect(SeismogramEffect):
     """Per-station stochastic coda filter (waveform modelling error).
 
@@ -830,10 +1036,47 @@ class ScatteringCodaEffect(SeismogramEffect):
         at ``alpha = 1``; ``'stahler'``: transfer-function FIR length).  Defaults
         to :data:`DEFAULT_CODA_FRACTION`.
 
+    Distance mode (``distance_mode=True``) — far-path scattering emulation
+    ---------------------------------------------------------------------
+    The legacy model above is per-station i.i.d. and **distance-blind**: 60 % of stations
+    are untouched whatever their path length and the strength never grows with distance.
+    On F-net regional data (paths 100–1500 km, 10–50 s) the 1-D Green's functions
+    decohere with path length (best cross-correlation 0.86 at < 200 km falling to ~0.4
+    beyond 1200 km) while the surface-wave-window energy exceeds the 1-D prediction by a
+    frequency-independent ~+0.25 dex per 1000 km — a scattering/3-D-path regime the
+    legacy operator cannot express.  Distance mode replaces the Bernoulli gate and the
+    uniform ``alpha`` draw with a **deterministic distance ramp**, applied to every
+    station:
+
+        alpha_s      = clip(m * alpha(D_s) * (1 + U(-alpha_jitter, +alpha_jitter)), 0, 1)
+        alpha(D)     = alpha_intercept + alpha_per_1000km * min(D, cap) / 1000
+        E_tail(D_s)  = 10^(2 * m * excess_dex_per_1000km * min(D, cap) / 1000) - 1
+
+    with ``D_s`` the source–station distance (km) and ``m`` the nuisance value
+    ``scattering_coda``, which in distance mode is a **strength multiplier** (0 or absent
+    → identity, 1 → the configured ramp, 2 → double), not a gate probability — the same
+    convention as :class:`AzimuthalAnisotropyEffect`.  ``mode='causal'`` uses
+    :func:`_apply_distance_coda_kernel` (delayed-replica kernel with tail energy
+    ``E_tail``: decoherence *and* added incoherent energy); ``mode='stahler'`` uses the
+    unit-amplitude phase filter at ``alpha_s`` (decoherence only, energy conserved —
+    ``excess_dex_per_1000km`` is then ignored).  The path-length scaling follows the
+    scattering-theory expectation that coda energy accumulates as ``D / l`` (mean free
+    path ``l``; Sato, Fehler & Maeda 2012), on top of the Stähler & Sigloch (2016)
+    modelling-error operator.  All ramp defaults are **inert** (0 slope, 0 excess): the
+    calibrated values are config, not code, and are set from the data-side coherence and
+    window-energy curves (see ``station_scattering_params`` for provenance).
+
+    The source location is taken from the nuisance dict (``source_location``, first two
+    entries = lat, lon — forwarded by ``Simulator.run_simulation``) or from the
+    constructor; if distance mode is active and neither is available the effect raises.
+    ``training_augmentation`` does not yet forward the source location, so distance mode
+    is a simulation-stage / injection-harness feature for now.
+
     Note
     ----
     This effect is stochastic.  Use ``numpy.random.seed`` in tests that
-    require reproducibility.
+    require reproducibility.  With ``distance_mode=False`` (default) the behaviour and
+    the RNG call order are exactly those of the legacy model.
     """
 
     #: Default per-station ``alpha`` sampling range (uniform).
@@ -846,12 +1089,35 @@ class ScatteringCodaEffect(SeismogramEffect):
         alpha_range: Optional[tuple] = None,
         mode: str = "causal",
         coda_fraction: Optional[float] = None,
+        distance_mode: bool = False,
+        alpha_intercept: float = 0.0,
+        alpha_per_1000km: float = 0.0,
+        alpha_jitter: float = 0.0,
+        excess_dex_per_1000km: float = 0.0,
+        distance_cap_km: Optional[float] = None,
+        source_latitude: Optional[float] = None,
+        source_longitude: Optional[float] = None,
     ) -> None:
         if alpha is not None and alpha_range is not None:
             raise ValueError(
                 "ScatteringCodaEffect: specify only one of `alpha` (fixed) or "
                 "`alpha_range` (per-station sampled)."
             )
+        self._distance_mode = bool(distance_mode)
+        self._alpha_intercept = float(alpha_intercept)
+        self._alpha_per_1000km = float(alpha_per_1000km)
+        self._alpha_jitter = float(alpha_jitter)
+        self._excess_dex = float(excess_dex_per_1000km)
+        self._distance_cap = None if distance_cap_km is None else float(distance_cap_km)
+        self._src = (None if source_latitude is None or source_longitude is None
+                     else (float(source_latitude), float(source_longitude)))
+        if self._distance_mode:
+            if not (0.0 <= self._alpha_jitter < 1.0):
+                raise ValueError("ScatteringCodaEffect: alpha_jitter must be in [0, 1)")
+            if self._alpha_per_1000km < 0.0 or self._excess_dex < 0.0:
+                raise ValueError(
+                    "ScatteringCodaEffect: alpha_per_1000km and excess_dex_per_1000km must be >= 0"
+                )
         if alpha is not None:
             # Fixed alpha: degenerate range so every station gets exactly `alpha`.
             self._alpha_low = self._alpha_high = float(alpha)
@@ -874,16 +1140,78 @@ class ScatteringCodaEffect(SeismogramEffect):
             return _apply_stahler_phase_filter(trace, alpha, self._coda_fraction)
         return _apply_random_coda_filter(trace, alpha, self._coda_fraction)
 
+    # ------------------------------------------------------------------ distance mode
+    @property
+    def distance_mode(self) -> bool:
+        return self._distance_mode
+
+    def _resolve_source(self, source_location):
+        src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
+               if source_location is not None else self._src)
+        if src is None:
+            raise ValueError(
+                "ScatteringCodaEffect(distance_mode=True) is active but no source location "
+                "is available (pass source_location in nuisance_params or "
+                "source_latitude/longitude in the effect config)")
+        return src
+
+    def station_scattering_params(self, receivers, source_latlon, multiplier: float = 1.0) -> dict:
+        """``{station_name: (dist_km, alpha_nominal, tail_energy)}`` for provenance.
+
+        ``alpha_nominal`` is the ramp value *before* the per-station jitter draw.
+        """
+        src_lat, src_lon = source_latlon
+        m = float(multiplier)
+        out = {}
+        for r in receivers.iterate():
+            _, dist = _bearing_and_distance_km(src_lat, src_lon, r.latitude, r.longitude)
+            a = float(np.clip(m * distance_scaled_alpha(
+                dist, self._alpha_intercept, self._alpha_per_1000km, self._distance_cap), 0.0, 1.0))
+            e = float(distance_tail_energy(dist, m * self._excess_dex, self._distance_cap))
+            out[r.station_name] = (float(dist), a, e)
+        return out
+
+    def _apply_distance_mode(self, seismograms_map, receivers, multiplier, source_location):
+        m = float(multiplier)
+        if m == 0.0:
+            return seismograms_map
+        src = self._resolve_source(source_location)
+        params = self.station_scattering_params(receivers, src, m)
+        result = {}
+        for station, components in seismograms_map.items():
+            if station not in params:
+                raise KeyError(
+                    f"ScatteringCodaEffect(distance_mode=True): station {station!r} has no "
+                    "receiver coordinates")
+            dist, a_nom, e_tail = params[station]
+            # RNG order per station: one jitter draw, then one tail draw per component.
+            jitter = (np.random.uniform(-self._alpha_jitter, self._alpha_jitter)
+                      if self._alpha_jitter > 0.0 else 0.0)
+            alpha = float(np.clip(a_nom * (1.0 + jitter), 0.0, 1.0))
+            if self._mode == "stahler":
+                result[station] = {
+                    comp: _apply_stahler_phase_filter(trace, alpha, self._coda_fraction)
+                    for comp, trace in components.items()}
+            else:
+                result[station] = {
+                    comp: _apply_distance_coda_kernel(trace, alpha, e_tail, self._coda_fraction)
+                    for comp, trace in components.items()}
+        return result
+
     def __call__(
         self,
         seismograms_map: dict,
         receivers,
         *,
         scattering_coda: Optional[float] = None,
+        source_location=None,
         **_ignored,
     ) -> dict:
         if scattering_coda is None:
             return seismograms_map
+        if self._distance_mode:
+            return self._apply_distance_mode(seismograms_map, receivers,
+                                             scattering_coda, source_location)
 
         def _coda(components):
             # One alpha per station, shared across its components.
@@ -894,16 +1222,337 @@ class ScatteringCodaEffect(SeismogramEffect):
 
 
 # ---------------------------------------------------------------------------
+# Anisotropy injection effects
+# ---------------------------------------------------------------------------
+
+
+def _bearing_and_distance_km(src_lat, src_lon, sta_lat, sta_lon):
+    """Source→station azimuth (deg, clockwise from north) and distance (km).
+
+    Spherical-Earth formulas (R = 6371 km); numpy-only so the effect stays
+    dependency-free.  Accuracy is far beyond what a cos 2φ anomaly needs.
+    """
+    la1, lo1 = np.deg2rad(src_lat), np.deg2rad(src_lon)
+    la2, lo2 = np.deg2rad(sta_lat), np.deg2rad(sta_lon)
+    dlon = lo2 - lo1
+    az = np.arctan2(
+        np.sin(dlon) * np.cos(la2),
+        np.cos(la1) * np.sin(la2) - np.sin(la1) * np.cos(la2) * np.cos(dlon))
+    hav = (np.sin((la2 - la1) / 2.0) ** 2
+           + np.cos(la1) * np.cos(la2) * np.sin(dlon / 2.0) ** 2)
+    dist = 2.0 * 6371.0 * np.arcsin(np.sqrt(hav))
+    return np.rad2deg(az) % 360.0, dist
+
+
+class AzimuthalAnisotropyEffect(SeismogramEffect):
+    """Coherent azimuth-dependent travel-time anomaly (weak-anisotropy cos 2φ).
+
+    Models the P-delay signature of weak azimuthal anisotropy (Backus 1965
+    parameterisation, as used operationally by Silver & Chan 1991): the
+    velocity varies as ``V(φ) = V₀(1 + A cos 2(φ − φ_fast))``, so a path of
+    length ``D`` at source→station azimuth ``φ`` accumulates a delay
+
+        Δt(φ) = −(D / V₀) · A · cos(2(φ − φ_fast))
+
+    (fast azimuth ⇒ early arrival ⇒ negative delay).  The shift grows with
+    path length and is **coherent across the array by construction** — this is
+    the causal variable the injection experiment isolates, in contrast to the
+    random per-station shifts of :class:`TimeShiftErrorEffect`.
+
+    All components of a station share the shift (applied via Lanczos, as in
+    :class:`TimeShiftErrorEffect`).  Deterministic — no RNG.
+
+    Nuisance key: ``azimuthal_anisotropy`` — 0.0/absent ⇒ identity; otherwise
+    the value is a **strength multiplier** on ``aniso_fraction`` (so arms ×1,
+    ×5, ×10 are driven through the nuisance value with fixed configs).
+
+    The source location is required to compute azimuths.  It is taken from the
+    nuisance dict (``source_location = (lat, lon)``-like) if present, else from
+    the constructor.  If the effect is ACTIVE and no source location is
+    available it raises rather than silently no-oping.
+    """
+
+    DEFAULT_REF_VELOCITY_KMS: float = 3.5
+    DEFAULT_LANCZOS_ORDER: int = 5
+
+    def __init__(
+        self,
+        sampling_rate: float,
+        fast_azimuth_deg: float = 45.0,
+        aniso_fraction: float = 0.0125,
+        ref_velocity_kms: Optional[float] = None,
+        source_latitude: Optional[float] = None,
+        source_longitude: Optional[float] = None,
+        lanczos_order: Optional[int] = None,
+    ) -> None:
+        self._sampling_rate = float(sampling_rate)
+        self._fast_az = float(fast_azimuth_deg)
+        self._fraction = float(aniso_fraction)
+        self._v0 = float(ref_velocity_kms if ref_velocity_kms is not None
+                         else self.DEFAULT_REF_VELOCITY_KMS)
+        self._src = (None if source_latitude is None or source_longitude is None
+                     else (float(source_latitude), float(source_longitude)))
+        self._order = int(lanczos_order if lanczos_order is not None
+                          else self.DEFAULT_LANCZOS_ORDER)
+
+    def station_delays(self, receivers, source_latlon) -> dict:
+        """``{station_name: delay_seconds}`` at multiplier 1 (for provenance)."""
+        src_lat, src_lon = source_latlon
+        out = {}
+        for r in receivers.iterate():
+            az, dist = _bearing_and_distance_km(src_lat, src_lon,
+                                                r.latitude, r.longitude)
+            out[r.station_name] = float(
+                -(dist / self._v0) * self._fraction
+                * np.cos(2.0 * np.deg2rad(az - self._fast_az)))
+        return out
+
+    def __call__(
+        self,
+        seismograms_map: dict,
+        receivers,
+        *,
+        azimuthal_anisotropy: Optional[float] = None,
+        source_location=None,
+        **_ignored,
+    ) -> dict:
+        if azimuthal_anisotropy is None or float(azimuthal_anisotropy) == 0.0:
+            return seismograms_map
+        mult = float(azimuthal_anisotropy)
+        src = (tuple(np.asarray(source_location, float)[:2])
+               if source_location is not None else self._src)
+        if src is None:
+            raise ValueError(
+                "AzimuthalAnisotropyEffect is active but no source location is "
+                "available (pass source_location in nuisance_params or "
+                "source_latitude/longitude in the effect config)")
+        delays = self.station_delays(receivers, src)
+        result = {}
+        for station, components in seismograms_map.items():
+            comps = list(components)
+            if station not in delays or not comps:
+                result[station] = dict(components)
+                continue
+            shift_samples = mult * delays[station] * self._sampling_rate
+            traces = np.stack([components[c] for c in comps])
+            shifted = _apply_lanczos_shift_batch(traces, shift_samples, self._order)
+            result[station] = {c: shifted[j] for j, c in enumerate(comps)}
+        return result
+
+
+class ShearSplittingEffect(SeismogramEffect):
+    """Shear-wave splitting via the Silver & Chan (1991) operator.
+
+    Station-side, geographic frame, horizontals only: rotate (N, E) into the
+    (fast, slow) frame defined by the fast-polarisation azimuth ``φ_fast``,
+    delay the SLOW trace by ``δt`` (Lanczos), rotate back.  Z is untouched.
+    Deterministic — no RNG.  Stations missing either horizontal are passed
+    through unchanged.
+
+    Nuisance key: ``shear_wave_splitting`` — 0.0/absent ⇒ identity; otherwise
+    a **multiplier** on ``delay_s`` (arms ×1/×5/×10).
+
+    Operator form confirmed against Silver & Chan (1991) eqs. 1–13 (see the
+    anisotropy-robustness task, artifacts/lit/03).
+    """
+
+    DEFAULT_LANCZOS_ORDER: int = 5
+
+    def __init__(
+        self,
+        sampling_rate: float,
+        fast_azimuth_deg: float = 45.0,
+        delay_s: float = 0.149,
+        lanczos_order: Optional[int] = None,
+    ) -> None:
+        self._sampling_rate = float(sampling_rate)
+        self._fast_az = float(fast_azimuth_deg)
+        self._delay = float(delay_s)
+        self._order = int(lanczos_order if lanczos_order is not None
+                          else self.DEFAULT_LANCZOS_ORDER)
+
+    def __call__(
+        self,
+        seismograms_map: dict,
+        receivers,
+        *,
+        shear_wave_splitting: Optional[float] = None,
+        **_ignored,
+    ) -> dict:
+        if shear_wave_splitting is None or float(shear_wave_splitting) == 0.0:
+            return seismograms_map
+        delay_samples = (float(shear_wave_splitting) * self._delay
+                         * self._sampling_rate)
+        phi = np.deg2rad(self._fast_az)
+        c, s = np.cos(phi), np.sin(phi)
+        result = {}
+        for station, components in seismograms_map.items():
+            if "E" not in components or "N" not in components:
+                result[station] = dict(components)
+                continue
+            north = np.asarray(components["N"], float)
+            east = np.asarray(components["E"], float)
+            fast = c * north + s * east
+            slow = -s * north + c * east
+            slow = _apply_lanczos_shift_batch(slow[None, :], delay_samples,
+                                              self._order)[0]
+            new = dict(components)
+            new["N"] = c * fast - s * slow
+            new["E"] = s * fast + c * slow
+            result[station] = new
+        return result
+
+
+# ---------------------------------------------------------------------------
 # Registry and factory
 # ---------------------------------------------------------------------------
 
 #: Maps nuisance parameter key → effect class.  Register new effects here.
+
+class DispersionSpreadEffect(SeismogramEffect):
+    """Frequency-dependent travel-time (dispersion) error — a pure phase delay per station.
+
+    Ported from the validated N11 injection operator (Japan forensics, 2026-08-24/25):
+
+        u'(f) = u(f) · exp(−2πi f τ(f))
+
+    with τ(f) interpolated in log-period between octave centres ``octave_centres_s`` and held
+    constant outside them.  Per station the octave delays are
+
+        τ_o = m · z_o · σ_o(D),   σ_o(D) = sigma_intercept_s[o] + sigma_per_1000km_s[o] · min(D, cap) / 1000
+
+    where ``m`` is the nuisance value (strength multiplier; ``0`` → identity) and the ``z_o`` are
+    standard normals.  Their correlation structure is the physics: a too-fast (or too-slow)
+    crust delays *every* octave of a path in the same sense, so ``z_o`` is by default ONE draw
+    per station shared across octaves (``octave_correlation=1``); ``octave_correlation=0``
+    reproduces N11's independent-per-octave form, and intermediate values mix the two.
+    ``common_fraction`` puts that share of the variance into ONE array-wide draw (the coherent,
+    same-sign far-station delay the measured data contain and per-station-independent sampling
+    can never produce).
+
+    The measured Japan calibration (N11 §2b, F-net reference, 61-member CPS spread): ensemble
+    phase-velocity σ_t ≈ 4.7 / 3.7 / 2.2 / 0.8 s inside 400 km and 23.5 / 18.3 / 10.9 / 4.0 s beyond
+    1200 km at 12.5 / 17.5 / 25 / 40 s — i.e. ``sigma_intercept_s ≈ [0, 0, 0, 0]`` and
+    ``sigma_per_1000km_s ≈ [19, 15, 9, 3]``.  The measured *bias* (+14–16 s at 10–15 s beyond
+    800 km) is NOT part of this effect: a bias belongs in the fiducial model, not in a nuisance.
+
+    Nuisance key: ``dispersion_spread`` — strength multiplier.  Simulation stage only (needs the
+    source location, forwarded by ``Simulator.run_simulation``, or ``source_latitude`` /
+    ``source_longitude`` in the effect config).  ``sampling_rate`` is injected automatically.
+    """
+
+    DEFAULT_OCTAVE_CENTRES_S = (12.5, 17.5, 25.0, 40.0)
+
+    def __init__(
+        self,
+        sampling_rate: float,
+        octave_centres_s=None,
+        sigma_intercept_s=None,
+        sigma_per_1000km_s=None,
+        distance_cap_km: Optional[float] = None,
+        octave_correlation: float = 1.0,
+        common_fraction: float = 0.0,
+        source_latitude: Optional[float] = None,
+        source_longitude: Optional[float] = None,
+    ) -> None:
+        self._sampling_rate = float(sampling_rate)
+        self._T = np.array(octave_centres_s if octave_centres_s is not None
+                           else self.DEFAULT_OCTAVE_CENTRES_S, dtype=np.float64)
+        n = len(self._T)
+        if n < 1 or np.any(np.diff(self._T) <= 0):
+            raise ValueError("octave_centres_s must be strictly increasing periods (s)")
+        self._a = np.zeros(n) if sigma_intercept_s is None else np.asarray(sigma_intercept_s, float)
+        self._b = np.zeros(n) if sigma_per_1000km_s is None else np.asarray(sigma_per_1000km_s, float)
+        if self._a.shape != (n,) or self._b.shape != (n,):
+            raise ValueError("sigma_intercept_s / sigma_per_1000km_s must have one entry per octave centre")
+        if np.any(self._a < 0) or np.any(self._b < 0):
+            raise ValueError("dispersion sigmas must be >= 0")
+        self._cap = None if distance_cap_km is None else float(distance_cap_km)
+        self._rho = float(octave_correlation)
+        self._common = float(common_fraction)
+        if not (0.0 <= self._rho <= 1.0) or not (0.0 <= self._common <= 1.0):
+            raise ValueError("octave_correlation and common_fraction must lie in [0, 1]")
+        self._src = (None if source_latitude is None or source_longitude is None
+                     else (float(source_latitude), float(source_longitude)))
+
+    def station_sigmas(self, receivers, source_location=None) -> dict:
+        """``{station_name: sigma_per_octave (array)}`` in seconds."""
+        src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
+               if source_location is not None else self._src)
+        if src is None:
+            raise ValueError(
+                "DispersionSpreadEffect is active but no source location is available "
+                "(pass source_location in nuisance_params or source_latitude/longitude "
+                "in the effect config)")
+        out = {}
+        for r in receivers.iterate():
+            _, dist = _bearing_and_distance_km(src[0], src[1], r.latitude, r.longitude)
+            d = dist if self._cap is None else min(dist, self._cap)
+            out[r.station_name] = self._a + self._b * d / 1000.0
+        return out
+
+    def tau_of_freq(self, freqs: np.ndarray, tau_octaves: np.ndarray) -> np.ndarray:
+        """Interpolate per-octave delays (s) onto a frequency axis, log-period, clamped."""
+        with np.errstate(divide="ignore"):
+            per = np.where(freqs > 0, 1.0 / np.maximum(freqs, 1e-12), self._T[-1])
+        per = np.clip(per, self._T[0], self._T[-1])
+        if len(self._T) == 1:
+            return np.full_like(freqs, tau_octaves[0], dtype=np.float64)
+        return np.interp(np.log(per), np.log(self._T), tau_octaves)
+
+    @staticmethod
+    def _delay(trace: np.ndarray, tau_f: np.ndarray, dt: float) -> np.ndarray:
+        n = len(trace)
+        fr = np.fft.rfftfreq(n, d=dt)
+        return np.fft.irfft(np.fft.rfft(trace) * np.exp(-2j * np.pi * fr * tau_f), n=n)
+
+    def __call__(
+        self,
+        seismograms_map: dict,
+        receivers,
+        *,
+        dispersion_spread: Optional[float] = None,
+        source_location=None,
+        **_ignored,
+    ) -> dict:
+        if dispersion_spread is None or float(dispersion_spread) == 0.0:
+            return seismograms_map
+        m = float(dispersion_spread)
+        sig = self.station_sigmas(receivers, source_location)
+        n_oct = len(self._T)
+        # ONE array-wide draw (shared by every station), then per-station draws.
+        z_common = np.random.normal(size=n_oct)
+        z_common_shared = np.random.normal()
+        dt = 1.0 / self._sampling_rate
+        result = {}
+        for station, components in seismograms_map.items():
+            z_shared = np.random.normal()
+            z_ind = np.random.normal(size=n_oct)
+            z_sta = np.sqrt(self._rho) * z_shared + np.sqrt(1.0 - self._rho) * z_ind
+            z_com = np.sqrt(self._rho) * z_common_shared + np.sqrt(1.0 - self._rho) * z_common
+            z = np.sqrt(self._common) * z_com + np.sqrt(1.0 - self._common) * z_sta
+            tau_oct = m * z * sig.get(station, np.zeros(n_oct))
+            comps = list(components)
+            if not comps or not np.any(tau_oct):
+                result[station] = {c: components[c].astype(np.float64) for c in comps}
+                continue
+            n = len(components[comps[0]])
+            fr = np.fft.rfftfreq(n, d=dt)
+            tau_f = self.tau_of_freq(fr, tau_oct)
+            result[station] = {c: self._delay(components[c].astype(np.float64), tau_f, dt)
+                               for c in comps}
+        return result
+
+
 EFFECT_REGISTRY: dict[str, type[SeismogramEffect]] = {
     "amplitude_error": AmplitudeErrorEffect,
     "instrument_dropout": InstrumentDropoutEffect,
     "time_shift_error": TimeShiftErrorEffect,
     "scattering_coda": ScatteringCodaEffect,
     "component_dropout": ComponentDropoutEffect,
+    "azimuthal_anisotropy": AzimuthalAnisotropyEffect,
+    "shear_wave_splitting": ShearSplittingEffect,
+    "dispersion_spread": DispersionSpreadEffect,
 }
 
 

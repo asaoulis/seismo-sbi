@@ -143,9 +143,33 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     """
 
     def __init__(self, instaseis_ensemble_dir, instaseis_fiducial_loc, *args,
-                 resample_member_per_station=False, **kwargs):
+                 resample_member_per_station=False, member_sampling=None,
+                 sector_lambda=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.resample_member_per_station = resample_member_per_station
+        # Poisson-boundary azimuthal-SECTOR sampling (agreed middle-road design, Japan forensics
+        # 2026-08-24/25): per simulation draw K ~ Poisson(sector_lambda) boundaries uniformly on
+        # [0, 360) azimuth about the source; every station inside a sector shares ONE independently
+        # drawn member.  P(K = 0) > 0 gives the single-model (fully coherent) regime for free,
+        # lambda -> inf recovers per-station independence.  One knob; the inter-station error
+        # correlation vs azimuthal separation follows from P(same sector).
+        if member_sampling is None:
+            member_sampling = 'per_station' if resample_member_per_station else 'per_event'
+        member_sampling = str(member_sampling).lower()
+        if member_sampling not in self.VALID_MEMBER_SAMPLING:
+            raise ValueError(f"member_sampling must be one of {self.VALID_MEMBER_SAMPLING}; "
+                             f"got {member_sampling!r}")
+        if member_sampling == 'sector':
+            if sector_lambda is None or float(sector_lambda) < 0.0:
+                raise ValueError("member_sampling='sector' requires sector_lambda >= 0 "
+                                 "(no default: calibrate it against the measured "
+                                 "inter-station error correlation)")
+            self.sector_lambda = float(sector_lambda)
+        else:
+            self.sector_lambda = None
+        if member_sampling == 'per_station':
+            self.resample_member_per_station = True
+        self.member_sampling = member_sampling
         # Hashable signature of the (small, fixed) processing config for the querier-cache key.
         self._processing_signature = json.dumps(
             self.synthetics_processing, sort_keys=True, default=str
@@ -220,6 +244,67 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
                 )
         return all_seismograms_map
 
+    VALID_MEMBER_SAMPLING = ('per_event', 'per_station', 'sector')
+
+    @staticmethod
+    def sector_boundaries(lam: float, rng) -> np.ndarray:
+        """K ~ Poisson(lam) boundaries, uniform on [0, 360), sorted (empty for K = 0)."""
+        k = int(rng.poisson(lam)) if lam > 0.0 else 0
+        return np.sort(rng.uniform(0.0, 360.0, size=k)) if k > 0 else np.zeros(0)
+
+    @staticmethod
+    def sector_index(azimuth_deg: np.ndarray, boundaries: np.ndarray) -> np.ndarray:
+        """Sector id per azimuth on the circle: the arc before the first boundary and the arc
+        after the last one are the SAME sector (wrap-around), so K boundaries give K sectors
+        (1 sector for K = 0 or 1)."""
+        az = np.mod(np.asarray(azimuth_deg, dtype=np.float64), 360.0)
+        if len(boundaries) <= 1:
+            return np.zeros(len(az), dtype=int)
+        idx = np.searchsorted(boundaries, az, side='right')
+        return np.where(idx == len(boundaries), 0, idx)
+
+    def station_azimuths(self, source: GenericPointSource) -> np.ndarray:
+        """Source -> station azimuths (deg, clockwise from north) in receiver iteration order."""
+        loc = source.source_location
+        la1, lo1 = np.deg2rad(loc.latitude), np.deg2rad(loc.longitude)
+        out = []
+        for r in self.receivers.iterate():
+            la2, lo2 = np.deg2rad(r.latitude), np.deg2rad(r.longitude)
+            dlon = lo2 - lo1
+            az = np.arctan2(np.sin(dlon) * np.cos(la2),
+                            np.cos(la1) * np.sin(la2) - np.sin(la1) * np.cos(la2) * np.cos(dlon))
+            out.append(np.mod(np.rad2deg(az), 360.0))
+        return np.asarray(out)
+
+    def draw_sector_members(self, source: GenericPointSource, *, seed=None):
+        """``(member_per_station list, boundaries)`` for one simulation under sector sampling.
+
+        Seeded => the boundaries come from ``default_rng(seed)`` and sector ``j`` uses
+        ``select_member(seed=seed + j * PER_STATION_SEED_STRIDE)`` (reproducible, distinct per
+        sector); unseeded => the shared global RNG throughout.
+        """
+        rng = np.random.default_rng(seed) if seed is not None else np.random
+        bounds = self.sector_boundaries(self.sector_lambda, rng)
+        sectors = self.sector_index(self.station_azimuths(source), bounds)
+        members = {}
+        for j in sorted(set(int(x) for x in sectors)):
+            member_seed = None if seed is None else seed + j * PER_STATION_SEED_STRIDE
+            members[j] = self.select_member(use_fiducial=False, seed=member_seed)
+        return [members[int(j)] for j in sectors], bounds
+
+    def _simulate_sector(self, source: GenericPointSource, *, seed=None, stf_duration=None) -> dict:
+        per_station, _ = self.draw_sector_members(source, seed=seed)
+        all_seismograms_map = {}
+        for receiver, member in zip(self.receivers.iterate(), per_station):
+            querier = self._cached_querier(member)
+            receiver_results = querier.get_seismograms(
+                source, receiver, self.components, stf_duration=stf_duration
+            )
+            all_seismograms_map[receiver.station_name] = {
+                component: receiver_results[component] for component in self.components
+            }
+        return all_seismograms_map
+
     def _simulate_per_station(self, source: GenericPointSource, *,
                               seed=None, stf_duration=None) -> dict:
         """Draw an INDEPENDENT member per station and serve each from the cached querier.
@@ -245,6 +330,8 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         self, source: GenericPointSource, *, use_fiducial=False, seed=None,
         stf_duration=None, **kwargs
     ) -> dict:
+        if not use_fiducial and getattr(self, 'member_sampling', None) == 'sector':
+            return self._simulate_sector(source, seed=seed, stf_duration=stf_duration)
         if self.resample_member_per_station and not use_fiducial:
             return self._simulate_per_station(source, seed=seed, stf_duration=stf_duration)
         member = self.select_member(use_fiducial=use_fiducial, seed=seed)

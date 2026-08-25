@@ -47,16 +47,18 @@ class GeneralSimulatorWrapper:
             if nuisance_stage.get(key, "simulation") == "simulation"
         ]
 
-        # TimeShiftErrorEffect needs the simulation sampling rate for Lanczos
+        # Shift-based effects need the simulation sampling rate for Lanczos
         # interpolation (seconds → samples).  Inject it automatically so it
         # never needs to appear in the YAML.
-        if 'time_shift_error' in sim_staged_keys:
-            effect_configs['time_shift_error'] = dict(
-                effect_configs.get('time_shift_error', {})
-            )
-            effect_configs['time_shift_error']['sampling_rate'] = (
-                simulation_parameters.sampling_rate
-            )
+        for _shift_key in ('time_shift_error', 'azimuthal_anisotropy',
+                           'shear_wave_splitting', 'dispersion_spread'):
+            if _shift_key in sim_staged_keys:
+                effect_configs[_shift_key] = dict(
+                    effect_configs.get(_shift_key, {})
+                )
+                effect_configs[_shift_key]['sampling_rate'] = (
+                    simulation_parameters.sampling_rate
+                )
 
         post_processing_effects = list(
             build_post_processing_chain(sim_staged_keys, effect_configs).effects
@@ -186,7 +188,9 @@ class GeneralSimulatorWrapper:
                             seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                             synthetics_processing=simulation_parameters.processing,
                             post_processing_effects=pp_effects,
-                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False))
+                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
+                            member_sampling=getattr(simulation_parameters, "member_sampling", None),
+                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None))
         elif simulator_config[0] == 'instaseis':
             simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address,
                                         components=simulation_parameters.components,
@@ -239,7 +243,9 @@ class GeneralSimulatorWrapper:
                             seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                             synthetics_processing=simulation_parameters.processing,
                             post_processing_effects=pp_effects,
-                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False))
+                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
+                            member_sampling=getattr(simulation_parameters, "member_sampling", None),
+                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None))
         elif simulator_config[0] == 'cps_multi':
             # simulator_config[1] can override and directly provide model dicts.
             if simulator_config[1] is not None:

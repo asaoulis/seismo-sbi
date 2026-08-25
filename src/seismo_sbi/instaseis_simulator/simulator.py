@@ -82,6 +82,10 @@ class Simulator(ABC):
         }
 
         source_location_params = combined_params["source_location"]
+        # Path-dependent effects (distance-scaled scattering, azimuthal anisotropy) need the
+        # source position; every effect swallows unknown kwargs, so forwarding it is inert
+        # for the others.
+        post_proc_params.setdefault("source_location", source_location_params)
         velocity_model_params = combined_params.pop("velocity_model", None)
         stf_duration = combined_params.pop("stf_duration", None)
         use_fiducial = combined_params.pop("use_fiducial", None)

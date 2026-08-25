@@ -42,6 +42,8 @@ class SBI_Configuration:
         "stf_duration",
         # Post-processing nuisance (Category 2 — modify synthetic seismograms)
         "amplitude_error", "instrument_dropout", "scattering_coda", "time_shift_error",
+        # Per-octave dispersion-spread phase delays (DispersionSpreadEffect, 2026-08-25)
+        "dispersion_spread",
         # Post-noise augmentation (applied after sensor noise; see ComponentDropoutEffect)
         "component_dropout",
         # Conditioning augmentation (perturbs the source-location CONDITIONING vector in the ML
@@ -60,6 +62,7 @@ class SBI_Configuration:
         "instrument_dropout": ["instrument_dropout"],
         "scattering_coda": ["scattering_coda"],
         "time_shift_error": ["time_shift_error"],
+        "dispersion_spread": ["dispersion_spread"],
         "component_dropout": ["component_dropout"],
         "source_location_error": ["source_location_error"],
     }
