@@ -18,9 +18,10 @@ than they save.
   what `ast.get_docstring` returns: the title line and the blank after it count, the closing
   quotes do not, so the body is at most six lines. It does not argue for the module's existence
   or recount how it came to be.
-- Functions are short (aim for under 40 lines, never over ~60) and read as the steps of a method
+- Functions are short (aim for under 40 lines, rarely over ~60) and read as the steps of a method
   in the order they are applied. One function, one step. A long function is a list of steps
-  that has not been split yet.
+  that has not been split yet. The exception is a function that lays out one figure: split by
+  concern, never by line count.
 - Names follow the physics, with units in the name where a number has them:
   `moment_tensor`, `source_depth_km`, `station_azimuth_deg`, `sampling_rate_hz`,
   `green_functions`, `posterior_samples`, `noise_covariance`. Not `arr2`, `cfg_blk`, `tmp`,
@@ -129,7 +130,8 @@ percentiles. Pure numpy; sampling and file I/O belong to the caller.
 - The dependency points one way: study imports library. The library never imports, reads, or
   mentions a study.
 - Each study region has the same modules in the same order (event selection, data preparation,
-  inference, catalogue, probabilistic summary, headline figures). A hypothesis that was tested
+  inference, catalogue, probabilistic summary, headline figures). A stage module is one file
+  read in run order; split at stage boundaries, not by length. A hypothesis that was tested
   and retired is one paragraph in the region README, not a module.
 
 ## Tests
@@ -138,6 +140,8 @@ percentiles. Pure numpy; sampling and file I/O belong to the caller.
 - Tests use small synthetic inputs or committed fixtures. No test reads private data paths.
 - When code is deleted, its tests are deleted with it. A test for something no longer useful is
   bloat, not safety.
+- When code is ported or moved, its own earlier outputs on disk are the arbiter: the port is
+  compared against them before it replaces anything, and the comparison is reported.
 
 ## Removing code
 
