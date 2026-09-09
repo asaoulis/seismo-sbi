@@ -1,56 +1,11 @@
-"""Set-Transformer PMA pooling head (review §3.4).
+"""Set-Transformer pooling head for the encoded station-time token set.
 
-The legacy aggregation in ``axial_transformer.py`` is *already a light PMA*: ``num_query_tokens``
-(default 8) learnable query tokens cross-attend to the flattened ``(N·L)`` token field inside
-**every** axial block (``q = q + q_upd``), and are then collapsed by an **unweighted mean**
-(``_apply_pool(q, "mean")``). Review §3.4 makes two precise criticisms:
-
-1. The unweighted mean over the ``k`` seeds is **lossy** — each seed is *trained to specialise*
-   (one may track overall amplitude / ``M0``, another the azimuthal polarity pattern …) and
-   averaging deliberately discards that. A learned ``concat→Linear`` combination keeps it. This is
-   the one component with a clear, non-trivial expected benefit.
-2. Cross-attending the seeds to the full ``N·L`` soup *inside every block* is the Perceiver pattern
-   (a latent array repeatedly reading the inputs through depth). The canonical Set-Transformer
-   factorisation is: the axial blocks **are** the set encoder, and a single PMA head pools the
-   *final* encoded token set **once** at the end (cheaper, and a clean reusable module).
-
-This module implements that head as an **opt-in** alternative. Crucially it does **not** change the
-axial encoder: in the legacy path the query/seed tokens only ever *read* from the token field ``x``
-and never write back to it, so removing the per-block skim (the transformer sets
-``num_query_tokens=0`` when this head is enabled) leaves ``x``'s station-then-time-then-FFN evolution
-byte-identical. Absent any config ⇒ the head is never built ⇒ the legacy query-mean path is unchanged.
-
-Two pooling modes (``pool_over``), per the user's B+C decision:
-
-``tokens`` (Option B, default)
-    ``k`` learnable seeds PMA-pool the flattened, masked ``(N·L)`` final encoded token set.
-
-``stations`` (Option C, review §3.4b — "stations as a set on a sphere")
-    A single-seed :class:`_TimePool` MAB first collapses each station's ``L`` time tokens to **one**
-    token (masked over time) → ``(B, N, D)``; then ``k`` seeds PMA-pool over the ``N`` station tokens
-    (masked over stations). Sharper, physically-motivated inductive bias; sets up the §3.3 geometric
-    station-attention work; cheapest read-out (``k × N`` rather than ``k × N·L``).
-
-Both modes share the seeds, the MAB pool, the optional self-attention among seeds (SAB), and the
-learned combination.
-
-Scaling discipline (the §3.1/§3.2 "well-designed and scaled" requirement — there are no RFFs to add
-here; this is the analogue for an attention head):
-
-* seeds initialised ``randn * seed_init_scale`` with ``seed_init_scale=1.0`` by default, matching the
-  distribution of the legacy ``query_tokens`` so init behaviour is familiar;
-* attention scaling handled by ``nn.MultiheadAttention`` (``1/√d_head``);
-* **pre-LN + residual** placement matching ``AxialOrFullBlock`` so the head cannot destabilise
-  training, and a final ``LayerNorm`` on the combined vector for a consistent scale into the flow;
-* the ``linear`` combine is **initialised to the mean** of the seeds (each of the ``k`` ``d×d`` blocks
-  ``= I/k``, bias ``0``; identity for ``k=1``), a well-conditioned, non-degenerate start the network
-  then refines into a *learned* combination — it is NOT frozen as a mean;
-* fully-padded rows (a sample / station whose entire key set is masked) are unmasked before attention
-  so ``nn.MultiheadAttention`` never sees an all-``True`` key row and stays finite (the same
-  NaN-avoidance the axial blocks use).
-
-The optional SAB among seeds is the most "fluff-prone" knob (the Set-Transformer paper reports
-diminishing returns past a small seed/head count); it defaults **off** and exists for ablation.
+``k`` learnable seeds cross-attend to the final token set once and are combined by a learned
+linear map, replacing an unweighted mean over seeds that discards their specialisation.
+``pool_over='tokens'`` pools the flattened ``(N*L)`` tokens; ``pool_over='stations'`` first
+collapses each station's ``L`` time tokens to one, then pools the ``N`` station tokens. Seeds
+start at ``randn * seed_init_scale`` and the linear combine is initialised to the mean of the
+seeds. Absent from the config the head is not built and the encoder's read-out is unchanged.
 """
 
 from __future__ import annotations

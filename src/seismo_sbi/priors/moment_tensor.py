@@ -1,15 +1,10 @@
-"""Uniform random moment tensors on the sphere of fixed scalar moment.
+"""Uniform random moment tensors at a fixed scalar moment.
 
-The orientation prior is the simple Gaussian-normalise method: draw six i.i.d.
-standard normals, normalise to the unit sphere, then rescale so that the scalar
-moment of the result equals the requested ``m0``.
-
-This is self-consistent with the library's scalar-moment convention
-``M0 = sqrt(0.5 * ||mt6||^2)`` (see ``instaseis_simulator.wrapper._scalar_moment``):
-since ``M0 = ||mt6|| / sqrt(2)``, setting ``mt6 = sqrt(2) * m0 * g/||g||`` gives
-``scalar_moment(mt6) == m0`` exactly, with the orientation distributed uniformly on
-the sphere in that same metric.  It is the conceptually simpler equivalent of the
-trigonometric Stahler-Sigloch (2014) / Tashiro parametrisation.
+Six i.i.d. standard normals are normalised onto the unit sphere and rescaled so the scalar
+moment equals the requested ``m0``. This is consistent with the library's convention
+``M0 = sqrt(0.5 * ||mt6||^2)``: since ``M0 = ||mt6|| / sqrt(2)``, setting
+``mt6 = sqrt(2) * m0 * g / ||g||`` gives exactly that moment with the orientation uniform on the
+sphere in the same metric. It is the simpler equivalent of the trigonometric parametrisation.
 """
 from __future__ import annotations
 

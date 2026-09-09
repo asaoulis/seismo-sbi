@@ -1,17 +1,11 @@
 """Generate an ensemble of perturbed AxiSEM background models on disk.
 
-Layout produced (consumed downstream by the cluster pipeline; the eventual
-repacked Instaseis DBs mirror this member layout for
-``InstaseisEnsembleSimulator``)::
+The layout produced is one directory per member, mirrored later by the repacked waveform
+databases that :class:`InstaseisEnsembleSimulator` reads::
 
-    out_dir/
-        fiducial/
-            background_model.bm        # unperturbed reference
-        member_000/
-            background_model.bm        # perturbed
-        member_001/
-            ...
-        ensemble_manifest.json
+    out_dir/fiducial/background_model.bm     # unperturbed reference
+    out_dir/member_000/background_model.bm   # perturbed, and so on
+    out_dir/ensemble_manifest.json
 """
 
 from __future__ import annotations

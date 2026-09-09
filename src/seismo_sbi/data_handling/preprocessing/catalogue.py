@@ -1,26 +1,10 @@
-"""Build SBI event and noise catalogues from mseed + QuakeML data.
+"""Build SBI event and noise catalogues from mseed and QuakeML data.
 
-These are the importable library functions.  The CLI entry-point is
-``scripts/build_catalogue.py``, which is a thin wrapper around these.
-
-Daily-processing mode (enabled by default)
-------------------------------------------
-Both ``build_event_catalogue`` and ``build_noise_catalogue`` accept
-``use_daily_processing=True`` (default).  When enabled:
-
-  1. All raw data in the relevant date range is processed in daily chunks
-     (response removal, filtering, resampling) and saved as intermediate
-     mseed files under ``<output_dir>/_daily/`` (overridable via
-     ``processed_dir``).
-  2. Individual event / noise windows are then sliced from those pre-processed
-     files — no further deconvolution or filtering needed.
-
-Benefits:
-  - Each station-day is processed once, regardless of how many windows
-    fall within it.  For large catalogues this is orders of magnitude faster.
-  - Tapering artefacts (required before response removal) only affect the
-    very edges of each daily file; all interior windows are clean.
-  - Daily files are resumable: existing files are silently skipped on re-runs.
+With ``use_daily_processing`` (the default) all raw data in the date range is response-removed,
+filtered and resampled in daily chunks, written under ``<output_dir>/_daily/``, and the event
+and noise windows are then sliced from those files with no further processing. Each station-day
+is processed once however many windows fall in it, the taper needed before response removal only
+touches the ends of each daily file, and existing daily files are skipped on a re-run.
 """
 
 from __future__ import annotations

@@ -1,13 +1,10 @@
-"""Catalogue-driven statistical priors for SBI dataset generation.
+"""Catalogue-driven statistical priors for dataset generation.
 
-Public API:
-  * :class:`EventCatalogue`, :func:`load_catalogue` - catalogue ingestion.
-  * :func:`latlon_to_km_offsets`, :func:`km_offsets_to_latlon` - local geo conversion.
-  * Gutenberg-Richter helpers (:func:`fit_b_value_aki`, :func:`magnitude_to_m0`,
-    :class:`GutenbergRichterModel`, :func:`estimate_mc_maxcurvature`).
-  * :func:`uniform_moment_tensor_on_sphere` - uniform MT orientation at fixed M0.
-  * Sampler factories (:func:`make_catalogue_location_sampler`,
-    :func:`make_gutenberg_richter_mt_sampler`) used by the dataset generator.
+:class:`EventCatalogue` and :func:`load_catalogue` ingest a catalogue;
+:func:`latlon_to_km_offsets` and :func:`km_offsets_to_latlon` convert to and from local
+kilometres; the Gutenberg-Richter helpers fit a b-value and turn magnitude into scalar moment;
+:mod:`moment_tensor` draws uniform orientations at a fixed moment; and :mod:`samplers` wraps all
+of it into the closures the dataset generator calls.
 """
 from .catalogue import EventCatalogue, load_catalogue
 from .geo import km_offsets_to_latlon, latlon_to_km_offsets

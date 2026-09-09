@@ -1,25 +1,11 @@
 """Source-location conditioning for the ML compressor.
 
-Models can be *given* a source location (e.g. ``(latitude, longitude, depth)`` or
-Cartesian ``(x, y, z)``) as scalar conditioning.  This module provides the pure,
-self-contained pieces used by :class:`SeismogramTransformer`:
-
-* :func:`relative_station_geometry` — per-(source, station) epicentral distance and
-  azimuth, used as **source-relative** positional embeddings (an alternative to the
-  current absolute lat/lon station embeddings).
-* :class:`SourceConditioner` — maps a raw source-coordinate vector to a learned
-  source embedding ``(B, d_cond)``.
-* :class:`FiLM` — feature-wise linear modulation generated from the source embedding.
-* :func:`pack_context` / :func:`unpack_context` — fold the source vector into the
-  single context tensor that nflows requires, and recover it inside the model.
-
-Design contracts
-----------------
-* The packed conditioning vector carries **RAW (unscaled)** coordinates, so
-  :func:`relative_station_geometry` is computed on true geometry.  ``SourceConditioner``
-  normalises internally before its MLP.
-* All of this is **opt-in**: with no conditioning the model never imports these paths
-  (``n_cond == 0`` ⇒ the 4-D context path is unchanged).
+:func:`relative_station_geometry` gives per-source-station epicentral distance and azimuth for
+source-relative positional embeddings, :class:`SourceConditioner` maps a raw source-coordinate
+vector to a learned embedding ``(B, d_cond)``, :class:`FiLM` modulates features from it, and
+:func:`pack_context` / :func:`unpack_context` fold the source vector into the single context
+tensor the flow requires. The packed vector carries raw unscaled coordinates so the geometry is
+true; the conditioner normalises internally. With ``n_cond == 0`` none of this is built.
 """
 
 from __future__ import annotations

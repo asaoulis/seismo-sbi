@@ -1,23 +1,11 @@
-"""Multi-model (multi-region) simulators.
+"""Simulators that serve disjoint receiver subsets from different velocity models.
 
-A :class:`MultiModelSimulator` dispatches *disjoint* receiver subsets to
-different per-region sub-simulators, then merges their outputs so that from the
-outside it behaves like a single :class:`Simulator` over the *union* of all
-receivers.  This is the generic, backend-agnostic base that mirrors the
-ensemble layering (:class:`GFEnsembleSimulator` -> Instaseis/CPS subclasses):
-the per-station merge lives here once, and subclasses only specialise how each
-backend-specific sub-simulator is constructed.
-
-Two specialisations live in the codebase:
-  - :class:`InstaseisMultiModelSimulator` (here) — each region backed by its own
-    Instaseis-DB ensemble (:class:`InstaseisEnsembleSimulator`).
-  - ``MultiModelCPSSimulator`` (in ``cps_simulator/simulator.py``) — each region
-    backed by a CPS precomputed Green's-function model.
-
-The canonical use case is path-specific theory error: on-island Santorini
-receivers are served by a "mode A" velocity-model ensemble while every other
-receiver is served by a "mode B" ensemble, so a single forward simulation bakes
-the regionally-varying theory error.
+A :class:`MultiModelSimulator` dispatches each receiver subset to its own per-region
+sub-simulator and merges the outputs, so from outside it behaves like one simulator over the
+union of the receivers. The per-station merge lives here once; a subclass only says how each
+backend-specific sub-simulator is built. The use case is path-specific theory error: receivers
+on one side of the array are served by one velocity-model ensemble and the rest by another, so a
+single forward simulation bakes in a regionally varying theory error.
 """
 
 from abc import ABC, abstractmethod

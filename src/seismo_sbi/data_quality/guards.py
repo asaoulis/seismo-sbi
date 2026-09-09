@@ -1,17 +1,10 @@
-"""Model-free QA guards + the calibrated 2026-07 gate composition.
+"""Model-free quality guards and the calibrated gate composition over them.
 
-Promoted from the F-net Japan live-inference worker (personal-page
-``fnet_monitor/qa.py``) so every deployment (Japan live path, Santorini Lomax
-catalogue, future regions) shares one calibrated implementation. The evidence
-base is the 62-event pe60 calibration (see the ``qa_calibration/FINDINGS.md``
-artifact of the ``personal-page/testing-and-inference-prep`` task): each gate
-catches a distinct, eyeball-confirmed failure mode, per-COMPONENT verdicts are
-zero-filled individually, a station drops only when NO component survives, and
-event-level contamination is a FLAG, never a silent drop.
-
-This module stays array-in/array-out (no pipeline, no h5 handles except the
-explicit ``read_noise_sigma`` helper) so it is unit-testable like the rest of
-``seismo_sbi.data_quality``.
+Each guard catches a distinct failure mode of a recorded trace without reference to a synthetic.
+Verdicts are per component and a component that fails is zero-filled individually; a station is
+dropped only when no component survives. Event-level contamination is a flag, never a silent
+drop. Everything is array in, array out, with no pipeline and no file handles except the
+explicit ``read_noise_sigma`` helper.
 """
 from __future__ import annotations
 

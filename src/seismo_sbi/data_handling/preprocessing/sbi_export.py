@@ -1,17 +1,10 @@
-"""SBI boundary: convert preprocessed Stream data to the seismo-sbi HDF5 format.
+"""Write preprocessed streams to the HDF5 format the rest of the library reads.
 
-This is the ONLY place in the new pipeline that writes h5 files.
-The schema written here is identical to what SimulationSaver.dump_data_as_hdf5
-produces, so RealNoiseSampler and SimulationDataLoader can consume these files
-without modification.
-
-Key behavioural contracts (locked in by Phase 0 tests):
-- Channel keys on disk are 'Z', '1', '2' — never 'E' or 'N'.
-  (BHE/HHE/… → '1', BHN/HHN/… → '2')
-- Array length = compute_data_vector_length(duration, sr) + 1 (inclusive slice).
-- Autocorrelation in /misc is computed from the pre-event window
-  [event_start - covariance_window, event_start], averaged as:
-      auto_correlate[:n][::-1] / arange(n, 0, -1)
+The schema matches what ``SimulationSaver.dump_data_as_hdf5`` produces, so ``RealNoiseSampler``
+and ``SimulationDataLoader`` consume these files unchanged. Channel keys on disk are ``Z``,
+``1`` and ``2``, never ``E`` or ``N``. Each array is ``compute_data_vector_length(duration, sr)
++ 1`` samples long, the slice being inclusive. The autocorrelation in ``/misc`` is taken over
+the pre-event window and averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -1)``.
 """
 
 import math

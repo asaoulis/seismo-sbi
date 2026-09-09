@@ -1,14 +1,10 @@
 """Cross-correlation static time-shift estimation.
 
-Per station, pick the integer sample shift that maximises the station's aligned
-variance reduction *jointly* across its components. The search is bounded to
-``|shift| <= max_shift`` to avoid cycle-skips: at long periods a shift beyond ~half
-the dominant period locks onto a spurious secondary correlation peak, and static
-Earth-model corrections should be a few seconds, not tens.
-
-Ported from ``qa_forward_check.run_optimize_shifts``; uses the canonical
-:func:`shift_1d_with_padding` (``+shift`` delays the synthetic, matching
-``apply_station_time_shifts``).
+Per station, the integer sample shift that maximises the aligned variance reduction jointly
+across the station's components. The search is bounded to ``|shift| <= max_shift`` to avoid
+cycle skips: at long periods a shift beyond about half the dominant period locks onto a
+spurious secondary peak, and a static Earth-model correction should be a few seconds rather
+than tens. Shifting uses :func:`shift_1d_with_padding`, where a positive shift delays.
 """
 from __future__ import annotations
 

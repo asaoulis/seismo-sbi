@@ -1,18 +1,10 @@
-"""
-inference.py
-============
-Pipeline / posterior / observation build helpers for the evaluation harness.
+"""Build the pipeline, posterior and observation an evaluation run needs.
 
-Lifted verbatim (behaviour-preserving) from
-``scripts/continuity/_eval_inference.py``.  The only change is the rename
-``build_continuity_pipeline`` → ``build_eval_pipeline`` (the function is not
-continuity-specific; both Santorini and LV2 domains use it).
-
-Not a CLI — imported by evaluation drivers and the new
-``src/seismo_sbi/evaluation/`` package.
-
-Heavy deps (seismo_sbi pipeline, torch) are imported lazily inside each
-function so importing this module during the fast unit-test gate is cheap.
+:func:`build_eval_pipeline` constructs the pipeline from a configuration,
+:func:`build_ml_posterior` loads a trained model into a posterior, :func:`resolve_ckpt_dir`
+finds the checkpoint directory to load from, and :func:`load_real_observation` reads one named
+real event. Not a command-line entry point. The pipeline and torch imports are lazy inside each
+function, so importing this module costs nothing during the fast test gate.
 """
 from __future__ import annotations
 
@@ -149,10 +141,12 @@ def resolve_ckpt_dir(ckpt_dir) -> Path:
     return matches[0].parent
 
 
-def load_real_observation(config, sbi_pipeline, job_name="LV2"):
-    """
-    Load the real event observation as an (n_stations, n_components, T) array,
-    inverting the receiver time shifts (the ML model trained on unshifted data).
+def load_real_observation(config, sbi_pipeline, job_name):
+    """Load one real event as an ``(n_stations, n_components, n_samples)`` array.
+
+    The receiver time shifts are inverted, since the model is trained on unshifted data.
+
+    :param job_name: key of the event under ``jobs.real_events`` in the configuration.
     """
     real_event_path = config.real_event_jobs.get(job_name)
     if real_event_path is None:

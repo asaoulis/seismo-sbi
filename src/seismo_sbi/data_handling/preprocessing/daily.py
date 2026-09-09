@@ -1,15 +1,10 @@
 """Process raw mseed data in daily chunks for efficient catalogue generation.
 
-The daily-processing pattern:
-  1. Process each (station, calendar-day) pair once: remove instrument response,
-     bandpass filter, resample → save as a processed daily mseed file.
-  2. Slice windows from the processed daily files (no further processing needed).
-
-Benefits vs per-window processing:
-  - Processing cost paid once per station-day instead of once per window.
-  - Tapering artefacts (required before response removal) affect only the very
-    edges of each day file; interior time windows are completely clean.
-  - Processed daily files are resumable: existing files are skipped.
+Each station-day is processed once -- response removal, bandpass filter, resample -- and saved
+as a processed daily mseed file, from which windows are then sliced with no further processing.
+The cost is therefore paid once per station-day rather than once per window, the taper needed
+before response removal touches only the ends of each day file so interior windows are clean,
+and existing daily files are skipped on a re-run.
 """
 
 from __future__ import annotations

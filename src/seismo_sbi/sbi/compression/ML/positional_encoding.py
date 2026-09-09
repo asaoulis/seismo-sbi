@@ -1,34 +1,11 @@
-"""Random-Fourier-Feature station positional encoding (review §3.2).
+"""Random-Fourier-Feature positional encoding of station geometry.
 
-The legacy station positional encodings (``station_position_embedding`` /
-``_station_position_embedding_batched`` in ``axial_transformer.py``) apply the Vaswani
-``10000^(-2i/d)`` token-index sinusoid directly to geographic coordinates (degrees, or
-source-relative distance/azimuth in radians). That frequency ladder is tuned for integer
-token indices up to ~10⁴, so on a regional array most embedding channels are near-constant
-and there is no learnable scale matched to the array's extent. This module replaces it with a
-**well-scaled Random Fourier Feature** map built on the shared primitives in
-``fourier_features.py`` (the same design the per-station amplitude embedding uses, review §3.1).
-
-What it encodes (config ``coords_kind``)
-----------------------------------------
-``relative`` (the training default path)
-    Source-relative geometry ``(epicentral distance, azimuth)`` from
-    :func:`relative_station_geometry`. **Azimuth is encoded as ``(cos az, sin az)`` before the
-    RFF and the raw angle is never fed in**, so the encoding is periodic — 11° and 350° map to
-    nearby points and the embedding is continuous across the ±180°/0–360° branch cut by
-    construction. A random-Fourier linear mix ``b·cos az + c·sin az = R·cos(az − φ)`` stays
-    periodic, and per-feature affine standardisation preserves it.
-``absolute``
-    Raw ``(lat, lon)`` station coordinates, RFF-encoded with a scale matched to the data.
-
-``include_depth`` additionally RFF-encodes the **source depth** (broadcast across stations) —
-take-off angle, hence first-motion polarity, depends on depth, but depth never reached the
-station geometry before. Take-off-angle proxy itself is out of scope here.
-
-Scaling discipline is inherited from :class:`ScalarFourierEmbedding`: the heterogeneous
-feature vector (distance in radians ~O(1), ``cos/sin`` az in ``[-1, 1]``, depth in km) is
-brought to O(1) per-feature by a running standardiser before the Gaussian RFF, with a raw
-standardised pass-through guaranteeing a non-vanishing gradient path.
+A token-index sinusoid tuned for indices up to ~1e4 leaves most channels near-constant over a
+regional array, so geometry is encoded here by a Gaussian random-Fourier map with a learnable
+scale. ``coords_kind='relative'`` encodes source-relative epicentral distance and azimuth, the
+azimuth entering as ``(cos, sin)`` so the map is periodic across the branch cut; ``'absolute'``
+encodes station latitude and longitude. ``include_depth`` adds source depth, on which take-off
+angle and hence first-motion polarity depend. Features are standardised to O(1) before the map.
 """
 
 from __future__ import annotations

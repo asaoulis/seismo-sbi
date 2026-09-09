@@ -1,28 +1,10 @@
-"""Post-processing effects applied to synthetic seismograms after simulation.
+"""Effects applied to synthetic seismograms after the forward model returns.
 
-This module provides a composable chain of ``SeismogramEffect`` callables that
-can be wired into ``Simulator.run_simulation()`` to add nuisance-parameter-driven
-modifications to synthetic waveforms *after* the forward model returns.
-
-Design goals
-------------
-- Each effect is responsible for exactly one nuisance key.
-- An effect that does not find its key in ``nuisance_params`` is a strict no-op.
-- Effects do **not** mutate the input ``seismograms_map``; they return a new dict.
-- Effects compose sequentially through ``PostProcessingChain``; the output of one
-  effect is the input to the next.
-- ``build_post_processing_chain(nuisance_keys)`` constructs a chain from the
-  ``EFFECT_REGISTRY`` — unknown keys (e.g. ``source_location``) are silently
-  skipped, so callers can pass the full ``parameters.nuisance.keys()`` list.
-
-Usage example
--------------
-::
-
-    from seismo_sbi.instaseis_simulator.post_processing import build_post_processing_chain
-
-    chain = build_post_processing_chain(parameters.nuisance.keys())
-    processed = chain(seismograms_map, receivers, nuisance_params_dict)
+A ``SeismogramEffect`` owns exactly one nuisance key, is a strict no-op when that key is absent
+from ``nuisance_params``, and returns a new dict rather than mutating its input. Effects compose
+in order through ``PostProcessingChain``, each one's output feeding the next.
+``build_post_processing_chain(nuisance_keys)`` assembles a chain from ``EFFECT_REGISTRY``,
+silently skipping keys that name no effect, so a caller can pass every nuisance key it has.
 """
 
 from __future__ import annotations
@@ -34,9 +16,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
 # Abstract base
-# ---------------------------------------------------------------------------
 
 
 class SeismogramEffect(ABC):
@@ -73,9 +53,7 @@ class SeismogramEffect(ABC):
         ...
 
 
-# ---------------------------------------------------------------------------
 # PostProcessingChain
-# ---------------------------------------------------------------------------
 
 
 class PostProcessingChain:
@@ -121,9 +99,7 @@ class PostProcessingChain:
         return result
 
 
-# ---------------------------------------------------------------------------
 # Shared per-station gate (used by amplitude / dropout / coda effects)
-# ---------------------------------------------------------------------------
 
 
 def _apply_per_station_gated(seismograms_map: dict, probability, transform) -> dict:
@@ -157,9 +133,7 @@ def _apply_per_station_gated(seismograms_map: dict, probability, transform) -> d
     return result
 
 
-# ---------------------------------------------------------------------------
 # Concrete effects
-# ---------------------------------------------------------------------------
 
 
 class AmplitudeErrorEffect(SeismogramEffect):
@@ -175,15 +149,10 @@ class AmplitudeErrorEffect(SeismogramEffect):
     2. **Scale stage** — if the station is selected, multiply all its component
        traces by ONE scale factor drawn uniformly from ``[scale_low, scale_high]``.
 
-    **Recalibrated model** (Japan forensics N14 §4 / N17a, 2026-08-25): the measured
-    per-trace amplitude error of real regional records against 1-D synthetics is
-    log-normal with σ ≈ 0.3 dex, *independent between the components of a station*
-    (σ(R−Z) 0.16 dex, σ(T−Z) 0.30 dex) and present on every trace — while the legacy
-    model applies one flat-in-frequency factor per station, identical on all
-    components, to a Bernoulli-gated minority of stations.  On a frozen network the
-    per-trace structure at σ = 0.35 dex reproduces ~37 % of the observed ISO
-    displacement and half the posterior-width excess; the per-station structure at
-    the same σ reproduces none of it.  Three switches express the measured structure:
+    The measured per-trace amplitude error of regional records against 1-D synthetics is
+    log-normal with σ ≈ 0.3 dex, independent between the components of a station and present
+    on every trace, rather than one flat factor per station on a gated minority of them.
+    Three switches express that structure:
 
     * ``distribution='lognormal'`` — ``g = 10 ** (σ · N(0, 1))`` with
       ``σ = log_sigma_dex`` (default :data:`DEFAULT_LOG_SIGMA_DEX`) instead of
@@ -227,8 +196,8 @@ class AmplitudeErrorEffect(SeismogramEffect):
     DEFAULT_SCALE_LOW: float = 0.5
     #: Default upper bound of the per-station scale factor distribution.
     DEFAULT_SCALE_HIGH: float = 2.0
-    #: Default log-normal width in dex (``distribution='lognormal'``): the measured
-    #: per-trace σ on Japan F-net records is 0.31–0.38 dex (N14 §4).
+    #: Default log-normal width in dex (``distribution='lognormal'``); measured per-trace
+    #: widths on regional broadband records run 0.31-0.38 dex.
     DEFAULT_LOG_SIGMA_DEX: float = 0.3
     VALID_DISTRIBUTIONS = ("uniform", "lognormal")
 
@@ -402,9 +371,7 @@ class ComponentDropoutEffect(SeismogramEffect):
         return result
 
 
-# ---------------------------------------------------------------------------
 # Lanczos interpolation helpers (used by TimeShiftErrorEffect)
-# ---------------------------------------------------------------------------
 
 
 def _lanczos_kernel_values(x: np.ndarray, order: int) -> np.ndarray:
@@ -530,9 +497,7 @@ def _apply_lanczos_shift(
     return _apply_lanczos_shift_batch(np.asarray(trace)[np.newaxis, :], tau_samples, order)[0]
 
 
-# ---------------------------------------------------------------------------
 # TimeShiftErrorEffect
-# ---------------------------------------------------------------------------
 
 
 class TimeShiftErrorEffect(SeismogramEffect):
@@ -632,13 +597,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
         source_longitude: Optional[float] = None,
     ) -> None:
         self._sampling_rate = float(sampling_rate)
-        # Distance-scaled per-station sigma (Japan forensics N9/N11/N14, 2026-08-25): the
-        # measured per-station timing error of 1-D synthetics grows with path length —
-        # σ ≈ 4 s inside 400 km rising to ≈ 15 s beyond 1200 km at 20–30 s — so the
-        # per-station Gaussian width is sigma(D) = gaussian_sigma + sigma_per_1000km * min(D, cap)/1000.
-        # Inert by default (0 slope → legacy behaviour and RNG order). Needs the source
-        # location (nuisance dict ``source_location`` — forwarded at the simulation stage —
-        # or the constructor), exactly like ScatteringCodaEffect(distance_mode=True).
+        # Timing error of 1-D synthetics grows with path length, so the per-station width is
+        # sigma(D) = gaussian_sigma + sigma_per_1000km * min(D, cap) / 1000; 0 leaves it flat.
         self._sigma_per_1000km = float(sigma_per_1000km)
         if self._sigma_per_1000km < 0.0:
             raise ValueError("sigma_per_1000km must be >= 0")
@@ -670,9 +630,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
                 "common_offset_dist must be 'uniform' or 'gaussian'; got "
                 f"{common_offset_dist!r}"
             )
-        # Std of the array-wide common offset when common_offset_dist='gaussian'.
-        # Defaults to uniform_offset (so an existing scale carries over if the dist
-        # is flipped without specifying a new sigma).
+        # Width of the array-wide common offset under a Gaussian distribution; it defaults to
+        # uniform_offset so an existing scale carries over when the distribution is switched.
         self._common_sigma = (
             float(common_offset_sigma)
             if common_offset_sigma is not None
@@ -744,9 +703,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
         return result
 
 
-# ---------------------------------------------------------------------------
 # ScatteringCodaEffect helpers and implementation
-# ---------------------------------------------------------------------------
 
 
 #: Default coda-tail length as a fraction of the trace length (at ``alpha = 1``).
@@ -883,9 +840,7 @@ def _apply_random_coda_filter(
 
 
 
-# ---------------------------------------------------------------------------
 # Distance-scaled scattering (far-path decoherence + incoherent coda energy)
-# ---------------------------------------------------------------------------
 
 def distance_scaled_alpha(
     dist_km,
@@ -1221,9 +1176,7 @@ class ScatteringCodaEffect(SeismogramEffect):
         return _apply_per_station_gated(seismograms_map, scattering_coda, _coda)
 
 
-# ---------------------------------------------------------------------------
 # Anisotropy injection effects
-# ---------------------------------------------------------------------------
 
 
 def _bearing_and_distance_km(src_lat, src_lon, sta_lat, sta_lon):
@@ -1403,16 +1356,14 @@ class ShearSplittingEffect(SeismogramEffect):
         return result
 
 
-# ---------------------------------------------------------------------------
 # Registry and factory
-# ---------------------------------------------------------------------------
 
 #: Maps nuisance parameter key → effect class.  Register new effects here.
 
 class DispersionSpreadEffect(SeismogramEffect):
     """Frequency-dependent travel-time (dispersion) error — a pure phase delay per station.
 
-    Ported from the validated N11 injection operator (Japan forensics, 2026-08-24/25):
+    The operator is a pure phase delay,
 
         u'(f) = u(f) · exp(−2πi f τ(f))
 
@@ -1424,17 +1375,16 @@ class DispersionSpreadEffect(SeismogramEffect):
     where ``m`` is the nuisance value (strength multiplier; ``0`` → identity) and the ``z_o`` are
     standard normals.  Their correlation structure is the physics: a too-fast (or too-slow)
     crust delays *every* octave of a path in the same sense, so ``z_o`` is by default ONE draw
-    per station shared across octaves (``octave_correlation=1``); ``octave_correlation=0``
-    reproduces N11's independent-per-octave form, and intermediate values mix the two.
+    per station shared across octaves (``octave_correlation=1``); ``octave_correlation=0`` draws
+    each octave independently, and intermediate values mix the two.
     ``common_fraction`` puts that share of the variance into ONE array-wide draw (the coherent,
     same-sign far-station delay the measured data contain and per-station-independent sampling
     can never produce).
 
-    The measured Japan calibration (N11 §2b, F-net reference, 61-member CPS spread): ensemble
-    phase-velocity σ_t ≈ 4.7 / 3.7 / 2.2 / 0.8 s inside 400 km and 23.5 / 18.3 / 10.9 / 4.0 s beyond
-    1200 km at 12.5 / 17.5 / 25 / 40 s — i.e. ``sigma_intercept_s ≈ [0, 0, 0, 0]`` and
-    ``sigma_per_1000km_s ≈ [19, 15, 9, 3]``.  The measured *bias* (+14–16 s at 10–15 s beyond
-    800 km) is NOT part of this effect: a bias belongs in the fiducial model, not in a nuisance.
+    One measured regional calibration, from the phase-velocity spread of a 61-member ensemble at
+    12.5 / 17.5 / 25 / 40 s, is ``sigma_intercept_s ≈ [0, 0, 0, 0]`` with
+    ``sigma_per_1000km_s ≈ [19, 15, 9, 3]``. A systematic bias is deliberately not part of this
+    effect: a bias belongs in the fiducial model, not in a nuisance.
 
     Nuisance key: ``dispersion_spread`` — strength multiplier.  Simulation stage only (needs the
     source location, forwarded by ``Simulator.run_simulation``, or ``source_latitude`` /
@@ -1566,21 +1516,15 @@ AUGMENTABLE_EFFECT_KEYS: tuple[str, ...] = (
 )
 
 
-#: Nuisance keys eligible for **post-noise** training-time augmentation (applied to the
-#: noisy data ``x = D + noise``).  ``component_dropout`` zeros present channels and must run
-#: after noise so a dropped channel is exactly zero (matching a genuinely-absent channel);
-#: a pre-noise zeroing would leave ``0 + noise`` instead.
+#: Nuisance keys eligible for post-noise augmentation, applied to ``x = D + noise``.
+#: ``component_dropout`` must run there so a dropped channel is exactly zero.
 POST_NOISE_EFFECT_KEYS: tuple[str, ...] = (
     "component_dropout",
 )
 
 
-#: Nuisance keys that augment the **source-location CONDITIONING vector** in the ML dataloader
-#: (NOT the waveform).  These are deliberately *absent* from :data:`EFFECT_REGISTRY` — they have
-#: no ``SeismogramEffect`` and are skipped by :func:`build_post_processing_chain`; the dataloader
-#: applies them to ``source_vec`` instead.  ``source_location_error`` perturbs the conditioned
-#: source location with per-coordinate Gaussian noise so the model learns to tolerate the
-#: catalogue location error it sees at inference.  Stage-eligible like ``training_augmentation``.
+#: Nuisance keys that augment the source-location conditioning vector rather than the waveform,
+#: so they have no effect class and are applied to ``source_vec`` by the dataloader instead.
 CONDITIONING_AUGMENTABLE_KEYS: tuple[str, ...] = (
     "source_location_error",
 )
@@ -1593,9 +1537,7 @@ _STAGE_EFFECT_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Map <-> stacked-array adapter (lets the SAME effects run in the dataloader)
-# ---------------------------------------------------------------------------
 
 
 def _array_to_map(D: np.ndarray, receivers, components):
@@ -1668,9 +1610,8 @@ def apply_chain_to_array(
     if not chain.effects:
         return D
     D = np.asarray(D)
-    # Fail loudly if the array layout does not match the receiver/component ordering
-    # this adapter assumes (axis 0 = receivers.iterate(), axis 1 = `components`).
-    # A silent mismatch would scramble stations/components instead of erroring.
+    # The array layout must match the receiver and component ordering this adapter assumes,
+    # since a silent mismatch would scramble stations rather than raise.
     n_stations = len(list(receivers.iterate()))
     if D.ndim != 3 or D.shape[0] != n_stations or D.shape[1] != len(components):
         raise ValueError(
@@ -1744,9 +1685,8 @@ def build_augmentation_chain(
         configs["time_shift_error"]["sampling_rate"] = sampling_rate
 
     chain = build_post_processing_chain(aug_keys, configs)
-    # Activation scalar for each effect comes from its configured fiducial value
-    # (per-station probability, or on/off switch for time_shift_error) — NOT a
-    # hardcoded 1.0, which would force every station to be dropped/perturbed.
+    # Each effect's activation scalar is its configured fiducial value, a per-station
+    # probability or an on/off switch; a hardcoded 1.0 would perturb every station.
     nuisance_params = {key: _fiducial_scalar(nuisance[key]) for key in aug_keys}
     return chain, nuisance_params
 

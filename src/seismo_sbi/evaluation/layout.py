@@ -1,16 +1,9 @@
-"""
-layout.py
-=========
-Per-model output tree helpers for the evaluation harness.
+"""Per-model output tree for the evaluation harness.
 
-Lifted from ``scripts/santorini_pathbreaker/run_posttrain_eval.py`` and
-generalised: ``OutputLayout`` gains ``validation_dir()`` and ``stage_dir(name)``
-alongside the existing ``event_dir(event)``.  ``_git_rev`` is renamed to the
-public ``git_rev`` so other modules (and the CLI) can call it without the
-leading underscore.
-
-All directory methods are *mkdir-on-use* (lazy), mirroring the original
-``event_dir`` behaviour.  No heavy deps — subprocess only (for git_rev).
+:class:`OutputLayout` resolves the directory a run writes into and hands out
+``event_dir(event)``, ``validation_dir()`` and ``stage_dir(name)`` beneath it; every one of them
+creates the directory on use rather than up front. :func:`git_rev` returns the working tree's
+revision so an output tree records which code produced it. No heavy dependencies.
 """
 from __future__ import annotations
 

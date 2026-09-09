@@ -44,11 +44,8 @@ class SeismogramTransformer(nn.Module):
         self.aggregation = aggregation
         d_model = transformer_config['channels']
 
-        # --- Optional performance toggles (opt-in via model_config['perf']; see train.py) ---
-        # Absent ⇒ all default to off and the model is byte-identical to before. These are pure
-        # speed knobs for the EMBEDDING net only; the NSF flow head (precision-brittle: LULinear
-        # log-det + BatchNorm conditioner) is left in fp32 by construction — autocast here wraps
-        # SeismogramTransformer.forward and casts its context output back to fp32 before the flow.
+        # Speed knobs for the embedding net only: the autocast wraps this forward and casts the
+        # context back to fp32, so the precision-brittle flow head never leaves fp32.
         perf = transformer_config.get("perf", {}) or {}
         self._amp = bool(perf.get("amp", False))
         _amp_dtype = str(perf.get("amp_dtype", "bfloat16")).lower()
@@ -56,11 +53,8 @@ class SeismogramTransformer(nn.Module):
         # SDPA (fused scaled_dot_product_attention) for the axial / PMA attentions.
         self._use_sdpa = bool(perf.get("sdpa", False))
 
-        # --- Optional Nyquist-aware model-entry input decimation (opt-in) ---
-        # model_config['input_decimate'] = {"factor": k, "antialias": bool}. Band-limited
-        # data sampled above its Nyquist rate decimates losslessly (min period 6 s @ 1 Hz
-        # sampling ⇒ factor 3). Packed-context UNPACKING keeps the original trace length
-        # (self.input_length); only the encoder and everything downstream see T/k.
+        # Band-limited data sampled above its Nyquist rate decimates losslessly. Unpacking keeps
+        # the original trace length; only the encoder and everything after it sees T/k.
         dec_cfg = transformer_config.get("input_decimate", None) or {}
         dec_factor = int(dec_cfg.get("factor", 1) or 1)
         self.input_decimator = (
@@ -96,25 +90,12 @@ class SeismogramTransformer(nn.Module):
         pool_method = transformer_config.get("pooling", "mean")  # supports: mean, first, attn, max, gem
         use_cls = transformer_config.get("use_cls_token", False)
         num_q = transformer_config.get("num_query_tokens", 8)
-        # NOTE: the axial transformer itself is constructed at the END of __init__ (below the
-        # conditioning / variable-station setup) so the opt-in §3.2 RFF positional encoder can be
-        # told whether station coordinates are source-relative or absolute (posemb_coords_kind).
+        # The axial transformer is built at the end of __init__ so the positional encoder can be
+        # told whether station coordinates are source-relative or absolute.
 
-        # --- Optional summary BOTTLENECK (model_config["summary_bottleneck"]) --------------
-        # Narrows the summary the MMD auxiliary loss lives in WITHOUT touching either the
-        # encoder or the flow.  MMD's sample complexity grows with dimension, and the training
-        # term compares only `batch_size` (64) samples per side, so a 256-d summary is a
-        # weakly-powered, high-variance regime for the estimator.
-        #
-        # The head becomes  d_model -> d_model -> bottleneck -> num_outputs:
-        #   * the encoder is untouched (d_model unchanged),
-        #   * the flow still receives a `num_outputs`-wide context, so its conditioner widths
-        #     and parameter count are UNCHANGED (train_NPE ties the flow's hidden width to the
-        #     embedding channel width, so shrinking `channels` instead would silently shrink
-        #     the flow too — see train_NPE.py:369),
-        #   * everything downstream is a deterministic function of `bottleneck` numbers, so the
-        #     summary really is that many dimensions.
-        # Absent => byte-identical to the previous two-layer head.
+        # The head becomes d_model -> d_model -> bottleneck -> num_outputs, narrowing the space
+        # the MMD kernel lives in, whose sample complexity grows with dimension, while leaving
+        # both the encoder width and the flow's context width untouched.
         _bneck_cfg = (transformer_config or {}).get("summary_bottleneck") or {}
         bneck = _bneck_cfg.get("dim") if isinstance(_bneck_cfg, dict) else _bneck_cfg
         self.summary_bottleneck_dim = int(bneck) if bneck else None
@@ -124,10 +105,8 @@ class SeismogramTransformer(nn.Module):
             nn.ReLU(),
             nn.Linear(d_model, _head_out)
         )
-        # LayerNorm on the bottleneck: the pooling head already normalises its output "for a
-        # consistent scale into the flow", and the same argument applies with more force here —
-        # the MMD kernel bandwidth is a median heuristic over these vectors, so a drifting scale
-        # is exactly what destabilises it.
+        # The MMD kernel bandwidth is a median heuristic over these vectors, so a drifting
+        # scale is what destabilises it.
         self.summary_expand = (
             nn.Sequential(nn.LayerNorm(self.summary_bottleneck_dim),
                           nn.Linear(self.summary_bottleneck_dim, num_outputs))
@@ -155,15 +134,11 @@ class SeismogramTransformer(nn.Module):
                 "configure a `conditioning` block so per-station epicentral distance is available."
             )
 
-        # --- Variable-station support (opt-in) ---
-        # When enabled, embed() expects the packed variable-station context (padded
-        # seismograms + per-sample coords + validity mask + optional source vec) produced by
-        # variable_station_collate, builds a key_padding_mask, and feeds per-sample station
-        # coordinates to the transformer instead of the fixed station_coords buffer.
+        # When enabled, embed() expects the packed context from variable_station_collate and
+        # feeds per-sample station coordinates instead of the fixed buffer.
         self._variable_stations = bool(transformer_config.get("variable_stations", False))
-        # How station position is encoded for variable configs: "absolute" feeds the raw
-        # (lat, lon) coords; "relative" feeds source-relative (distance, azimuth) and requires
-        # source conditioning (n_cond > 0) so a source vector is present to measure against.
+        # "absolute" feeds raw (lat, lon); "relative" feeds source-relative (distance, azimuth)
+        # and needs source conditioning, so there is a source vector to measure against.
         self._station_coords_mode = transformer_config.get("station_coords_mode", "absolute")
         if self._variable_stations and self._station_coords_mode not in ("absolute", "relative"):
             raise ValueError(
@@ -176,17 +151,8 @@ class SeismogramTransformer(nn.Module):
                 "source location is available; configure `conditioning` or use 'absolute'."
             )
 
-        # --- Build the all-station axial transformer (last, so the §3.2 RFF positional encoder
-        # knows whether station coords are source-relative). Optional 'positional_encoding' block:
-        #   ml_positional_encoding:
-        #     enabled: true
-        #     mode: fourier            # fourier (sinusoidal/absence => legacy sinusoid)
-        #     num_freqs: 16
-        #     sigma: 1.0
-        #     learnable_freqs: false
-        #     include_depth: true      # RFF-encode source depth (needs n_cond >= 3)
-        #     inject_every_layer: true # re-inject the geometry before every block (§3.2.c)
-        #     standardize: running
+        # Built last, so the positional encoder knows whether station coordinates are
+        # source-relative; without a config it keeps the plain sinusoidal encoding.
         posemb_config = transformer_config.get("positional_encoding", None)
         # coords_kind is static per model: source-relative iff the source-relative station
         # embedding is in use (relative_posemb injection, or variable-station relative mode).
@@ -198,16 +164,8 @@ class SeismogramTransformer(nn.Module):
         inject_every_layer = (
             posemb_config.get("inject_every_layer", True) if posemb_config else True
         )
-        # --- Optional §3.4 PMA pooling head. Absent ⇒ pma_cfg is None ⇒ pma_pooling_config=None ⇒
-        # the axial transformer keeps the legacy query-mean / CLS pooling (byte-identical). When
-        # enabled, the head owns the learned seeds and pools the final encoded token set, so the
-        # in-block query cross-attention is turned off (num_query_tokens=0).
-        #   ml_pooling:
-        #     enabled: true
-        #     pool_over: tokens        # tokens (pool N·L tokens) | stations (time-collapse, pool N)
-        #     num_seeds: 4             # k learnable seeds
-        #     seed_self_attention: false
-        #     combine: linear          # linear (learned) | mean | first
+        # With a pooling head the seeds live in the head and pool the final token set, so the
+        # in-block query cross-attention is switched off; without one the encoder pools itself.
         pma_cfg = transformer_config.get("pma_pooling", None)
         if pma_cfg and use_cls:
             raise ValueError(
@@ -279,10 +237,8 @@ class SeismogramTransformer(nn.Module):
         return torch.stack([self.noise_model() for _ in range(batch_size)], dim =0)
     
     def forward(self, x : torch.Tensor):
-        # Optional bf16 autocast scoped to the EMBEDDING net only. The flow (which calls this
-        # forward as its embedding_net) then receives an fp32 context, so the precision-brittle
-        # coupling/LU/BatchNorm transforms keep running in fp32. autocast keeps LayerNorm/softmax
-        # in fp32 automatically (its op allowlist) and routes matmuls/convs to bf16 tensor cores.
+        # Scoped to the embedding net, so the flow still receives an fp32 context and its
+        # precision-brittle transforms stay in fp32.
         if self._amp and x.is_cuda:
             with torch.autocast("cuda", dtype=self._amp_dtype):
                 aggregated_station_info = self.embed(x)
@@ -325,10 +281,8 @@ class SeismogramTransformer(nn.Module):
                 x, self._n_components, self.input_length, self._n_cond
             )
         elif self._variable_stations and x.dim() == 4:
-            # Inference convenience: a 4-D (B, N, C, T) tensor for the full master station set.
-            # Treat every station as valid and take coordinates from the fixed buffer, so
-            # callers can run the full configuration without explicit packing. (Subsets or
-            # relative-coord inference must supply a packed 2-D context with per-sample coords.)
+            # A 4-D tensor means the full master station set: every station valid, coordinates
+            # from the fixed buffer. A subset must arrive packed, with per-sample coordinates.
             if self._station_coords_mode == "relative":
                 raise ValueError(
                     "Variable-station model with station_coords_mode='relative' needs a packed "
@@ -351,9 +305,8 @@ class SeismogramTransformer(nn.Module):
                 x, self._n_stations, self._n_components, self.input_length, self._n_cond
             )
         elif self._n_cond == 0 and x.dim() == 2:
-            # A packed context reached a model with no conditioning configured — almost
-            # certainly a source_location set on an unconditioned checkpoint. Fail clearly
-            # instead of the cryptic "not enough values to unpack" from x.shape below.
+            # A packed context reached a model with no conditioning configured; fail clearly
+            # rather than on the shape unpacking below.
             raise ValueError(
                 "Received a packed 2-D context but this model has no conditioning configured "
                 "(n_cond == 0). Did you set source_location on an unconditioned model, or load "
@@ -411,17 +364,12 @@ class SeismogramTransformer(nn.Module):
                 )
             else:
                 station_override = var_coords
-            # Transformer mask is (B, N, L) with True = pad: invert the station validity
-            # mask and broadcast over the encoder token axis L. Keep it as an expanded view —
-            # the transformer's reshape/permute consumers materialise only where needed.
+            # The transformer mask is (B, N, L) with True meaning pad, so invert the station
+            # validity mask and broadcast it over the token axis as a view.
             key_padding_mask = (~var_mask).unsqueeze(-1).expand(B, N, self.L)
 
-        # --- Optional per-station amplitude embedding ---
-        # Inject the array-relative radiation-pattern token BEFORE the transformer (so
-        # cross-station attention sees relative amplitude), and stash the per-event global
-        # (≈log M0) vector to add to the pooled embedding AFTER the transformer. When distance
-        # correction is enabled and a source location is available, supply per-station epicentral
-        # distance so the geometric-spreading trend is removed before forming the reference.
+        # The radiation-pattern token goes in before the transformer so cross-station attention
+        # sees relative amplitude; the per-event scale vector is added to the pooled embedding.
         amp_global = None
         if self.amplitude_embedding is not None:
             station_distance = None
@@ -452,9 +400,8 @@ class SeismogramTransformer(nn.Module):
         if source_emb is not None and self.concat_proj is not None:
             pooled = self.concat_proj(torch.cat([pooled, source_emb], dim=-1))
 
-        # Absolute-moment (M0) path: add the per-event global amplitude vector to the pooled
-        # embedding so the flow sees absolute scale even though the per-station tokens carried
-        # only the array-relative pattern.
+        # The per-station tokens carry only the array-relative pattern, so the per-event
+        # amplitude vector is what gives the flow absolute scale.
         if amp_global is not None:
             pooled = pooled + amp_global
         return pooled
@@ -569,27 +516,15 @@ class NPELightningModule(pl.LightningModule):
         self.flow = flow
         self.lr = lr
         self.weight_decay = weight_decay
-        # Second-stage LR schedule applied AFTER the linear warmup:
-        #   "cosine"   (default) — anneal down to lr*lr_min_factor over the remaining epochs;
-        #   "constant"           — hold flat at the base lr (no decay);
-        #   "cyclic"             — triangular CyclicLR (step-based).
+        # After the linear warmup: "cosine" anneals to lr * lr_min_factor over the remaining
+        # epochs, "constant" holds the base rate, "cyclic" is a step-based triangular cycle.
         self.lr_second_stage = lr_second_stage
-        # Cosine floor as a fraction of the base LR: eta_min = lr * lr_min_factor.
-        # 0.1 is the legacy value (every run before 2026-08-11 annealed to lr/10); the
-        # santorini mw-fix campaign moved to 0.2 (lr/5) so the tail of a 100-epoch run keeps
-        # a usefully large step. Only read by the "cosine" branch.
+        # Cosine floor as a fraction of the base LR: eta_min = lr * lr_min_factor. Raising it
+        # to 0.2 keeps a usefully large step in the tail of a long run. Cosine branch only.
         self.lr_min_factor = float(lr_min_factor)
         self.cyclic_period_steps = 8000
-        # --- Optional perf toggles (opt-in via model_config['perf']; default-off = legacy) ---
-        # fused_adam: one fused CUDA optimizer kernel instead of a per-parameter launch storm
-        #   (~8M params in many small tensors — real saving on this launch-bound workload).
-        # compile_forward: torch.compile the WHOLE log-prob (embedding + flow) — the flow's
-        #   small per-transform kernels dominate launch overhead. Wrapped as a closure so
-        #   state_dict keys are unchanged (no _orig_mod. prefix in checkpoints).
-        # compile_flow: compile ONLY the transform stack + base density (embedding eager) —
-        #   fallback if the embedding's data-dependent mask branches thrash recompilation.
-        # Requires a working torch.compile (torch >= 2.2; broken on 2.0) — only set these on
-        # an env where the one-epoch e2e gate passes with them on.
+        # Speed toggles for a launch-bound workload: one fused optimizer kernel, and compiling
+        # either the whole log-prob or only the flow when the mask branches thrash recompilation.
         self._fused_adam = bool(fused_adam)
         self._log_prob_fn = None
         self._flow_tail_fn = None
@@ -673,10 +608,8 @@ class NPELightningModule(pl.LightningModule):
         n_real = self.mmd_real_context.shape[0]
         b = min(cfg["batch_size"], n_real)
         idx = torch.randperm(n_real, device=self.mmd_real_context.device)[:b]
-        # Read the summary BOTTLENECK when the embedding net has one, so the kernel lives in
-        # the narrow space rather than the flow-facing expansion (which is a rank-limited
-        # linear image of it, and so would reintroduce the wide-space geometry the bottleneck
-        # exists to avoid). Falls back to the plain forward otherwise -> unchanged behaviour.
+        # Read the bottleneck when there is one, so the kernel lives in the narrow space and
+        # not in its rank-limited flow-facing expansion.
         _emb = self.flow._embedding_net
         _summarise = getattr(_emb, "summary_bottleneck", _emb)
         z_real = _summarise(self.mmd_real_context[idx]).float()
@@ -685,15 +618,8 @@ class NPELightningModule(pl.LightningModule):
         ema = cfg["bandwidth_ema"]
         self._mmd_bandwidth_ema = (beta if self._mmd_bandwidth_ema is None
                                    else ema * self._mmd_bandwidth_ema + (1 - ema) * beta)
-        # Degeneracy diagnostics (logged by the caller, never fed back into the loss).
-        # MMD^2 is exactly invariant to a GLOBAL rescale of the summaries, because beta
-        # is a median heuristic on those same summaries — so "shrink everything" is not
-        # a way to cheat the penalty in steady state. It IS a way to cheat *transiently*:
-        # the EMA lags by ~1/(1-ema) steps, so an embedding contracting faster than that
-        # leaves beta stale-and-too-large, every d^2/beta^2 -> 0, every kernel -> 1 and
-        # MMD^2_u -> 0 with no alignment whatsoever. Record the instantaneous beta (which
-        # tracks the true scale) alongside the lagged EMA actually used: a widening gap
-        # between them, or a collapsing z-scale, is the signature of that failure.
+        # An embedding contracting faster than the bandwidth EMA can follow drives every kernel
+        # to 1 and the statistic to 0, so log the instantaneous bandwidth beside the lagged one.
         self._mmd_last_beta = beta
         self._mmd_last_beta_ema = self._mmd_bandwidth_ema
         with torch.no_grad():
@@ -743,11 +669,8 @@ class NPELightningModule(pl.LightningModule):
         theta, x = batch
         log_prob = self.forward(x, theta)
         val_loss = -log_prob.mean()
-        # sync_dist=True averages across DDP ranks so ModelCheckpoint's monitored
-        # val_loss is the true mean over the whole val split (not just rank 0's shard).
-        # No-op on a single device ⇒ single-GPU/CPU behaviour is unchanged.
-        # NOTE: val_loss stays NLL-ONLY even with MMD armed — checkpoint selection must
-        # keep tracking posterior quality; val_mmd2 (below) is a diagnostic.
+        # sync_dist averages across ranks so the monitored val_loss covers the whole split. It
+        # stays likelihood-only even with MMD armed: checkpoints must track posterior quality.
         self.log("val_loss", val_loss, prog_bar=True, sync_dist=True)
         self.log("val_log_prob", log_prob.mean(), sync_dist=True)
         if self._mmd_cfg is not None and batch_idx == 0:
@@ -756,19 +679,8 @@ class NPELightningModule(pl.LightningModule):
         return val_loss
 
     def configure_optimizers(self):
-        # Optimizer. fused=True is numerically equivalent (same update rule, fused kernel).
-        # Guard the fused PRECONDITIONS up front — torch checks them lazily, inside the first
-        # optimizer.step(), so the try/except around the constructor below never sees them.
-        # There are two, and both are real failures we have hit:
-        #   * device: some torch versions only reject fused CPU params at step() time.
-        #   * dtype: torch >= 2.5's _device_dtype_check_for_fused rejects COMPLEX params
-        #     ("`fused=True` requires all the params to be floating point Tensors ... but
-        #     torch.complex64 and cuda"). The pno encoder's SpectralConv1d spectral weights
-        #     are complex64, so `--arch pno` with ml_perf.fused_adam died on its first step
-        #     after ~70 min of cache preload (job 1342786). Falling back to the unfused
-        #     AdamW is exactly equivalent mathematically — it costs kernel launches, not
-        #     correctness — so a complex-parameter model should quietly take that path
-        #     rather than force every pno config to special-case ml_perf.
+        # The fused optimizer's preconditions -- floating-point parameters on an accelerator --
+        # are checked here because torch only rejects them inside the first step().
         optimizer = None
         if self._fused_adam and fused_adam_supported(self.parameters()):
             try:

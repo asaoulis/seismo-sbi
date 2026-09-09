@@ -1,18 +1,11 @@
-"""Maximum Mean Discrepancy (MMD) utilities for misspecification-robust NPE training.
+"""Maximum Mean Discrepancy for misspecification-robust training.
 
-Implements the summary-space MMD auxiliary loss of Huang et al. 2023 (NeurIPS,
-arXiv:2305.15871, "Learning Robust Statistics for SBI under Model Misspecification"),
-upgraded for our two-sample setting (many QA'd real events vs. a posterior-matched
-simulation suite — see the task's ``mmd_taxonomy.md``):
-
-* **unbiased U-statistic** estimator (Gretton et al. 2012, Eq. 4) instead of the paper's
-  biased V-statistic (they had a single observed dataset; we have a population),
-* **mixture-of-RBF kernel** at several bandwidth scales around a median-heuristic base
-  (standard in the applied MMD-DA literature; hedges kernel-choice sensitivity),
-* bandwidth **detached** from the autograd graph, with an EMA across steps handled by
-  the caller (the estimator itself is stateless).
-
-All functions are pure torch and unit-tested in ``tests/unit/test_mmd.py``.
+The summary-space auxiliary loss of Huang et al. (2023), in a two-sample setting: many
+quality-controlled real events against a posterior-matched simulation suite. The estimator is
+the unbiased U-statistic of Gretton et al. (2012, Eq. 4) rather than the biased V-statistic,
+over a mixture of RBF kernels at several bandwidth scales around a median-heuristic base, which
+hedges kernel choice. The bandwidth is detached from the graph; any smoothing across steps is
+the caller's. Pure torch and stateless.
 """
 from __future__ import annotations
 

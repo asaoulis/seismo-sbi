@@ -111,9 +111,7 @@ class GaussianNoiseSampler:
 
         self._build_cholesky()
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
     def _build_cholesky(self):
         """Build Cholesky factors for all covariance blocks."""
         Ls = []
@@ -135,9 +133,7 @@ class GaussianNoiseSampler:
             return float(val.ravel()[0])
         return float(val)
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
     def __call__(self, *args, **kwargs):
         """Draw a sample from the current covariance.
 
@@ -190,10 +186,8 @@ class GaussianNoiseSampler:
 
 
 class EmpiricalCovariance(ABC):
-    # emcee uses multiprocessing, which hates huge objects being passed around
-    # instead we force the important data to persist in the class
-    # which acts as a global variable for the multiprocessing pool
-    # https://thelaziestprogrammer.com/python/multiprocessing-pool-a-global-solution
+    # The sampler uses multiprocessing, which would pickle a large object per call, so the
+    # heavy data is kept on the class instead and inherited by the pool.
     C_inverse = None
     data_vector_length = None
     C_derivative = None
@@ -457,9 +451,6 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
 
         def vector_vector_dot_product(self, vector1, vector2):
             return np.dot(vector1, vector2)
-            # reshaped_vector1 = vector1.reshape(-1, self.data_vector_length)
-            # reshaped_vector2 = vector2.reshape(-1, self.data_vector_length)
-            # return np.einsum('ij,ij->', reshaped_vector1, reshaped_vector2)
     
         def compute_trace(self, matrix):
             return np.trace(matrix, axis1=1, axis2=2).sum()
@@ -650,13 +641,6 @@ class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     
 from scipy.linalg import cho_factor, cho_solve
 
-# def stable_inverse(C, eps=1e-18):
-#     # ensure symmetry
-#     C = (C + C.T) / 2
-#     # add jitter for numerical stability
-#     C = C + np.eye(C.shape[0]) * eps
-#     c, low = cho_factor(C, lower=True, check_finite=False)
-#     return cho_solve((c, low), np.eye(C.shape[0]), check_finite=False)
 
 def stable_inverse(C, eps=1e-18):
     # ensure symmetry
@@ -688,9 +672,7 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
 
         self.set_covariance(station_component_covariances)
 
-    # ------------------------------------------------------------------
     # Covariance construction
-    # ------------------------------------------------------------------
 
     @classmethod
     def set_cholesky_factors(cls, cholesky_factors):
@@ -710,12 +692,6 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
         )
         self.set_cholesky_factors(cholesky_factors)
 
-        # # Optional derivatives
-        # if hasattr(station_component_covariances, "data_parameter_gradients"):
-        #     self.C_derivative = self.create_C_derivative(
-        #         station_component_covariances
-        #     )
-        #     # self.set_covariance_constants()
 
     def create_covariance_matrix(self, station_component_covariances):
         theory_covs = station_component_covariances.reshape(
@@ -742,9 +718,7 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     def create_matmul_inverse_covariance(cholesky_factors, data_vector_length):
         return partial(TheoryBlockDiagonalEmpiricalCovariance.callable_matmul_inverse_covariance,
                        cholesky_factors = cholesky_factors, block_size = data_vector_length)
-    # ------------------------------------------------------------------
     # Quadratic forms
-    # ------------------------------------------------------------------
     @staticmethod
     def callable_matmul_inverse_covariance(data_vector, cholesky_factors, block_size):
         reshaped = data_vector.reshape(-1, block_size)
@@ -790,9 +764,7 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     def create_loss_callable(toeplitz_cols, data_vector_length):
         return partial(TheoryBlockDiagonalEmpiricalCovariance.loss_callable,
                         toeplitz_cols = toeplitz_cols, data_vector_length = data_vector_length)
-    # ------------------------------------------------------------------
     # Inverse covariance × vector
-    # ------------------------------------------------------------------
 
     @classmethod
     def matmul_inverse_covariance(cls, data_vector):
@@ -802,9 +774,7 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
             out.append(cho_solve(cf, x, check_finite=False))
         return np.concatenate(out)
 
-    # ------------------------------------------------------------------
     # Gradient kernels & traces
-    # ------------------------------------------------------------------
 
     def set_covariance_constants(self):
         self.kernels = []

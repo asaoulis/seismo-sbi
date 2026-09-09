@@ -58,9 +58,8 @@ def make_beachball_collection(mt, facecolor, edgecolor, alpha=1.0, linewidth=1.3
 
 
 
-# disable chain consumer warnings for reparametrised moment tensor
-# as the angle distributions cover periodic sample space
-# solution from https://gist.github.com/simon-weber/7853144
+# The angle distributions of a reparametrised moment tensor cover a periodic sample space,
+# which the corner-plot library warns about on every call.
 @contextmanager
 def warning_logging_disabled(highest_level=logging.WARNING):
     """
@@ -152,9 +151,8 @@ def get_MW_and_epsilon(moment_tensor_sol):
     
     return (MW, epsilon)
 
-# New: compute delta (Tape & Tape lune coordinate) from full tensor eigenvalues
-# delta is the angle from the deviatoric plane to the lune point (-90 <= delta <= 90)
-# Following TT2012 Eq. 21a and the reference lam2lune.m
+# delta_deg is the angle from the deviatoric plane to the lune point, -90 to 90 deg,
+# following Tape & Tape (2012) Eq. 21a.
 
 def get_delta(moment_tensor_sol: np.ndarray) -> float:
     """
@@ -279,23 +277,13 @@ class MomentTensorReparametrised:
         return converted_chain_dict
 
 
-# Shared lune-overlay palette (one colour per overlaid ensemble, in dict order).
-# Exposed at module scope so external legend builders (e.g.
-# seismo_sbi.plotting.evaluation.plot_ensemble_lune_kde) stay in sync with the
-# contour colours plot_lunes / plot_lunes_kde draw.
-# HEX (not matplotlib colour names): the same palette feeds the ChainConsumer corner
-# (plot_chain_consumer -> CustomChainConsumer.add_chain), which only accepts hex codes
-# or its own 14 mapped names — names like 'cornflowerblue'/'teal'/'olive'/'gold' raise
-# "Color ... is not mapped". Hex renders identically in matplotlib, so the lune contours
-# and the corner now use exactly the same colours. Values = matplotlib.to_hex of the
-# original names: cornflowerblue, red, purple, green, brown, orange, teal, magenta,
-# olive, gold, cyan.
+#: One colour per overlaid ensemble, in dict order, shared by the lune contours and the corner
+#: plot. Hex codes, because the corner-plot library accepts only those or its own mapped names.
 LUNE_ENSEMBLE_COLORS = ['#6495ED', '#FF0000', '#800080', '#008000', '#A52A2A',
                         '#FFA500', '#008080', '#FF00FF', '#808000', '#FFD700', '#00FFFF']
 
-# Distinct scatter styles for *additional* published reference MTs overlaid on the lune
-# alongside the primary 'truth' (e.g. extra catalogue solutions: Lentas, Fountoulakis, ...).
-# Cycled in the order the extra_references mapping is provided.
+#: Scatter styles for reference solutions overlaid alongside the primary one, cycled in the
+#: order the ``extra_references`` mapping gives them.
 LUNE_REFERENCE_STYLES = [
     {"marker": "*", "color": "gold",        "s": 380},
     {"marker": "s", "color": "dodgerblue",  "s": 200},
@@ -320,9 +308,8 @@ def _relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1
     if not specs:
         return
 
-    # Beachball size in data units (it is circular in display: diameter is a fraction of the
-    # axes *height* in both display dims). Offset the gutters from the lune's widest edge by
-    # ~one beachball radius so the balls clear the frame at any delta.
+    # A beachball is circular in display, so its diameter is a fraction of the axes height;
+    # offset the gutters by about one radius so the balls clear the frame at any delta.
     ax.figure.canvas.draw()
     bbox = ax.get_window_extent()
     xmin, xmax = ax.get_xlim()
@@ -553,14 +540,8 @@ class PosteriorPlotter:
         # ax.axis("off")
         # ax.set_title(f"Empirical Density Modelling")
         ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.7, color='red')
-        # ax.plot(param_ground_truths, param_ground_truths, label="Ground truth", color="green", linestyle='--')
-        # ax.set_xlabel("Model Parameters, $\\mathbf{m}$")
-        # ax.set_ylabel("Observation, $\\mathbf{D}$")
         ax.set_ylim(np.min(parameter.scaling_transform(u_thetas[:,parameter_index])), 
                     np.max(parameter.scaling_transform(u_thetas[:, parameter_index])))
-        # print(param_ground_truths)
-        # print(parameter.scaling_transform(u_thetas[:200, parameter_index]),
-        #         parameter.scaling_transform(u_compressions[:10, parameter_index]))
         shaped_probs = probabilities.reshape(20,20).detach().numpy().T
         contours = ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
                     parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), np.clip(shaped_probs,-700,10000),
@@ -1059,11 +1040,6 @@ class PosteriorPlotter:
         theta0, samples, data_scaler, _ = inversion_data
         if data_scaler is None:
             data_scaler = self.data_scaler
-        # plotting_units_samples = data_scaler.inverse_transform(samples)
-        # if theta0 is not None:
-        #     plotting_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
-        # else:
-        #     plotting_units_theta_0 = None
 
         np.random.shuffle(samples)
         if plot_path is not None:
@@ -1203,9 +1179,7 @@ class PosteriorPlotter:
         ax.set_ylim((-0.1, 0.1))
 
 
-# -----------------------------
-# Standalone plotting: histories (trajectories) on the lune
-# -----------------------------
+# Standalone plotting: trajectories on the lune.
 
 def plot_lune_histories(histories, figsave=None, linewidth=2.0, mark_endpoints=True):
     """

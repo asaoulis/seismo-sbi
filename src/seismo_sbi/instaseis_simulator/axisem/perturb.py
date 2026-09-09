@@ -1,28 +1,11 @@
-"""Perturb AxiSEM external background models.
+"""Perturb AxiSEM external background models to build a velocity-model ensemble.
 
-Deliberately simple and tunable (the science here will be refined later).  This
-extends the spirit of ``cps_simulator.smooth_perturbations.perturb_model``:
-treat the 1-D model as a stack of layers and draw **log-normal fractional**
-perturbations on the key parameters:
-
-* ``vpv`` (Vp) and ``vsv`` (Vs)  -- the *signed increments* between successive
-                                    nodes are scaled by a mean-1 log-normal factor
-                                    ``exp(N(-sigma^2/2, sigma))`` and the profile is
-                                    rebuilt from a fixed deep anchor (see
-                                    ``_perturb_monotone_increments``).  This keeps
-                                    monotonicity (no LVZ/cliff artifacts) *and*
-                                    makes the perturbation mean-preserving
-                                    (``E[v'] = v``), so the ensemble stays centred
-                                    on the 1-D reference.
-* layer width                    -- the radial gaps between successive nodes are
-                                    perturbed, then renormalised so the surface
-                                    and centre radii stay fixed.  This naturally
-                                    shifts discontinuity depths without breaking
-                                    the double-line format.
-
-Physical guards: fluid rows (``vsv == 0``) stay fluid; ``vsv < vpv/sqrt(2)`` is
-enforced.  Density is kept fixed by default (``rho_mode='fixed'``) or re-derived
-from Brocher (2005) (``rho_mode='brocher'``).  ``qka``/``qmu`` are untouched.
+The signed increments of ``vpv`` and ``vsv`` between successive nodes are scaled by a mean-one
+log-normal factor ``exp(N(-sigma^2/2, sigma))`` and the profile is rebuilt from a fixed deep
+anchor, which keeps the profile monotone and the ensemble centred on the reference
+(``E[v'] = v``). The radial gaps between nodes are perturbed and renormalised so the surface
+and centre radii stay fixed, shifting discontinuity depths. Fluid rows stay fluid and
+``vsv < vpv/sqrt(2)`` is enforced; density is fixed or re-derived from Brocher (2005).
 """
 
 from __future__ import annotations

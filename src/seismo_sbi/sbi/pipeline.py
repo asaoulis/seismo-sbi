@@ -7,7 +7,6 @@ from tqdm import tqdm
 from sbi import utils as utils
 from sbi import analysis as analysis
 from copy import deepcopy
-from dataclasses import dataclass
 import time
 from typing import List
 from functools import partial
@@ -30,10 +29,10 @@ from .inference import SBI_Inference
 from . import likelihood as likelihood
 from .lsquares.least_squares import IterativeLeastSquaresSolver
 
-from .scalers import FlexibleScaler, build_flexible_scaler
+from .scalers import FlexibleScaler
 from .dataset_compressor import DatasetCompressor
 
-from ..utils.errors import error_handling_wrapper, InvalidConfiguration
+from ..utils.errors import error_handling_wrapper
 from ..plotting.results_plotting import SBIPipelinePlotter
 from ..instaseis_simulator.dataloader import SimulationDataLoader
 from ..instaseis_simulator.dataset_generator import DatasetGenerator
@@ -43,127 +42,6 @@ from .simulator_wrapper import GeneralSimulatorWrapper
 from .utils import convert_lists_to_arrays
 
 from ..instaseis_simulator.utils import compute_data_vector_length
-from ..instaseis_simulator.post_processing import build_augmentation_chain_from_parameters
-
-
-@dataclass
-class TrainingData:
-    """The simulated dataset and the per-run objects an NPE training run consumes.
-
-    ``station_locations`` has shape (n_stations, n_coordinates); ``trace_length`` is the
-    per-trace sample count; the two augmentation chains are applied to a training sample before
-    and after sensor noise is added.
-    """
-
-    simulation_paths: list
-    components: str
-    station_locations: np.ndarray
-    trace_length: int
-    data_scaler: FlexibleScaler
-    augmentation_chain: object
-    augmentation_nuisance_params: dict
-    post_noise_chain: object
-    post_noise_nuisance_params: dict
-
-
-def build_pipeline(config, config_path, num_simulations=None):
-    """Build the pipeline named by ``config.pipeline_type`` and load its seismic parameters.
-
-    ``num_simulations`` overrides the configured size of the training dataset.
-    """
-    if num_simulations is not None:
-        config.dataset_parameters = config.dataset_parameters._replace(
-            num_simulations=num_simulations)
-        print(f"Overriding num_simulations -> {num_simulations}")
-
-    pipeline_class = {"single_event": SingleEventPipeline,
-                      "vary_dataset_size": VaryDatasetSizeEventPipeline}.get(
-                          config.pipeline_type, MultiEventPipeline)
-    pipeline = pipeline_class(config.pipeline_parameters, config_path)
-    pipeline.compression_methods = config.compression_methods
-    pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters,
-                                    config.dataset_parameters)
-    return pipeline
-
-
-def generate_training_dataset(pipeline, config, skip_compression_stencil=False):
-    """Simulate, or find on disk, the training simulations and the score/Fisher stencil.
-
-    Returns the simulation paths. Only the classical compressed inversion reads the stencil, so
-    ``skip_compression_stencil`` leaves it unbuilt for an ML training run.
-    """
-    if config.pipeline_parameters.generate_dataset:
-        simulation_paths = pipeline.simulate_test_jobs(config.dataset_parameters,
-                                                       config.test_job_simulations)
-    else:
-        simulation_paths = list(Path(pipeline.simulations_output_path).glob('*.h5'))
-
-    pipeline.compute_data_vector_properties(simulation_paths, config.real_event_jobs)
-    if skip_compression_stencil:
-        pipeline.score_compression_data, pipeline.extra_gradients = None, None
-    else:
-        pipeline.score_compression_data, pipeline.extra_gradients = (
-            pipeline.compute_required_compression_data(
-                config.compression_methods, config.model_parameters,
-                rerun_if_stencil_exists=config.pipeline_parameters.generate_dataset))
-    print(f"Training dataset ready: {len(simulation_paths)} simulations at "
-          f"{pipeline.simulations_output_path}")
-    return simulation_paths
-
-
-def prepare_training_data(pipeline, config, simulation_paths, training):
-    """Load the compressors, the noise model and the parameter scaler, and build the
-    augmentation chains, returning the :class:`TrainingData` a trainer consumes."""
-    if not training.skip_compression_stencil:
-        pipeline.load_compressors(config.compression_methods, pipeline.score_compression_data,
-                                  extra_gradients=pipeline.extra_gradients)
-    pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
-    rescale_training_noise_to_event(pipeline, config)
-
-    augmentation_chain, augmentation_nuisance_params = build_augmentation_chain_from_parameters(
-        pipeline.parameters, sampling_rate=pipeline.simulation_parameters.sampling_rate)
-    post_noise_chain, post_noise_nuisance_params = build_augmentation_chain_from_parameters(
-        pipeline.parameters, stage="training_augmentation_post_noise")
-    print(f"Training-time nuisance augmentation: {list(augmentation_nuisance_params) or 'none'}")
-    print(f"Post-noise augmentation: {list(post_noise_nuisance_params) or 'none'}")
-
-    data_scaler = build_flexible_scaler(pipeline.parameters, config.raw_config)
-    print(f"Moment-tensor scaling: {data_scaler.moment_tensor_scaling}")
-    return TrainingData(
-        simulation_paths=simulation_paths,
-        components=pipeline.data_manager.data_loader.components,
-        station_locations=pipeline.simulation_parameters.receivers.get_station_locations_array(),
-        trace_length=pipeline.trace_length,
-        data_scaler=data_scaler,
-        augmentation_chain=augmentation_chain,
-        augmentation_nuisance_params=augmentation_nuisance_params,
-        post_noise_chain=post_noise_chain,
-        post_noise_nuisance_params=post_noise_nuisance_params,
-    )
-
-
-def rescale_training_noise_to_event(pipeline, config):
-    """Scale the training noise covariance to one real event's pre-event variance.
-
-    Skipped in generic-event mode (``real_noise`` with ``rescale: false``), where the sampler
-    draws noise windows verbatim and the event file need not hold every station.
-    """
-    noise_model = config.sbi_noise_model
-    if noise_model.get('type') == 'real_noise' and not noise_model.get('rescale', True):
-        return
-    if not config.real_event_jobs:
-        raise InvalidConfiguration(
-            "Training the noise covariance needs at least one jobs.real_events entry to "
-            "parametrise it from.")
-    real_noise_path = next(iter(config.real_event_jobs.values()))
-    covariance_data = pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
-    pipeline.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance_data)
-
-
-def preload_noise_cache(pipeline, cache):
-    """Read the real-noise window pool into RAM when ``ml_cache.noise`` asks for it."""
-    if cache.noise and hasattr(pipeline.training_noise_sampler, "preload_cache"):
-        pipeline.training_noise_sampler.preload_cache(max_workers=cache.preload_workers)
 
 
 class SBIPipeline:
@@ -448,14 +326,19 @@ class SBIPipeline:
             self.training_noise_sampler = self.data_cov_mat.create_sampler()
         elif train_noise_type == 'real_noise':
             noise_catalogue_path = sbi_noise_model['noise_catalogue_path']
-            # Generic-event training: rescale=false freezes the sampler so it draws noise
-            # windows verbatim (never rescaled to one event's pre-event variance). Default
-            # True preserves the legacy single-event behaviour.
+            # rescale=false freezes the sampler so it draws noise windows verbatim, never
+            # rescaled to one event's pre-event variance.
             rescale = sbi_noise_model.get('rescale', True)
+            # allow_incomplete: use noise windows that are missing some model stations
+            # (zero-filled + a presence mask) instead of skipping them. Only meaningful
+            # with variable-station training, which masks the absent stations out; the
+            # dataloader raises if an incomplete window reaches the fixed-N path.
+            allow_incomplete = sbi_noise_model.get('allow_incomplete', False)
             self.training_noise_sampler = RealNoiseSampler(self.simulation_parameters,
                                                            noise_catalogue_path,
                                                            self.trace_length,
-                                                           freeze_scale=not rescale)
+                                                           freeze_scale=not rescale,
+                                                           allow_incomplete=allow_incomplete)
         elif train_noise_type == 'empirical_gaussian':
             self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
 
@@ -811,15 +694,8 @@ class SingleEventPipeline(SBIPipeline):
             else:
                 compressor_name = self.compressor_keys[0]
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
-        # A single linearised Gauss-Newton step is exact ONLY when the MLE problem is linear: the
-        # moment tensor is the only free parameter AND the data covariance is constant. The
-        # theory_optimal_score covariance C_t(m) is the ensemble spread of the model predictions,
-        # which scales with the source, so it is NOT constant — an MT-only inversion is then still
-        # nonlinear and must iterate (each step recomputes C_t at the current estimate, with damping).
-        # With the CPS workflow the theory error is a sampled `velocity_model` nuisance, so "MT-only"
-        # was a reliable proxy for "constant covariance"; with the Instaseis ensemble the theory error
-        # is baked into the simulator (a random member per draw), so MT-only no longer implies a
-        # constant covariance — hence the explicit theory-error check.
+        # One linearised Gauss-Newton step is exact only for a linear problem: moment tensor
+        # alone AND a constant covariance, which a theory-error covariance is not.
         theory_error_covariance = str(compressor_name).startswith("theory")
         single_least_squares_step = only_moment_tensor_variable and not theory_error_covariance
         # build / refresh this specific compressor with its own compression data
@@ -892,10 +768,8 @@ class SingleEventPipeline(SBIPipeline):
         walker_burn_in = likelihood_config['walker_burn_in']
         num_samples = likelihood_config['num_samples']
         move_size = likelihood_config.get('move_size')
-        # MCMC worker count: decoupled from num_jobs (the dataset-gen parallelism).
-        # With the fast kernel simulator each log-prob is a cheap mat-vec, so the
-        # multiprocessing/loky fan-out is pure overhead and the source of the worker
-        # fork/HDF5 deadlock; num_processes=1 runs joblib in-process (no workers).
+        # Decoupled from num_jobs: with the kernel simulator each log-prob is a cheap
+        # mat-vec, so the process fan-out costs more than it saves and can deadlock on HDF5.
         num_processes = likelihood_config.get('num_processes') or self.num_parallel_jobs
         nsamples_per_walker = num_samples//num_processes
         return_log_prob = bool(likelihood_config.get('return_log_prob', False))
@@ -984,15 +858,6 @@ class MultiEventPipeline(SingleEventPipeline):
                     compressed_dataset = job_result.compressed_dataset
                 else:
                     pass
-                    # reuse existing compressor for further events
-                #     compressor = self.compressors[compressor_name]
-                #     x_0 = compressor.compress_data_vector(D)
-                #     x_0_scaled = self.ground_truth_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
-                #     if np.abs(x_0_scaled - 0.5).max() > 0.5:
-                #         print('x_0 problem found', np.abs(x_0_scaled - 0.5).max(), i)
-                #         x_0_scaled = np.clip(x_0_scaled, 0, 1.)
-                #     sample_results, _ = sbi_model.sample_posterior(x_0_scaled, num_samples=10000)
-                #     theta0_scaled = self.ground_truth_scaler.transform(theta0.reshape(1,-1)).reshape(-1)
 
                 #     inversion_data = InversionData(theta0_scaled, sample_results, deepcopy(self.ground_truth_scaler), compression_data)
                 #     job_result = JobResult(compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))

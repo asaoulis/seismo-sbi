@@ -36,20 +36,16 @@ class GeneralSimulatorWrapper:
         # gaussian_sigma).  Make a shallow copy so we don't mutate the original.
         effect_configs = dict(getattr(parameters, 'nuisance_effect_config', {}))
 
-        # Only nuisances staged at "simulation" (the default) are baked into each
-        # simulation here.  Effects staged "training_augmentation" are folded in
-        # per-batch by the ML dataloader instead, so they must NOT be applied at
-        # simulation time.  This keeps the theory-error EnsembleSimulator path —
-        # which relies on baked effects — fully intact for simulation-staged keys.
+        # Only nuisances staged "simulation" are baked in here; those staged
+        # "training_augmentation" are folded in per batch by the dataloader instead.
         nuisance_stage = getattr(parameters, 'nuisance_stage', {})
         sim_staged_keys = [
             key for key in parameters.nuisance.keys()
             if nuisance_stage.get(key, "simulation") == "simulation"
         ]
 
-        # Shift-based effects need the simulation sampling rate for Lanczos
-        # interpolation (seconds → samples).  Inject it automatically so it
-        # never needs to appear in the YAML.
+        # Shift-based effects need the sampling rate to turn seconds into samples, so it is
+        # injected here rather than repeated in every configuration file.
         for _shift_key in ('time_shift_error', 'azimuthal_anisotropy',
                            'shear_wave_splitting', 'dispersion_spread'):
             if _shift_key in sim_staged_keys:

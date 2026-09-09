@@ -1,13 +1,10 @@
 """Catalogue-driven sampler factories for dataset generation.
 
-Each factory builds a closure with the standard dataset-generator sampler
-signature ``f(args, num_samples)`` (where ``args`` is ``parameters.bounds[key]``),
-yielding one per-parameter sample per iteration, so it slots directly into
-``DatasetGenerator.sampler_lookup_map`` usage without any change to the generator
-call sites.
-
-  * :func:`make_catalogue_location_sampler` - source-location Gaussian-mixture / KDE.
-  * :func:`make_gutenberg_richter_mt_sampler` - truncated-GR M0 + uniform-on-sphere MT.
+Each factory returns a closure with the dataset generator's sampler signature
+``f(args, num_samples)``, where ``args`` is ``parameters.bounds[key]``, yielding one sample per
+iteration, so it drops straight into the generator's lookup map.
+:func:`make_catalogue_location_sampler` gives a source-location kernel density over a catalogue
+and :func:`make_gutenberg_richter_mt_sampler` a truncated-GR moment with a uniform orientation.
 """
 from __future__ import annotations
 

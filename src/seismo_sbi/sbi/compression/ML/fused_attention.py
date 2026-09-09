@@ -1,27 +1,11 @@
-"""Fused multi-head attention drop-in (opt-in performance path).
+"""Fused multi-head attention, an opt-in drop-in for ``nn.MultiheadAttention``.
 
-``FusedMHA`` is a faithful, numerically-equivalent replacement for
-``nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)`` that routes the
-attention through :func:`torch.nn.functional.scaled_dot_product_attention` (the fused
-flash / memory-efficient kernel) instead of the unfused ``bmm → softmax → bmm`` math path.
-
-Why: the axial transformer and the PMA pooling head issue many *small* masked attentions
-(station axis N≈16, time axis L≈50). On torch 2.0 ``nn.MultiheadAttention`` does NOT take its
-fused fast-path when training with a ``key_padding_mask``, so each attention becomes ~5 separate
-CUDA kernels (two ``bmm`` + softmax + masking + projections). This module collapses the core
-attention into ONE fused kernel — fewer launches (the workload is launch-overhead-bound) and
-lower memory (no materialised B×h×S×S score matrix), and it is dramatically faster under bf16
-autocast (flash attention).
-
-Equivalence: same learnable parameters (``in_proj_weight``, ``in_proj_bias``, ``out_proj``) and the
-same scaled-dot-product math ⇒ given identical weights the output matches ``nn.MultiheadAttention``
-to floating-point tolerance (verified ~1e-7 in the benches). The parameter layout and the
-``_reset_parameters`` scheme mirror ``nn.MultiheadAttention`` so a fresh module also *initialises*
-the same way (xavier-uniform packed in-proj, zero biases, default-Linear out-proj weight).
-
-``build_mha(embed_dim, num_heads, dropout, use_sdpa)`` returns a ``FusedMHA`` when ``use_sdpa`` is
-set, else a stock ``nn.MultiheadAttention`` — so the surrounding code is unchanged and the feature
-is fully opt-in (absent ⇒ byte-identical legacy attention).
+``FusedMHA`` routes the attention through ``scaled_dot_product_attention`` instead of the
+unfused ``bmm -> softmax -> bmm`` path. The axial transformer and the pooling head issue many
+small masked attentions, which the stock module does not fast-path while a key-padding mask is
+present, so the workload is launch-bound; one fused kernel also avoids materialising the score
+matrix. Parameters, initialisation and the arithmetic match, so outputs agree to floating-point
+tolerance. ``build_mha(..., use_sdpa)`` returns this or the stock module.
 """
 
 from __future__ import annotations

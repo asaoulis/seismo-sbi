@@ -1,27 +1,11 @@
-"""Per-station encoder registry and interface.
+"""Per-station encoder registry and the interface an encoder must satisfy.
 
-Every per-station encoder is an ``nn.Module`` that maps a batch of flattened
-station traces ``x:(B*N, C, T)`` to a sequence of token embeddings
-``(B*N, L, D)``.  The transformer aggregator receives these tokens and folds
-in spatial / cross-station information.
-
-Interface contract
-------------------
-Each registered encoder **must**:
-
-1. Accept ``__init__(num_seismic_components, input_length, d_model, **encoder_config)``.
-   ``d_model`` is the transformer width; encoders need **not** output ``D == d_model``
-   — ``SeismogramTransformer`` will add an ``nn.Linear(D, d_model)`` projection
-   (``nn.Identity`` when equal).
-2. Implement ``forward(x: Tensor) -> Tensor`` with
-   ``x:(B*N, C, T)`` → output ``(B*N, L, D)``.
-3. Expose scalar attributes ``.output_length`` (L) and ``.output_dim`` (D)
-   immediately after ``__init__`` (i.e. without a forward pass).
-
-Selection
----------
-Set ``model_config["station_encoder"] = "<name>"`` (default ``"cnn"``).
-Pass encoder-specific kwargs via ``model_config["encoder_config"]`` (dict, optional).
+An encoder maps flattened station traces ``(B*N, n_components, n_samples)`` to token embeddings
+``(B*N, L, D)``, which the transformer then folds cross-station information into. It takes
+``__init__(num_seismic_components, input_length, d_model, **encoder_config)``, need not emit
+``D == d_model`` since a linear projection is added when they differ, and must expose
+``output_length`` and ``output_dim`` before any forward pass. Select one with
+``model_config["station_encoder"]`` and configure it with ``model_config["encoder_config"]``.
 """
 
 from __future__ import annotations
@@ -32,14 +16,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ---------------------------------------------------------------------------
 # Shared amplitude primitives (single-sourced so cnn/pno/tcn don't duplicate)
-# ---------------------------------------------------------------------------
-#
-# Every per-station encoder max-abs-normalises a trace over (C, T) and appends a
-# broadcast log-amplitude channel. These helpers define that operation in ONE place so
-# the three encoders stay numerically identical, and so the transformer-level amplitude
-# embedding (amplitude_embedding.py) can reuse the SAME max-abs definition.
+# Every encoder max-abs-normalises a trace over (C, T) and appends a broadcast log-amplitude
+# channel; defined once here so the encoders and the token embedding share one definition.
 
 _AMP_EPS = 1e-12
 
@@ -78,9 +57,7 @@ def station_amplitudes(
     return amp.clamp_min(eps).log()
 
 
-# ---------------------------------------------------------------------------
 # Registry
-# ---------------------------------------------------------------------------
 
 PER_STATION_ENCODER_REGISTRY: Dict[str, Callable[..., nn.Module]] = {}
 
@@ -131,9 +108,7 @@ def build_station_encoder(
     )
 
 
-# ---------------------------------------------------------------------------
 # InputDecimator — Nyquist-aware model-entry decimation (opt-in)
-# ---------------------------------------------------------------------------
 
 class InputDecimator(nn.Module):
     """Decimate input traces by an integer factor at the model entry.
@@ -185,9 +160,7 @@ class InputDecimator(nn.Module):
         return x
 
 
-# ---------------------------------------------------------------------------
 # CNNEncoder — thin adapter around SeismicTraceCNN (backward-compatible default)
-# ---------------------------------------------------------------------------
 
 @register_encoder("cnn")
 class CNNEncoder(nn.Module):
@@ -212,12 +185,8 @@ class CNNEncoder(nn.Module):
         # Import here to avoid circular imports at module load time
         from .cnn_feature_extractor import SeismicTraceCNN
 
-        # Match the original construction exactly: the old SeismogramTransformer
-        # passed `cnn_output_dim=d_model` → `final_layer=d_model`. In SeismicTraceCNN
-        # the default last conv has `final_layer - 1` channels and a log-amplitude
-        # channel is appended, so `output_channels = final_layer = d_model`. Passing
-        # d_model here therefore reproduces the current numerics and keeps the
-        # downstream projection an Identity (output_dim == d_model).
+        # The last conv has ``final_layer - 1`` channels and a log-amplitude channel is
+        # appended, so passing d_model here keeps the downstream projection an identity.
         self._cnn = SeismicTraceCNN(
             num_seismic_components,
             input_length=input_length,
@@ -235,9 +204,7 @@ class CNNEncoder(nn.Module):
         return feats.permute(0, 2, 1).contiguous()  # (B*N, L, D)
 
 
-# ---------------------------------------------------------------------------
 # FNO primitives (vendored — no new dependency)
-# ---------------------------------------------------------------------------
 
 class SpectralConv1d(nn.Module):
     """Fourier-domain conv: rfft → complex weight multiply (lowest *modes*) → irfft.
@@ -258,10 +225,8 @@ class SpectralConv1d(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, T = x.shape
-        # torch.fft has no bf16/half kernels, so the spectral path runs in fp32 even under a
-        # bf16 autocast (the complex weights are cfloat); the result is cast back to the input
-        # dtype so the surrounding (autocast) graph is unaffected. Disable autocast explicitly
-        # so the einsum over complex tensors isn't down-cast either.
+        # torch.fft has no half-precision kernels, so the spectral path runs in fp32 under an
+        # autocast and the result is cast back; autocast is disabled over the complex einsum.
         in_dtype = x.dtype
         with torch.autocast(device_type=x.device.type, enabled=False):
             xf = x.float()
@@ -314,9 +279,7 @@ def _compute_conv_output_length(L: int, kernel: int, stride: int, padding: int =
     return (L + 2 * padding - (kernel - 1) - 1) // stride + 1
 
 
-# ---------------------------------------------------------------------------
 # PhaseNeuralOperatorEncoder  ("pno")
-# ---------------------------------------------------------------------------
 
 @register_encoder("pno")
 class PhaseNeuralOperatorEncoder(nn.Module):
@@ -403,9 +366,7 @@ class PhaseNeuralOperatorEncoder(nn.Module):
         return h.permute(0, 2, 1).contiguous()   # (B*N, L, D)
 
 
-# ---------------------------------------------------------------------------
 # DilatedTCNEncoder  ("tcn")
-# ---------------------------------------------------------------------------
 
 class _GLUBlock(nn.Module):
     """One dilated WaveNet-style block: dilated Conv1d → GLU → residual.
@@ -485,9 +446,8 @@ class DilatedTCNEncoder(nn.Module):
         super().__init__()
         out_dim = out_dim if out_dim is not None else d_model
 
-        # Symmetric padding pad = dilation*(k-1)//2 only preserves the trace length for an
-        # ODD kernel; an even kernel produces length T-1 and breaks the residual add in
-        # _GLUBlock. Reject it up front with a clear message.
+        # Symmetric padding ``dilation * (k - 1) // 2`` preserves the trace length only for an
+        # odd kernel; an even one comes back a sample short and breaks the residual add.
         if kernel_size % 2 == 0:
             raise ValueError(
                 f"DilatedTCNEncoder requires an odd kernel_size to preserve length; got {kernel_size}."

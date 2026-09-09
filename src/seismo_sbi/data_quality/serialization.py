@@ -1,14 +1,11 @@
-"""On-disk QA artifact contracts (the only file-format authority for data QA).
+"""On-disk quality-control artifacts: the only file-format authority for data QA.
 
-Three JSON artifacts, whose schemas are consumed elsewhere and must not break:
-
-* ``components.json``  -- ``{station: [Z,E,N] | []}``, read by
-  ``Receivers._convert_to_instaseis_receivers`` (``[]`` drops the station).
-* ``time_shifts.json`` -- ``{station: int}`` of *non-zero* static shifts (samples),
-  read by ``Receivers.set_time_shifts`` / ``apply_station_time_shifts``.
-* ``*_allstation_verdicts.json`` -- ``{"present": {station: {...}}, "absent_from_h5": [...]}``,
-  the audit trail read by the post-train eval. The per-station record always carries the
-  original nine fields (in their original order); new fidelity fields are appended.
+``components.json`` maps ``{station: [Z, E, N]}``, with ``[]`` dropping the station, and is read
+by ``Receivers._convert_to_instaseis_receivers``. ``time_shifts.json`` maps ``{station: int}``
+for the non-zero static shifts in samples, read by ``Receivers.set_time_shifts``.
+``*_allstation_verdicts.json`` holds ``{"present": {station: {...}}, "absent_from_h5": [...]}``
+as the audit trail; each per-station record keeps its original nine fields in order, with any
+new fidelity field appended.
 """
 from __future__ import annotations
 

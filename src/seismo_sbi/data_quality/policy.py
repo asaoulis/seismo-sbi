@@ -1,13 +1,11 @@
-"""Per-station keep / time-shift / drop decision policy.
+"""Per-station keep, time-shift or drop decisions.
 
-Pure, deterministic logic over :class:`TraceMetrics`. The classical gates
-(Z-component coherence, gross amplitude, timing) are ported verbatim from the
-Santorini ``qa_forward_check.py``; an additional, *lag-aligned multi-component
-coherence* gate (a principled generalisation of the Z-only coherence gate that uses
-all components and is therefore robust to timing errors) is folded in, controllable
-via :class:`QAThresholds`. The confounded zero-lag PPC metrics
-(``corr_misfit``/``envelope_misfit``/``reduced_chi2``) are carried for *fidelity
-reporting* and are only drop gates if their thresholds are explicitly set.
+Pure deterministic logic over :class:`TraceMetrics`, controlled by :class:`QAThresholds`. The
+gates are vertical-component coherence, gross amplitude, timing, and a lag-aligned
+multi-component coherence gate that generalises the vertical-only one and is therefore robust to
+timing error. The zero-lag posterior-predictive metrics (``corr_misfit``, ``envelope_misfit``,
+``reduced_chi2``) are carried for fidelity reporting and only become drop gates if their
+thresholds are set explicitly.
 """
 from __future__ import annotations
 
@@ -64,58 +62,40 @@ class QAThresholds:
     shift_min: int = 2             # |best lag Z| at/above this -> recommend a shift
     xcorr_shift_ok: float = 0.55   # ... but only if the Z xcorr is at least this
 
-    # PPC-derived gates. The aligned multi-component coherence gate is ON by default
-    # (lag-robust, so it never punishes a station that merely needs a time shift); the
-    # zero-lag misfit gates are confounded by timing/amplitude and stay OFF (None).
+    # The aligned multi-component coherence gate is on by default because it is lag-robust;
+    # the zero-lag misfit gates are confounded by timing and amplitude, so they stay off.
     enable_ppc_drops: bool = True
     coherence_drop: float = 0.45         # mean aligned xcorr (all comp.) below -> drop-fit
     corr_misfit_drop: Optional[float] = None
     envelope_misfit_drop: Optional[float] = None
 
-    # Pre-event-noise SNR gates (need per-trace :class:`SNRMetrics`). DEFAULT OFF, so every
-    # existing caller + golden regression is byte-identical; a caller opts in explicitly and
-    # EVERY gate below has its own independent switch. Thresholds were calibrated on the
-    # 62-event F-net Japan pe60 catalogue against F-net reference-MT forward models
-    # (2026-07, see the qa_calibration FINDINGS): because a 1-D forward model over-predicts
-    # amplitude ~1.4-2x, thresholds are in "synthetic units" and deliberately coarse
-    # (sigma^2 itself carries ~20% estimation error).
-    #
-    # GOVERNING PRINCIPLE: drop a trace only when the synthetic-vs-observation mismatch
-    # indicates a DATA-QUALITY problem or extreme mismodelling — never merely because the
-    # absolute SNR is low. An expected-low-signal trace (nodal / distant station, small
-    # event) is uninformative, not bad, and is KEPT. The old G2 "below-noise" gate
-    # (drop if snr_syn < snr_syn_min) dropped exactly those traces and was RETIRED 2026-07;
-    # ``snr_syn_min`` is kept only for constructor compatibility and is no longer read.
+    # Signal-to-noise gates against the pre-event window, each with its own switch and all off
+    # by default. Thresholds are in synthetic units and deliberately coarse, since a 1-D forward
+    # model over-predicts amplitude and the noise variance itself carries ~20% error. The rule
+    # is to drop a trace only for a data-quality problem or extreme mismodelling, never for low
+    # absolute signal: a nodal or distant station is uninformative, not bad, and is kept.
+    # ``snr_syn_min`` is retained for constructor compatibility and is no longer read.
     enable_snr_gates: bool = False  # arms the DEAD gate (+ invalid-sigma dead routing)
     snr_syn_min: float = 2.0        # RETIRED (was G2); field kept for API compatibility
     snr_dead_ratio: float = 0.1     # G1: drop if debiased obs signal < this * predicted...
     snr_dead_min_syn: float = 5.0   # ...but only when the signal SHOULD be clearly visible
     snr_sigma_floor: float = 0.0    # sigma <= this (or non-finite) => dead channel
-    # G1u "unrecognisable" OR-branch of the dead gate (None = off): also dead when the
-    # observed energy is marginal (< this * snr_syn) AND the best-lag xcorr is < xcorr_dead
-    # (event-scale glitch peaks defeat a peak-amplitude test; energy+coherence do not).
+    # The unrecognisable branch of the dead gate: also dead when the observed energy is
+    # marginal and the best-lag correlation is low, which a peak-amplitude test alone misses.
     snr_dead_unrecog_ratio: Optional[float] = None   # calibrated value: 0.25
     xcorr_dead: float = 0.1
-    # G3 (excess-energy / glitch / interloper event): obs whole-window energy exceeds the
-    # signal+noise budget. Deliberately NOT conditioned on snr_syn — an overlapping event at
-    # an expected-quiet station is exactly what it must catch. OPT-IN (needs a well-scaled
-    # synthetic). Calibrated factor 5 (energy 25x; clean-population q99.5 is ~13).
+    # Excess energy: the observed whole-window energy exceeds the signal-plus-noise budget.
+    # Not conditioned on the synthetic, since an overlapping event at a quiet station is the case.
     enable_snr_excess: bool = False
     snr_excess_factor: float = 5.0  # G3: drop if obs energy > this^2 * (syn energy + noise)
-    # CONDITIONAL FIT GATES (opt-in): re-scope the classical xcorr/amplitude gates of
-    # :func:`decide_component` to fire ONLY where a signal is clearly expected
-    # (snr_syn >= snr_fit_min_syn) AND actually observed (snr_sig >= snr_fit_sig_min) — so
-    # a trace is never dropped for failing to correlate with noise. Below those levels the
-    # classical gates are BYPASSED (keep). Requires SNRMetrics; no effect otherwise.
+    # Re-scope the correlation and amplitude gates to fire only where a signal is both expected
+    # and observed, so a trace is never dropped for failing to correlate with noise.
     conditional_fit_gates: bool = False
     snr_fit_min_syn: float = 5.0
     snr_fit_sig_min: float = 2.0
-    # SIGMA-OUTLIER channel-health gate (see :func:`sigma_outlier_verdicts`; None = off):
-    # a channel whose pre-event noise sigma is > sigma_rel_max * the network median (same
-    # component, same event) is broken/garbage-dominated (YMZ Z ~1400x, KSN Z ~83x; healthy
-    # transients reach ~10-30x). Escape hatch: a pre-window spike can inflate sigma on an
-    # otherwise-good trace, so a trace that visibly matches the synthetic
-    # (xcorr >= escape_xcorr with a sane amplitude ratio) is kept.
+    # A channel whose pre-event noise width exceeds this multiple of the network median for the
+    # same component and event is broken; healthy transients reach only tens. A pre-window spike
+    # can inflate it, so a trace that visibly matches the synthetic is kept anyway.
     sigma_rel_max: Optional[float] = None            # calibrated value: 50.0
     sigma_outlier_escape_xcorr: float = 0.4
     sigma_outlier_escape_amp: tuple = (0.1, 10.0)
@@ -233,13 +213,8 @@ def summarise_event(
     }
 
 
-# ---------------------------------------------------------------------------
-# Per-COMPONENT verdicts — finer-grained QA that drops individual dodgy channels
-# (zero-filled at load, exactly like the ``component_dropout`` nuisance) rather
-# than the whole station. The station-level policy above is unchanged; component
-# verdicts are additive and consumed alongside it (see
-# ``serialization.components_from_verdicts`` ``component_verdicts=`` argument).
-# ---------------------------------------------------------------------------
+# Per-component verdicts drop individual channels, zero-filled at load, rather than the whole
+# station; they are additive to the station-level policy above, not a replacement for it.
 
 @dataclass(frozen=True)
 class ComponentVerdict:

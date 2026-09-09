@@ -1,20 +1,10 @@
-"""
-evaluation.py
-=============
-General, run-agnostic helpers for the **final evaluation stage** of a continuity /
-training run: load inversion result pickles, overlay a freshly trained model's
-posterior against the frozen gold-standard inversions, and produce calibration /
-recovery diagnostics (TARP coverage, per-parameter recovery scatter).
+"""Figures and diagnostics for the final evaluation stage of a training run.
 
-This module is intentionally **import-light** at the top level: the heavy plotting
-dependencies (basemap, pyrocko, chainconsumer, scienceplots, torch) and ``tarp``
-are imported lazily inside the functions that need them, so importing this module
-(e.g. during the fast unit-test gate) does not pull the whole plotting stack.
-
-The recovery/lune/chainconsumer plots are thin wrappers over the existing
-``seismo_sbi.plotting`` code (``SBIPipelinePlotter`` / ``PosteriorPlotter``); the
-data-assembly helpers (``load_inversion_pkl``, ``discover_ml_runs``,
-``build_recovery_dict``) and ``tarp_coverage`` are dependency-light and unit-tested.
+Loads inversion result pickles, overlays a freshly trained model's posterior against frozen
+reference inversions, and produces calibration and recovery diagnostics: TARP coverage and
+per-parameter recovery scatter. The recovery, lune and corner plots are thin wrappers over
+``seismo_sbi.plotting``; the data-assembly helpers and ``tarp_coverage`` carry no heavy
+dependency. Plotting and torch imports are lazy, so importing this module stays cheap.
 """
 from __future__ import annotations
 
@@ -31,9 +21,7 @@ METRICS_FILENAME = "evaluation_metrics.json"
 METRICS_SCHEMA_VERSION = 1
 
 
-# --------------------------------------------------------------------------- #
 # Pickle / run discovery
-# --------------------------------------------------------------------------- #
 def load_inversion_pkl(path) -> List:
     """
     Load an inversion results pickle and return its list of ``InversionResult``.
@@ -74,9 +62,7 @@ def discover_ml_runs(pipeline_outputs_dir) -> Dict[str, Path]:
     return out
 
 
-# --------------------------------------------------------------------------- #
 # Recovery dict (gold standard + ML runs) for lune / chainconsumer plots
-# --------------------------------------------------------------------------- #
 # Friendly labels for the standard gold-standard methods.
 _METHOD_LABELS = {
     "theory_optimal_score": "Optimal Score",
@@ -134,9 +120,7 @@ def build_recovery_dict(
     return recovery
 
 
-# --------------------------------------------------------------------------- #
 # Lune recovery plot (with ISO/CLVD/DC decomposition beachballs)
-# --------------------------------------------------------------------------- #
 def add_decomposition_beachballs(ax, theta0_mt, posterior_plotter, color="salmon"):
     """
     Add scaled ISO / CLVD / DC beachballs + percentages to the left of a lune axis,
@@ -249,9 +233,7 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
     return figsave
 
 
-# --------------------------------------------------------------------------- #
 # Station-config ensemble overlay (variable-station dropout evaluation)
-# --------------------------------------------------------------------------- #
 def spread_stats(mt_samples) -> Dict[str, float]:
     """Median + 68% interval width of gamma/delta/Mw for an (N, 6) MT sample set."""
     gamma, delta, mw = _gamma_delta_mw(np.asarray(mt_samples))
@@ -349,9 +331,7 @@ def plot_ensemble_spread_summary(configs, ensemble_dict, figsave=None):
     return figsave
 
 
-# --------------------------------------------------------------------------- #
 # TARP coverage
-# --------------------------------------------------------------------------- #
 def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
                   num_bootstrap: int = 100, references: str = "random",
                   metric: str = "euclidean", seed: Optional[int] = 0,
@@ -385,9 +365,8 @@ def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
             f"theta_true n_sims ({theta_true.shape[0]}) != samples n_sims "
             f"({samples_per_sim.shape[1]})")
 
-    # tarp defaults num_alpha_bins to n_sims // 10, which is 0 for small n_sims
-    # (and then matplotlib/np raise "`bins` must be positive"). Floor it so small
-    # validation runs still produce a (coarse) coverage curve.
+    # The default bin count is ``n_sims // 10``, which is zero for a small validation run,
+    # so it is floored to keep a coarse coverage curve.
     n_sims = samples_per_sim.shape[1]
     if num_alpha_bins is None:
         num_alpha_bins = max(2, n_sims // 10)
@@ -400,9 +379,7 @@ def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
     return ecp, alpha
 
 
-# --------------------------------------------------------------------------- #
 # Per-parameter recovery scatter (true vs recovered, source-type quantities)
-# --------------------------------------------------------------------------- #
 def _gamma_delta_mw(mt_samples: np.ndarray):
     """Vectorised (gamma_deg, delta_deg) and per-sample Mw for (N,6) MT samples."""
     from seismo_sbi.plotting.lune import mts6_to_gamma_delta
@@ -466,9 +443,7 @@ def plot_recovery_scatter(theta_true: np.ndarray, samples_per_sim: np.ndarray,
     return figsave
 
 
-# --------------------------------------------------------------------------- #
 # Quantitative evaluation metrics (post-processing of validation inference)
-# --------------------------------------------------------------------------- #
 # Names of the 6 moment-tensor components (pipeline up-south-east convention).
 _MT_NAMES = ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"]
 # Derived source-type / orientation quantities and the subsets used for the
@@ -655,9 +630,7 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
     return metrics
 
 
-# --------------------------------------------------------------------------- #
 # Per-run metrics file + cross-run comparison
-# --------------------------------------------------------------------------- #
 def write_run_metrics(out_dir, run_label: str, config_path, metrics: dict) -> Path:
     """
     Dump ``evaluation_metrics.json`` into a run's artifacts dir in a self-describing,
@@ -709,10 +682,8 @@ def scan_run_metrics(runs_root, exclude=None, max_runs: int = 12) -> Dict[str, d
     return dict(ordered[:max_runs])
 
 
-# (display label [mathtext-safe], filename slug, dotted path into the metrics dict,
-# lower-is-better?) for the headline bars. The display label uses mathtext for greek so
-# it renders whether or not matplotlib's usetex is active; the slug keeps figure
-# filenames ASCII-clean and independent of the (mathtext) label.
+#: ``(display label, filename slug, dotted path into the metrics dict, lower is better)`` for
+#: the headline bars. Labels use mathtext so they render with or without usetex.
 _HEADLINE_SPECS = [
     (r"FoM $\delta\gamma$", "FoM_delta_gamma", ("figure_of_merit", "delta_gamma"), True),
     ("FoM strike/dip/rake", "FoM_sdr", ("figure_of_merit", "sdr"), True),

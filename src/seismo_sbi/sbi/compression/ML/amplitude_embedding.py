@@ -1,41 +1,11 @@
-"""Per-station amplitude → transformer-token embedding.
+"""Per-station amplitude as a transformer-token embedding.
 
-Lifts the per-station peak amplitude out of the waveform channel (where the encoder buries
-it as a single scalar) and turns it into a **full-width token embedding** that is added to
-each station token *before* the cross-station attention. Inter-station amplitude ratio is a
-first-class moment-tensor observable (relative-radiation-pattern focal-mechanism methods
-invert exactly this), so it must reach the attention robustly rather than as one channel
-that LayerNorm and the additive positional embeddings can swamp.
-
-Representation (config ``mode``)
---------------------------------
-``array_relative`` (default)
-    For each event the token feature is ``log A_i - ref(event)``, where ``ref`` is the
-    mean/median ``log`` amplitude over the event's **valid** stations. Since
-    ``log A_i = log M0 + log(radiation_i · spreading_i)``, subtracting the per-event
-    reference cancels the shared ``log M0`` ⇒ an O(1), magnitude-invariant radiation pattern
-    (ideal Random-Fourier-Feature input, computed per-event ⇒ no batch coupling). The
-    deterministic ``ref`` (≈ ``log M0``) is embedded separately and returned as a **global**
-    vector so absolute moment keeps a clean path to the flow.
-``absolute``
-    The token feature is the absolute ``log A_i``, standardised by a running standardiser so
-    the RFF sees ~unit scale; the network disentangles ``M0`` from mechanism itself. No global
-    vector.
-
-Granularity (config ``per_component``): one peak per station (default) or one peak per
-component (``K = C``). Within-station component ratios + polarity are already preserved by the
-encoder's shared ``(C, T)`` normalisation, so per-station is the minimal physics-targeted fix.
-
-Robustness (both opt-in, array_relative)
-----------------------------------------
-``distance_correction``
-    Subtract a learnable geometric-spreading/attenuation trend ``g(log distance)`` before forming
-    the reference, so neither the radiation-pattern token nor the M0 proxy is biased by the
-    array's distance distribution. Requires per-station distance ⇒ source-location conditioning.
-``snr_weighting``
-    Down-weight noise-dominated stations when forming the per-event reference, via a rough,
-    self-contained peak-to-(low-percentile-floor) SNR proxy gated by a learnable sigmoid — so
-    low-magnitude / low-SNR events do not let noise floors bias the reference.
+Inter-station amplitude ratio is a first-class moment-tensor observable, so it is lifted out of
+the waveform channel into a full-width token added to each station token before the
+cross-station attention. In ``array_relative`` mode the feature is ``log A_i`` minus the event's
+mean or median over valid stations, which cancels the shared ``log M0`` and leaves an O(1)
+radiation pattern; that reference is embedded separately as a global vector. ``absolute`` mode
+feeds standardised ``log A_i``. Optional distance and signal-to-noise corrections debias it.
 """
 
 from __future__ import annotations

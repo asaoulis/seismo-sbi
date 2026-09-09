@@ -1,12 +1,9 @@
 """Gutenberg-Richter magnitude statistics for the moment-tensor prior.
 
-Provides:
-  * ``estimate_mc_maxcurvature`` - maximum-curvature completeness-magnitude estimate.
-  * ``fit_b_value_aki``          - Aki (1965) maximum-likelihood b-value.
-  * ``magnitude_to_m0``          - Hanks-Kanamori M -> scalar moment M0 (N.m).
-  * ``GutenbergRichterModel``    - a truncated Gutenberg-Richter (truncated
-                                   exponential) magnitude distribution with
-                                   inverse-CDF sampling.
+:func:`estimate_mc_maxcurvature` gives a maximum-curvature completeness magnitude,
+:func:`fit_b_value_aki` the Aki (1965) maximum-likelihood b-value, :func:`magnitude_to_m0` the
+Hanks-Kanamori scalar moment in N.m, and :class:`GutenbergRichterModel` a truncated
+Gutenberg-Richter magnitude distribution with inverse-CDF sampling.
 """
 from __future__ import annotations
 
@@ -15,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 
 #: ln(10), the conversion factor between the GR b-value and the exponential rate.
-_LN10 = np.log(10.0)
+_LN_10 = np.log(10.0)
 
 
 def magnitude_to_m0(mw):
@@ -93,7 +90,7 @@ class GutenbergRichterModel:
 
     @property
     def beta(self) -> float:
-        return self.b_value * _LN10
+        return self.b_value * _LN_10
 
     def sample_magnitudes(self, n: int, rng: np.random.Generator) -> np.ndarray:
         """Draw ``n`` magnitudes by inverse-CDF transform of the truncated GR."""

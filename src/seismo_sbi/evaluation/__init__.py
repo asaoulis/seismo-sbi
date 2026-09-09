@@ -1,31 +1,10 @@
-"""
-seismo_sbi.evaluation
-=====================
-Evaluation harness helpers: pipeline build, output layout, validation/TARP engine,
-and station-usage writers.
+"""Evaluation harness: pipeline build, output layout, validation and station usage.
 
-All imports are lazy inside functions (heavy deps: torch, seismo_sbi pipeline
-classes) so importing this package during the fast unit-test gate is cheap.
-
-Public API
-----------
-From ``inference``:
-    build_eval_pipeline, build_ml_posterior, resolve_ckpt_dir, load_real_observation
-
-From ``layout``:
-    OutputLayout, resolve_output_layout, git_rev
-
-From ``validation``:
-    run_validation, write_validation_outputs
-
-From ``station_usage``:
-    write_station_breakdown, write_station_usage
-
-From ``moment_tensor``:
-    pyrocko_mt, kagan
-
-From ``domain``:
-    EventSpec, EvalDomain, load_domain
+``inference`` builds the evaluation pipeline and posterior and loads a real observation;
+``layout`` resolves the output tree; ``validation`` runs the held-out validation and TARP
+coverage; ``station_usage`` writes the per-station breakdowns; ``moment_tensor`` holds the
+tensor-comparison primitives; ``domain`` is the adapter contract for a study. Imports are lazy
+inside functions, so importing this package pulls in neither torch nor the pipeline classes.
 """
 from seismo_sbi.evaluation.inference import (
     build_eval_pipeline,

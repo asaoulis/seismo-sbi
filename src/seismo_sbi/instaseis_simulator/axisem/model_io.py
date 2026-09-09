@@ -1,27 +1,11 @@
-"""Read/write AxiSEM external background models (``*.bm``).
+"""Read and write AxiSEM external background models (``*.bm``).
 
-AxiSEM's external-model format (``BACKGROUND_MODEL external`` /
-``EXT_MODEL background_model.bm``) is a small ASCII file:
-
-    # free-form comment line(s)
-    NAME         prem_iso
-    ANELASTIC       T
-    ANISOTROPIC     F
-    UNITS        m
-    COLUMNS       radius      rho      vpv      vsv      qka      qmu
-                6371000.  2280.00  3270.00  1730.00    57827.0      600.0
-                ...
-
-Rows are ordered by **descending radius**.  Discontinuities are represented in
-a slightly non-standard way: **two consecutive rows share the same radius** (the
-value just above and just below the boundary).  Lines beginning with ``#`` are
-comments; AxiSEM emits ``# Discontinuity N, depth: X km`` markers which we
-regenerate on write but treat as decoration (the duplicated-radius rows are the
-authoritative discontinuity representation).
-
-This module is column-generic: it keys on the ``COLUMNS`` header so isotropic
-(``radius rho vpv vsv qka qmu``) and anisotropic (extra ``vph vsh eta`` …)
-models both round-trip.
+The format is a small ASCII file: comment lines, ``NAME`` / ``ANELASTIC`` / ``ANISOTROPIC`` /
+``UNITS`` headers, a ``COLUMNS`` header naming the fields, then one row per node ordered by
+descending radius. A discontinuity is represented by two consecutive rows sharing a radius, the
+values just above and just below the boundary; the ``# Discontinuity`` comments AxiSEM emits are
+regenerated on write but carry no information. Reading is keyed on ``COLUMNS``, so isotropic and
+anisotropic models both round-trip.
 """
 
 from __future__ import annotations

@@ -84,3 +84,17 @@ def test_load_obspy_quakeml_depth_in_km(tmp_path):
     # depth converted metres -> km
     assert np.allclose(np.sort(loaded.depth), [5.0, 10.0])
     assert np.allclose(np.sort(loaded.magnitude), [3.1, 4.2])
+
+
+def test_csv_format_selects_the_layout_instead_of_sniffing(tmp_path):
+    """A named layout is read as named; an unknown name raises rather than guessing."""
+    path = tmp_path / "events.csv"
+    path.write_text(
+        "date-time,latitude,longitude,depth,Mamp,errH,errZ\n"
+        "2025-02-12T01:14:55,36.5,25.6,8.0,3.2,0.4,0.9\n"
+    )
+    catalogue = load_catalogue(path, csv_format="iso_time")
+    assert len(catalogue) == 1 and catalogue.magnitude[0] == 3.2
+
+    with pytest.raises(ValueError, match="unknown csv_format"):
+        load_catalogue(path, csv_format="lomax")

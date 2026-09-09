@@ -41,9 +41,7 @@ def _time_key_padding_mask(key_padding_mask: Optional[torch.Tensor], rows: int, 
     return mask
 
 
-# ----------------------------
 # Utility: simple position-wise FFN
-# ----------------------------
 class FeedForward(nn.Module):
     def __init__(self, d_model: int, dim_feedforward: int = 2 * 128, dropout: float = 0.1):
         super().__init__()
@@ -58,15 +56,8 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-# ----------------------------
-# One axial block:
-#   1) station-wise self-attn (per time slice)
-#   2) time-wise self-attn (per station)
-#   3) query tokens cross-attend to content (global)
-#   4) position-wise FFN
-# All pre-norm + residual
-# ----------------------------
-# ...existing code...
+# One axial block: station-wise self-attention per time slice, time-wise self-attention per
+# station, query tokens cross-attending to the content, then a position-wise FFN, all pre-norm.
 class AxialOrFullBlock(nn.Module):
     def __init__(self, d_model, nheads, dim_feedforward=512, dropout=0.1,
                  use_query_xattn=True, mode="axial", input_dim=None,
@@ -254,10 +245,8 @@ class SeismogramAxialTransformer(nn.Module):
         self.conv_length = conv_length
         self.mode = mode
         self.use_cls_token = use_cls_token
-        # When the §3.4 PMA head is enabled it owns the learned seeds and pools the final encoded
-        # token set once at the end, so the in-block query cross-attention is redundant — disable
-        # it (pure axial set-encoder). The token field's evolution is unchanged either way: the
-        # query tokens only ever read from x, never write to it.
+        # With a pooling head the seeds live there and pool the final token set once, so the
+        # in-block query cross-attention is redundant. Query tokens only ever read from x.
         pma_enabled = bool(pma_pooling_config)
 
         # Sinusoidal time embedding (like transformer positional encoding)
@@ -300,9 +289,8 @@ class SeismogramAxialTransformer(nn.Module):
 
         self.final_ln = nn.LayerNorm(d_model)
 
-        # --- Optional RFF station positional encoding (review §3.2; opt-in) ---
-        # Absent / mode='sinusoidal' ⇒ self.station_posenc is None and forward() uses the
-        # original additive sinusoidal station embedding (byte-identical legacy path).
+        # Without a configuration, or with mode='sinusoidal', forward() uses the plain additive
+        # sinusoidal station embedding instead.
         self.inject_every_layer = bool(inject_every_layer)
         self.station_posenc = None
         if posemb_config:
@@ -326,9 +314,8 @@ class SeismogramAxialTransformer(nn.Module):
                     d_model, posemb_coords_kind, posemb_config
                 )
 
-        # --- Optional Set-Transformer PMA pooling head (review §3.4; opt-in) ---
-        # Absent ⇒ self.pma_head is None and forward() uses the legacy CLS / query-mean pooling
-        # (byte-identical). Axial-only and incompatible with CLS (which has its own pooling path).
+        # Without one, forward() pools with its own CLS or query-mean read-out. Axial mode only,
+        # since CLS has a pooling path of its own.
         self.pma_head = None
         if pma_enabled:
             if self.mode != "axial":
@@ -482,9 +469,8 @@ class SeismogramAxialTransformer(nn.Module):
 
         x = x + t_e.unsqueeze(0).unsqueeze(1)  # (B, N, L, D)
 
-        # Station positional embedding. ``posenc_to_inject`` is set to a (B, N, d_model) RFF
-        # embedding that the block loop re-adds before every block (§3.2.c); it stays None on
-        # the legacy path and on the single-injection RFF variant (added once just below).
+        # ``posenc_to_inject`` holds a ``(B, N, d_model)`` embedding the block loop re-adds
+        # before every block; it stays None when the encoding is added once, just below.
         posenc_to_inject = None
         if self.station_posenc is not None:
             # RFF path (axial only; CLS disabled at construction so N is preserved).
@@ -536,9 +522,8 @@ class SeismogramAxialTransformer(nn.Module):
         if (self.query_tokens is not None) and (not self.use_cls_token):
             q = self.query_tokens.expand(B, -1, -1)
 
-        # Axial/full blocks. With the RFF positional encoder and inject_every_layer, re-add the
-        # station embedding before each block (§3.2.c) — the pre-norm LayerNorm in each block
-        # re-normalises the accumulated stream, so the geometry conditions every layer's attention.
+        # Re-adding the station embedding before each block lets the geometry condition every
+        # layer's attention, since each block's pre-norm renormalises the accumulated stream.
         for blk in self.blocks:
             if posenc_to_inject is not None:
                 x = x + posenc_to_inject.unsqueeze(2)
@@ -546,9 +531,8 @@ class SeismogramAxialTransformer(nn.Module):
 
         x = self.final_ln(x)
 
-        # §3.4 PMA pooling head (opt-in): pool the final encoded token field once. Built only for
-        # mode='axial' without CLS, so x is (B, N, L, D) and q is None here. mask_to_pass is the
-        # (B, N, L) key-padding mask (True=pad), or None on the fixed-station path.
+        # The pooling head pools the final token field once. Built only for axial mode without
+        # CLS, so ``x`` is ``(B, N, L, D)`` and ``q`` is None here.
         if self.pma_head is not None:
             pooled = self.pma_head(x, key_padding_mask=mask_to_pass)
             return x, q, pooled
@@ -561,10 +545,8 @@ class SeismogramAxialTransformer(nn.Module):
                 cls_seq = x[:, 0, :, :]  # (B, L, D)
                 time_keep = None
                 if key_padding_mask is not None:
-                    # A time step is only padded when EVERY station is padded there (true time
-                    # padding); station padding alone (a whole padded station, masked at all
-                    # times) must NOT mark the time step invalid — otherwise adding padded
-                    # stations would mask out all times. Use .all over the station axis.
+                    # A time step is padded only when every station is padded there; a padded
+                    # station alone must not invalidate the time step for the others.
                     time_keep = ~key_padding_mask.all(dim=1)  # (B, L)
                 pooled = self._apply_pool(cls_seq, time_keep)
             elif self.mode == "full":

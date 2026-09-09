@@ -1,30 +1,11 @@
-"""
-domain.py
-=========
-Pluggable *evaluation domain* contract for the generic evaluation CLI.
+"""The evaluation-domain contract a study adapter implements.
 
-A "domain" supplies the four pieces of behaviour that differ between
-deployments (Santorini, LV2/continuity, …):
-
-  1. **event discovery** — what events exist and where their data / reference
-     moment tensor / source location live;
-  2. **station-set derivation** — for each event, the *all-available* and the
-     QA-*filtered* station subsets (each a subset of the model's master set);
-  3. **conditioning source vector** — the per-event raw source vector fed to a
-     *conditioned* model at inference (``None`` for an unconditioned model);
-  4. **reference overlay + scalar summary** — the recovery-lune / corner overlay
-     of the ML posterior(s) against the domain's reference solution(s), and a
-     scalar summary (e.g. Kagan angle vs the reference).
-
-The public CLI (``scripts/evaluate_model.py``) is tracked, but each concrete
-adapter (e.g. the Santorini one) may live in a *gitignored* area.  The CLI
-therefore imports **no** adapter at module load: it calls :func:`load_domain`
-with a ``--domain`` spec only when an event-level stage is requested, so a fresh
-public clone runs ``--help``, ``--dry-run`` and the (domain-agnostic) validation
-stage with zero adapter code present.
-
-``EvalDomain`` is a :class:`typing.Protocol` (structural) — adapters need only
-provide methods of the right shape; no inheritance required.
+A domain supplies the four things that differ between deployments: event discovery, the
+all-available and QA-filtered station subsets per event, the per-event source vector fed to a
+conditioned model (``None`` when unconditioned), and the reference overlay plus a scalar
+summary. The public CLI imports no adapter at module load, calling :func:`load_domain` only
+when an event-level stage is requested, so a clone with no adapter still runs the
+domain-agnostic stages. ``EvalDomain`` is a Protocol, so adapters need no inheritance.
 """
 from __future__ import annotations
 

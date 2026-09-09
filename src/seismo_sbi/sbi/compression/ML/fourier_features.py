@@ -1,28 +1,11 @@
-"""Reusable Random Fourier Feature (RFF) primitives for embedding scalars / small
-coordinate vectors into a transformer-width token.
+"""Random Fourier Feature primitives for embedding scalars into a token.
 
-Why this exists
----------------
-Networks have a spectral bias toward low frequencies, so a raw, unbounded scalar fed
-directly into an MLP is hard to learn from (Tancik et al. 2020, *Fourier Features Let
-Networks Learn High Frequency Functions in Low Dimensional Domains*). A Fourier-feature
-map lifts the scalar into a handful of well-conditioned sin/cos dimensions. This module
-provides a single, carefully-scaled implementation used first by the per-station
-**amplitude** embedding (``amplitude_embedding.py``) and intended for reuse by the
-later source-relative **geometry** positional encoding (review §3.2) — keep new Fourier
-encodings here rather than re-deriving ad-hoc sinusoids.
-
-Scaling discipline (avoiding dead weights / aliasing)
------------------------------------------------------
-The single biggest failure mode of RFF on a physical scalar is a **scale mismatch**: if
-the input wanders over many orders of magnitude (e.g. ``log`` amplitude across earthquake
-magnitudes), a fixed frequency bank either sees an essentially constant input (features
-collapse to ``[0, 1]`` ⇒ dead, no gradient) or a pseudo-random one (aliasing ⇒ noise).
-:class:`ScalarFourierEmbedding` therefore (a) **standardises the input to O(1)** before the
-RFF, (b) uses a Gaussian frequency bank with a tuned ``sigma`` matched to that O(1) scale,
-and (c) **concatenates a raw standardised pass-through** alongside the RFF so there is
-always a non-vanishing linear gradient path even if every RFF frequency is momentarily
-ill-matched.
+Networks are biased towards low frequencies, so a raw unbounded scalar is hard to learn from; a
+Fourier map lifts it into well-conditioned sin/cos dimensions. The failure mode is scale
+mismatch: over many orders of magnitude a fixed frequency bank either sees a constant input,
+whose features are dead, or a pseudo-random one, which aliases. :class:`ScalarFourierEmbedding`
+therefore standardises the input to O(1), uses a Gaussian frequency bank with a matched
+``sigma``, and concatenates the standardised value so a linear gradient path always survives.
 """
 
 from __future__ import annotations

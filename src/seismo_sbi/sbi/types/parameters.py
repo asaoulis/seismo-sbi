@@ -45,11 +45,8 @@ class SimulationParameters(NamedTuple):
     # Member-sampling scheme for 'instaseis_ensemble' / 'instaseis_multi_ensemble':
     #   None / 'per_event'  one member shared by all stations (legacy default);
     #   'per_station'       independent member per station (== resample_member_per_station: true);
-    #   'sector'            Poisson-boundary azimuthal-SECTOR sampling (agreed middle road, 2026-08-25):
-    #                       K ~ Poisson(sector_lambda) boundaries per event, one member per sector.
-    # sector_lambda has NO default — calibrate it against the measured inter-station error
-    # correlation vs azimuthal separation (W4 never run; N11's coherent far-station lags are the
-    # available constraint).
+    #   'sector'            K ~ Poisson(sector_lambda) azimuthal boundaries per event, with one
+    #                       member per sector; calibrate sector_lambda, it has no default.
     member_sampling: Optional[str] = None
     sector_lambda: Optional[float] = None
     # Hard cap on open Instaseis DB handles cached PER WORKER PROCESS (ensemble._QUERIER_CACHE).

@@ -1,30 +1,11 @@
-"""
-validation.py
-=============
-The ONE generic validation / TARP engine that subsumes BOTH:
+"""Held-out validation and TARP coverage for a trained model.
 
-  * ``scripts/continuity/_eval_inference.evaluate_validation_set``
-    (fixed-station / unconditioned LV2 path), and
-  * ``scripts/santorini_pathbreaker/run_posttrain_eval._validation_tarp``
-    (variable-station / optionally-conditioned Santorini path).
-
-The two previous implementations diverged **only** in how a held-out sim's
-observation is turned into a posterior sample; everything downstream (TARP,
-recovery scatter, example panels, metrics JSON) is identical and lives in
-``seismo_sbi.plotting.evaluation`` / ``plotting.coverage``.
-
-Public API
-----------
-``run_validation(...)`` → dict
-    Draw the held-out validation tail, run posterior inference on each sim, and
-    return arrays for TARP coverage + recovery scatter plus a handful of
-    per-example InversionData objects.
-
-``write_validation_outputs(val, out_dir, ...)`` → dict
-    Write figures + metrics JSON from the ``run_validation`` return value.
-
-Heavy deps (torch, seismo_sbi pipeline classes) are imported lazily inside
-each function so importing this module during the fast unit-test gate is cheap.
+:func:`run_validation` draws the validation tail of the simulation set, runs posterior
+inference on each simulation and returns the arrays for TARP coverage and recovery scatter plus
+a few per-example results; :func:`write_validation_outputs` turns those into figures and a
+metrics JSON. Fixed- and variable-station models differ only in how a held-out simulation
+becomes a posterior sample, so both go through the same engine. Heavy dependencies are imported
+lazily inside each function.
 """
 from __future__ import annotations
 

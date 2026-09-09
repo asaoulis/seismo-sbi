@@ -1,15 +1,9 @@
-"""
-station_usage.py
-================
-Station-breakdown writers for the evaluation harness.
+"""Station-breakdown writers for the evaluation harness.
 
-Lifted verbatim from ``scripts/santorini_pathbreaker/run_posttrain_eval.py``
-(private helpers ``_write_station_breakdown`` / ``_write_station_usage`` made
-public by dropping the leading underscore).
-
-Pure JSON/CSV writers operating on in-memory name lists and
-``StationConfig.as_dict()`` dicts — no torch or plotting deps, so these are
-cheap to unit-test.
+:func:`write_station_breakdown` and :func:`write_station_usage` turn in-memory station-name
+lists and ``StationConfig.as_dict()`` dictionaries into the JSON and CSV an evaluation run
+leaves behind, recording which stations each configuration kept. Pure writers, with no torch and
+no plotting dependency.
 """
 from __future__ import annotations
 

@@ -1,24 +1,11 @@
-"""Per-trace and per-station waveform-fit metrics for data QA.
+"""Per-trace and per-station waveform-fit metrics for data quality control.
 
-Pure functions + small frozen dataclasses operating on plain numpy arrays — no
-pipeline construction, no file I/O, no plotting. A reference synthetic is compared
-against an observed waveform to decide, per station, whether to keep / time-shift /
-drop it (see :mod:`seismo_sbi.data_quality.policy`).
-
-Two families of metrics live here:
-
-* the *classical* alignment/amplitude metrics ported verbatim from the Santorini
-  ``qa_forward_check.py`` (cross-correlation lag, variance reduction, peak amplitude
-  ratio), and
-* *posterior-predictive-check*-derived per-station fidelity metrics
-  (``correlation_misfit``, ``envelope_misfit``, ``station_reduced_chi2``) whose maths
-  mirror :mod:`seismo_sbi.plotting.posterior_predictive_checks` so the two stay
-  consistent.
-
-The shift primitive is the canonical
-:func:`seismo_sbi.instaseis_simulator.utils.shift_1d_with_padding` (``+lag`` delays
-the synthetic) — it is mathematically identical to the old ``np.roll``-and-zero helper
-but is the single source of truth used everywhere else in the codebase.
+Pure functions and small frozen dataclasses over numpy arrays: no pipeline, no file I/O, no
+plotting. A reference synthetic is compared against an observation to decide, per station,
+whether to keep, time-shift or drop it. Two families live here: the alignment and amplitude
+metrics (cross-correlation lag, variance reduction, peak amplitude ratio) and the
+posterior-predictive fidelity metrics (``correlation_misfit``, ``envelope_misfit``,
+``station_reduced_chi2``). Shifting uses ``shift_1d_with_padding``; a positive lag delays.
 """
 from __future__ import annotations
 

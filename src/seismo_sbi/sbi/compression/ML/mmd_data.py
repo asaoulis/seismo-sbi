@@ -1,21 +1,11 @@
 """Data assembly for the misspecification-robust MMD auxiliary loss.
 
-Builds the two summary-space sample sets the loss compares (see ``mmd.py`` and the
-``ml_mmd`` block in ``scripts/train_NPE.py``):
-
-* the REAL side — QA-cleaned real events, packed exactly as at inference (per-event
-  post-QA station/component masks, conditioning = catalogue location), one fixed
-  context tensor built once from the QA run's ``mmd_manifest.json``;
-* the PSIM side — a DataLoader over the posterior-matched simulation suite that
-  reproduces the training augmentation path (fresh noise + amplitude draws per epoch)
-  while pinning each sample's station/component availability to its PARENT real event
-  (``TorchSimulationDataset(fixed_item_masks=...)``).
-
-Conditioning-noise is deliberately OFF for the psim loader: the suite's true source
-locations are already scattered around the catalogue values (by the generator), and the
-conditioning vector is the exact catalogue location — reproducing ``cond - truth ~
-coordinate_std`` exactly as the real events have it physically. Adding the training-time
-conditioning perturbation on top would double-count the location error.
+Builds the two summary-space sample sets the loss compares. The real side is the QA-cleaned real
+events, packed exactly as at inference with their post-QA station and component masks and the
+catalogue location as conditioning, as one fixed context tensor. The simulated side is a loader
+over the posterior-matched suite that reproduces the training augmentation while pinning each
+sample's station availability to its parent real event. Conditioning noise is off for that
+loader: the suite's true locations already scatter around the catalogue values.
 """
 from __future__ import annotations
 
