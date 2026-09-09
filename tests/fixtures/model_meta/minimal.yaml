@@ -1,0 +1,2 @@
+# A configuration with no ml_* blocks: every training setting is a library default.
+run_name: fixture

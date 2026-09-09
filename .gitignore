@@ -65,3 +65,5 @@ coverage.xml
 ml-checkpoints/
 # HinetPy win32 tools tarball — shipped to CI via the assets-v1 release, not the repo
 scripts/win32tools.tar.gz
+# Test fixtures are committed, unlike the configuration files the patterns above ignore.
+!tests/fixtures/**/*.yaml

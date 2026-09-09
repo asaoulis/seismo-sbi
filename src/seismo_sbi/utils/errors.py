@@ -1,5 +1,12 @@
+"""Shared error types and the retry wrapper used around flaky forward-model calls."""
+
 import traceback
 from functools import wraps
+
+
+class InvalidConfiguration(Exception):
+    """A configuration file asks for something the pipeline cannot build."""
+
 
 def error_handling_wrapper(num_attempts=3):
     def decorator(simulation_callable):

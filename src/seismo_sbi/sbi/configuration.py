@@ -21,6 +21,8 @@ from seismo_sbi.priors.samplers import (
     make_catalogue_location_sampler,
     make_gutenberg_richter_mt_sampler,
 )
+from seismo_sbi.sbi.training_configuration import TrainingConfiguration
+from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Catalogue-driven sampler factories selectable via a dict-form
 #: ``simulations.sampling_method`` entry (``type: <name>`` + factory kwargs).
@@ -29,9 +31,6 @@ SAMPLER_FACTORIES = {
     "gutenberg_richter": make_gutenberg_richter_mt_sampler,
 }
 
-
-class InvalidConfiguration(Exception):
-    pass
 
 class SBI_Configuration:
 
@@ -42,7 +41,7 @@ class SBI_Configuration:
         "stf_duration",
         # Post-processing nuisance (Category 2 — modify synthetic seismograms)
         "amplitude_error", "instrument_dropout", "scattering_coda", "time_shift_error",
-        # Per-octave dispersion-spread phase delays (DispersionSpreadEffect, 2026-08-25)
+        # Per-octave dispersion-spread phase delays (DispersionSpreadEffect)
         "dispersion_spread",
         # Post-noise augmentation (applied after sensor noise; see ComponentDropoutEffect)
         "component_dropout",
@@ -84,6 +83,7 @@ class SBI_Configuration:
     def __init__(self) -> None:
 
         self.pipeline_parameters = None
+        self.training = TrainingConfiguration()
 
         self.model_parameters = ModelParameters()
         self.sim_parameters = None
@@ -110,6 +110,13 @@ class SBI_Configuration:
                                     'inference': self.parse_sbi_config,
                                     'jobs': self.parse_jobs_config}
 
+    @classmethod
+    def from_file(cls, config_file):
+        """Parse ``config_file`` into a configuration object."""
+        configuration = cls()
+        configuration.parse_config_file(config_file)
+        return configuration
+
     def parse_config_file(self, config_file):
         # read yaml config file
         with open(config_file, 'r', encoding = 'utf-8') as stream:
@@ -118,10 +125,10 @@ class SBI_Configuration:
         self.process_configuration_data(config)
 
     def process_configuration_data(self, config):
-        # Retain the raw parsed YAML so downstream tooling can read top-level blocks
-        # (e.g. `ml_scaler`, `ml_architecture`) without re-opening the file. Keeps the
-        # training-time and inference-time scaler choice in sync via build_flexible_scaler.
+        # `raw_config` is kept for the parameter scaler, which must be rebuilt from the same
+        # file at inference time (see build_flexible_scaler).
         self.raw_config = config
+        self.training = TrainingConfiguration.from_yaml_block(config)
         for name, parsing_callable in self._parsing_callables.items():
             if name == 'job_options':
                 subconfig = {key: value for key, value in config.items() if not(isinstance(value, dict) or isinstance(value, list))}
@@ -130,9 +137,8 @@ class SBI_Configuration:
             parsing_callable(subconfig)
     
     def parse_main_options(self, config):
-        # parse top level options. Filter to PipelineParameters' known fields so that
-        # extra top-level scalar keys (e.g. `ml_architecture`, read separately from the
-        # raw YAML by train_NPE.py) do not break construction.
+        # Filter to PipelineParameters' known fields so that top-level scalar keys belonging
+        # to another part of the configuration (e.g. `ml_architecture`) do not break it.
         known = {k: v for k, v in config.items() if k in PipelineParameters._fields}
         self.pipeline_parameters = PipelineParameters(**known)
 

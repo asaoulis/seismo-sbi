@@ -61,32 +61,44 @@ def test_the_sidecar_serialises_the_recorded_model_config():
     )
 
 
-def test_train_npe_registers_mmd_through_the_recorder():
-    """Regression guard on the call site itself — a plain dict mutation is not enough."""
-    from pathlib import Path
-    src = Path(__file__).resolve().parents[2] / "scripts" / "train_NPE.py"
-    text = src.read_text()
-    assert "trainer.record_model_config(mmd=" in text, (
-        "train_NPE must register the MMD block via record_model_config, or MMD checkpoints "
-        "lose it from model_meta.json"
-    )
+def test_enable_mmd_loss_registers_the_block_through_the_recorder(monkeypatch):
+    """Wiring in the MMD loss must record its block, or the checkpoint cannot be attributed."""
+    from types import SimpleNamespace
+    import numpy as np
+    from seismo_sbi.sbi.compression.ML import mmd_data
+    from seismo_sbi.sbi.compression.ML.train import enable_mmd_loss
+    from seismo_sbi.sbi.training_configuration import TrainingConfiguration
+
+    monkeypatch.setattr(mmd_data, "build_real_context", lambda *a, **k: np.zeros((3, 2)))
+    monkeypatch.setattr(mmd_data, "build_psim_loader",
+                        lambda *a, **k: SimpleNamespace(dataset=[0, 1]))
+
+    trainer = _trainer_config_after({"station_encoder": "tcn"})
+    trainer.model = SimpleNamespace(enable_mmd=lambda *a: None)
+    training = TrainingConfiguration.from_yaml_block({"ml_mmd": {
+        "enabled": True, "real_events_manifest": "manifest.json",
+        "psim_data_folder": "psim", "lambda_mmd": 50.0}})
+    pipeline = SimpleNamespace(data_manager=SimpleNamespace(data_loader=None),
+                               training_noise_sampler=None)
+    data = SimpleNamespace(augmentation_chain=None, augmentation_nuisance_params={})
+
+    enable_mmd_loss(trainer, training, pipeline, data)
+    assert trainer._model_config["mmd"] == {
+        "real_events_manifest": "manifest.json", "psim_data_folder": "psim", "lambda_mmd": 50.0
+    }
 
 
 def test_every_record_model_config_call_site_uses_keywords():
-    """`record_model_config(self, **entries)` is KEYWORD-ONLY — a positional dict raises
-    TypeError at runtime.
+    """``record_model_config(self, **entries)`` raises TypeError on a positional dict.
 
-    Regression guard for a real failure: `record_model_config({"warm_start_checkpoint": ...})`
-    reached the cluster and killed a 2-GPU training job ~2 minutes in. Neither the unit tests
-    (which call the trainer method directly) nor the smoke gate (which never invokes
-    `train_NPE.main`) executed that line, so a source-level pin is the cheap guard — the same
-    reason `test_train_npe_registers_mmd_through_the_recorder` exists.
+    The call sites live on paths the unit tests do not execute, so they are pinned at source
+    level instead.
     """
     import re
-    from pathlib import Path
-    src = Path(__file__).resolve().parents[2] / "scripts" / "train_NPE.py"
-    calls = re.findall(r"record_model_config\(([^)]*)", src.read_text())
-    assert calls, "expected at least one record_model_config call site in train_NPE.py"
+    from seismo_sbi.sbi.compression.ML import train as train_module
+
+    calls = re.findall(r"\.record_model_config\(([^)]*)", inspect.getsource(train_module))
+    assert calls, "expected at least one record_model_config call site"
     for arg in calls:
         arg = arg.strip()
         assert not arg.startswith("{"), (
