@@ -186,14 +186,18 @@ class GeneralSimulatorWrapper:
                             post_processing_effects=pp_effects,
                             resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
                             member_sampling=getattr(simulation_parameters, "member_sampling", None),
-                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None))
+                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
+                            source_depth_offset_km=getattr(
+                                simulation_parameters, "source_depth_offset_km", 0.0))
         elif simulator_config[0] == 'instaseis':
             simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address,
                                         components=simulation_parameters.components,
                                         receivers=simulation_parameters.receivers,
                                         seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                                         synthetics_processing=simulation_parameters.processing,
-                                        post_processing_effects=pp_effects)
+                                        post_processing_effects=pp_effects,
+                                        source_depth_offset_km=getattr(
+                                            simulation_parameters, "source_depth_offset_km", 0.0))
         elif simulator_config[0] == 'kernel':
             score_compression_data = simulator_config[1]
             simulator = FixedLocationKernelSimulator(score_compression_data,
@@ -241,7 +245,9 @@ class GeneralSimulatorWrapper:
                             post_processing_effects=pp_effects,
                             resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
                             member_sampling=getattr(simulation_parameters, "member_sampling", None),
-                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None))
+                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
+                            source_depth_offset_km=getattr(
+                                simulation_parameters, "source_depth_offset_km", 0.0))
         elif simulator_config[0] == 'cps_multi':
             # simulator_config[1] can override and directly provide model dicts.
             if simulator_config[1] is not None:

@@ -6,9 +6,7 @@ from pyproj import Geod
 import matplotlib.pyplot as plt
 
 
-# -----------------------------
 # Core math: eigenvalue handling and lam2lune
-# -----------------------------
 
 def sort_eigvals_desc(lam: np.ndarray) -> np.ndarray:
     idx = np.argsort(lam, axis=-1)[..., ::-1]
@@ -99,9 +97,7 @@ def mts6_to_gamma_delta(m6: np.ndarray):
     return gamma, delta
 
 
-# -----------------------------
 # KDE utilities
-# -----------------------------
 
 def kde_on_grid(x, y, xgrid, ygrid, bw_method='scott'):
     xy = np.vstack([x, y])
@@ -126,9 +122,7 @@ def kde_hpd_contour_levels(Z, levels=(0.6827, 0.9545)):
     return tuple(thr)
 
 
-# -----------------------------
 # Basemap Hammer-projected Lune
-# -----------------------------
 
 def plot_lune_frame(ax, frame_color='k', grid_color='lightgray', fontweight='bold',
                     clvd_left=True, clvd_right=True, lon_0=0):
@@ -251,8 +245,35 @@ def plot_kde_contours_on_lune(ax, bm: Basemap, gamma, delta, colors='C0', grid_r
         ax.contour(XX, YY, Z, levels=lv, colors=colors, linestyles=ls, linewidths=lw)
 
 
+def plot_filled_kde_on_lune(ax, bm: Basemap, gamma, delta, cmap='Purples',
+                            grid_res=(200, 300), levels=(0.6827, 0.9545),
+                            alpha=0.85, area_weighted=False):
+    """Filled HPD density of a (γ, δ) cloud on the lune (for pooled catalogue
+    samples).  ``area_weighted`` multiplies the KDE by the lune area element
+    ``cos δ`` so the HPD regions are in posterior mass, not raw density.
+    Returns the ``contourf`` set (usable for a colourbar)."""
+    gx = np.linspace(-30, 30, grid_res[0])
+    gy = np.linspace(-90, 90, grid_res[1])
+    X, Y, Z, _ = kde_on_grid(gamma, delta, gx, gy)
+    if area_weighted:
+        Z = Z * np.cos(np.radians(Y))
+    thr = kde_hpd_contour_levels(Z, levels=levels)
+    XX, YY = bm(X, Y)
+    # contourf needs strictly-increasing levels; HPD thresholds come back in
+    # the order of ``levels`` (tighter mass ⇒ higher density), so sort and
+    # drop degenerate duplicates before capping with the density maximum.
+    lv = []
+    for t in sorted(thr):
+        if not lv or t > lv[-1]:
+            lv.append(t)
+    zmax = float(Z.max())
+    if not lv or lv[-1] >= zmax:
+        return None
+    return ax.contourf(XX, YY, Z, levels=lv + [zmax], cmap=cmap, alpha=alpha)
+
+
 __all__ = [
     'lam2lune', 'm6_to_matrix', 'mts6_to_gamma_delta', 'plot_lune_frame',
     'project_points_to_lune', 'plot_scatter_on_lune', 'plot_kde_contours_on_lune',
-    'kde_on_grid', 'kde_hpd_contour_levels'
+    'plot_filled_kde_on_lune', 'kde_on_grid', 'kde_hpd_contour_levels'
 ]

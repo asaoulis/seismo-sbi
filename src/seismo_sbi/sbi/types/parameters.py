@@ -41,6 +41,13 @@ class SimulationParameters(NamedTuple):
     # Intra-ensemble (per-station) theory-error sampling: when True, each station draws an
     # INDEPENDENT 1-D ensemble member per event instead of one member shared across all stations.
     # Applies to 'instaseis_ensemble' and (per region) 'instaseis_multi_ensemble'.
+    # Datum offset (km, positive downward) added to a source's depth at the Green's-function
+    # boundary only. Instaseis measures depth from the MODEL's free surface, which is not
+    # always the sea-level datum catalogues use: an AxiSEM model built with its surface at mean
+    # ground elevation sits above it. With this set, catalogues, prior boxes, conditioning
+    # vectors and posteriors all stay in the catalogue's datum and only the Instaseis call is
+    # corrected. 0.0 (default) == model surface is the catalogue datum, i.e. legacy behaviour.
+    source_depth_offset_km: float = 0.0
     resample_member_per_station: bool = False
     # Member-sampling scheme for 'instaseis_ensemble' / 'instaseis_multi_ensemble':
     #   None / 'per_event'  one member shared by all stations (legacy default);

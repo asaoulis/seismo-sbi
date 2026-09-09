@@ -80,3 +80,92 @@ def test_recovered_mt_samples_slices_first_six():
     out = recovered_mt_samples(_Dummy())
     assert out.shape == (8, 6)
     assert np.array_equal(out, _Dummy.samples[:, :6])
+
+
+# ---------------------------------------------------------------------------
+# Batched eigen-frame primitives: kagan_batch and mt_axes.
+#
+# These exist purely as a fast path (pyrocko's per-call MomentTensor
+# construction costs ~2.2 ms, which makes posterior-wide orientation statistics
+# an 8-minute job).  They are therefore CHARACTERISATION tests against the
+# pyrocko implementations they replace, not independent re-derivations.
+# ---------------------------------------------------------------------------
+
+def _random_m6(n, seed=0):
+    return np.random.default_rng(seed).standard_normal((n, 6)) * 1e16
+
+
+def test_kagan_batch_matches_pyrocko_kagan():
+    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    A, B = _random_m6(200, seed=1), _random_m6(200, seed=2)
+    ref = np.array([kagan(a, b) for a, b in zip(A, B)])
+    got = kagan_batch(A, B)
+    assert np.nanmax(np.abs(ref - got)) < 1e-6
+
+
+def test_kagan_batch_self_zero_symmetric_and_scale_invariant():
+    # Tolerance note: the angle comes out of arccos(qmax) with qmax -> 1 for
+    # identical tensors, where arccos has infinite derivative, so a 1e-16
+    # rounding error in qmax lifts the angle to ~2e-6 deg.  That floor is
+    # inherent to the quaternion form (pyrocko's kagan_angle shares it) and is
+    # ~7 orders below any orientation difference of interest.
+    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    A, B = _random_m6(50, seed=3), _random_m6(50, seed=4)
+    assert np.allclose(kagan_batch(A, A), 0.0, atol=1e-4)
+    assert np.allclose(kagan_batch(A, B), kagan_batch(B, A), atol=1e-6)
+    assert np.allclose(kagan_batch(A, 7.3 * A), 0.0, atol=1e-4)
+    assert np.all(kagan_batch(A, B) <= 120.0 + 1e-6)
+
+
+def test_kagan_batch_broadcasts_single_tensor_either_side():
+    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    A, one = _random_m6(20, seed=5), _random_m6(1, seed=6)
+    assert kagan_batch(A, one).shape == (20,)
+    assert kagan_batch(one, A).shape == (20,)
+    assert np.allclose(kagan_batch(A, one), kagan_batch(one, A), atol=1e-9)
+    # a bare (6,) tensor is accepted on either side too
+    assert np.allclose(kagan_batch(A, one.reshape(6)), kagan_batch(A, one), atol=1e-12)
+
+
+def test_kagan_batch_rejects_mismatched_batches():
+    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    with pytest.raises(ValueError):
+        kagan_batch(_random_m6(5, seed=7), _random_m6(3, seed=8))
+
+
+def test_mt_axes_matches_mt_features_axes():
+    """P/T/N axes must agree with the per-tensor pyrocko readout.
+
+    Axes are sign-ambiguous, so the comparison is on the axis DIRECTION up to
+    sign; azimuth itself is only compared where the axis is not near-horizontal
+    (a horizontal axis is azimuth-ambiguous by exactly 180°, and either
+    convention is correct).
+    """
+    from seismo_sbi.evaluation.moment_tensor import mt_axes
+    from pyrocko import moment_tensor as pmt
+
+    M6 = _random_m6(100, seed=9)
+    got = mt_axes(M6)
+    for i, m6 in enumerate(M6):
+        mt = pyrocko_mt(m6)
+        for key, vec in (("p", mt.p_axis()), ("t", mt.t_axis()), ("n", mt.null_axis())):
+            v = np.asarray(vec, float).ravel()
+            v = v / np.linalg.norm(v)
+            az, pl = np.radians(got[f"{key}_az"][i]), np.radians(got[f"{key}_plunge"][i])
+            w = np.array([np.cos(pl) * np.cos(az), np.cos(pl) * np.sin(az), np.sin(pl)])
+            assert abs(float(np.dot(v, w))) > 1.0 - 1e-9, f"{key} axis differs on tensor {i}"
+        assert np.all(got[f"{key}_plunge"] >= -1e-9)      # lower hemisphere
+    assert np.all((got["p_az"] >= 0.0) & (got["p_az"] < 360.0))
+    _ = pmt  # (imported to assert pyrocko availability for the readout above)
+
+
+def test_mt_axes_pure_strike_slip_axes_are_horizontal():
+    # A vertical strike-slip fault has horizontal P and T axes and a vertical null axis.
+    from seismo_sbi.evaluation.moment_tensor import mt_axes
+    from pyrocko import moment_tensor as pmt
+    M = pmt.MomentTensor(strike=0.0, dip=90.0, rake=0.0).m_up_south_east()
+    m6 = np.array([M[0, 0], M[1, 1], M[2, 2], M[0, 1], M[0, 2], M[1, 2]])
+    ax = mt_axes(m6)
+    assert abs(ax["p_plunge"][0]) < 1.0
+    assert abs(ax["t_plunge"][0]) < 1.0
+    assert abs(ax["n_plunge"][0] - 90.0) < 1.0

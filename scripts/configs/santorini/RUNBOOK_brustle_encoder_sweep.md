@@ -39,9 +39,15 @@ stays 8 (quality-safe, identical across all three; set 5 for ~1.17x more speed).
 2. **Commit + push** the branch (sync does `tsync` = checkout of a *pushed* rev; pushing is
    required or tsync fails `reference is not a tree`). Includes the baked staging code,
    `InputDecimator`, the MTfit removal, and these config/script files.
-3. **Ensemble DBs**: `santorini_tomo_brustle` must be present on the cluster. ⚠ The archive was
-   previously **32/61 members usable** (truncated PZ on the rest) — verify/rebuild before a 500k
-   gen if full theory-error diversity matters, else the baked theory error draws from 32 models.
+3. **Ensemble DBs**: `santorini_tomo_brustle` must be present on the cluster. This archive was
+   briefly incomplete (31/61 usable — truncated PZ plus one ~1e30 "zombie"), but it was
+   **rebuilt on 2026-06-12 and re-verified 61/61 good on 2026-08-01** (60 members + fiducial,
+   36 GB; real `instaseis.open_db` + `get_seismograms` on both PX/PZ legs with a finiteness and
+   `<1e3 m` amplitude bound — `du`/size checks and a non-raising read are NOT sufficient, the
+   zombie passed both). Re-run
+   `.claude/runs/theory-error-ensembles/3d-to-1d-profiles/artifacts/brustle_integrity_check.py`
+   against the local mirror if you need to re-confirm; neither gatekeeper can list the cluster
+   `axisem_dbs`, so the other authoritative signal is the first ~15 min of a gen log.
 
 ## Run order
 ```bash

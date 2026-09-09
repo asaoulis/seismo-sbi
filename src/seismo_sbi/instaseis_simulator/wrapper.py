@@ -190,8 +190,7 @@ def _unit_moment_dirac(dt: float) -> np.ndarray:
        trapezoidal rule half-weights the *endpoints*; a spike on the first sample integrates
        to ``dt/2`` rather than ``dt``, so the impulse comes back as ``2/dt`` — carrying
        **twice** the intended moment and making every synthetic exactly 2x too loud
-       (``dMw = -(2/3)·log10 2 = -0.2007``).  That was a real bug here; see
-       ``.claude/runs/santorini-paper-prep/mw-bias-investigation/artifacts/ROOT_CAUSE.md``.
+       (``dMw = -(2/3)·log10 2 = -0.2007``).
     """
     sliprate = np.zeros(_MIN_STF_SAMPLES)
     sliprate[0] = 1.0 / dt
@@ -283,11 +282,27 @@ def build_stf_sliprate(
 
 class InstaseisDBQuerier:
 
-    def __init__(self, instaseis_model_loc, processing_config, seismogram_duration_in_s = None) -> None:
+    def __init__(self, instaseis_model_loc, processing_config, seismogram_duration_in_s = None,
+                 source_depth_offset_km: float = 0.0) -> None:
+        """
+        source_depth_offset_km:
+            Datum offset added to a source's depth at the Instaseis boundary, in km.
 
+            Instaseis measures source depth from the *model's free surface*, which is
+            not always sea level: an AxiSEM model built with its surface at mean ground
+            elevation sits above the sea-level datum that catalogues use.  This offset
+            is the (positive downward) distance from the model free surface to the
+            catalogue datum, so that catalogues, prior boxes, conditioning vectors and
+            posteriors can all stay in the catalogue's own datum (normally km b.s.l.)
+            while only the handoff to Instaseis is corrected.
+
+            Defaults to ``0.0`` (model surface == catalogue datum), which is the
+            behaviour of every configuration that does not set it.
+        """
         self.instaseis_database = instaseis.open_db(instaseis_model_loc)
         self.preprocessing = SyntheticsPreprocessing(processing_config)
         self._seismogram_duration_in_s = seismogram_duration_in_s
+        self.source_depth_offset_km = float(source_depth_offset_km)
         
         self.sampling_rate = self._get_db_attribute('sampling_rate')
         self._raw_seismogram_duration_in_s = self._get_db_attribute('length')
@@ -357,7 +372,12 @@ class InstaseisDBQuerier:
         location = source.source_location
         m_tensor = source.moment_tensor.components
 
-        if location.depth < 0:
+        # Convert from the catalogue datum to depth below the model's free surface.
+        # The guard below tests the *post-offset* depth because that is the quantity
+        # Instaseis rejects; with the default offset of 0.0 this is unchanged.
+        depth_below_free_surface_km = location.depth + self.source_depth_offset_km
+
+        if depth_below_free_surface_km < 0:
             print('Warning: depth is negative. Setting depth to 0')
             location = location._replace(depth=0)
             raise ValueError('Depth cannot be negative')
@@ -365,7 +385,7 @@ class InstaseisDBQuerier:
         instaseis_source = instaseis.Source(
             latitude=location.latitude,
             longitude=location.longitude,
-            depth_in_m=location.depth * 1e3,
+            depth_in_m=depth_below_free_surface_km * 1e3,
             time_shift=location.time_shift,
             dt=self._dt,
             m_rr=custom_scale * m_tensor[0],

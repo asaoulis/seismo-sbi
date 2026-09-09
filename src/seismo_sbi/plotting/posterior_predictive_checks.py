@@ -100,6 +100,8 @@ class PosteriorPredictiveChecks:
         dof_override: Optional[int] = None,
         augmentation_chains: Optional[Dict[str, PostProcessingChain]] = None,
         augmentation_nuisance_params: Optional[Dict[str, dict]] = None,
+        max_shift_samples: Optional[int] = None,
+        autocorr_maxlag: int = 50,
     ):
         self.simulator = simulator
         self.covariance_matrix = covariance_matrix
@@ -107,6 +109,11 @@ class PosteriorPredictiveChecks:
         self.n_jobs = int(n_jobs)
         self.sample_rate = sample_rate
         self.dof_override = dof_override
+        #: Lag budget (samples, each direction) for "Shifted corr misfit".  ``None`` ->
+        #: 10 % of the trace length, i.e. scaled to whatever window the traces span.
+        self.max_shift_samples = max_shift_samples
+        #: Max lag (samples) for the autocorrelation-shape metric.
+        self.autocorr_maxlag = int(autocorr_maxlag)
 
         # infer n_traces
         if n_traces is not None:
@@ -132,7 +139,11 @@ class PosteriorPredictiveChecks:
         # self.add_metric("band_power_ratio", self._metric_band_power_ratio)
         self.add_metric("Envelope misfit", self._metric_envelope_misfit)
         self.add_metric("MSE", self._metric_mse)
-        # self.add_metric("autocorr_misfit", self._metric_autocorr_misfit)
+        # Shift-tolerant pair: a zero-lag correlation charges a mechanism for travel-time
+        # error it did not cause (1-D velocity model + hypocentre error move whole traces),
+        # so both of these judge waveform SHAPE with the arrival time free.
+        self.add_metric("Shifted corr misfit", self._metric_shifted_corr_misfit)
+        self.add_metric("Autocorr misfit", self._metric_autocorr_misfit)
 
     # -------------------
     # Public API
@@ -524,24 +535,102 @@ class PosteriorPredictiveChecks:
             vals[i] = float(np.mean(np.abs(env_obs - env_s) / denom))
         return vals
 
-    def _metric_autocorr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict, maxlag=50):
+    @staticmethod
+    def _acf_matrix(mat: np.ndarray, maxlag: int) -> np.ndarray:
+        """Normalised autocorrelation at lags 1..maxlag for each row of ``mat``.
+
+        FFT-based and vectorised over rows: the per-lag dot products are one transform
+        pair regardless of ``maxlag``.
         """
-        Compare short-lag autocorrelation structure:
-        statistic = mean_{lag=1..maxlag} |acf_obs(lag) - acf_syn(lag)|
+        n = mat.shape[1]
+        x = mat - mat.mean(axis=1, keepdims=True)
+        nfft = int(2 ** np.ceil(np.log2(2 * n)))
+        F = np.fft.rfft(x, n=nfft, axis=1)
+        ac = np.fft.irfft(F * np.conj(F), n=nfft, axis=1)[:, : maxlag + 1]
+        return ac[:, 1:] / (ac[:, :1] + 1e-12)
+
+    def _metric_autocorr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict,
+                                maxlag: Optional[int] = None):
+        """Difference in short-lag autocorrelation SHAPE, per trace.
+
+        ``mean_{lag=1..maxlag} |acf_obs(lag) - acf_syn(lag)|``, averaged over traces.
+
+        The autocorrelation of a trace is invariant to a time shift of that trace, so this
+        scores pulse shape/duration/frequency content while ignoring arrival time entirely —
+        the complement to the zero-lag correlation, which cannot separate the two.
+
+        Computed PER TRACE (falling back to the whole vector only when the trace layout is
+        unknown): run over concatenated traces the lag products would straddle trace
+        boundaries and measure the packing order rather than the waveforms.
+
+        .. warning::
+           **Blind to polarity by construction** — ``ACF(-x) == ACF(x)``, so an inverted
+           waveform scores exactly 0.  Never use this metric alone to argue about the sign
+           of the isotropic component; pair it with ``Shifted corr misfit`` (which keeps
+           polarity as long as the lag budget stays under half a dominant period), the
+           zero-lag correlation, or the first-motion polarity analysis.
         """
-        obs = np.asarray(obs).ravel()
-        n = len(obs)
-        maxlag = min(maxlag, n - 1)
-        # compute obs acf
-        x = obs - obs.mean()
-        denom = np.dot(x, x) + 1e-12
-        acf_obs = np.array([np.dot(x[: n - lag], x[lag:]) / denom for lag in range(1, maxlag + 1)])
-        vals = np.empty((synthetics.shape[0],), dtype=float)
-        for i, s in enumerate(synthetics):
-            y = s - s.mean()
-            denom_y = np.dot(y, y) + 1e-12
-            acf_s = np.array([np.dot(y[: n - lag], y[lag:]) / denom_y for lag in range(1, maxlag + 1)])
-            vals[i] = float(np.mean(np.abs(acf_obs - acf_s)))
+        maxlag = int(self.autocorr_maxlag if maxlag is None else maxlag)
+        n_samples = synthetics.shape[0]
+        n_traces = meta.get("n_traces", self.n_traces)
+        obs_mat = self._reshape_to_traces(np.asarray(obs).ravel(), n_traces)
+        if obs_mat is None:
+            obs_mat = np.asarray(obs).ravel()[None, :]
+            syn_mat = np.asarray(synthetics).reshape(n_samples, 1, -1)
+        else:
+            try:
+                syn_mat = synthetics.reshape((n_samples,) + obs_mat.shape)
+            except Exception:  # noqa: BLE001
+                obs_mat = np.asarray(obs).ravel()[None, :]
+                syn_mat = np.asarray(synthetics).reshape(n_samples, 1, -1)
+        maxlag = max(1, min(maxlag, obs_mat.shape[1] - 1))
+        acf_obs = self._acf_matrix(obs_mat, maxlag)
+        vals = np.empty((n_samples,), dtype=float)
+        for i in range(n_samples):
+            vals[i] = float(np.mean(np.abs(acf_obs - self._acf_matrix(syn_mat[i], maxlag))))
+        return vals
+
+    def _metric_shifted_corr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
+        """``1 - max_{|lag| <= L} corr(obs, syn)``, per trace, averaged over traces.
+
+        The zero-lag correlation misfit charges a mechanism for travel-time error it did not
+        cause: a 1-D velocity model and a catalogue hypocentre both translate whole traces,
+        which decorrelates them without saying anything about the source. Maximising over a
+        bounded lag lets the arrival time float and scores waveform shape and polarity alone.
+
+        ``L`` = ``max_shift_samples`` (constructor) or 10 % of the trace length. The lag band
+        is bounded on purpose — an unbounded search would happily align a P arrival onto an S.
+
+        Normalised cross-correlation via FFT, vectorised over traces.
+        """
+        n_samples = synthetics.shape[0]
+        n_traces = meta.get("n_traces", self.n_traces)
+        obs_mat = self._reshape_to_traces(np.asarray(obs).ravel(), n_traces)
+        if obs_mat is None:
+            return self._metric_corr_misfit(obs, synthetics, meta)
+        try:
+            syn_mat = synthetics.reshape((n_samples,) + obs_mat.shape)
+        except Exception:  # noqa: BLE001
+            return self._metric_corr_misfit(obs, synthetics, meta)
+
+        tlen = obs_mat.shape[1]
+        L = meta.get("max_shift_samples", self.max_shift_samples)
+        L = int(L) if L else max(1, int(round(0.10 * tlen)))
+        L = max(1, min(L, tlen - 1))
+
+        nfft = int(2 ** np.ceil(np.log2(2 * tlen)))
+        x = obs_mat - obs_mat.mean(axis=1, keepdims=True)
+        xn = np.linalg.norm(x, axis=1) + 1e-12
+        FX = np.conj(np.fft.rfft(x, n=nfft, axis=1))
+        vals = np.empty((n_samples,), dtype=float)
+        for i in range(n_samples):
+            y = syn_mat[i] - syn_mat[i].mean(axis=1, keepdims=True)
+            yn = np.linalg.norm(y, axis=1) + 1e-12
+            cc = np.fft.irfft(FX * np.fft.rfft(y, n=nfft, axis=1), n=nfft, axis=1)
+            # lag k lives at index k for k >= 0 and at nfft+k for k < 0
+            band = np.concatenate([cc[:, : L + 1], cc[:, nfft - L:]], axis=1)
+            best = band.max(axis=1) / (xn * yn)
+            vals[i] = float(np.mean(1.0 - np.clip(best, -1.0, 1.0)))
         return vals
 
     # -----------------------

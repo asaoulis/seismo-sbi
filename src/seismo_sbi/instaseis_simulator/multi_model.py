@@ -193,4 +193,5 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
             resample_member_per_station=self.resample_member_per_station,
             member_sampling=getattr(self, 'member_sampling', None),
             sector_lambda=getattr(self, 'sector_lambda', None),
+            source_depth_offset_km=getattr(self, 'source_depth_offset_km', 0.0),
         )

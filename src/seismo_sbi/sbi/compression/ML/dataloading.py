@@ -38,10 +38,26 @@ class StationSubsampler:
             return float(kf)
         return float(np.random.uniform(*kf))
 
-    def __call__(self, num_stations: int) -> np.ndarray:
-        n_keep = int(round(self._draw_fraction() * num_stations))
-        n_keep = min(num_stations, max(min(self.min_stations, num_stations), n_keep))
-        return np.sort(np.random.choice(num_stations, size=n_keep, replace=False))
+    def __call__(self, num_stations: int, available: np.ndarray = None) -> np.ndarray:
+        """Draw kept station indices.
+
+        available:
+            Optional boolean mask over the master station axis. When given, the draw is
+            restricted to stations flagged available -- used with an incomplete real-noise
+            window so a station without noise is never kept (it would otherwise enter the
+            model as exactly-zero data). The keep FRACTION is still drawn from the
+            configured distribution and applied to the available count, so the dropout
+            distribution is unchanged in shape; only its support shrinks.
+        """
+        if available is None:
+            pool = np.arange(num_stations)
+        else:
+            pool = np.flatnonzero(np.asarray(available, dtype=bool)[:num_stations])
+            if pool.size == 0:
+                raise ValueError("StationSubsampler: no stations available for this sample")
+        n_keep = int(round(self._draw_fraction() * pool.size))
+        n_keep = min(pool.size, max(min(self.min_stations, pool.size), n_keep))
+        return np.sort(np.random.choice(pool, size=n_keep, replace=False))
 
 # New: Torch dataset that returns (theta, x) where x = D + noise
 class TorchSimulationDataset(Dataset):
@@ -69,40 +85,27 @@ class TorchSimulationDataset(Dataset):
     ):
         self.data_loader = data_loader
 
-        # Per-item FIXED masks (MMD posterior-matched sim suite): a sequence aligned with
-        # the sorted glob order of ``paths``, each entry ``(keep_indices, zero_channels)``
-        # where ``keep_indices`` indexes the master station axis and ``zero_channels`` is a
-        # list of (master_station_idx, component_idx) pairs zeroed post-noise (the parent
-        # real event's QA component zero-fill). When set it REPLACES the random
-        # station_subsampler / component-dropout for that item, so each psim sample
-        # reproduces exactly its parent event's station/component availability. None (the
-        # default) leaves every existing path unchanged.
+        # Per-item fixed masks, aligned with the sorted glob order of ``paths``, each entry
+        # ``(keep_indices, zero_channels)``. They replace the random subsampling and dropout for
+        # that item, so a sample reproduces its parent event's station availability exactly.
         self.fixed_item_masks = fixed_item_masks
-        # Companion per-item conditioning override (same alignment): the psim sims STORE
-        # their scattered true source location, but the model must be conditioned on the
-        # parent event's CATALOGUE location (cond - truth ~ the location error, exactly
-        # as at inference on real events). None => conditioning loads from the sim file.
+        # Same alignment: a simulation stores its true source location, but the model must be
+        # conditioned on the catalogue location, so their difference is the location error.
         self.fixed_conditioning = None
 
-        # Variable-station augmentation: when a subsampler is supplied, __getitem__ draws a
-        # (possibly partial) subset of stations per sample and returns a tuple
-        # (theta, (x_sub, coords_sub, source_vec|None)) that variable_station_collate packs
-        # into a ragged-aware batch. Absent ⇒ the legacy fixed-N return path is unchanged.
+        # With a subsampler, __getitem__ draws a station subset per sample and returns
+        # ``(theta, (x_sub, coords_sub, source_vec))`` for ``variable_station_collate`` to pack.
         self.station_subsampler = station_subsampler
         # Master station coordinates (N, 2) in canonical receiver-iteration order — matches
         # the station axis of the (N, C, T) data array, so subsampling indexes both alike.
         self.station_coords = data_loader.receivers.get_station_locations_array()
 
-        # Optional source-location conditioning: map of {input_type: [attr_names]} extracted
-        # from each sim's stored inputs as a RAW (unscaled) conditioning vector. When set,
-        # __getitem__ returns a packed context concat(flatten(x), source_vec); the embedding
-        # net unpacks it. Absent ⇒ unchanged (N, C, T) data return.
+        # ``{input_type: [attribute names]}`` pulled from each simulation's stored inputs as a
+        # raw, unscaled conditioning vector, returned packed as ``concat(flatten(x), source_vec)``.
         self.conditioning_param_map = conditioning_param_map or {}
 
-        # Source-location UNCERTAINTY augmentation (v3): per-coordinate Gaussian std applied to
-        # the raw conditioning vector on each __getitem__ (fresh draw ⇒ training augmentation).
-        # Order MUST match the conditioning vector (param_map concatenation order). Emulates the
-        # catalogue location error the conditioned model sees at inference. None ⇒ no perturbation.
+        # Per-coordinate Gaussian widths, drawn fresh per sample, emulating the catalogue
+        # location error. The order must match the conditioning vector's concatenation order.
         if conditioning_noise_std is None:
             self.conditioning_noise_std = None
         else:
@@ -115,17 +118,13 @@ class TorchSimulationDataset(Dataset):
         self.return_tensors = return_tensors
         self.torch_dtype = torch_dtype
 
-        # Training-time nuisance augmentation: a PostProcessingChain of Category-2
-        # effects (amplitude/dropout/time-shift/coda) folded into the CLEAN loaded
-        # data on the fly, BEFORE noise is added. None / empty chain ⇒ no augmentation
-        # (back-compat with the retired `random_shift_distribution` path at (0,0)).
+        # A chain of post-processing effects folded into the clean data on the fly, before
+        # noise is added.
         self.augmentation_chain = augmentation_chain
         self.augmentation_nuisance_params = augmentation_nuisance_params or {}
 
-        # Post-noise augmentation: a PostProcessingChain applied to the NOISY data
-        # ``x = D + noise`` (e.g. component_dropout, which zeros channels to mimic
-        # genuinely-absent components and so must run after noise to be exactly zero).
-        # None / empty chain ⇒ no post-noise augmentation.
+        # A chain applied to the noisy data, for effects like component dropout that must zero
+        # a channel exactly and so cannot run before noise is added.
         self.post_noise_augmentation_chain = post_noise_augmentation_chain
         self.post_noise_nuisance_params = post_noise_nuisance_params or {}
 
@@ -135,21 +134,8 @@ class TorchSimulationDataset(Dataset):
         else:
             print(f"Found {len(self.paths)} simulations matching {glob_pattern} under {data_folder}")
 
-        # --- Optional in-RAM sim cache (opt-in) ---
-        # The per-sample HDF5 open/read (`_load_sim`, plus a SECOND open for `_load_conditioning`
-        # on the conditioned path) is ~13 ms/sample and — being a shared-file read — does NOT scale
-        # with more DataLoader workers (it plateaus the loader throughput). Once the model step is
-        # fast (AMP/SDPA), this load dominates and starves the GPU. Preloading every clean array into
-        # ONE contiguous numpy buffer in the MAIN process (before the workers fork) removes the load
-        # entirely: __getitem__ indexes RAM, and the workers share the buffer copy-on-write (a single
-        # large array's data pages aren't touched by Python refcounting, so no per-worker duplication).
-        # The augmentation + noise + scaling still run per __getitem__ on a COPY, so behaviour is
-        # byte-identical to the on-disk path (verified by checksum in scripts/bench_aug_dataloader.py).
-        # cache_dtype trades RAM for storage precision. The model trains in float32, so
-        # "float32" (default) is identical to the on-disk path at the model's input precision
-        # (measured rel|Δ| 8e-8 < float32 ULP) at HALF the RAM of the native float64; use
-        # "float64" for a byte-identical cache, or "float16" to halve RAM again on big (1M+)
-        # datasets where the extra rounding is acceptable.
+        # Per-sample HDF5 reads are shared-file reads that do not scale with worker count, so
+        # every clean array is preloaded into one buffer the workers share copy-on-write.
         self._cache_D = None
         self._cache_theta = None
         self._cache_cond = None
@@ -192,9 +178,8 @@ class TorchSimulationDataset(Dataset):
 
         t0 = _t.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
-            # tqdm over the (in-order) map so the otherwise-silent preload of a large sim set
-            # (tens of GB / many minutes at 500k) shows progress; on a non-tty SLURM log it
-            # still emits periodic CR-updates, readable like the gen progress bar.
+            # A progress bar over the in-order map, so a preload that runs for many minutes is
+            # not silent, on a log file as well as a terminal.
             for _ in tqdm(ex.map(_load_one, range(n)), total=n,
                           desc="[sim-cache] preloading", unit="sim"):
                 pass
@@ -234,13 +219,16 @@ class TorchSimulationDataset(Dataset):
         theta = torch.as_tensor(theta, dtype=self.torch_dtype)
         D = torch.as_tensor(D, dtype=self.torch_dtype)
 
-        # Add synthetic noise on-the-fly. Keep the sampled noise as numpy through
-        # zero-fill so the (N, C, T) block builds in one `np.asarray` (no per-row
-        # conversion) and a single tensor cast — avoiding the old numpy->torch->numpy
-        # ->torch round-trip. Same noise values and station/component placement.
+        # Keep the sampled noise as numpy through the zero-fill, so the block is built in one
+        # array construction and cast once.
         noise = self.synthetic_noise_model_sampler()
+        # An incomplete-window sampler returns ``(vector, present_mask)``, whose mask says which
+        # stations the window carried and gates the station draw below.
+        noise_present = None
         if isinstance(noise, tuple):
-            noise, _ = noise
+            noise, second = noise
+            if getattr(self.synthetic_noise_model_sampler, "allow_incomplete", False):
+                noise_present = np.asarray(second, dtype=bool)
         noise = np.asarray(noise)
         noise_rows = self.data_loader.zero_fill_unused_components(
             noise.reshape(-1, D.shape[-1]), D.shape[-1]
@@ -248,10 +236,8 @@ class TorchSimulationDataset(Dataset):
         noise_arr = np.asarray(noise_rows)
         x = D + torch.as_tensor(noise_arr, dtype=self.torch_dtype).reshape(*D.shape)
 
-        # Post-noise augmentation (e.g. component_dropout): applied to the NOISY x so a
-        # dropped channel is EXACTLY zero (matching a genuinely-absent channel). Applied on the
-        # full station set BEFORE any variable-station subsampling, keeping the array aligned
-        # with the full `receivers` the adapter expects.
+        # Applied on the full station set before any subsampling, so the array stays aligned
+        # with the receivers the effects expect.
         post_chain = getattr(self, "post_noise_augmentation_chain", None)
         if post_chain is not None and post_chain.effects:
             x_aug = apply_chain_to_array(
@@ -299,12 +285,21 @@ class TorchSimulationDataset(Dataset):
         station_subsampler = getattr(self, "station_subsampler", None)
         if station_subsampler is not None:
             num_stations = x.shape[0]
-            keep = station_subsampler(num_stations)
+            keep = station_subsampler(num_stations, available=noise_present)
             x_sub = x[keep]                                            # (N_sub, C, T)
             coords_sub = torch.as_tensor(
                 self.station_coords[keep], dtype=self.torch_dtype
             )                                                          # (N_sub, 2)
             return theta, (x_sub, coords_sub, source_vec)
+
+        if noise_present is not None and not noise_present.all():
+            raise RuntimeError(
+                "RealNoiseSampler(allow_incomplete=True) produced a window missing "
+                f"{int((~noise_present).sum())} station(s), but this dataset has no "
+                "station_subsampler to mask them out -- they would enter the model as "
+                "exactly-zero data. Use incomplete noise windows only with "
+                "variable-station training."
+            )
 
         # --- Legacy fixed-N path (unchanged) ---
         # Source-location conditioning: append the RAW conditioning vector → packed context.
@@ -333,9 +328,8 @@ class TorchSimulationDataset(Dataset):
         ]).astype(float)
 
     def _load_sim(self, sim_path):
-        # Load the CLEAN, un-shifted data array. Time shifts (and other nuisance
-        # effects) are now applied as augmentation in __getitem__ via the
-        # augmentation_chain, not baked into the load.
+        # The clean, unshifted array: time shifts and the other effects are applied as
+        # augmentation in ``__getitem__``, not baked into the load.
         if len(self.parameter_name_map) > 0:
             # Single h5 open for BOTH theta (inputs) and the data array (outputs);
             # opening the file twice per sample is a measurable per-epoch cost.
@@ -531,10 +525,8 @@ def make_torch_dataloaders(
     if persistent_workers is None:
         persistent_workers = num_workers > 0
 
-    # prefetch_factor is only valid for multiprocessing loaders (num_workers > 0);
-    # passing it with num_workers=0 raises in torch >= 2.0. A larger prefetch keeps
-    # more augmented batches queued ahead of the GPU so per-sample CPU augmentation
-    # is hidden behind compute.
+    # prefetch_factor is only valid with worker processes; a larger value keeps more augmented
+    # batches queued ahead of the accelerator.
     extra = {"prefetch_factor": prefetch_factor} if num_workers > 0 else {}
     if num_workers > 0:
         extra["worker_init_fn"] = _seed_worker

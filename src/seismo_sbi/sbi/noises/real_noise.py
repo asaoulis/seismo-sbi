@@ -12,7 +12,26 @@ class RealNoiseSampler:
     # TODO: add components implementation
 
     def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None, adaptive_covariance= None,
-                 freeze_scale: bool = False):
+                 freeze_scale: bool = False, allow_incomplete: bool = False):
+        """
+        allow_incomplete:
+            When False (default, unchanged behaviour) a noise window missing ANY model
+            station is skipped entirely, so the usable pool is
+            ``n_windows * P(all stations present)`` -- which collapses as the station count
+            grows (measured: 77.9% at 29 Iceland stations, far worse at 49).
+
+            When True the window is used for the stations it DOES have: absent stations are
+            zero-filled and ``__call__`` returns ``(noise_vector, present_mask)``. The
+            consumer must mask those stations out -- in practice by intersecting the mask
+            with the variable-station keep-set (see ``StationSubsampler(available=...)``),
+            which is why this mode is only meaningful with variable-station training.
+
+            Whole windows are still drawn intact, so inter-station noise coherence -- real
+            at microseism periods -- is preserved. Assembling one sample's noise from
+            several windows would destroy it and make the noise artificially
+            uncorrelated across stations, biasing the posterior towards overconfidence.
+        """
+        self.allow_incomplete = bool(allow_incomplete)
         receivers = simulation_parameters.receivers
         self.num_stations = len(receivers.receivers)
         self.components = simulation_parameters.components
@@ -21,16 +40,8 @@ class RealNoiseSampler:
 
         self.data_loader = SimulationDataLoader(self.components, simulation_parameters.receivers, data_length)
 
-        # Expected flattened length of a COMPLETE noise window for this receiver set.
-        # A handful of windows (~0.1% in the v2 Santorini catalogue) sit on a station
-        # data gap, so one trace is shorter than data_length; convert_sim_data_to_array
-        # anchors the length to the first receiver and truncates, silently returning a
-        # sub-length vector that will not broadcast against the full-length data vector D
-        # (and would corrupt the empirical covariance). When data_length is known we skip
-        # such windows in __call__ — the variable-length analogue of the missing-station
-        # KeyError skip. data_length == trace_length == data_vector_length // num_traces,
-        # so this expected length is exactly the data-vector length, self-consistent with
-        # whatever the true per-trace sample count is.
+        # Flattened length of a complete noise window. A window sitting on a station data gap
+        # comes back short, which would not broadcast against the data vector, so it is skipped.
         self._expected_length = (
             None if data_length is None
             else sum(len(rec.components) for rec in receivers.receivers) * data_length
@@ -39,18 +50,14 @@ class RealNoiseSampler:
         self.noise_paths = self._find_noise_paths(directory)
         np.random.shuffle(self.noise_paths)
 
-        # Optional in-RAM noise-window cache (opt-in via preload_cache()). Each __call__ otherwise
-        # opens an HDF5 noise file (~12 ms) — a per-training-sample cost on top of the sim load. The
-        # generic-event ML path draws noise windows uniformly at random WITH replacement and never
-        # rescales (adaptive_covariance is None), so a contiguous in-RAM pool returning a random row
-        # is distributionally identical to the on-disk draw, at no disk cost and with no
-        # worker-scaling wall. Disabled (None) ⇒ unchanged on-disk behaviour.
+        # Without the cache every call opens an HDF5 file. Drawing uniformly with replacement
+        # and never rescaling, a contiguous in-RAM pool is distributionally the same draw.
         self._noise_cache = None
+        self._presence_cache = None
+        self._presence_bits = None
 
-        # When True the sampler draws generic noise windows verbatim and never rescales them to
-        # a single event's pre-event variance: set_adaptive_covariance_with_misc_data becomes a
-        # no-op so adaptive_covariance stays None. Use for generic-event ("amortised over
-        # events") training where rescaling to one event would defeat the purpose.
+        # When True the sampler draws windows verbatim and never rescales them to one event's
+        # pre-event variance, which is what training amortised over events needs.
         self.freeze_scale = freeze_scale
         self.adaptive_covariance = adaptive_covariance
         if self.adaptive_covariance is not None:
@@ -60,6 +67,53 @@ class RealNoiseSampler:
 
         print(f"Found {len(self.noise_paths)} noise realisations.")
     
+    def _build_presence_index(self):
+        """Pack each cached window's station presence into one integer for O(n) subset queries.
+
+        With <= 64 stations a window's presence is a single ``uint64``, so "which windows
+        contain all of subset S" is one vectorised AND + compare over the whole pool
+        (~40k windows => tens of microseconds), instead of a per-window Python loop or a
+        rejection sampler that retries until it happens to hit a matching window.
+
+        Only needed by :meth:`sample_containing`; the ordinary draw needs no index at all.
+        """
+        n = self._presence_cache.shape[1]
+        if n > 64:
+            # Fall back to the boolean matrix; the query below stays vectorised, just wider.
+            self._presence_bits = None
+            return
+        weights = (np.uint64(1) << np.arange(n, dtype=np.uint64))
+        self._presence_bits = (self._presence_cache.astype(np.uint64) * weights).sum(
+            axis=1, dtype=np.uint64)
+
+    def subset_window_count(self, station_indices):
+        """How many cached windows contain every station in ``station_indices``."""
+        return int(self._subset_matches(station_indices).size)
+
+    def _subset_matches(self, station_indices):
+        idx = np.asarray(station_indices, dtype=int)
+        if getattr(self, "_presence_bits", None) is not None:
+            want = np.uint64(0)
+            for i in idx:
+                want |= np.uint64(1) << np.uint64(int(i))
+            return np.flatnonzero((self._presence_bits & want) == want)
+        return np.flatnonzero(self._presence_cache[:, idx].all(axis=1))
+
+    def sample_containing(self, station_indices, rng=None):
+        """Draw a random cached window that contains ALL of ``station_indices``.
+
+        For the case where the station subset is fixed in advance (inference on a real
+        event, or a fixed evaluation config) and the window must be found to match it —
+        the inverse of the ordinary draw. Uses the packed index, so it never rejection-
+        samples. Raises if no window contains the subset.
+        """
+        matches = self._subset_matches(station_indices)
+        if matches.size == 0:
+            raise ValueError(
+                f"No noise window contains all {len(station_indices)} requested stations.")
+        r = (rng or np.random).randint(0, matches.size) if rng is None else rng.integers(matches.size)
+        return self._noise_cache[matches[r]]
+
     def _find_noise_paths(self, directory):
         return np.array(list(Path(directory).glob('*.h5')))
 
@@ -80,24 +134,39 @@ class RealNoiseSampler:
         paths = list(self.noise_paths)
 
         def _try_load(p):
+            if self.allow_incomplete:
+                # Absent stations are zero-filled, so every window has the canonical
+                # length and NONE are discarded. The presence mask travels with the row.
+                v, present = self.data_loader.load_flattened_simulation_vector_with_presence(p)
+                v = np.asarray(v).reshape(-1)
+                if not present.any():
+                    return None
+                if self._expected_length is not None and v.size != self._expected_length:
+                    return None
+                return v, present
             try:
                 v = np.asarray(self._load_noise_file(p)).reshape(-1)
             except KeyError:
                 return None
             if self._expected_length is not None and v.size != self._expected_length:
                 return None
-            return v
+            return v, None
 
         t0 = _t.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
             loaded = list(tqdm(ex.map(_try_load, paths), total=len(paths),
                                desc="[noise-cache] preloading", unit="win"))
         # Keep windows matching the modal length (the data-vector length); drop gaps/mismatches.
-        valid = [v for v in loaded if v is not None]
-        if not valid:
+        kept = [vp for vp in loaded if vp is not None]
+        if not kept:
             raise RuntimeError("RealNoiseSampler.preload_cache: no valid noise windows found.")
-        ref_len = self._expected_length or valid[0].size
-        valid = [v for v in valid if v.size == ref_len]
+        ref_len = self._expected_length or kept[0][0].size
+        kept = [vp for vp in kept if vp[0].size == ref_len]
+        valid = [v for v, _ in kept]
+        if self.allow_incomplete:
+            self._presence_cache = np.ascontiguousarray(
+                np.stack([m for _, m in kept], axis=0), dtype=bool)
+            self._build_presence_index()
         self._noise_cache = np.ascontiguousarray(np.stack(valid, axis=0), dtype=dtype)
         gb = self._noise_cache.nbytes / 1e9
         print(f"[noise-cache] preloaded {len(valid)}/{len(paths)} noise windows into RAM "
@@ -111,36 +180,43 @@ class RealNoiseSampler:
         if (self._noise_cache is not None and not no_rescale
                 and self.adaptive_covariance is None
                 and noise_path is None and noise_index is None):
-            return self._noise_cache[np.random.randint(0, self._noise_cache.shape[0])]
+            row = np.random.randint(0, self._noise_cache.shape[0])
+            if self.allow_incomplete:
+                # O(1). No search and no rejection loop: the window is drawn first and the
+                # station subset is derived from what it holds (see __init__ docstring).
+                return self._noise_cache[row], self._presence_cache[row]
+            return self._noise_cache[row]
 
-        # if self.noise_index_counter == len(self.noise_paths):
-        #     self.noise_index_counter = 0
-        #     np.random.shuffle(self.noise_paths)
         if _attempts > len(self.noise_paths):
             raise RuntimeError(
                 f"RealNoiseSampler: no noise window matched the expected data-vector length "
                 f"{self._expected_length} after scanning all {len(self.noise_paths)} windows.")
         if noise_index is not None:
-            # wrap: the KeyError retry below increments noise_index, which would
-            # otherwise run off the end when the last window is hit (IndexError
-            # 'index N out of bounds for axis 0 with size N').
+            # Wrap: the retry below increments noise_index, which would otherwise run off the
+            # end at the last window.
             noise_path = self.noise_paths[noise_index % len(self.noise_paths)]
         if noise_path is None:
             noise_index = np.random.randint(0, len(self.noise_paths))
             noise_path = self.noise_paths[noise_index]
-        # On a retry we move to the next window when walking sequentially (noise_index
-        # set), or fall back to a fresh random draw when a window was requested by path
-        # (noise_index is None).
+        # A retry moves to the next window when walking sequentially, or draws afresh when the
+        # window was requested by path.
         next_index = None if noise_index is None else noise_index + 1
+        if self.allow_incomplete:
+            noise_realisations, present = self.data_loader.load_flattened_simulation_vector_with_presence(
+                noise_path)
+            if not present.any():
+                # Degenerate window (no model station at all): fall through to the next one.
+                return self.__call__(noise_path=None, no_rescale=no_rescale,
+                                     noise_index=next_index, _attempts=_attempts + 1)
+            return noise_realisations, present
         try:
             noise_realisations = self._load_noise_file(noise_path)
         except KeyError:
             # this window lacks one of the event's stations; try the next one.
             return self.__call__(noise_path = None, no_rescale = no_rescale,
                                  noise_index=next_index, _attempts=_attempts + 1)
-        # Skip windows that sit on a station data gap: one trace is shorter than the rest,
-        # so the flattened vector is < the data-vector length and would not broadcast
-        # against D. Treated exactly like the missing-station case above.
+        # Skip windows on a station data gap: one trace is short, so the flattened vector
+        # would not broadcast against the data vector.
         if self._expected_length is not None and noise_realisations.size != self._expected_length:
             return self.__call__(noise_path = None, no_rescale = no_rescale,
                                  noise_index=next_index, _attempts=_attempts + 1)

@@ -15,7 +15,7 @@ import numpy as np
 
 
 def build_eval_pipeline(config_path, *, setup_training_noise=False,
-                        regenerate_dataset=False):
+                        regenerate_dataset=False, skip_compression=None):
     """
     Parse a YAML config and build a fully-loaded SingleEventPipeline, mirroring
     exactly what the evaluation drivers (LV2 and Santorini) do.
@@ -71,15 +71,29 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
               f"{sbi_pipeline.simulations_output_path} (no regeneration).")
         test_jobs_paths = existing_sims
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
-    score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(
-        config.compression_methods,
-        config.model_parameters,
-        rerun_if_stencil_exists=config.pipeline_parameters.generate_dataset,
-    )
-    sbi_pipeline.load_compressors(
-        config.compression_methods, score_compression_data,
-        extra_gradients=extra_gradients, freeze=True,
-    )
+    # For an ML-NPE-only evaluation the score/Fisher compressors are never used (the
+    # trained flow + embedding net are the whole model) and the derivative stencil
+    # forks instaseis across loky workers — which the instaseis_multi_ensemble
+    # simulator does not support (it returns per-member lists, crashing the stencil).
+    # Honour the config's `skip_compression_data` flag (the same intent the sweep /
+    # QA path expresses) so the stencil + compressor load are bypassed.  Default
+    # (flag absent / False) is byte-identical to before.
+    if skip_compression is None:
+        skip_compression = bool((getattr(config, "raw_config", None) or {})
+                                .get("skip_compression_data", False))
+    if not skip_compression:
+        score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(
+            config.compression_methods,
+            config.model_parameters,
+            rerun_if_stencil_exists=config.pipeline_parameters.generate_dataset,
+        )
+        sbi_pipeline.load_compressors(
+            config.compression_methods, score_compression_data,
+            extra_gradients=extra_gradients, freeze=True,
+        )
+    else:
+        print("skip_compression_data set — skipping score/Fisher stencil + compressor "
+              "load (ML-NPE eval needs no compressors).")
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
     if setup_training_noise:

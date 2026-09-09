@@ -20,7 +20,7 @@
 #   python scripts/train_NPE.py --config scripts/configs/santorini/first_ml_npe_v2_conditioned.yaml \
 #       --run_name santorini_first_ml_v2_cond --architecture tcn --epochs 200
 # Then evaluate (the conditioned eval feeds each event's catalogue location):
-#   python scripts/evaluate_model.py \
+#   mt-sbi-evaluate \
 #       --domain scripts/santorini_pathbreaker/eval_adapter.py:SantoriniDomain \
 #       --config scripts/configs/santorini/first_ml_npe_v2_conditioned.yaml \
 #       --ckpt_dir /data/alex/santorini/npe/santorini_first_ml/results/santorini_first_ml_v2_cond

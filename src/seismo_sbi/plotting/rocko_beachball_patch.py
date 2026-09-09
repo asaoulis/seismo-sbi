@@ -13,7 +13,11 @@ from pyrocko.plot.beachball import *
 
 def plot_beachball_mpl(
         mt, axes,
-        beachball_type='deviatoric',
+        # 'full', NOT pyrocko's 'deviatoric' default: 'deviatoric' silently strips the
+        # isotropic part, so the fill is set by gamma (CLVD) instead of delta (ISO) and
+        # -ISO sources render as majority-compressional.  Every caller here passes this
+        # explicitly already; the default is 'full' so that forgetting it fails safe.
+        beachball_type='full',
         position=(0., 0.),
         size=None,
         zorder=0,

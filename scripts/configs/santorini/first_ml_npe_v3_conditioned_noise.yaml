@@ -18,7 +18,7 @@
 #   python scripts/train_NPE.py --config scripts/configs/santorini/first_ml_npe_v3_conditioned_noise.yaml \
 #       --run_name santorini_first_ml_v3_condnoise --architecture tcn --epochs 200
 # Eval (feeds each event's catalogue source location as conditioning):
-#   python scripts/evaluate_model.py \
+#   mt-sbi-evaluate \
 #       --domain scripts/santorini_pathbreaker/eval_adapter.py:SantoriniDomain \
 #       --config scripts/configs/santorini/first_ml_npe_v3_conditioned_noise.yaml \
 #       --ckpt_dir /data/alex/santorini/npe/santorini_first_ml/results/santorini_first_ml_v3_condnoise

@@ -37,11 +37,15 @@ class Simulator(ABC):
         seismogram_duration_in_s,
         synthetics_processing,
         post_processing_effects=None,
+        source_depth_offset_km: float = 0.0,
     ):
         self.components = components
         self.receivers = receivers
         self.seismogram_length = seismogram_duration_in_s
         self.synthetics_processing = synthetics_processing
+        # Datum offset applied only where a depth is handed to the Green's function
+        # backend; see InstaseisDBQuerier. 0.0 == catalogue datum is the model surface.
+        self.source_depth_offset_km = float(source_depth_offset_km)
         self.post_processing_chain = PostProcessingChain(post_processing_effects or [])
 
     @abstractmethod
@@ -129,13 +133,15 @@ class InstaseisSourceSimulator(Simulator):
         self.instaseis_model_loc = instaseis_model_loc
         self.sampling_rate = float(InstaseisDBQuerier(self.instaseis_model_loc,
                                                       self.synthetics_processing,
-                                                       self.seismogram_length).sampling_rate)
+                                                       self.seismogram_length,
+                                                       self.source_depth_offset_km).sampling_rate)
 
     def generic_point_source_simulation(self, source: GenericPointSource, *, stf_duration=None, **kwargs):
 
         instaseis_db_querier = InstaseisDBQuerier(self.instaseis_model_loc,
                                                   self.synthetics_processing,
-                                                    self.seismogram_length)
+                                                    self.seismogram_length,
+                                                    self.source_depth_offset_km)
 
         all_seismograms_map = {}
         for receiver in self.receivers.iterate():

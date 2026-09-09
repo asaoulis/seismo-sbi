@@ -1,6 +1,8 @@
-import matplotlib.pyplot as plt   
+import matplotlib.pyplot as plt
 import numpy as np
 import math as m
+
+from collections import OrderedDict
 
 from obspy.taup import tau
 from obspy.geodetics import locations2degrees
@@ -482,6 +484,79 @@ class MisfitsPlotting:
             arrivals[station_details.station_name] = station_arrival[0].time + 60
         
         return arrivals
+
+    # ---------------------------------------------------------------- record section
+    def _reshape_to_cube(self, flat):
+        """``(n_traces * T,)`` flat vector -> ``(N_stations, C, T)`` cube.
+
+        Uses the receivers' own (receiver-major, then component) order — the same layout
+        the simulator flattens into, so this inverts it exactly. Requires a uniform
+        component set across the (restricted) receivers, which is what the dataloader's
+        ``load_event_subset(..., stacked=True)`` produces.
+        """
+        flat = np.asarray(flat, float)
+        comps = [list(r.components) for r in self.receivers.iterate()]
+        n_sta = len(comps)
+        if n_sta == 0:
+            raise ValueError("no receivers to reshape against")
+        if len({tuple(c) for c in comps}) != 1:
+            raise ValueError(f"record section needs a uniform component set, got {set(map(tuple, comps))}")
+        n_comp = len(comps[0])
+        time_length = int(flat.shape[-1] // (n_sta * n_comp))
+        return flat.reshape(-1, n_sta, n_comp, time_length), comps[0]
+
+    def plot_record_section(self, observation, event_location, *, deterministic=None,
+                            ensembles=None, channel_mask=None, max_samples=40,
+                            use_arrivals=False, title=None, figname=None, **kwargs):
+        """Moveout record section of the observation vs any number of overlays.
+
+        Adapter between this class's flat-vector / ``Receivers`` world and the pure-array
+        :func:`seismo_sbi.plotting.waveform_compare.moveout_record_section`.
+
+        Parameters
+        ----------
+        observation : flat 1-D vector
+        deterministic : dict, optional
+            ``label -> flat vector`` — single synthetics (best-fit MT, reference MTs).
+        ensembles : dict, optional
+            ``label -> (n_samples, data_len)`` — posterior predictive clouds. Subsampled to
+            ``max_samples`` before rendering.
+        channel_mask : ``(N, C)`` bool, optional
+            ``False`` = QA-dropped channel (greyed and excluded from the annotations).
+        use_arrivals : bool
+            Compute taup P-arrivals so ``order_by='arrival'`` / ``window=('arrival', ...)``
+            can be used. Costs a taup call per station.
+
+        Remaining ``kwargs`` go straight to ``moveout_record_section`` (``order_by``,
+        ``y_scale``, ``normalise``, ``layout``, ``window``, ``ensemble_style``, ...).
+        """
+        from seismo_sbi.plotting.waveform_compare import moveout_record_section
+
+        obs_cube, components = self._reshape_to_cube(observation)
+        obs_cube = obs_cube[0]
+        overlays = OrderedDict()
+        for label, vec in (deterministic or {}).items():
+            overlays[label] = self._reshape_to_cube(vec)[0][0]
+        rng = np.random.default_rng(kwargs.get("seed", 0))
+        for label, arr in (ensembles or {}).items():
+            arr = np.asarray(arr, float)
+            arr = arr.reshape(1, -1) if arr.ndim == 1 else arr
+            if arr.shape[0] > max_samples:
+                # keep member 0 FIRST: `select_best_synthetics` returns the ensemble
+                # ordered best-first, and the 'band+best' style draws member 0.
+                rest = rng.choice(np.arange(1, arr.shape[0]), max_samples - 1, replace=False)
+                arr = arr[np.concatenate(([0], rest))]
+            overlays[label] = self._reshape_to_cube(arr)[0]
+
+        station_names = [r.station_name for r in self.receivers.iterate()]
+        coords = np.array([[r.latitude, r.longitude] for r in self.receivers.iterate()])
+        arrivals = self._get_arrivals_dict(event_location) if use_arrivals else None
+
+        return moveout_record_section(
+            obs_cube, overlays, station_names, coords, event_location,
+            components=components, sampling_rate=self.sampling_rate,
+            arrivals=arrivals, channel_mask=channel_mask, title=title,
+            figname=figname, **{k: v for k, v in kwargs.items() if k != "seed"})
 
     def plot_posterior_predictive_stacked_traces(
         self,

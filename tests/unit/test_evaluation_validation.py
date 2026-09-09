@@ -42,7 +42,7 @@ We therefore test:
    deps unavailable; the JSON write is always executed).
 
 Full ``run_validation`` end-to-end equivalence is deferred to the B7 Santorini
-eval smoke (``evaluate_model.py --smoke --events No14_id3250 --validation``).
+eval smoke (``mt-sbi-evaluate --smoke --events No14_id3250 --validation``).
 """
 from __future__ import annotations
 

@@ -44,6 +44,16 @@ class SimulationDataLoader():
         # make sure this is returning things in the order we want
         return self.load_simulation_data_array(sim_name, *args, **kwargs)
 
+    def load_flattened_simulation_vector_with_presence(self, sim_name, *args, **kwargs):
+        """As :meth:`load_flattened_simulation_vector`, tolerating absent stations.
+
+        Returns ``(flat_vector, present_mask)``; see
+        :meth:`convert_sim_data_to_array_with_presence`.
+        """
+        with h5py.File(sim_name, 'r') as simulation_data_map:
+            return self.convert_sim_data_to_array_with_presence(
+                simulation_data_map, *args, **kwargs)
+
     def load_simulation_data_array(self, sim_name, *args, **kwargs):
         # context manager to close file
         with h5py.File(sim_name, 'r') as simulation_data_map:
@@ -152,6 +162,36 @@ class SimulationDataLoader():
     def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False, fill_unused=False):
         """Convert simulation data map into seismogram array.
 
+        Unchanged behaviour: a station absent from the file raises ``KeyError``.
+        Use :meth:`convert_sim_data_to_array_with_presence` to tolerate absences.
+        """
+        array, _ = self._convert_sim_data(
+            simulation_data_map, scale_dict, stacked, fill_unused, allow_missing=False
+        )
+        return array
+
+    def convert_sim_data_to_array_with_presence(self, simulation_data_map, scale_dict=None,
+                                                stacked=False, fill_unused=False):
+        """As :meth:`convert_sim_data_to_array`, but tolerate absent stations.
+
+        Returns ``(array, present_mask)``, where ``present_mask`` is a boolean array over
+        ``receivers`` marking which stations the file actually carried. Absent stations are
+        zero-filled so the array keeps its canonical full-station shape; the caller is
+        responsible for masking them out (they are NOT valid data).
+
+        This exists for real-noise pools, where a window that is missing one station is
+        still perfectly good noise for every station it does have -- discarding the whole
+        window (the ``KeyError`` path) throws away most of the pool once the station count
+        is large.
+        """
+        return self._convert_sim_data(
+            simulation_data_map, scale_dict, stacked, fill_unused, allow_missing=True
+        )
+
+    def _convert_sim_data(self, simulation_data_map, scale_dict=None, stacked=False,
+                          fill_unused=False, allow_missing=False):
+        """Shared implementation. See the two public wrappers above.
+
         Args:
             simulation_data_map (dict): Mapping of simulation outputs.
             scale_dict (dict, optional): Nested dict {station: {component: scale_factor}}.
@@ -162,11 +202,18 @@ class SimulationDataLoader():
         Returns:
             np.ndarray: Seismogram data.
         """
-        seismogram_array_length = self._get_seismogram_array_length(simulation_data_map)
+        try:
+            seismogram_array_length = self._get_seismogram_array_length(simulation_data_map)
+        except KeyError:
+            # Only reachable with allow_missing: the probe receiver is the absent one.
+            if not allow_missing or self.data_length is None:
+                raise
+            seismogram_array_length = self.data_length
         if self.data_length is not None:
             seismogram_array_length = min(seismogram_array_length, self.data_length)
 
         station_data = []
+        present = []
 
         # Fetch the outputs group once (not once per (station, component)); reading
         # each per-component dataset is the per-sample dataloader hot path.
@@ -174,7 +221,17 @@ class SimulationDataLoader():
         for receiver in self.receivers.iterate():
             receiver_name = receiver.station_name
             rec_components = receiver.components
-            station_outputs = outputs_group[receiver_name]
+            if allow_missing:
+                station_outputs = outputs_group.get(receiver_name)
+                if station_outputs is None:
+                    # Zero-fill so the vector keeps its canonical shape; the mask tells the
+                    # caller these samples are padding, not noise.
+                    station_data.append([np.zeros(seismogram_array_length)
+                                         for _ in rec_components])
+                    present.append(False)
+                    continue
+            else:
+                station_outputs = outputs_group[receiver_name]
             comp_data = []
             for component in rec_components:
                 # Handle component name remapping
@@ -186,6 +243,11 @@ class SimulationDataLoader():
                     trace_data = station_outputs.get(alt_component)
 
                 if trace_data is None:
+                    if allow_missing:
+                        # A station present but missing a component counts as absent: a
+                        # partial station would otherwise enter the model as part-zero data.
+                        comp_data = None
+                        break
                     raise KeyError(f"No data found for {receiver_name}:{component}")
 
                 trace_data_vector = trace_data[:seismogram_array_length]
@@ -202,7 +264,12 @@ class SimulationDataLoader():
 
                 comp_data.append(trace_data_vector)
 
+            if comp_data is None:
+                station_data.append([np.zeros(seismogram_array_length) for _ in rec_components])
+                present.append(False)
+                continue
             station_data.append(comp_data)
+            present.append(True)
         if fill_unused:
             station_data = self.zero_fill_unused_components([comp for station in station_data for comp in station], seismogram_array_length)
         if stacked:
@@ -211,7 +278,7 @@ class SimulationDataLoader():
         else:
             # Flatten into single long vector
             array= np.concatenate([comp for comps in station_data for comp in comps])
-        return array
+        return array, np.asarray(present, dtype=bool)
 
     def zero_fill_unused_components(self, flattened_list, seismogram_array_length):
         """Zero-fill unused components in the seismogram array.

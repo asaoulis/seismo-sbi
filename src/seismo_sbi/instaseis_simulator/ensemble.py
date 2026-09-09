@@ -9,30 +9,20 @@ from .simulator import Simulator
 from .wrapper import GenericPointSource, InstaseisDBQuerier
 
 
-#: Per-station member resampling (see :class:`InstaseisEnsembleSimulator`) offsets the RNG seed by
-#: this stride per station so that, under an EXPLICIT seed, each station draws a
-#: distinct-but-reproducible member without colliding with the per-region offset
-#: :class:`MultiModelSimulator` applies (``seed + region_index``). Production runs are unseeded, so
-#: this only affects reproducibility tests.
+#: Stride the seed is offset by per station under per-station member resampling, so each station
+#: draws a distinct but reproducible member without colliding with the per-region offset.
 PER_STATION_SEED_STRIDE = 10_000
 
-#: Per-process LRU cache of open :class:`InstaseisDBQuerier` handles, keyed by
-#: ``(pid, db_path, seismogram_length, processing_signature)``. ``instaseis.open_db`` (~168 ms) is
-#: ~17x the cost of one ``get_seismograms`` (~10 ms), so reusing an open handle across stations AND
-#: across simulations amortizes the open to ~once per member per worker process (per-event ~2x
-#: faster; per-station kept ~1x instead of ~7x). This is a MODULE global — never an instance
-#: attribute — precisely because :class:`InstaseisEnsembleSimulator` instances are deepcopied /
-#: joblib-pickled out to dataset-generation workers and an open h5py handle is not picklable; keeping
-#: the cache off the instance leaves the simulator picklable while still amortizing opens within each
-#: worker. ``pid`` is in the key so a forked child never reuses a parent's handle. Outputs are
-#: bit-identical to a fresh open (read-only DB), so cached runs reproduce existing datasets exactly.
+#: Per-process cache of open database handles, keyed by
+#: ``(pid, db_path, seismogram_length, processing_signature)``. Opening a database costs about
+#: 17 times one seismogram read, so reuse amortises it to once per member per worker. It is a
+#: module global rather than an instance attribute because the simulator is pickled out to
+#: workers and an open file handle is not picklable; the pid in the key keeps a forked child
+#: from reusing its parent's. The database is read-only, so a cached read is bit-identical.
 _QUERIER_CACHE = OrderedDict()
 
-#: LRU cap on :data:`_QUERIER_CACHE` (open DB handles held per process). Default comfortably covers a
-#: Mode-A + Mode-B multi-model ensemble (~30 + ~30); when left at the default, each
-#: ``InstaseisEnsembleSimulator.__init__`` bumps it to at least its own member count so a single
-#: large ensemble never thrashes. Override with env ``SEISMO_QUERIER_CACHE_MAXSIZE``.
-#:
+#: Cap on :data:`_QUERIER_CACHE`. Left at the default, each simulator raises it to at least its
+#: own member count so one ensemble never thrashes; ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides it.
 #: *** MEMORY BUDGET — an open handle costs ~55 MB RESIDENT (measured: 53 MB at open, 55 MB after
 #: real reads; independent of instaseis ``buffer_size_in_mb``, so this is DB metadata, not the GF
 #: buffer). The cache is PER WORKER PROCESS, so dataset generation costs
@@ -147,12 +137,8 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
                  sector_lambda=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.resample_member_per_station = resample_member_per_station
-        # Poisson-boundary azimuthal-SECTOR sampling (agreed middle-road design, Japan forensics
-        # 2026-08-24/25): per simulation draw K ~ Poisson(sector_lambda) boundaries uniformly on
-        # [0, 360) azimuth about the source; every station inside a sector shares ONE independently
-        # drawn member.  P(K = 0) > 0 gives the single-model (fully coherent) regime for free,
-        # lambda -> inf recovers per-station independence.  One knob; the inter-station error
-        # correlation vs azimuthal separation follows from P(same sector).
+        # Sector sampling draws K ~ Poisson(sector_lambda) azimuthal boundaries per simulation
+        # and gives every station inside a sector one member, so P(K = 0) is fully coherent.
         if member_sampling is None:
             member_sampling = 'per_station' if resample_member_per_station else 'per_event'
         member_sampling = str(member_sampling).lower()
@@ -208,7 +194,8 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         # plain Python str to avoid "Can't mix strings and bytes" in os.walk inside
         # instaseis.open_db.
         return InstaseisDBQuerier(
-            str(db_path), self.synthetics_processing, self.seismogram_length
+            str(db_path), self.synthetics_processing, self.seismogram_length,
+            self.source_depth_offset_km
         )
 
     def _cached_querier(self, db_path) -> InstaseisDBQuerier:
