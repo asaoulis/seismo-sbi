@@ -120,6 +120,8 @@ percentiles. Pure numpy; sampling and file I/O belong to the caller.
   derived from the fields carries units in its name.
 - Defaults are the library's defaults, not a particular study's. Study-specific values
   (thresholds, station selections, reference catalogues) live in the study repository's config.
+- A configuration checked into a study is parsed by a test. A path it names is a path that
+  exists in the repository or under the data root, never a guess.
 
 ## Library versus study
 
@@ -163,6 +165,17 @@ it afterwards: the same functions doing the same steps, with the same names, in 
   code's own earlier outputs and adds nothing new.
 - Consolidate instead of duplicating: when two files do the same step, keep the one people use
   and point the other's callers at it.
+- A package of backends (simulators, pickers, data sources) never imports the pipeline that
+  consumes it, and its `__init__` holds a docstring, not imports. Say the rule in the plan and
+  list every current violation with a verdict before moving anything.
+- A rename or move has no compatibility layer. Every importer, in every repository and notebook
+  that depends on this one, is rewritten in the same commit from one explicit old-to-new table.
+- Before moving code that produces files, run the current code into a scratch directory; the
+  rebuilt code is diffed against that, not against outputs made by an older version.
+- One thing at a time: a module far over the size limit is moved as it is and split in its own
+  change, so the diff of a move stays a move.
+- Two modules in one package tree never share a name. If a name would repeat, the second
+  describes what it produces.
 
 ## Checklist before finishing a change
 
