@@ -150,6 +150,20 @@ longer informative, delete it together with its tests, comments, and config keys
 it behind a flag, rename it `_old`, or move it to an attic. Git keeps the history. Removal means
 `git rm`: files the repository does not track are left where they are, never deleted from disk.
 
+## Refactoring existing code
+
+A refactor reorganises; it does not rewrite. Someone who knows the current code must recognise
+it afterwards: the same functions doing the same steps, with the same names, in a clearer place.
+
+- Keep code verbatim wherever it already reads well. Move it, split it at step boundaries, and
+  strip the comments; do not restyle it, rename its variables, or re-express its logic.
+- Split a long module or function by concern, and give each piece the name a colleague would
+  guess. A name that has been used for years stays, even if a new one would be slightly better.
+- Change behaviour and structure in separate commits. A structural commit is checked against the
+  code's own earlier outputs and adds nothing new.
+- Consolidate instead of duplicating: when two files do the same step, keep the one people use
+  and point the other's callers at it.
+
 ## Checklist before finishing a change
 
 1. Grep the changed files for pointers outside the repository (agent-tooling directories, task or
@@ -158,3 +172,4 @@ it behind a flag, rename it `_old`, or move it to an attic. Git keeps the histor
 3. No function over ~60 lines; no script over ~80 lines; no new key read from raw YAML.
 4. Names carry units; no region name inside library code.
 5. The fast test tier is green, and any deleted code took its tests with it.
+6. A refactor left every moved function recognisable: same name, same steps, same outputs.
