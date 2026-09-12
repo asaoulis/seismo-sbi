@@ -1,7 +1,8 @@
-axisem-1.3/
+/axisem-1.3/
 .vscode/
 __pycache__/
-axisem/
+/axisem/
+/scripts/axisem/
 .ipynb_checkpoints/
 santorini_pathbreaker/
 .Trash-0/

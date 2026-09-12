@@ -15,7 +15,8 @@ import numpy as np
 from seismo_sbi.simulators.cps.smooth_perturbations import brocher_rho
 from .model_io import BackgroundModel
 
-_MAX_VS_VP_RATIO = 1.0 / np.sqrt(2.0)
+#: The largest shear-to-compressional speed ratio a solid can have, at Poisson's ratio zero.
+MAX_VS_OVER_VP = 1.0 / np.sqrt(2.0)
 
 
 def _perturb_widths(radius: np.ndarray, width_sigma: float, rng) -> np.ndarray:
@@ -153,8 +154,8 @@ def perturb_background_model(
 
     fluid = data[:, vs_i] == 0.0          # keep fluid layers fluid
     vs_new[fluid] = 0.0
-    over = (~fluid) & (vs_new > _MAX_VS_VP_RATIO * vp_new)   # enforce Vs < Vp/sqrt(2)
-    vs_new[over] = vp_new[over] * (0.99 * _MAX_VS_VP_RATIO)
+    over = (~fluid) & (vs_new > MAX_VS_OVER_VP * vp_new)   # enforce Vs < Vp/sqrt(2)
+    vs_new[over] = vp_new[over] * (0.99 * MAX_VS_OVER_VP)
 
     data[:, vp_i] = vp_new
     data[:, vs_i] = vs_new
@@ -182,3 +183,111 @@ def perturb_background_model(
         raise ValueError(f"Unknown rho_mode {rho_mode!r}")
 
     return out
+
+
+def unit_smooth_field(n_points: int, spacing_km: float, correlation_km: float,
+                      generator) -> np.ndarray:
+    """A zero-mean, unit-variance Gaussian field smoothed to a correlation length."""
+    from scipy.ndimage import gaussian_filter
+
+    field = gaussian_filter(generator.normal(size=n_points),
+                            sigma=max(0.5, correlation_km / spacing_km), mode="reflect")
+    field = field - field.mean()
+    return field / (field.std() + 1e-16)
+
+
+def depth_tapered_sigma(depth_km, sigma_surface: float = 0.05, sigma_deep: float = 0.015,
+                        taper_start_km: float = 30.0,
+                        taper_end_km: float = 65.0) -> np.ndarray:
+    """Fractional spread per depth: a half-cosine from the surface value to the deep floor."""
+    depth_km = np.asarray(depth_km, float)
+    fraction = np.clip((depth_km - taper_start_km) / (taper_end_km - taper_start_km), 0.0, 1.0)
+    taper = 0.5 * (1.0 + np.cos(np.pi * fraction))
+    return sigma_deep + (sigma_surface - sigma_deep) * taper
+
+
+def perturb_layered_model(top_depth_km, vp_km_s, vs_km_s, density, *, sigma_profile,
+                          correlation_km: float = 30.0, vp_vs_correlation: float = 0.9,
+                          width_sigma: float = 0.0, density_coupling: float = 0.25,
+                          seed=None) -> tuple:
+    """One perturbed member as ``(layer thicknesses, vp, vs, density)``.
+
+    ``density_coupling`` is Birch's law: a fractional change in density of that many times the
+    fractional change in compressional speed, which keeps the reference density and is
+    mean-preserving. Shear speed is capped below the compressional one, because a draw that
+    crosses it is not an elastic solid.
+    """
+    generator = np.random.default_rng(seed)
+    n_points = len(vp_km_s)
+    spacing_km = (float(np.median(np.diff(top_depth_km))) if n_points > 1 else 0.5)
+    sigma = np.asarray(sigma_profile, float)
+
+    shared = unit_smooth_field(n_points, spacing_km, correlation_km, generator)
+    own_vp = unit_smooth_field(n_points, spacing_km, correlation_km, generator)
+    own_vs = unit_smooth_field(n_points, spacing_km, correlation_km, generator)
+    weight = np.sqrt(np.clip(vp_vs_correlation, 0.0, 1.0))
+    independent = np.sqrt(1.0 - weight * weight)
+    epsilon_vp = (weight * shared + independent * own_vp) * sigma
+    epsilon_vs = (weight * shared + independent * own_vs) * sigma
+
+    perturbed_vp = vp_km_s * np.exp(epsilon_vp)
+    perturbed_vs = vs_km_s * np.exp(epsilon_vs)
+    crossed = perturbed_vs > MAX_VS_OVER_VP * perturbed_vp
+    perturbed_vs[crossed] = perturbed_vp[crossed] * (0.99 * MAX_VS_OVER_VP)
+    perturbed_density = density * np.exp(density_coupling * epsilon_vp)
+
+    thickness = np.diff(np.concatenate((top_depth_km,
+                                        [top_depth_km[-1] + spacing_km])))
+    if width_sigma > 0:
+        widths = width_sigma * (sigma / sigma.max())
+        thickness = thickness * np.exp(
+            unit_smooth_field(n_points, spacing_km, correlation_km, generator) * widths)
+    return thickness, perturbed_vp, perturbed_vs, perturbed_density
+
+
+def control_point_sigma(depth_km, control_depth_km, control_sigma, *,
+                        smoothing_km: float = 1.0) -> np.ndarray:
+    """A spread profile interpolated between named depths and then smoothed.
+
+    Where a taper is a shape assumed in advance, this is a spread measured from how far
+    independent models of the same region sit apart, so it is given as the control points that
+    measurement produced. The smoothing removes the corners interpolation leaves at them.
+    """
+    from scipy.ndimage import gaussian_filter1d
+
+    depth_km = np.asarray(depth_km, float)
+    spacing_km = float(np.median(np.diff(depth_km))) if len(depth_km) > 1 else smoothing_km
+    sigma = np.interp(depth_km, control_depth_km, control_sigma)
+    return gaussian_filter1d(sigma, sigma=max(1, int(smoothing_km / spacing_km)),
+                             mode="nearest")
+
+
+def perturb_velocity_ratio_model(top_depth_km, vp_km_s, vs_km_s, density, *, sigma_vp,
+                                 sigma_ratio, correlation_km: float = 8.0,
+                                 width_sigma: float = 0.0, density_coupling: float = 0.25,
+                                 min_ratio: float = 1.43, seed=None) -> tuple:
+    """One member, perturbing the compressional speed and the speed ratio separately.
+
+    The ratio carries its own spread because it is what the data constrain separately: a
+    region can be uncertain in absolute speed while its ratio is known, or the reverse. The
+    ratio is held above ``min_ratio``, below which the material is not an elastic solid.
+    """
+    generator = np.random.default_rng(seed)
+    n_points = len(vp_km_s)
+    spacing_km = (float(np.median(np.diff(top_depth_km))) if n_points > 1 else 0.5)
+    epsilon_vp = unit_smooth_field(n_points, spacing_km, correlation_km,
+                                   generator) * np.asarray(sigma_vp, float)
+    epsilon_ratio = unit_smooth_field(n_points, spacing_km, correlation_km,
+                                      generator) * np.asarray(sigma_ratio, float)
+
+    perturbed_vp = vp_km_s * np.exp(epsilon_vp)
+    ratio = np.maximum((vp_km_s / vs_km_s) * np.exp(epsilon_ratio), min_ratio)
+    perturbed_vs = perturbed_vp / ratio
+    perturbed_density = density * np.exp(density_coupling * epsilon_vp)
+
+    thickness = np.diff(np.concatenate((top_depth_km, [top_depth_km[-1] + spacing_km])))
+    if width_sigma > 0:
+        widths = width_sigma * (np.asarray(sigma_vp, float) / np.max(sigma_vp))
+        thickness = thickness * np.exp(
+            unit_smooth_field(n_points, spacing_km, correlation_km, generator) * widths)
+    return thickness, perturbed_vp, perturbed_vs, perturbed_density

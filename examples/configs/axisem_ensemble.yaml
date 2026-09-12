@@ -1,0 +1,45 @@
+# One AxiSEM theory-error ensemble: the perturbed 1-D models and the run parameters every
+# member shares. Read by scripts/build_axisem_ensemble.py.
+
+ensemble:
+  name: example5s
+  n_members: 16
+  # Reference model in AxiSEM .bm format, relative to this file or absolute.
+  fiducial_bm: axisem/background_model.bm
+  # Staging root: out_dir/{fiducial,member_000,...}/background_model.bm
+  out_dir: /tmp/axisem_ensembles/example5s
+
+  # Log-normal fractional perturbations of the reference model.
+  perturbation:
+    vp_sigma: 0.10       # compressional speed, fractional std
+    vs_sigma: 0.10       # shear speed, fractional std
+    width_sigma: 0.20    # layer width, fractional std; shifts discontinuity depths
+    rho_mode: brocher    # density follows the perturbed Vp via Brocher (2005)
+    # Perturb only above this depth. Brocher is a crustal relation, and the deep reference
+    # is better constrained than the crust.
+    max_depth_km: 50
+    base_seed: 0         # member i uses seed base_seed + i
+
+# Solver parameters, applied to every member.
+axisem:
+  # inparam_basic and inparam_advanced templates, relative to this file or absolute.
+  templates_dir: axisem
+  dominant_period: 5.0       # s, the shortest period the mesh resolves
+  seismogram_length: 300.0   # s
+  simulation_type: force     # backward kernels, which is what an Instaseis database needs
+  attenuation: true
+  coarsening_layers: 3
+  # Mesh decomposition: ntheta_slices * nradial_slices cores, sized to fit one node.
+  ntheta_slices: 16
+  nradial_slices: 4
+
+# Where the mesher and the solver run. members.json carries this through to the scheduler.
+cluster:
+  host: cluster                     # ssh alias
+  partition: CORES64
+  cpus_per_node: 64                 # ntheta_slices * nradial_slices must fit one node
+  walltime_hours: 47
+  axisem_dir: /home/user/axisem
+  conda_env: axisem
+  ensemble_remote_dir: /home/user/axisem_ensembles/example5s
+  max_in_flight: 6
