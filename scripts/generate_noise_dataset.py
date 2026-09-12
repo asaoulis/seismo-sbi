@@ -38,8 +38,8 @@ from seismo_sbi.data_handling.preprocessing.windowing import (
     make_noise_windows,
 )
 from seismo_sbi.data_handling.event_window_selection import EventWindowSelector
-from seismo_sbi.instaseis_simulator.receivers import Receivers
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.simulators.receivers import Receivers
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 # ---------------------------------------------------------------------------
 # User-configurable parameters
@@ -209,7 +209,7 @@ if event_stream:
 # ---------------------------------------------------------------------------
 
 print("Querying FDSN for interfering events...")
-from seismo_sbi.instaseis_simulator.receivers import Receiver
+from seismo_sbi.simulators.receivers import Receiver
 dummy_receivers = Receivers(receivers=[
     Receiver(0.0, 0.0, station_networks.get(s, "XX"), s, ["Z"])
     for s in available_stations

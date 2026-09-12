@@ -1,4 +1,12 @@
+"""Seismogram array helpers shared by the simulators and the data pipeline.
+
+Trace length from a duration and a sampling rate, a zero-padded integer-sample shift of one
+trace, and the per-station application of ``receiver.time_shift`` (in samples) to a
+``{station: {component: waveform}}`` map.
+"""
+
 import numpy as np
+
 
 def compute_data_vector_length(data_length, sampling_rate):
     return int(data_length * sampling_rate)

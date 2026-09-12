@@ -4,7 +4,7 @@ import obspy
 import os
 
 from seismo_sbi.sbi.configuration import SimulationParameters
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
 
 class RealNoiseSampler:

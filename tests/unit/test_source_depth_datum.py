@@ -11,12 +11,8 @@ Santorini/Japan config relies on it.
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.wrapper import (
-    InstaseisDBQuerier,
-    GenericPointSource,
-    GeneralMomentTensor,
-    SourceLocation,
-)
+from seismo_sbi.simulators.instaseis.querier import InstaseisDBQuerier
+from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTensor, SourceLocation
 
 
 def _querier(offset):

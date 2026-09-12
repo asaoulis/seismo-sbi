@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 from seismo_sbi.data_handling.noise_collection import NoiseCollector, EventNoiseAggregator, ProcessedDataSlicer
 from seismo_sbi.data_handling.event_window_selection import EventWindowSelector
 from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.simulators.receivers import Receivers
 import numpy as np
 import obspy
 from pathlib import Path

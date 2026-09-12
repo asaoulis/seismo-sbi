@@ -14,7 +14,7 @@ import obspy
 from obspy import Stream, UTCDateTime
 from obspy.geodetics import locations2degrees
 
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 def slice_event_window(

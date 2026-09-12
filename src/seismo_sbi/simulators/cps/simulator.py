@@ -6,13 +6,13 @@ from abc import ABC, abstractmethod
 import pyrocko.moment_tensor as mtm
 
 
-from seismo_sbi.cps_simulator.compatibility import build_objstats
-from seismo_sbi.cps_simulator.CPS import update_with_Gtensor
+from seismo_sbi.simulators.cps.compatibility import build_objstats
+from seismo_sbi.simulators.cps.CPS import update_with_Gtensor
 
-from seismo_sbi.instaseis_simulator.simulator import Simulator
-from seismo_sbi.instaseis_simulator.ensemble import GFEnsembleSimulator
-from seismo_sbi.instaseis_simulator.multi_model import MultiModelSimulator
-from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.multi_model import MultiModelSimulator
+from seismo_sbi.simulators.sources import GenericPointSource
 
 # convert newtons into dynes
 CPS_INPUT_COVERSION = 1.e-13

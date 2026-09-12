@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.compression.ML.dataloading import StationSubsampler
 
 

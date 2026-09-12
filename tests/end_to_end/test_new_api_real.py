@@ -31,7 +31,7 @@ from seismo_sbi.data_handling.preprocessing import (
     slice_event_window,
     export_to_sbi_h5,
 )
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 from tests.end_to_end.conftest import RIDGECREST_EVENT, IRIS_TEST_STATIONS
 
@@ -442,8 +442,8 @@ class TestSbiIngestionWithNewApiH5:
     """SimulationDataLoader and RealNoiseSampler must consume new-API h5 files."""
 
     def test_simulation_data_loader_reads_h5(self, new_api_real_output):
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         available = new_api_real_output["available_stations"]
         # Use ANMO network for IU stations, BFO for II — just pass a dummy network
@@ -463,7 +463,7 @@ class TestSbiIngestionWithNewApiH5:
     def test_real_noise_sampler_reads_h5(self, new_api_real_output, tmp_path):
         """RealNoiseSampler should be able to use the new-API event h5 as a noise file."""
         from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
         from seismo_sbi.sbi.types.parameters import SimulationParameters
         import shutil
 

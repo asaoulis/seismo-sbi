@@ -19,8 +19,8 @@ _SQRT2 = np.sqrt(2.0)
 def scalar_moment(mt6) -> float:
     """Scalar moment ``M0 = sqrt(0.5 * dot(mt6, mt6))`` (N.m).
 
-    Mirrors ``instaseis_simulator.wrapper._scalar_moment`` but is kept here so the
-    ``priors`` package does not depend on instaseis (imported by ``wrapper``).
+    Mirrors ``simulators.sources._scalar_moment`` but is kept here so the
+    ``priors`` package does not depend on instaseis (imported by the Instaseis querier).
     """
     mt6 = np.asarray(mt6, dtype=float)
     return float(np.sqrt(0.5 * np.dot(mt6, mt6)))

@@ -25,7 +25,7 @@ from seismo_sbi.data_handling.noise_collection import (
     ProcessedDataSlicer,
 )
 from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 pytestmark = pytest.mark.slow
 
@@ -671,8 +671,8 @@ class TestFlattenedVectorOrdering:
 
     def test_first_block_matches_first_station_Z(self, pipeline_output):
         """First DATA_VECTOR_LEN samples of the flattened vector = STA1/Z."""
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         receivers = Receivers(receivers=[
             Receiver(0.0, 0.0, NETWORK, sta, ["Z", "E", "N"])
@@ -692,8 +692,8 @@ class TestFlattenedVectorOrdering:
 
     def test_second_block_matches_first_station_component1(self, pipeline_output):
         """Second DATA_VECTOR_LEN samples = STA1/1 (E channel)."""
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         receivers = Receivers(receivers=[
             Receiver(0.0, 0.0, NETWORK, sta, ["Z", "E", "N"])
@@ -713,8 +713,8 @@ class TestFlattenedVectorOrdering:
 
     def test_station_blocks_are_non_overlapping_and_complete(self, pipeline_output):
         """Each station occupies a contiguous, non-overlapping block in the flat vector."""
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         available = pipeline_output["available_stations"]
         n_comp = 3

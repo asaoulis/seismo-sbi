@@ -1,17 +1,18 @@
-from pathlib import Path
-import h5py
+"""The simulator interface every forward model implements.
 
-import numpy as np
+:class:`Simulator` turns a source-parameter dictionary into a map of seismograms: it builds the
+moment tensor and source location, calls the backend's ``generic_point_source_simulation``,
+applies the per-station time shifts and runs the post-processing chain. A backend subclasses it
+and implements that one method.
+"""
 
 from abc import ABC, abstractmethod
 
 from .receivers import Receivers
-from .simulation_saver import SimulationSaver
-from .wrapper import GenericPointSource, InstaseisDBQuerier, SimpleMomentTensor, \
-    GeneralMomentTensor, SourceLocation
-from seismo_sbi.sbi.configuration import InvalidConfiguration
-from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
-from .utils import apply_station_time_shifts
+from .simulation_io import SimulationSaver
+from .sources import GenericPointSource, SimpleMomentTensor, GeneralMomentTensor, SourceLocation
+from seismo_sbi.utils.errors import InvalidConfiguration
+from seismo_sbi.utils.seismograms import apply_station_time_shifts
 from .post_processing import PostProcessingChain
 
 
@@ -123,74 +124,3 @@ class Simulator(ABC):
             shifted_seismograms_map, self.receivers, post_proc_params
         )
         return source, processed_seismograms_map
-
-
-class InstaseisSourceSimulator(Simulator):
-
-    def __init__(self, instaseis_model_loc, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.instaseis_model_loc = instaseis_model_loc
-        self.sampling_rate = float(InstaseisDBQuerier(self.instaseis_model_loc,
-                                                      self.synthetics_processing,
-                                                       self.seismogram_length,
-                                                       self.source_depth_offset_km).sampling_rate)
-
-    def generic_point_source_simulation(self, source: GenericPointSource, *, stf_duration=None, **kwargs):
-
-        instaseis_db_querier = InstaseisDBQuerier(self.instaseis_model_loc,
-                                                  self.synthetics_processing,
-                                                    self.seismogram_length,
-                                                    self.source_depth_offset_km)
-
-        all_seismograms_map = {}
-        for receiver in self.receivers.iterate():
-            all_seismograms_map[receiver.station_name] = {}
-            receiver_results = instaseis_db_querier.get_seismograms(
-                source, receiver, self.components, stf_duration=stf_duration
-            )
-
-            for component in self.components:
-                all_seismograms_map[receiver.station_name][component] = receiver_results[component]
-
-        return all_seismograms_map
-
-class FixedLocationKernelSimulator(Simulator):
-
-    def __init__(self, score_compression_data : ScoreCompressionData = None,  *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # score_compression_data may be None when the simulator is constructed before the
-        # kernels are known (e.g. as the initial simulator in a pipeline that will swap in
-        # real kernels via use_kernel_simulator_if_possible). Kernels are required before
-        # any simulation is actually run.
-        if score_compression_data is None:
-            self.sensitivity_kernels = None
-            self.trace_length = None
-        else:
-            self.sensitivity_kernels = score_compression_data.data_parameter_gradients
-            num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
-            self.trace_length = self.sensitivity_kernels.shape[1] // num_traces
-
-    def generic_point_source_simulation(self, source: GenericPointSource, *, stf_duration=None, **kwargs):
-        
-        all_seismograms_map = {}
-
-        seismograms = self._compute_seismograms_from_kernels(source)
-
-        seismograms = seismograms.reshape(-1, self.trace_length)
-
-        trace_counter = 0
-        for rec_idx, receiver in enumerate(self.receivers.iterate()):
-            all_seismograms_map[receiver.station_name] = {}
-            for comp_idx, component in enumerate(receiver.components):
-                all_seismograms_map[receiver.station_name][component] = seismograms[trace_counter]
-                trace_counter +=1
-            
-        return all_seismograms_map
-    
-    def _compute_seismograms_from_kernels(self, source: GenericPointSource):
-
-        moment_tensor_components = source.moment_tensor.components
-        seismograms = np.dot(self.sensitivity_kernels.T, moment_tensor_components)
-        return seismograms

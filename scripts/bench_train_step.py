@@ -29,7 +29,7 @@ for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
 import numpy as np
 import torch
 
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
 
 from _bench_common import production_model_config, make_variable_station_batch

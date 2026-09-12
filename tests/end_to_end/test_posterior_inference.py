@@ -43,7 +43,7 @@ from tests.end_to_end.test_pipeline_simulators import (
     _precompute_cps_gfs,
 )
 
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 from seismo_sbi.sbi.types.parameters import (

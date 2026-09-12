@@ -13,10 +13,10 @@ Contract (mirrors the module's other effects):
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.post_processing import (
     AzimuthalAnisotropyEffect, EFFECT_REGISTRY, ShearSplittingEffect,
     build_post_processing_chain)
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 SR = 1.0                          # samples per second, like the Santorini config
 T = 256

@@ -26,7 +26,7 @@ def _reload_ensemble(monkeypatch, cap=None):
         monkeypatch.delenv("SEISMO_QUERIER_CACHE_MAXSIZE", raising=False)
     else:
         monkeypatch.setenv("SEISMO_QUERIER_CACHE_MAXSIZE", str(cap))
-    import seismo_sbi.instaseis_simulator.ensemble as ens
+    import seismo_sbi.simulators.instaseis.ensemble as ens
     return importlib.reload(ens)
 
 
@@ -79,5 +79,5 @@ def _restore_module_state():
     """Leave the imported module in its default state for other tests in the session."""
     yield
     os.environ.pop("SEISMO_QUERIER_CACHE_MAXSIZE", None)
-    import seismo_sbi.instaseis_simulator.ensemble as ens
+    import seismo_sbi.simulators.instaseis.ensemble as ens
     importlib.reload(ens)

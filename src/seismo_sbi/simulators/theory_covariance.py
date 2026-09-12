@@ -1,9 +1,9 @@
 import numpy as np
 import joblib
 
-from ...instaseis_simulator.simulator import Simulator
-from ...instaseis_simulator.ensemble import GFEnsembleSimulator
-from ...instaseis_simulator.utils import apply_station_time_shifts
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.utils.seismograms import apply_station_time_shifts
 
 def parallel_execution(inputs, func, num_jobs = 20):
     if num_jobs in [None, 0 , 1]:

@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from obspy import Stream, UTCDateTime
 
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 def check_window_quality(

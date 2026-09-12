@@ -5,18 +5,19 @@ from copy import deepcopy
 import json
 from pathlib import Path
 
-from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
-from seismo_sbi.instaseis_simulator.ensemble import InstaseisEnsembleSimulator
-from seismo_sbi.instaseis_simulator.multi_model import InstaseisMultiModelSimulator
-from seismo_sbi.instaseis_simulator.post_processing import build_post_processing_chain
-from seismo_sbi.cps_simulator.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
-from seismo_sbi.sbi.compression.theory_covariance import (
+from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
+from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
+from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
+from seismo_sbi.simulators.instaseis.multi_model import InstaseisMultiModelSimulator
+from seismo_sbi.simulators.post_processing import build_post_processing_chain
+from seismo_sbi.simulators.cps.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
+from seismo_sbi.simulators.theory_covariance import (
     EnsembleTheoryCovarianceEstimationSimulator,
     CPSTheoryCovarianceEstimationSimulator,
 )
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.simulators.receivers import Receivers
 
 class GeneralSimulatorWrapper:
 

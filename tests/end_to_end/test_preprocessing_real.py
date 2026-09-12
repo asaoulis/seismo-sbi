@@ -27,7 +27,7 @@ from seismo_sbi.data_handling.noise_collection import (
     ProcessedDataSlicer,
 )
 from seismo_sbi.data_handling.noise_database import NoiseDatabaseGenerator
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 from typing import Dict, Tuple
 
 from tests.end_to_end.conftest import RIDGECREST_EVENT, IRIS_TEST_STATIONS
@@ -417,8 +417,8 @@ class TestRealDataChannelFidelity:
 
     def test_flattened_vector_via_sbi_loader(self, real_pipeline_output):
         """SimulationDataLoader produces the right-length vector from the real event h5."""
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         available = real_pipeline_output["available_stations"]
         receivers = Receivers(receivers=[

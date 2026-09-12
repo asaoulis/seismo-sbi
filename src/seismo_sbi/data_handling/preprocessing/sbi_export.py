@@ -16,7 +16,7 @@ import numpy as np
 import obspy
 from obspy import Stream, UTCDateTime
 
-from seismo_sbi.instaseis_simulator.simulation_saver import SimulationSaver
+from seismo_sbi.simulators.simulation_io import SimulationSaver
 
 
 # ---------------------------------------------------------------------------

@@ -43,7 +43,7 @@ from seismo_sbi.data_handling.preprocessing.windowing import (
     make_daily_overlapping_windows,
     get_continuous_regions,
 )
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 pytestmark = pytest.mark.slow
 
@@ -968,8 +968,8 @@ class TestNewApiVsLegacySchema:
 
     def test_sbi_loader_reads_new_api_h5(self, both_outputs):
         """SimulationDataLoader (unchanged) must consume new-API h5 without error."""
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         available = both_outputs["available"]
         receivers = Receivers(receivers=[

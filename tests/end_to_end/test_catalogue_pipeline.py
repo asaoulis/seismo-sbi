@@ -41,7 +41,7 @@ from seismo_sbi.data_handling.preprocessing import (
     filter_events_by_distance,
 )
 from seismo_sbi.data_handling.preprocessing.windowing import get_continuous_regions
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 pytestmark = pytest.mark.slow
 
@@ -249,7 +249,7 @@ class TestComputeEventArrivalWindows:
 
     def test_accepts_receivers_object(self):
         """Receivers object with .receivers attribute is accepted."""
-        from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+        from seismo_sbi.simulators.receivers import Receiver, Receivers
         ev = _make_obspy_event()
         rec = Receivers(receivers=[Receiver(34.0, -118.0, "IU", "ANMO", ["Z"])])
         result = compute_event_arrival_windows([ev], rec, n_jobs=1)
@@ -526,7 +526,7 @@ class TestCheckWindowQuality:
 
     def test_trace_below_sbi_min_npts_fails(self):
         """A trace shorter than the SBI contract length is rejected when min_npts is set."""
-        from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+        from seismo_sbi.utils.seismograms import compute_data_vector_length
         sbi_min = compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
         # Build a stream with sbi_min - 1 samples per trace
         npts = sbi_min + 20  # start with enough, then truncate STA1
@@ -554,7 +554,7 @@ class TestCheckWindowQuality:
 
     def test_trace_at_exact_sbi_min_npts_passes(self):
         """A trace with exactly the SBI contract minimum samples passes the length check."""
-        from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+        from seismo_sbi.utils.seismograms import compute_data_vector_length
         sbi_min = compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1
         st = Stream()
         rng = np.random.default_rng(8)
@@ -1987,7 +1987,7 @@ class TestBuildNoiseCatalogueReal:
 
 def _build_catalogue_receivers(stations, network="XX"):
     """Build a Receivers object for catalogue tests."""
-    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
     return Receivers(receivers=[
         Receiver(latitude=0.0, longitude=0.0, network=network,
                  station_name=sta, components=["Z", "E", "N"])
@@ -2114,7 +2114,7 @@ class TestSimulationDataLoaderWithCatalogueEvent:
 
     @pytest.fixture(autouse=True)
     def setup(self, event_h5_path):
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         with h5py.File(event_h5_path, "r") as f:
             self.stations = list(f["outputs"].keys())
@@ -2157,7 +2157,7 @@ class TestSimulationDataLoaderWithCatalogueEvent:
 
     def test_en_components_mapped_from_12(self):
         """Receivers with ['Z','E','N'] transparently read '1'/'2' from h5."""
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         vec = self.loader.load_flattened_simulation_vector(self.event_h5)
         # Must not raise and must have correct shape
@@ -2190,7 +2190,7 @@ class TestDataManagerWithCatalogueEvent:
 
     @pytest.fixture(autouse=True)
     def setup(self, event_h5_path):
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
         from seismo_sbi.sbi.data_manager import DataManager
 
         with h5py.File(event_h5_path, "r") as f:

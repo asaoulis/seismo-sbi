@@ -34,14 +34,14 @@ from .dataset_compressor import DatasetCompressor
 
 from ..utils.errors import error_handling_wrapper
 from ..plotting.results_plotting import SBIPipelinePlotter
-from ..instaseis_simulator.dataloader import SimulationDataLoader
-from ..instaseis_simulator.dataset_generator import DatasetGenerator
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.sbi.dataset_generator import DatasetGenerator
 
 from .data_manager import DataManager
 from .simulator_wrapper import GeneralSimulatorWrapper
 from .utils import convert_lists_to_arrays
 
-from ..instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 class SBIPipeline:

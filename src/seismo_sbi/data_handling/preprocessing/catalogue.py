@@ -34,7 +34,7 @@ from seismo_sbi.data_handling.preprocessing.windowing import (
     make_noise_windows,
 )
 from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def build_event_catalogue(
         pre_event_window_s: Start the event window this many seconds *before*
             the origin time.  DEFAULTS TO 60 s to match the pre-origin pad every
             Instaseis synthetic carries (``SyntheticsPreprocessing`` /
-            ``SYNTHETICS_PRE_EVENT_PAD_S`` in ``instaseis_simulator/wrapper.py``):
+            ``SYNTHETICS_PRE_EVENT_PAD_S`` in ``simulators/wrapper.py``):
             the sims place the origin at t=+60 s, so the observations MUST too or
             obs and synthetics are misaligned by 60 s (an out-of-distribution shift
             ~12x beyond the training time-shift augmentation).  Pass 0 only for a
@@ -506,7 +506,7 @@ def _load_window(data_dir, station_networks, t_start, t_end, duration, channel_g
 
 def _dummy_receivers(station_networks):
     """Minimal Receivers with zero lat/lon for TauPy distance calculations."""
-    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
     return Receivers(receivers=[
         Receiver(0.0, 0.0, net, sta, ["Z"])
         for sta, net in station_networks.items()

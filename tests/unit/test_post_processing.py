@@ -1,7 +1,7 @@
 """Tests for the post-processing effect framework.
 
 These tests describe the expected behaviour of the new
-`seismo_sbi.instaseis_simulator.post_processing` module and will initially
+`seismo_sbi.simulators.post_processing` module and will initially
 fail (ImportError) until that module is implemented.  Once the refactor is
 complete every test here must pass to confirm the framework is correct.
 
@@ -19,7 +19,7 @@ Design contract
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 # ---------------------------------------------------------------------------
 # The module under test — will raise ImportError until implemented.
@@ -27,7 +27,7 @@ from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
 # ---------------------------------------------------------------------------
 
 post_processing = pytest.importorskip(
-    "seismo_sbi.instaseis_simulator.post_processing",
+    "seismo_sbi.simulators.post_processing",
     reason="post_processing module not yet implemented",
 )
 
@@ -737,7 +737,7 @@ class TestTimeShiftErrorEffect:
     # ------------------------------------------------------------------
 
     def test_time_shift_error_in_registry(self):
-        from seismo_sbi.instaseis_simulator.post_processing import EFFECT_REGISTRY
+        from seismo_sbi.simulators.post_processing import EFFECT_REGISTRY
         assert "time_shift_error" in EFFECT_REGISTRY
 
     def test_build_chain_with_sampling_rate_config(self):
@@ -999,7 +999,7 @@ class TestScatteringCodaEffect:
         assert len(out["STA1"]["Z"]) == TRACE_LEN
 
     def test_registry_membership(self):
-        from seismo_sbi.instaseis_simulator.post_processing import EFFECT_REGISTRY
+        from seismo_sbi.simulators.post_processing import EFFECT_REGISTRY
         assert "scattering_coda" in EFFECT_REGISTRY
         assert EFFECT_REGISTRY["scattering_coda"] is ScatteringCodaEffect
 

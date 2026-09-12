@@ -16,7 +16,7 @@ from obspy.imaging.beachball import beach
 from obspy.imaging import beachball
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
-from ..instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib
 from .rocko_beachball_patch import plot_beachball_on_axes
 from tqdm import tqdm
 from contextlib import contextmanager

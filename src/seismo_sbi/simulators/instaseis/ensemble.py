@@ -1,12 +1,19 @@
+"""Instaseis forward model backed by an ensemble of Instaseis databases.
+
+Members are the immediate subdirectories of the ensemble directory. A member is drawn per event,
+per station, or per azimuthal sector, and the open database handles are reused through a
+per-process LRU cache whose size is a memory budget (``SEISMO_QUERIER_CACHE_MAXSIZE``).
+"""
+
 import os
 import json
-from abc import ABC, abstractmethod
 from collections import OrderedDict
 from pathlib import Path
 import numpy as np
 
-from .simulator import Simulator
-from .wrapper import GenericPointSource, InstaseisDBQuerier
+from ..ensemble import GFEnsembleSimulator
+from ..sources import GenericPointSource
+from .querier import InstaseisDBQuerier
 
 
 #: Stride the seed is offset by per station under per-station member resampling, so each station
@@ -51,60 +58,6 @@ def _ensure_querier_cache_capacity(n_members: int) -> None:
         return
     if n_members > _QUERIER_CACHE_MAXSIZE:
         _QUERIER_CACHE_MAXSIZE = n_members
-
-
-class GFEnsembleSimulator(Simulator, ABC):
-    """Simulator backed by an ensemble of precomputed 1D Earth-model GFs.
-
-    One member is drawn per simulation; the fiducial member is used when
-    use_fiducial=True.  Subclasses must expose `members` and `fiducial_member`
-    and implement `_simulate_with_member` if they rely on the member-dispatch
-    pattern (e.g. Instaseis).  CPS subclasses keep their own
-    generic_point_source_simulation and call select_member() directly inside
-    their GF-loading routine.
-    """
-
-    @property
-    @abstractmethod
-    def members(self) -> list:
-        """Ordered list of ensemble members (e.g. folder paths or DB paths)."""
-        ...
-
-    @property
-    @abstractmethod
-    def fiducial_member(self):
-        """The fiducial (reference) member of the ensemble."""
-        ...
-
-    @property
-    def num_models(self) -> int:
-        return len(self.members)
-
-    def select_member(self, *, use_fiducial=False, seed=None):
-        """Draw one member from the ensemble.
-
-        Reproduces the legacy CPS call sequence exactly:
-        np.random.seed(seed) then np.random.choice(members).
-        """
-        if use_fiducial:
-            return self.fiducial_member
-        if seed is not None:
-            np.random.seed(seed)
-        return np.random.choice(self.members)
-
-    def _simulate_with_member(self, member, source, **kwargs) -> dict:
-        """Simulate seismograms using a specific ensemble member.
-
-        Override in subclasses that use the select_member →
-        _simulate_with_member dispatch pattern (e.g. InstaseisEnsembleSimulator).
-        CPS subclasses integrate member selection into their GF loading instead.
-        """
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement _simulate_with_member "
-            "to use the member-dispatch pattern."
-        )
-
-
 class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     """Instaseis simulator backed by an ensemble of Instaseis databases.
 

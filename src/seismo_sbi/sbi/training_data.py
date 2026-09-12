@@ -13,7 +13,7 @@ import numpy as np
 
 from .pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
 from .scalers import FlexibleScaler, build_flexible_scaler
-from ..instaseis_simulator.post_processing import build_augmentation_chain_from_parameters
+from seismo_sbi.simulators.post_processing import build_augmentation_chain_from_parameters
 from ..utils.errors import InvalidConfiguration
 
 

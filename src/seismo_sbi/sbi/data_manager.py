@@ -3,7 +3,7 @@ import tempfile
 from sbi import utils as utils
 from sbi import analysis as analysis
 
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
 from seismo_sbi.sbi.configuration import  ModelParameters
 from seismo_sbi.sbi.types.results import  JobData

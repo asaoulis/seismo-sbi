@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.sbi.pipeline import SingleEventPipeline
 from seismo_sbi.sbi.types.parameters import (
     DatasetGenerationParameters,
@@ -312,7 +312,7 @@ def _precompute_cps_gfs(gf_path: Path, fiducial_path: Path, seismogram_duration:
     """
     import tempfile
     from obspy.geodetics.base import gps2dist_azimuth
-    from seismo_sbi.cps_simulator.CPS import calc_CPS_GFs
+    from seismo_sbi.simulators.cps.CPS import calc_CPS_GFs
 
     # Fiducial source location (must match model_params.nuisance["source_location"])
     src_lat, src_lon, src_depth_km = 37.636, -118.936, 5.0

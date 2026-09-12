@@ -21,18 +21,12 @@ import pytest
 from copy import deepcopy
 from pathlib import Path
 
-from seismo_sbi.instaseis_simulator.ensemble import (
-    InstaseisEnsembleSimulator,
-    GFEnsembleSimulator,
-)
-from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.wrapper import (
-    GenericPointSource,
-    GeneralMomentTensor,
-    SourceLocation,
-)
-from seismo_sbi.sbi.compression.theory_covariance import (
+from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
+from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTensor, SourceLocation
+from seismo_sbi.simulators.theory_covariance import (
     EnsembleTheoryCovarianceEstimationSimulator,
 )
 

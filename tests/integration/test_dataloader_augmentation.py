@@ -11,9 +11,9 @@ import h5py
 import numpy as np
 import torch
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.simulators.post_processing import (
     PostProcessingChain,
     AmplitudeErrorEffect,
     TimeShiftErrorEffect,

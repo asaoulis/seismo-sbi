@@ -12,10 +12,10 @@ import pytest
 from functools import partial
 from copy import deepcopy
 
-from seismo_sbi.instaseis_simulator.simulator import Simulator
-from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.sources import GenericPointSource
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.types.parameters import ModelParameters
 from seismo_sbi.sbi.simulator_wrapper import GeneralSimulatorWrapper
 

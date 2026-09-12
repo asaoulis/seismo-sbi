@@ -8,16 +8,12 @@ import numpy as np
 import pytest
 from copy import deepcopy
 
-from seismo_sbi.instaseis_simulator.ensemble import (
-    GFEnsembleSimulator,
-    InstaseisEnsembleSimulator,
-    _QUERIER_CACHE,
-    PER_STATION_SEED_STRIDE,
-)
-from seismo_sbi.instaseis_simulator.simulator import Simulator
-from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.sbi.compression.theory_covariance import (
+from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator, _QUERIER_CACHE, PER_STATION_SEED_STRIDE
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.sources import GenericPointSource
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.theory_covariance import (
     EnsembleTheoryCovarianceEstimationSimulator,
     CPSTheoryCovarianceEstimationSimulator,
 )
@@ -148,9 +144,7 @@ class TestSelectMember:
 class TestGenericPointSourceSimulation:
 
     def _dummy_source(self):
-        from seismo_sbi.instaseis_simulator.wrapper import (
-            GeneralMomentTensor, SourceLocation
-        )
+        from seismo_sbi.simulators.sources import GeneralMomentTensor, SourceLocation
         loc = SourceLocation(0.0, 0.0, 10.0, 0.0)
         mt = GeneralMomentTensor([1e14] * 6)
         return GenericPointSource(loc, mt)
@@ -206,9 +200,7 @@ class TestEnsembleTheoryCovarianceEstimationSimulator:
         )
 
     def _dummy_source(self):
-        from seismo_sbi.instaseis_simulator.wrapper import (
-            GeneralMomentTensor, SourceLocation
-        )
+        from seismo_sbi.simulators.sources import GeneralMomentTensor, SourceLocation
         loc = SourceLocation(0.0, 0.0, 10.0, 0.0)
         mt = GeneralMomentTensor([1e14] * 6)
         return GenericPointSource(loc, mt)
@@ -261,14 +253,14 @@ class TestCPSPrecomputedSelectMemberRegression:
     def test_cps_precomputed_is_gf_ensemble_simulator(self, cps_gf_dirs, receivers, monkeypatch):
         tmp_path, fiducial = cps_gf_dirs
         # Patch update_with_Gtensor so no CPS binary is needed
-        import seismo_sbi.cps_simulator.simulator as cps_mod
+        import seismo_sbi.simulators.cps.simulator as cps_mod
         chosen_folders = []
         def fake_update(objstats, velocity_model, **kwargs):
             chosen_folders.append(str(kwargs.get("gf_directory", "")))
             return np.zeros((6, 1))
         monkeypatch.setattr(cps_mod, "update_with_Gtensor", fake_update)
 
-        from seismo_sbi.cps_simulator.simulator import CPSPrecomputedSimulator
+        from seismo_sbi.simulators.cps.simulator import CPSPrecomputedSimulator
         sim = CPSPrecomputedSimulator(
             fiducial_model_path=str(fiducial),
             components=["Z"],
@@ -285,7 +277,7 @@ class TestCPSPrecomputedSelectMemberRegression:
 
     def test_cps_select_member_matches_legacy_for_fixed_seed(self, cps_gf_dirs, receivers):
         tmp_path, fiducial = cps_gf_dirs
-        from seismo_sbi.cps_simulator.simulator import CPSPrecomputedSimulator
+        from seismo_sbi.simulators.cps.simulator import CPSPrecomputedSimulator
 
         class FakeCPS(CPSPrecomputedSimulator):
             def compute_or_load_greens_functions(self, *a, **kw):
@@ -383,7 +375,7 @@ def receivers5():
 
 
 def _src():
-    from seismo_sbi.instaseis_simulator.wrapper import GeneralMomentTensor, SourceLocation
+    from seismo_sbi.simulators.sources import GeneralMomentTensor, SourceLocation
     return GenericPointSource(SourceLocation(0.0, 0.0, 10.0, 0.0),
                               GeneralMomentTensor([1e14] * 6))
 
@@ -478,7 +470,7 @@ class TestQuerierCache:
         assert len(sim.open_calls) <= 3
 
     def test_lru_eviction_respects_maxsize(self, receivers5, monkeypatch):
-        import seismo_sbi.instaseis_simulator.ensemble as ens_mod
+        import seismo_sbi.simulators.instaseis.ensemble as ens_mod
         monkeypatch.setattr(ens_mod, "_QUERIER_CACHE_MAXSIZE", 2)
         sim = _FakeQuerierEnsemble(receivers5, members=range(5))
         for member in range(5):

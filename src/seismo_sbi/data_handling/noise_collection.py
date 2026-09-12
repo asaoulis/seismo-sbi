@@ -8,7 +8,7 @@ from datetime import timedelta
 import math as m
 import traceback
 from obspy import Stream
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 from scipy.signal import butter, filtfilt
 
 

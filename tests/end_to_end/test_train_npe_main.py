@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 from seismo_sbi.sbi.training_data import TrainingData
 from seismo_sbi.sbi.scalers import FlexibleScaler
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration

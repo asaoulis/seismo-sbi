@@ -26,7 +26,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 from pathlib import Path
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.cps_simulator.compatibility import load_velocity_model
+from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 
 from generate_CPS_perturbations import generate_CPS_perturbations
 

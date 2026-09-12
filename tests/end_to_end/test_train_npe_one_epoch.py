@@ -25,7 +25,7 @@ import pytest
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 from seismo_sbi.sbi.compression.ML.train import CompressionTrainer, EMBEDDING_NET_REGISTRY
 from seismo_sbi.sbi.scalers import FlexibleScaler
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 from seismo_sbi.sbi.types.parameters import (
     SimulationParameters,
     DatasetGenerationParameters,
@@ -126,7 +126,7 @@ def kernel_pipeline(tmp_path_factory):
 @pytest.fixture(scope="module")
 def multicomp_kernel_pipeline(tmp_path_factory):
     """Two stations, two components (Z,N) — lets component dropout actually zero channels."""
-    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
     receivers = Receivers(receivers=[
         Receiver(35.945, -120.541, "BK", "PKD", ["Z", "N"]),
         Receiver(39.554, -121.500, "BK", "ORV", ["Z", "N"]),
@@ -500,7 +500,7 @@ def test_component_dropout_one_epoch(multicomp_kernel_pipeline, tmp_path):
     are actually being zeroed (2-component data, keep >=1/station). Exercises the full real
     training path: build post-noise chain -> dataloader applies it after noise -> flow."""
     import torch
-    from seismo_sbi.instaseis_simulator.post_processing import (
+    from seismo_sbi.simulators.post_processing import (
         PostProcessingChain, ComponentDropoutEffect,
     )
     from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
@@ -892,7 +892,7 @@ def test_gutenberg_richter_mt_prior_one_epoch(tmp_path):
         tmp_path, sampling_method=sampling_method,
     )
     # kernel simulator must still be the active forward model (locations are constant)
-    from seismo_sbi.instaseis_simulator.simulator import FixedLocationKernelSimulator
+    from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
     assert isinstance(pipeline.simulator_wrapper.simulator, FixedLocationKernelSimulator)
 
     from pathlib import Path

@@ -11,8 +11,8 @@ h5 files that make this test pass without modification.
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
 from seismo_sbi.sbi.types.parameters import SimulationParameters
 from seismo_sbi.sbi.data_manager import DataManager
@@ -251,7 +251,7 @@ class TestAdaptiveCovarianceScaling:
         sim_params = _build_sim_params(receivers)
         # Inject a known adaptive covariance (twice the h5 variance → scale = 2)
         misc_path = event_h5
-        from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+        from seismo_sbi.simulators.simulation_io import SimulationDataLoader
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
         misc = loader.load_misc_data(misc_path)
 

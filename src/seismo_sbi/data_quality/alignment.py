@@ -13,7 +13,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from seismo_sbi.instaseis_simulator.utils import shift_1d_with_padding
+from seismo_sbi.utils.seismograms import shift_1d_with_padding
 
 from .metrics import TraceDescriptor, variance_reduction
 

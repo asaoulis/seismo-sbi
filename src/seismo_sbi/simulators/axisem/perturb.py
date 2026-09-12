@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ...cps_simulator.smooth_perturbations import brocher_rho
+from seismo_sbi.simulators.cps.smooth_perturbations import brocher_rho
 from .model_io import BackgroundModel
 
 _MAX_VS_VP_RATIO = 1.0 / np.sqrt(2.0)

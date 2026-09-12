@@ -10,7 +10,7 @@ is high (a systemic problem such as a wrong DB path).
 
 import pytest
 
-from seismo_sbi.instaseis_simulator.dataset_generator import ParallelSimulationRunner
+from seismo_sbi.sbi.dataset_generator import ParallelSimulationRunner
 
 
 class _Runner(ParallelSimulationRunner):

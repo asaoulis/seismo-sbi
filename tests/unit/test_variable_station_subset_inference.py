@@ -112,8 +112,8 @@ def test_variable_station_net_accepts_subset_context():
 
 
 def test_load_event_subset(tmp_path):
-    from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
-    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+    from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
 
     T = 10
     recs = Receivers(receivers=[
@@ -154,8 +154,8 @@ def test_load_event_subset_with_components_matches_subset_order(tmp_path):
     backend's component order) silently swapped every horizontal pair relative to the
     training data (master order Z,E,N) — wrecking every components_map inference.
     """
-    from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
-    from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+    from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
 
     T = 10
     recs = Receivers(receivers=[

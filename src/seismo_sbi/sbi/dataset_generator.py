@@ -1,3 +1,10 @@
+"""Draw parameter sets from the prior and run the forward model over them in parallel.
+
+:class:`DatasetGenerator` writes one HDF5 simulation per sample; the sampler functions below
+turn a configuration block into the callables that draw each parameter. A sampler takes bounds
+and a sample count and returns an array of draws.
+"""
+
 from typing import List
 from abc import ABC, abstractmethod
 import joblib
@@ -8,31 +15,11 @@ from functools import partial
 import numpy as np
 
 from seismo_sbi.sbi.configuration import InvalidConfiguration, ModelParameters
-from seismo_sbi.sbi.configuration import SBI_Configuration
-from ..cps_simulator.compatibility import load_velocity_model
+from seismo_sbi.simulators.cps.compatibility import load_velocity_model
+from seismo_sbi.utils.parallel import tqdm_joblib
 
-import contextlib
 from tqdm import tqdm
 
-# Monkey-patch of joblib to report into tqdm progress bar,
-# solution taken from https://stackoverflow.com/a/61689175
-@contextlib.contextmanager
-def tqdm_joblib(tqdm_object):
-    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
-
-    def tqdm_print_progress(self):
-        if self.n_completed_tasks > tqdm_object.n:
-            n_completed = self.n_completed_tasks - tqdm_object.n
-            tqdm_object.update(n=n_completed)
-
-    original_print_progress = joblib.parallel.Parallel.print_progress
-    joblib.parallel.Parallel.print_progress = tqdm_print_progress
-
-    try:
-        yield tqdm_object
-    finally:
-        joblib.parallel.Parallel.print_progress = original_print_progress
-        tqdm_object.close()
 
 class ParallelSimulationRunner(ABC):
 
@@ -267,8 +254,8 @@ def truncated_gaussian_sampler(bounds, num_samples):
     for sample in sampler.sampler(num_samples):
         yield sample
 
-from seismo_sbi.cps_simulator.CPS import perturb_model
-from seismo_sbi.cps_simulator.smooth_perturbations import perturb_cps_model
+from seismo_sbi.simulators.cps.CPS import perturb_model
+from seismo_sbi.simulators.cps.smooth_perturbations import perturb_cps_model
 
 class VelocityModelSampler:
     perturbation_methods = {
@@ -406,4 +393,3 @@ class DatasetGenerator(ParallelSimulationRunner):
     def clear_all_outputs(self):
         # just delete the output folder
         import shutil
-        shutil.rmtree(self.output_base_path)

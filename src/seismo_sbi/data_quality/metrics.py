@@ -15,7 +15,7 @@ from typing import List, Optional
 import numpy as np
 from obspy.geodetics.base import gps2dist_azimuth
 
-from seismo_sbi.instaseis_simulator.utils import shift_1d_with_padding
+from seismo_sbi.utils.seismograms import shift_1d_with_padding
 
 # Optional: Hilbert envelope (mirrors the guard in posterior_predictive_checks).
 try:

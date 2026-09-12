@@ -2,13 +2,13 @@
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator import post_processing as pp
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators import post_processing as pp
+from seismo_sbi.simulators.post_processing import (
     ScatteringCodaEffect, build_post_processing_chain, distance_scaled_alpha,
     distance_tail_energy, _apply_distance_coda_kernel, _apply_random_coda_filter,
     _apply_stahler_phase_filter, _apply_per_station_gated,
 )
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 SRC = (35.0, 137.0)
 N = 2000
@@ -227,6 +227,6 @@ def test_distance_mode_via_effect_configs_and_chain():
 def test_simulator_forwards_source_location_to_chain():
     """Simulator.run_simulation must hand the source position to the post-processing chain."""
     import inspect
-    from seismo_sbi.instaseis_simulator import simulator as sim_mod
+    from seismo_sbi.simulators import base as sim_mod
     src = inspect.getsource(sim_mod.Simulator.run_simulation)
     assert 'post_proc_params.setdefault("source_location"' in src

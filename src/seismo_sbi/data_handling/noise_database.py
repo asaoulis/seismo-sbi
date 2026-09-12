@@ -5,8 +5,8 @@ import joblib
 import traceback
 
 
-from seismo_sbi.instaseis_simulator.simulation_saver import SimulationSaver
-from seismo_sbi.instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.simulators.simulation_io import SimulationSaver
+from seismo_sbi.utils.parallel import tqdm_joblib
 
 
 class NoiseDatabaseGenerator:

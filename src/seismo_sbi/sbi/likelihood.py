@@ -8,7 +8,7 @@ import os
 from tqdm import tqdm
 from functools import partial
 import joblib
-from ..instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib
 
 class GaussianLikelihoodEvaluator:
 

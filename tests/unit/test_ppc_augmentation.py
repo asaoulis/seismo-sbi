@@ -9,8 +9,8 @@ the vec<->map round-trip it relies on, and the warn-on-failure fallback.
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.post_processing import (
     PostProcessingChain,
     AmplitudeErrorEffect,
     SeismogramEffect,

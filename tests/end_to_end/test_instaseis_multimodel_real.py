@@ -19,12 +19,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.ensemble import InstaseisEnsembleSimulator
-from seismo_sbi.instaseis_simulator.multi_model import InstaseisMultiModelSimulator
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.wrapper import (
-    GenericPointSource, GeneralMomentTensor, SourceLocation,
-)
+from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
+from seismo_sbi.simulators.instaseis.multi_model import InstaseisMultiModelSimulator
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTensor, SourceLocation
 
 pytestmark = pytest.mark.slow
 

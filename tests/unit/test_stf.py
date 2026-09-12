@@ -17,18 +17,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.wrapper import (
-    GCMT_SCALE_FACTOR,
-    _MIN_STF_SAMPLES,
-    _scalar_moment,
-    _gcmt_half_duration,
-    _build_triangular_stf,
-    build_stf_sliprate,
-    GenericPointSource,
-    GeneralMomentTensor,
-)
-from seismo_sbi.instaseis_simulator.simulator import Simulator
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.sources import GCMT_SCALE_FACTOR, _MIN_STF_SAMPLES, _scalar_moment, _gcmt_half_duration, _build_triangular_stf, build_stf_sliprate, GenericPointSource, GeneralMomentTensor
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 
 # ---------------------------------------------------------------------------

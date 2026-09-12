@@ -18,7 +18,7 @@ from seismo_sbi.plotting.waveform_compare import (
     moveout_record_section,
 )
 from seismo_sbi.plotting.seismo_plots import MisfitsPlotting
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 N, C, T = 4, 3, 64
 EVENT = (36.5, 25.5, 10.0)

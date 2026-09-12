@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import h5py
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData, GaussianCompressor
 from seismo_sbi.sbi.noises.covariance_estimation import ScalarEmpiricalCovariance
 

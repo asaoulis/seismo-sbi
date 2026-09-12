@@ -9,7 +9,7 @@ import joblib
 from scipy.stats import norm
 import numpy as np
 # Progress patch from your codebase
-from seismo_sbi.instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib
 from tqdm import tqdm
 
 # Use your existing utilities

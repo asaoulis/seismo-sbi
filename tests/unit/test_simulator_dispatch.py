@@ -8,10 +8,10 @@ avoids any real forward-model (Instaseis / CPS) calls.
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.simulator import Simulator
-from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource, GeneralMomentTensor, SimpleMomentTensor
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.utils import shift_1d_with_padding, apply_station_time_shifts
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTensor, SimpleMomentTensor
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.utils.seismograms import shift_1d_with_padding, apply_station_time_shifts
 from seismo_sbi.sbi.configuration import InvalidConfiguration
 
 TRACE_LEN = 40

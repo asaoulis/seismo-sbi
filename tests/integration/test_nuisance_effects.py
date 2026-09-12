@@ -31,11 +31,12 @@ from functools import partial
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator.simulator import Simulator, FixedLocationKernelSimulator
-from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators.base import Simulator
+from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
+from seismo_sbi.simulators.sources import GenericPointSource
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.simulators.post_processing import (
     AmplitudeErrorEffect,
     InstrumentDropoutEffect,
     TimeShiftErrorEffect,
@@ -292,7 +293,7 @@ class TestRunSimulationWithNuisance:
 
     def test_scale_within_default_range(self, one_station):
         """With default scale range, the applied factor must be in [SCALE_LOW, SCALE_HIGH]."""
-        from seismo_sbi.instaseis_simulator.post_processing import AmplitudeErrorEffect as AEE
+        from seismo_sbi.simulators.post_processing import AmplitudeErrorEffect as AEE
         sim = MockSimulator(
             one_station, amplitude=1.0,
             post_processing_effects=[AmplitudeErrorEffect()]
@@ -625,7 +626,7 @@ class TestCPSSimulatorWithNuisanceChain:
     @pytest.fixture(autouse=True)
     def _require_cps(self):
         try:
-            from seismo_sbi.cps_simulator.simulator import CPSPrecomputedSimulator  # noqa: F401
+            from seismo_sbi.simulators.cps.simulator import CPSPrecomputedSimulator  # noqa: F401
         except ImportError:
             pytest.skip("CPS simulator not available")
 
@@ -635,7 +636,7 @@ class TestCPSSimulatorWithNuisanceChain:
             pytest.skip("CPS_PATH or CPS_GF_PATH env vars not set — CPS test skipped")
 
     def test_amplitude_error_changes_cps_output(self):
-        from seismo_sbi.cps_simulator.simulator import CPSPrecomputedSimulator
+        from seismo_sbi.simulators.cps.simulator import CPSPrecomputedSimulator
 
         cps_path = os.environ.get("CPS_PATH")
         gf_path = os.environ["CPS_GF_PATH"]

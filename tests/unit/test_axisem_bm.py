@@ -3,13 +3,10 @@
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.axisem import (
-    read_bm,
-    write_bm,
-    perturb_background_model,
-    generate_ensemble,
-)
-from seismo_sbi.instaseis_simulator.axisem.model_io import BackgroundModel
+from seismo_sbi.simulators.axisem.model_io import read_bm, write_bm
+from seismo_sbi.simulators.axisem.perturb import perturb_background_model
+from seismo_sbi.simulators.axisem.perturbed_models import generate_ensemble
+from seismo_sbi.simulators.axisem.model_io import BackgroundModel
 
 FIDUCIAL_BM = (
     "/home/alex/work/seismo-sbi/scripts/axisem/madeira/background_model.bm"

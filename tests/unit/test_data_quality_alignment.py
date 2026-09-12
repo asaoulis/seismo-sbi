@@ -5,7 +5,7 @@ import pytest
 from seismo_sbi.data_quality.alignment import (
     nonzero_shifts, optimise_event_shifts, optimise_station_shift)
 from seismo_sbi.data_quality.metrics import TraceDescriptor
-from seismo_sbi.instaseis_simulator.utils import shift_1d_with_padding
+from seismo_sbi.utils.seismograms import shift_1d_with_padding
 
 
 def _wave(n=128, seed=0):

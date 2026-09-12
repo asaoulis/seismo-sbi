@@ -9,7 +9,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 import yaml
 
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.simulators.receivers import Receivers
 
 
 from cartopy import crs as ccrs

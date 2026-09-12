@@ -7,11 +7,11 @@ from functools import partial
 from copy import copy
 
 from seismo_sbi.plotting.parameters import ParameterInformation, DegreeKMConverter, DegreeType
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
-from seismo_sbi.cps_simulator.compatibility import load_velocity_model
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.cps.compatibility import load_velocity_model
+from seismo_sbi.simulators.post_processing import (
     AUGMENTABLE_EFFECT_KEYS,
     POST_NOISE_EFFECT_KEYS,
     CONDITIONING_AUGMENTABLE_KEYS,

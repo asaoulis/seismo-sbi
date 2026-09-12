@@ -34,7 +34,7 @@ for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
 import numpy as np
 import torch
 
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.post_processing import (
     build_augmentation_chain,
     apply_chain_to_array,
 )
@@ -142,7 +142,7 @@ def main():
     _, D0 = ds_aug._load_sim(ds_aug.paths[0])
     per_effect = {}
     # empty-chain round-trip floor
-    from seismo_sbi.instaseis_simulator.post_processing import PostProcessingChain
+    from seismo_sbi.simulators.post_processing import PostProcessingChain
     empty = PostProcessingChain([])
     per_effect["empty_roundtrip"] = _time(
         lambda: apply_chain_to_array(empty, D0, receivers, args.components, {}),

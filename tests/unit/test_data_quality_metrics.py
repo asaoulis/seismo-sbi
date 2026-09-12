@@ -4,7 +4,7 @@ import pytest
 
 from seismo_sbi.data_quality import metrics as M
 from seismo_sbi.data_quality.metrics import TraceDescriptor
-from seismo_sbi.instaseis_simulator.utils import shift_1d_with_padding
+from seismo_sbi.utils.seismograms import shift_1d_with_padding
 
 
 def _wave(n=128, seed=0):

@@ -33,7 +33,7 @@ untracked): `build_japan_patched_ensemble.py`, `depthdep_perturb.py`, the two
 `ensemble_config_japan_patch*.yaml`, and `first_ml_npe_japan_2050.yaml` (the orchestrator pushes
 the local YAML itself). Original checklist, for reference:
 
-Uncommitted in the working tree and required on the cluster: `src/seismo_sbi/instaseis_simulator/
+Uncommitted in the working tree and required on the cluster: `src/seismo_sbi/simulators/
 post_processing.py` (AmplitudeErrorEffect options, TimeShiftErrorEffect distance keys — inert,
 DispersionSpreadEffect — unused, ScatteringCodaEffect distance_mode from session 3), `ensemble.py`,
 `multi_model.py`, `sbi/simulator_wrapper.py`, `sbi/configuration.py`, `sbi/types/parameters.py`,

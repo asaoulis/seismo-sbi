@@ -13,7 +13,7 @@ except Exception:
     hilbert = None
     welch = None
 
-from seismo_sbi.instaseis_simulator.post_processing import PostProcessingChain
+from seismo_sbi.simulators.post_processing import PostProcessingChain
 
 
 @contextlib.contextmanager

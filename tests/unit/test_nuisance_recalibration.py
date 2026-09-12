@@ -8,7 +8,7 @@
 import numpy as np
 import pytest
 
-from seismo_sbi.instaseis_simulator.post_processing import (
+from seismo_sbi.simulators.post_processing import (
     AmplitudeErrorEffect,
     DispersionSpreadEffect,
     EFFECT_REGISTRY,
@@ -17,10 +17,10 @@ from seismo_sbi.instaseis_simulator.post_processing import (
     apply_chain_to_array,
     build_post_processing_chain,
 )
-from seismo_sbi.instaseis_simulator.receivers import Receiver, Receivers
-from seismo_sbi.instaseis_simulator import ensemble as ens_mod
-from seismo_sbi.instaseis_simulator.ensemble import InstaseisEnsembleSimulator
-from seismo_sbi.instaseis_simulator.wrapper import GenericPointSource, SourceLocation, GeneralMomentTensor
+from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.simulators import ensemble as ens_mod
+from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
+from seismo_sbi.simulators.sources import GenericPointSource, SourceLocation, GeneralMomentTensor
 
 TRACE_LEN = 512
 

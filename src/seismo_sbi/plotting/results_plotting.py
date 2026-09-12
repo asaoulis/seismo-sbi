@@ -4,7 +4,7 @@ from sbi import utils as utils
 from sbi import analysis as analysis
 
 
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.plotting.seismo_plots import plot_stacked_waveforms, MisfitsPlotting
 from seismo_sbi.plotting.distributions import PosteriorPlotter, MomentTensorReparametrised
 from seismo_sbi.sbi.configuration import  ModelParameters

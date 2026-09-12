@@ -12,7 +12,7 @@ from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline, SBIPipelinePlotter
 
 
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+from seismo_sbi.simulators.receivers import Receivers
 
 
 
