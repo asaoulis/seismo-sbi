@@ -1,23 +1,18 @@
-from functools import partial
-from sbi import utils as utils
-from sbi import analysis as analysis
-from copy import deepcopy
-import json
-from pathlib import Path
+"""Wire a configured forward model into the inference pipeline.
 
-from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
-from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
-from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
-from seismo_sbi.simulators.instaseis.multi_model import InstaseisMultiModelSimulator
+:class:`GeneralSimulatorWrapper` builds the simulator the configuration asks for, folds in the
+nuisance effects staged at simulation time, and exposes the two callables the pipeline uses: one
+that returns a flat data vector for a parameter vector, and one that writes a simulation to disk.
+"""
+
+from functools import partial
+from copy import deepcopy
+
 from seismo_sbi.simulators.post_processing import build_post_processing_chain
-from seismo_sbi.simulators.cps.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
-from seismo_sbi.simulators.theory_covariance import (
-    EnsembleTheoryCovarianceEstimationSimulator,
-    CPSTheoryCovarianceEstimationSimulator,
-)
+from seismo_sbi.simulators.registry import build_simulator
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters
-from seismo_sbi.simulators.receivers import Receivers
+from seismo_sbi.sbi.configuration import ModelParameters, SimulationParameters
+
 
 class GeneralSimulatorWrapper:
 
@@ -68,220 +63,10 @@ class GeneralSimulatorWrapper:
 
         self.simulation_callable = partial(self.input_output_simulation, parameters, data_loader, samplers, self.simulator)
 
-    def _build_cps_multi_models_from_path(self, simulation_parameters: SimulationParameters):
-        """Read a single JSON config file and build list of sub-model dicts.
-
-        The JSON file must contain a list of objects, each with at least:
-
-        - "cps_GFs_path": str
-        - "cps_GFs_fiducial_path": str
-        - "receivers": [station_name, ...]
-        """
-        cfg_path_str = simulation_parameters.cps_multi_models_path
-        if not cfg_path_str:
-            return None
-
-        cfg_path = Path(cfg_path_str)
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg_list = json.load(f)
-
-        if not isinstance(cfg_list, list):
-            raise ValueError(
-                f"cps_multi_models_path JSON must contain a list of model configs, got {type(cfg_list)}"
-            )
-
-        global_receivers = simulation_parameters.receivers
-        station_to_receiver = {rec.station_name: rec for rec in global_receivers.iterate()}
-
-        models = []
-        for idx, cfg in enumerate(cfg_list):
-            if not isinstance(cfg, dict):
-                raise ValueError(
-                    f"Entry {idx} in {cfg_path} must be an object/dict, got {type(cfg)}"
-                )
-
-            station_names = cfg.get("receivers", [])
-            sub_receivers_list = []
-            for sta in station_names:
-                try:
-                    sub_receivers_list.append(station_to_receiver[sta])
-                except KeyError:
-                    raise KeyError(
-                        f"Station '{sta}' in {cfg_path} (entry {idx}) not found in global receivers list"
-                    )
-
-            sub_receivers = Receivers(receivers=sub_receivers_list)
-            model_cfg = {
-                "receivers": sub_receivers,
-                "cps_GFs_path": cfg["cps_GFs_path"],
-                "cps_GFs_fiducial_path": cfg["cps_GFs_fiducial_path"],
-            }
-            models.append(model_cfg)
-        return models
-
-    def _build_instaseis_multi_models(self, simulation_parameters: SimulationParameters):
-        """Turn the inline ``instaseis_multi_models`` YAML list into sub-model dicts.
-
-        Each YAML entry has ``ensemble_dir`` + ``fiducial_dir`` (Instaseis DB
-        ensemble paths) and ``receivers`` (a list of station names), e.g.::
-
-            instaseis_multi_models:
-              - ensemble_dir: /…/santorini_tomo_mode_a/
-                fiducial_dir: /…/santorini_tomo_mode_a/fiducial/
-                receivers: [CMBO, SANT, …]   # Mode-A = on-island stations
-              - ensemble_dir: /…/santorini_tomo_mode_b/
-                fiducial_dir: /…/santorini_tomo_mode_b/fiducial/
-                receivers: [AMGA, ANYD, …]   # Mode-B = off-island stations
-
-        The DB paths are kept inline (YAML string leaves) so the cluster
-        orchestrator's path_remap rewrites them to the archive automatically.
-        """
-        cfg_list = getattr(simulation_parameters, "instaseis_multi_models", None)
-        if not cfg_list:
-            return None
-
-        if not isinstance(cfg_list, list):
-            raise ValueError(
-                f"instaseis_multi_models must be a list of model configs, got {type(cfg_list)}"
-            )
-
-        global_receivers = simulation_parameters.receivers
-        station_to_receiver = {rec.station_name: rec for rec in global_receivers.iterate()}
-
-        models = []
-        for idx, cfg in enumerate(cfg_list):
-            if not isinstance(cfg, dict):
-                raise ValueError(
-                    f"Entry {idx} in instaseis_multi_models must be an object/dict, got {type(cfg)}"
-                )
-
-            station_names = cfg.get("receivers", [])
-            sub_receivers_list = []
-            for sta in station_names:
-                try:
-                    sub_receivers_list.append(station_to_receiver[sta])
-                except KeyError:
-                    raise KeyError(
-                        f"Station '{sta}' in instaseis_multi_models (entry {idx}) "
-                        "not found in global receivers list"
-                    )
-
-            sub_receivers = Receivers(receivers=sub_receivers_list)
-            models.append({
-                "receivers": sub_receivers,
-                "ensemble_dir": cfg["ensemble_dir"],
-                "fiducial_dir": cfg["fiducial_dir"],
-            })
-        return models
-
     def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
-        pp_effects = post_processing_effects or []
-        if simulator_config[0] == 'instaseis_ensemble':
-            simulator = InstaseisEnsembleSimulator(
-                            instaseis_ensemble_dir=simulation_parameters.syngine_address,
-                            instaseis_fiducial_loc=simulation_parameters.syngine_fiducial_address,
-                            components=simulation_parameters.components,
-                            receivers=simulation_parameters.receivers,
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            post_processing_effects=pp_effects,
-                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
-                            member_sampling=getattr(simulation_parameters, "member_sampling", None),
-                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
-                            source_depth_offset_km=getattr(
-                                simulation_parameters, "source_depth_offset_km", 0.0))
-        elif simulator_config[0] == 'instaseis':
-            simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address,
-                                        components=simulation_parameters.components,
-                                        receivers=simulation_parameters.receivers,
-                                        seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                                        synthetics_processing=simulation_parameters.processing,
-                                        post_processing_effects=pp_effects,
-                                        source_depth_offset_km=getattr(
-                                            simulation_parameters, "source_depth_offset_km", 0.0))
-        elif simulator_config[0] == 'kernel':
-            score_compression_data = simulator_config[1]
-            simulator = FixedLocationKernelSimulator(score_compression_data,
-                            components=simulation_parameters.components,
-                            receivers=simulation_parameters.receivers,
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            post_processing_effects=pp_effects)
-        elif simulator_config[0] == 'cps':
-            simulator = CPSVariableKernelSimulator(
-                            components=simulation_parameters.components,
-                            receivers=simulation_parameters.receivers,
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            gf_storage_root=simulation_parameters.cps_GFs_path,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None),
-                            post_processing_effects=pp_effects)
-        elif simulator_config[0] == 'cps_precomputed':
-            simulator = CPSPrecomputedSimulator(
-                            fiducial_model_path=simulation_parameters.cps_GFs_fiducial_path,
-                            components=simulation_parameters.components,
-                            receivers=simulation_parameters.receivers,
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            gf_storage_root=simulation_parameters.cps_GFs_path,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None),
-                            post_processing_effects=pp_effects)
-        elif simulator_config[0] == 'instaseis_multi_ensemble':
-            # simulator_config[1] can override and directly provide model dicts.
-            if simulator_config[1] is not None:
-                models = simulator_config[1]
-            else:
-                models = self._build_instaseis_multi_models(simulation_parameters)
-            if not models:
-                raise ValueError(
-                    "simulation_type 'instaseis_multi_ensemble' requires a non-empty "
-                    "'instaseis_multi_models' list in seismic_context."
-                )
-            simulator = InstaseisMultiModelSimulator(
-                            models=models,
-                            components=simulation_parameters.components,
-                            receivers=simulation_parameters.receivers,
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            post_processing_effects=pp_effects,
-                            resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
-                            member_sampling=getattr(simulation_parameters, "member_sampling", None),
-                            sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
-                            source_depth_offset_km=getattr(
-                                simulation_parameters, "source_depth_offset_km", 0.0))
-        elif simulator_config[0] == 'cps_multi':
-            # simulator_config[1] can override and directly provide model dicts.
-            if simulator_config[1] is not None:
-                models = simulator_config[1]
-            else:
-                models = self._build_cps_multi_models_from_path(simulation_parameters)
-            if not models:
-                raise ValueError(
-                    "simulation_type 'cps_multi' requires either explicit models "
-                    "or a non-empty cps_multi_models_path in SimulationParameters."
-                )
-            simulator = MultiModelCPSSimulator(
-                            models=models,
-                            components=simulation_parameters.components,
-                            receivers=simulation_parameters.receivers,
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None),
-                            post_processing_effects=pp_effects)
-        elif simulator_config[0] == 'cps_covariance':
-            ensemble_simulator = simulator_config[1]
-            simulator = EnsembleTheoryCovarianceEstimationSimulator(
-                            simulator=ensemble_simulator,
-                            data_flattening=self.data_loader_callable,
-                            components=simulation_parameters.components,
-                            receivers=deepcopy(simulation_parameters.receivers),
-                            seismogram_duration_in_s=simulation_parameters.seismogram_duration,
-                            synthetics_processing=simulation_parameters.processing,
-                            post_processing_effects=pp_effects)
-        else:
-            raise NotImplementedError(f"Simulator {simulator_config[0]} not implemented")
-        return simulator
-    
+        return build_simulator(simulator_config, simulation_parameters, post_processing_effects,
+                               data_flattening=getattr(self, "data_loader_callable", None))
+
     def create_input_output_simulation_callable(self, parameters, data_loader, samplers):
         return partial(self.input_output_simulation, parameters, data_loader, samplers)
 

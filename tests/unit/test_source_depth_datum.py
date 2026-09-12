@@ -85,6 +85,7 @@ def test_simulator_wrapper_forwards_the_offset(monkeypatch):
     dropped at simulator construction -- every source 1 km too shallow, with no error.
     """
     import seismo_sbi.sbi.simulator_wrapper as sw
+    import seismo_sbi.simulators.registry as registry
     from seismo_sbi.sbi.types.parameters import SimulationParameters
 
     seen = {}
@@ -93,11 +94,11 @@ def test_simulator_wrapper_forwards_the_offset(monkeypatch):
         def __init__(self, *a, **kw):
             seen.update(kw)
 
-    monkeypatch.setattr(sw, "InstaseisEnsembleSimulator", _Spy)
+    monkeypatch.setattr(registry, "InstaseisEnsembleSimulator", _Spy)
 
     sp = SimulationParameters(receivers=None, components="ZNE", seismogram_duration=200,
                               syngine_address="ens", sampling_rate=1.0, processing={},
                               syngine_fiducial_address="fid", source_depth_offset_km=1.0)
     sw.GeneralSimulatorWrapper.select_and_initialise_simulator(
-        object.__new__(sw.GeneralSimulatorWrapper), ("instaseis_ensemble",), sp)
+        object.__new__(sw.GeneralSimulatorWrapper), ("instaseis_ensemble", None), sp)
     assert seen["source_depth_offset_km"] == 1.0
