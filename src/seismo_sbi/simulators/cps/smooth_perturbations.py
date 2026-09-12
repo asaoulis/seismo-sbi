@@ -1,14 +1,16 @@
+"""Draw perturbed layered velocity models in the CPS format.
+
+The compressional and shear speeds get smooth correlated fractional perturbations with a
+correlation length in depth, the layer thicknesses get their own, and the density follows the
+perturbed compressional speed through the Brocher (2005) relation.
+"""
+
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-###############################################################
-# Smooth random field generator
-###############################################################
 
 def smooth_frac_field(npts, dz_km, corr_length_km, std_frac, seed=None):
-    """
-    Generate a Gaussian-filtered fractional perturbation field.
-    """
+    """A Gaussian-smoothed fractional perturbation field over ``npts`` layers of ``dz_km``."""
     rng = np.random.default_rng(seed)
     white = rng.normal(size=npts)
     sigma_samples = max(0.5, corr_length_km / dz_km)
@@ -19,15 +21,9 @@ def smooth_frac_field(npts, dz_km, corr_length_km, std_frac, seed=None):
     return smooth
 
 
-###############################################################
-# Brocher (2005) density relation
-###############################################################
 
 def brocher_rho(vp):
-    """
-    Brocher (2005) empirical density relation.
-    Returns density in g/cm^3.
-    """
+    """Density in g/cm^3 from compressional speed in km/s, after Brocher (2005)."""
     vp = np.asarray(vp)
     rho = (1.6612*vp
           - 0.4721*vp**2
@@ -37,9 +33,6 @@ def brocher_rho(vp):
     return rho
 
 
-###############################################################
-# Main perturbation function (works on CPS-format vmodel)
-###############################################################
 
 def perturb_cps_model(vmodel,
                       corr_length_km=5.0,
@@ -48,28 +41,15 @@ def perturb_cps_model(vmodel,
                       std_thickness=0.03,
                       vp_vs_corr=0.9,
                       seed=None):
-    """
-    Perturb a CPS-format velocity model using smooth fractional perturbations.
+    """A perturbed copy of the CPS velocity model ``vmodel``, shaped ``(6, n_layers)``.
 
-    Parameters
-    ----------
-    vmodel : ndarray of shape (6, N)
-        CPS-format model:
-          vmodel[0,:] = thickness (km)
-          vmodel[1,:] = Vp (km/s)
-          vmodel[2,:] = Vs (km/s)
-          vmodel[3,:] = density (g/cm^3)
-          vmodel[4,:] = Qp
-          vmodel[5,:] = Qs
-
-    Returns
-    -------
-    perturbed_vmodel : ndarray (same shape)
-        New perturbed CPS model.
+    The rows are layer thickness in km, compressional and shear speed in km/s, density in
+    g/cm^3, then qp and qs. The speeds get smooth correlated fractional perturbations, the
+    shear speed staying below the Poisson bound, the thicknesses their own, and the density
+    follows the perturbed compressional speed through Brocher (2005).
     """
 
-    # Unpack
-    H   = vmodel[0].copy()   # thicknesses
+    H   = vmodel[0].copy()
     vp  = vmodel[1].copy()
     vs  = vmodel[2].copy()
     rho = vmodel[3].copy()
@@ -78,13 +58,9 @@ def perturb_cps_model(vmodel,
 
     N = len(H)
 
-    # Convert thickness to top-of-layer depth
     depth = np.concatenate(([0.0], np.cumsum(H)))[:-1]
     dz_km = np.median(np.diff(depth)) if N > 1 else H[0]
 
-    #######################################################################
-    # ---- Smooth correlated perturbations for Vp and Vs ------------------
-    #######################################################################
 
     rng = np.random.default_rng(seed)
 
@@ -107,30 +83,20 @@ def perturb_cps_model(vmodel,
     vp_p = vp * np.exp(eps_vp)
     vs_p = vs * np.exp(eps_vs)
 
-    # Enforce Vs < Vp/sqrt(2)
     max_ratio = 1.0 / np.sqrt(2.0)
     mask = vs_p > max_ratio * vp_p
     vs_p[mask] = vp_p[mask] * (0.99 * max_ratio)
 
-    #######################################################################
-    # ---- Smooth perturbations to thicknesses ---------------------------
-    #######################################################################
 
     eps_H = smooth_frac_field(N, dz_km, corr_length_km,
                               std_frac=std_thickness)
 
     H_p = H * np.exp(eps_H)
 
-    #######################################################################
-    # ---- Updated density using Brocher --------------------------------
-    #######################################################################
 
     rho_p = brocher_rho(vp_p)
-    rho_p = np.maximum(rho_p, 1.0)   # avoid pathological low density
+    rho_p = np.maximum(rho_p, 1.0)
 
-    #######################################################################
-    # ---- Pack CPS model back together ---------------------------------
-    #######################################################################
 
     perturbed = np.vstack([H_p, vp_p, vs_p, rho_p, Qp, Qs])
 

@@ -16,9 +16,8 @@ from seismo_sbi.utils.seismograms import apply_station_time_shifts
 from .post_processing import PostProcessingChain
 
 
-# Keys consumed directly by run_simulation() / generic_point_source_simulation().
-# Any key in source_parameters that is NOT in this set is treated as a
-# post-processing nuisance parameter and forwarded to the PostProcessingChain.
+#: Source-parameter keys the forward model consumes; every other key is a nuisance parameter
+#: and is forwarded to the post-processing chain.
 _SIMULATOR_KEYS = frozenset({
     "source_location",
     "moment_tensor",
@@ -44,8 +43,8 @@ class Simulator(ABC):
         self.receivers = receivers
         self.seismogram_length = seismogram_duration_in_s
         self.synthetics_processing = synthetics_processing
-        # Datum offset applied only where a depth is handed to the Green's function
-        # backend; see InstaseisDBQuerier. 0.0 == catalogue datum is the model surface.
+        # Applied only where a depth is handed to the backend; zero means the catalogue datum
+        # is the model's free surface.
         self.source_depth_offset_km = float(source_depth_offset_km)
         self.post_processing_chain = PostProcessingChain(post_processing_effects or [])
 
@@ -74,12 +73,10 @@ class Simulator(ABC):
         return source_location
 
     def run_simulation(self, source_parameters, **kwargs):
-        ## combine source parameters and nuisance parameters dictionaries
-        ## into one dictionary — copy to avoid mutating the caller's dict
+        # Copied so the caller's dict is not mutated.
         combined_params = dict(source_parameters)
 
-        # Collect any keys not consumed by the forward model; these are routed
-        # to the post-processing chain after the simulation.
+        # Everything the forward model does not consume goes to the post-processing chain.
         post_proc_params = {
             key: combined_params[key]
             for key in list(combined_params)
@@ -87,14 +84,11 @@ class Simulator(ABC):
         }
 
         source_location_params = combined_params["source_location"]
-        # Path-dependent effects (distance-scaled scattering, azimuthal anisotropy) need the
-        # source position; every effect swallows unknown kwargs, so forwarding it is inert
-        # for the others.
+        # Path-dependent effects need the source position; the others swallow it.
         post_proc_params.setdefault("source_location", source_location_params)
         velocity_model_params = combined_params.pop("velocity_model", None)
         stf_duration = combined_params.pop("stf_duration", None)
         use_fiducial = combined_params.pop("use_fiducial", None)
-        # add use_fiducial to kwargs if it doesn't exist
         if kwargs.get("use_fiducial") is None:
             kwargs["use_fiducial"] = use_fiducial
 
@@ -119,7 +113,6 @@ class Simulator(ABC):
         )
         shifted_seismograms_map = apply_station_time_shifts(self.receivers, all_seismograms_map)
 
-        # Apply post-processing effects (amplitude errors, dropout, etc.)
         processed_seismograms_map = self.post_processing_chain(
             shifted_seismograms_map, self.receivers, post_proc_params
         )

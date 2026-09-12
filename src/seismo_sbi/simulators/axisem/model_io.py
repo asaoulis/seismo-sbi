@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import numpy as np
 
-# Default Earth surface radius (m) used to annotate discontinuity depths.
+#: Surface radius in m the discontinuity-depth annotations are measured from.
 DEFAULT_SURFACE_RADIUS_M = 6371000.0
 
 _META_KEYS = ("NAME", "ANELASTIC", "ANISOTROPIC", "UNITS")
@@ -21,21 +21,11 @@ _META_KEYS = ("NAME", "ANELASTIC", "ANISOTROPIC", "UNITS")
 
 @dataclass
 class BackgroundModel:
-    """An AxiSEM external 1-D background model.
+    """An AxiSEM external one-dimensional background model.
 
-    Attributes
-    ----------
-    columns : list[str]
-        Column names from the ``COLUMNS`` header (e.g.
-        ``['radius', 'rho', 'vpv', 'vsv', 'qka', 'qmu']``).
-    data : np.ndarray, shape (n_rows, n_cols)
-        Numeric table, rows ordered by descending radius.
-    meta : dict[str, str]
-        Header key/value pairs (NAME, ANELASTIC, ANISOTROPIC, UNITS).
-    header_comments : list[str]
-        Leading free-form ``#`` comment lines (without the leading ``#``),
-        preserved verbatim on write.  Per-discontinuity markers are *not*
-        stored here; they are regenerated.
+    ``columns`` names the fields of ``data``, a ``(n_rows, n_columns)`` table ordered by
+    descending radius; ``meta`` holds the header key-value pairs; ``header_comments`` holds the
+    leading free-form comment lines, kept verbatim on write.
     """
 
     columns: list
@@ -43,7 +33,6 @@ class BackgroundModel:
     meta: dict = field(default_factory=dict)
     header_comments: list = field(default_factory=list)
 
-    # -- convenient column access ------------------------------------------
     def col_index(self, name: str) -> int:
         return self.columns.index(name)
 
@@ -87,8 +76,8 @@ def read_bm(path) -> BackgroundModel:
             if not stripped:
                 continue
             if stripped.startswith("#"):
-                # Keep only leading comments (before the COLUMNS header);
-                # per-discontinuity markers further down are regenerated.
+                # Only the leading comments are kept; the discontinuity markers below the
+                # COLUMNS header are regenerated on write.
                 if not seen_columns:
                     header_comments.append(stripped.lstrip("#").strip())
                 continue
@@ -103,7 +92,6 @@ def read_bm(path) -> BackgroundModel:
                 seen_columns = True
                 continue
 
-            # Otherwise a numeric data row.
             rows.append([float(t) for t in tokens])
 
     if not columns:
@@ -126,7 +114,7 @@ def read_bm(path) -> BackgroundModel:
 
 
 def _format_value(name: str, value: float) -> str:
-    """Format one numeric cell.  Radius is whole metres; others 2 dp-ish."""
+    """One numeric cell as text: whole metres for a radius, two decimals otherwise."""
     if name == "radius":
         return f"{value:12.1f}"
     if name in ("qka", "qmu"):
@@ -135,12 +123,10 @@ def _format_value(name: str, value: float) -> str:
 
 
 def write_bm(model: BackgroundModel, path, surface_radius_m: float | None = None) -> None:
-    """Write a :class:`BackgroundModel` back to AxiSEM ``*.bm`` format.
+    """Write ``model`` to ``path`` in AxiSEM ``*.bm`` format.
 
-    Re-emits leading comments, the metadata block, the ``COLUMNS`` header, and
-    the data rows (descending radius, double-line discontinuities preserved).
-    ``# Discontinuity N, depth: X km`` markers are regenerated from the
-    duplicated-radius rows for readability.
+    The discontinuity markers are regenerated from the duplicated-radius rows, with depths
+    measured from ``surface_radius_m``.
     """
     if surface_radius_m is None:
         r = model.radius
@@ -156,7 +142,6 @@ def write_bm(model: BackgroundModel, path, surface_radius_m: float | None = None
     for key in _META_KEYS:
         if key in model.meta:
             lines.append(f"{key:<13s}{model.meta[key]}")
-    # COLUMNS header
     col_header = "COLUMNS" + "".join(
         f"{name:>11s}" if name not in ("qka", "qmu") and name != "radius"
         else (f"{name:>12s}" if name == "radius" else f"{name:>13s}")
@@ -166,8 +151,7 @@ def write_bm(model: BackgroundModel, path, surface_radius_m: float | None = None
 
     disc_counter = 0
     for i in range(model.n_rows):
-        # When row i begins a discontinuity (radius repeats at i+1 ... or i-1
-        # closed a pair), drop a marker before the *second* row of the pair.
+        # The marker goes before the second row of a duplicated-radius pair.
         if i > 0 and model.data[i, radius_idx] == model.data[i - 1, radius_idx]:
             disc_counter += 1
             depth_km = (surface_radius_m - model.data[i, radius_idx]) / 1000.0

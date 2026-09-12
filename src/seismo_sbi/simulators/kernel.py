@@ -21,10 +21,8 @@ class FixedLocationKernelSimulator(Simulator):
     def __init__(self, score_compression_data: "ScoreCompressionData" = None,  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # score_compression_data may be None when the simulator is constructed before the
-        # kernels are known (e.g. as the initial simulator in a pipeline that will swap in
-        # real kernels via use_kernel_simulator_if_possible). Kernels are required before
-        # any simulation is actually run.
+        # None when the simulator is built before the kernels are known; they are required
+        # before any simulation runs.
         if score_compression_data is None:
             self.sensitivity_kernels = None
             self.trace_length = None

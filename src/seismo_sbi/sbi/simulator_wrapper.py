@@ -18,7 +18,6 @@ class GeneralSimulatorWrapper:
 
     def __init__(self, simulation_parameters: SimulationParameters,  parameters, data_loader, samplers):
 
-        # in future, this can be extended for aribitrary forward models
         default_config = (simulation_parameters.simulation_type, None)
         self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, samplers)
         self.data_loader_callable = data_loader.convert_sim_data_to_array
@@ -28,20 +27,17 @@ class GeneralSimulatorWrapper:
 
     def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, samplers):
 
-        # Start from any effect-level config parsed from YAML (e.g. scale_range,
-        # gaussian_sigma).  Make a shallow copy so we don't mutate the original.
+        # Copied so the parsed configuration is not mutated.
         effect_configs = dict(getattr(parameters, 'nuisance_effect_config', {}))
 
-        # Only nuisances staged "simulation" are baked in here; those staged
-        # "training_augmentation" are folded in per batch by the dataloader instead.
+        # Nuisances staged "training_augmentation" are folded in per batch by the dataloader.
         nuisance_stage = getattr(parameters, 'nuisance_stage', {})
         sim_staged_keys = [
             key for key in parameters.nuisance.keys()
             if nuisance_stage.get(key, "simulation") == "simulation"
         ]
 
-        # Shift-based effects need the sampling rate to turn seconds into samples, so it is
-        # injected here rather than repeated in every configuration file.
+        # Shift-based effects need the sampling rate to turn seconds into samples.
         for _shift_key in ('time_shift_error', 'azimuthal_anisotropy',
                            'shear_wave_splitting', 'dispersion_spread'):
             if _shift_key in sim_staged_keys:

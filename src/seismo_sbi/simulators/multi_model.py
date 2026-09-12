@@ -16,37 +16,21 @@ from .sources import GenericPointSource
 class MultiModelSimulator(Simulator, ABC):
     """Dispatch receiver subsets to per-region sub-simulators and merge outputs.
 
-    Holds a list of ``(sub_receivers, sub_simulator)`` where each sub-simulator
-    is responsible for a *subset* of the global receiver geometry.  All
-    sub-simulators share the global ``components`` / processing configuration.
+    ``models`` is one dict per region, each carrying ``"receivers"`` and either a pre-built
+    ``"simulator"`` or the backend keys :meth:`_build_sub_simulator` consumes. Every region
+    shares the global components and processing configuration.
 
-    Parameters
-    ----------
-    models : list[dict]
-        One dict per region.  Each must contain ``"receivers"`` (a
-        :class:`Receivers` subset) and either a pre-built ``"simulator"`` or the
-        backend-specific keys consumed by :meth:`_build_sub_simulator`.
-
-    Notes
-    -----
-    * Post-processing (amplitude error, dropout, time shifts) is applied ONCE at
-      the union level by the inherited :meth:`Simulator.run_simulation`, so the
-      sub-simulators must be constructed WITHOUT post-processing effects.
-    * **Member draws are independent per region.**  With no seed, each
-      sub-simulator draws from the shared RNG independently; with an explicit
-      seed, sub-model ``i`` is given ``seed + i`` so draws stay reproducible yet
-      decorrelated across regions.  (In production the forward path passes no
-      seed, so each region draws an independent member every simulation.)
+    Post-processing is applied once over the union of the receivers by the inherited
+    :meth:`Simulator.run_simulation`, so sub-simulators are built without effects. Member
+    draws are independent per region: unseeded from the shared generator, seeded with
+    ``seed + i`` for region ``i``.
     """
 
     def __init__(self, models, *args, **kwargs):
-        # Cooperative init: forwards components/receivers/duration/processing/
-        # post_processing_effects (and, for the CPS subclass, cps_path) down the
-        # MRO to the backend base and finally Simulator.__init__.
+        # Cooperative init: the keyword arguments travel down the MRO to Simulator.__init__.
         super().__init__(*args, **kwargs)
         self.sub_sims, self.sub_receivers = self._init_sub_models(models)
-        # Per-region member count (regions are equal-sized ensembles); retained
-        # for parity with the historical single-class MultiModelCPSSimulator.
+        # Per-region member count; the regions are equal-sized ensembles.
         self.num_models = self.sub_sims[0].num_models if self.sub_sims else 0
 
     def _init_sub_models(self, models):
@@ -80,27 +64,19 @@ class MultiModelSimulator(Simulator, ABC):
 
     @staticmethod
     def _sub_model_seed(seed, model_index):
-        """Independent-per-region draw: offset the seed so each region draws a
-        decorrelated (but reproducible) member.  ``seed=None`` stays ``None``
-        (unseeded => independent draws from the shared RNG)."""
+        """The seed region ``index`` draws with, or ``None`` to draw from the shared generator."""
         if seed is None:
             return None
         return seed + model_index
 
     def generic_point_source_simulation(self, source: GenericPointSource, *,
                                         seed=None, **kwargs) -> dict:
-        """Run each sub-simulator on its receiver subset and merge per-station.
-
-        The returned dict has the same structure as a single :class:`Simulator`
-        over ``self.receivers``.
-        """
+        """``{station: {component: waveform}}`` over the union of every region's receivers."""
         per_model_results = []
         for model_index, (sim, sub_rec) in enumerate(zip(self.sub_sims, self.sub_receivers)):
             sub_kwargs = dict(kwargs)
             sub_seed = self._sub_model_seed(seed, model_index)
-            # Only inject `seed` when explicitly requested so the production
-            # (unseeded) path is byte-identical to the historical single-class
-            # behaviour and never relies on a sub-simulator accepting `seed`.
+            # Passed only when asked for, so a sub-simulator need not accept a seed at all.
             if sub_seed is not None:
                 sub_kwargs["seed"] = sub_seed
             sub_map = sim.generic_point_source_simulation(source, **sub_kwargs)

@@ -20,39 +20,23 @@ from .querier import InstaseisDBQuerier
 #: draws a distinct but reproducible member without colliding with the per-region offset.
 PER_STATION_SEED_STRIDE = 10_000
 
-#: Per-process cache of open database handles, keyed by
-#: ``(pid, db_path, seismogram_length, processing_signature)``. Opening a database costs about
-#: 17 times one seismogram read, so reuse amortises it to once per member per worker. It is a
-#: module global rather than an instance attribute because the simulator is pickled out to
-#: workers and an open file handle is not picklable; the pid in the key keeps a forked child
-#: from reusing its parent's. The database is read-only, so a cached read is bit-identical.
+#: Open database handles, keyed by ``(pid, db_path, seismogram_length, processing_signature)``.
+#: A module global rather than an instance attribute because the simulator is pickled out to
+#: workers and an open handle is not picklable; the pid keeps a forked child off its parent's.
 _QUERIER_CACHE = OrderedDict()
 
-#: Cap on :data:`_QUERIER_CACHE`. Left at the default, each simulator raises it to at least its
-#: own member count so one ensemble never thrashes; ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides it.
-#: *** MEMORY BUDGET — an open handle costs ~55 MB RESIDENT (measured: 53 MB at open, 55 MB after
-#: real reads; independent of instaseis ``buffer_size_in_mb``, so this is DB metadata, not the GF
-#: buffer). The cache is PER WORKER PROCESS, so dataset generation costs
-#: ``n_workers * min(cap, n_members) * 55 MB``. At the default cap with a 62-member Mode-A/B
-#: ensemble and 60 joblib workers that is ~206 GB, which OOM-killed a 500k gen at 47%
-#: (SIGKILL'd loky worker). Set an explicit cap on memory-constrained gen nodes: cap 20 x 60
-#: workers ~= 67 GB. The cost of a miss is one ``instaseis.open_db`` (~168 ms vs ~7 ms for a
-#: cached read), so trade cap against wall-clock, not correctness — output is unaffected. ***
+#: Cap on :data:`_QUERIER_CACHE`, and a memory budget: an open handle costs about 55 MB resident
+#: per worker process. A miss costs one ``instaseis.open_db``, never correctness.
+#: ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides it; the default grows to one ensemble.
 _QUERIER_CACHE_MAXSIZE = max(1, int(os.environ.get("SEISMO_QUERIER_CACHE_MAXSIZE", "64")))
 
-#: True when the cap above came from an EXPLICIT ``SEISMO_QUERIER_CACHE_MAXSIZE``. An explicit
-#: operator cap is a memory BUDGET and must be authoritative: auto-growing past it (as this module
-#: did unconditionally before) silently reinstated the very OOM the operator set it to avoid.
+#: True when the cap came from ``SEISMO_QUERIER_CACHE_MAXSIZE``, in which case it is
+#: authoritative and nothing may grow it.
 _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT = "SEISMO_QUERIER_CACHE_MAXSIZE" in os.environ
 
 
 def _ensure_querier_cache_capacity(n_members: int) -> None:
-    """Grow the global LRU cap to hold at least one full ensemble's worth of handles.
-
-    No-op when the cap was set explicitly via ``SEISMO_QUERIER_CACHE_MAXSIZE`` — that is a hard
-    memory budget (see :data:`_QUERIER_CACHE_MAXSIZE`), and honouring it costs only cache misses,
-    never correctness. Behaviour is unchanged when the env var is unset.
-    """
+    """Grow the cache cap to hold one full ensemble; a no-op against an explicit cap."""
     global _QUERIER_CACHE_MAXSIZE
     if _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT:
         return
@@ -61,28 +45,11 @@ def _ensure_querier_cache_capacity(n_members: int) -> None:
 class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     """Instaseis simulator backed by an ensemble of Instaseis databases.
 
-    By default one DB is drawn at random per simulation (via ``select_member``) and used for ALL
-    stations, matching the CPS ensemble methodology.
-
-    With ``resample_member_per_station=True`` (intra-ensemble / per-station sampling) an INDEPENDENT
-    member is drawn for each station within this region for a given event. This is the physically
-    faithful model when the ensemble members are *path-specific* 1-D models (e.g. the Santorini
-    Mode-A caldera->station corridors): different stations have different paths, so their theory
-    errors should be (partially) decorrelated rather than sharing one identical 1-D model.
-
-    Both paths reuse open DB handles through the per-process :data:`_QUERIER_CACHE`, so per-station
-    resampling stays ~as fast as the per-event default instead of paying one ``instaseis.open_db``
-    per station (see the cache docstring).
-
-    Parameters
-    ----------
-    instaseis_ensemble_dir : str or Path
-        Directory whose immediate subdirectories are each a full Instaseis DB.
-    instaseis_fiducial_loc : str or Path
-        Path to the fiducial (reference) Instaseis DB.
-    resample_member_per_station : bool, default False
-        Draw an independent member per station per simulation (opt-in). ``use_fiducial=True`` always
-        overrides this (every station uses the single fiducial member).
+    ``instaseis_ensemble_dir`` is a directory whose immediate subdirectories are each a full
+    database; ``instaseis_fiducial_loc`` is the reference one. One member is drawn per
+    simulation and used for every station, unless ``resample_member_per_station`` draws an
+    independent member per station, which is the faithful model when the members are
+    path-specific 1-D models. ``use_fiducial=True`` always overrides both.
     """
 
     def __init__(self, instaseis_ensemble_dir, instaseis_fiducial_loc, *args,
@@ -124,12 +91,8 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         self._fiducial_member = str(instaseis_fiducial_loc)
         _ensure_querier_cache_capacity(len(self._members))
 
-        # Derive sampling_rate from the fiducial DB. Open handles live in the MODULE-level
-        # _QUERIER_CACHE (keyed by pid+path), never on the instance: GeneralSimulatorWrapper
-        # deepcopies the simulation_callable and joblib pickles the simulator out to dataset workers,
-        # and an open instaseis/h5py handle is not picklable ("h5py objects cannot be pickled").
-        # Keeping the cache off the instance preserves picklability while still amortizing the
-        # ~168 ms instaseis.open_db across stations and simulations within each worker process.
+        # The handle stays in the module-level cache, never on the instance: the simulator is
+        # deepcopied and pickled out to workers, and an open database handle is not picklable.
         self.sampling_rate = float(
             self._cached_querier(self._fiducial_member).sampling_rate
         )
@@ -143,21 +106,15 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         return self._fiducial_member
 
     def _open_querier(self, db_path) -> InstaseisDBQuerier:
-        # str() converts numpy.str_ (returned by np.random.choice on string lists) to
-        # plain Python str to avoid "Can't mix strings and bytes" in os.walk inside
-        # instaseis.open_db.
+        # str() converts the numpy.str_ that np.random.choice returns; instaseis.open_db walks
+        # the path and cannot mix strings and bytes.
         return InstaseisDBQuerier(
             str(db_path), self.synthetics_processing, self.seismogram_length,
             self.source_depth_offset_km
         )
 
     def _cached_querier(self, db_path) -> InstaseisDBQuerier:
-        """Return an open querier for ``db_path``, reusing the per-process LRU cache.
-
-        See :data:`_QUERIER_CACHE`. On a miss, opens fresh via :meth:`_open_querier` and stores it;
-        on a hit, marks it most-recently-used. Evicts least-recently-used handles once the cache
-        exceeds :data:`_QUERIER_CACHE_MAXSIZE`.
-        """
+        """An open querier for ``db_path``, from :data:`_QUERIER_CACHE` or freshly opened."""
         key = (os.getpid(), str(db_path), self.seismogram_length, self._processing_signature)
         querier = _QUERIER_CACHE.get(key)
         if querier is None:
@@ -194,9 +151,8 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
 
     @staticmethod
     def sector_index(azimuth_deg: np.ndarray, boundaries: np.ndarray) -> np.ndarray:
-        """Sector id per azimuth on the circle: the arc before the first boundary and the arc
-        after the last one are the SAME sector (wrap-around), so K boundaries give K sectors
-        (1 sector for K = 0 or 1)."""
+        """Sector id per azimuth in deg. The arcs before the first and after the last boundary
+        are the same sector, so K boundaries give K sectors, and K < 2 gives one."""
         az = np.mod(np.asarray(azimuth_deg, dtype=np.float64), 360.0)
         if len(boundaries) <= 1:
             return np.zeros(len(az), dtype=int)
@@ -217,11 +173,10 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         return np.asarray(out)
 
     def draw_sector_members(self, source: GenericPointSource, *, seed=None):
-        """``(member_per_station list, boundaries)`` for one simulation under sector sampling.
+        """``(member per station, sector boundaries in deg)`` for one simulation.
 
-        Seeded => the boundaries come from ``default_rng(seed)`` and sector ``j`` uses
-        ``select_member(seed=seed + j * PER_STATION_SEED_STRIDE)`` (reproducible, distinct per
-        sector); unseeded => the shared global RNG throughout.
+        Seeded, sector ``j`` uses ``seed + j * PER_STATION_SEED_STRIDE``; unseeded, every draw
+        comes from the shared global generator.
         """
         rng = np.random.default_rng(seed) if seed is not None else np.random
         bounds = self.sector_boundaries(self.sector_lambda, rng)
@@ -247,11 +202,10 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
 
     def _simulate_per_station(self, source: GenericPointSource, *,
                               seed=None, stf_duration=None) -> dict:
-        """Draw an INDEPENDENT member per station and serve each from the cached querier.
+        """Seismograms with an independent member drawn per station.
 
-        Enabled by ``resample_member_per_station=True``. Unseeded (production) => N independent draws
-        from the shared RNG; seeded => station ``i`` uses ``seed + i*PER_STATION_SEED_STRIDE`` so each
-        station is distinct yet reproducible (and decorrelated from the per-region seed offset).
+        Seeded, station ``i`` uses ``seed + i * PER_STATION_SEED_STRIDE``; unseeded, every draw
+        comes from the shared global generator.
         """
         all_seismograms_map = {}
         for station_index, receiver in enumerate(self.receivers.iterate()):

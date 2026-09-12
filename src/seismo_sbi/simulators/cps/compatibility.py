@@ -1,3 +1,9 @@
+"""Turn receivers and a point source into the records the CPS programs read.
+
+``build_objstats`` measures each source-receiver distance and azimuth and packs them with the
+window parameters; ``load_velocity_model`` reads a layered model from a text file.
+"""
+
 from obspy.geodetics.base import gps2dist_azimuth
 from collections import namedtuple
 import numpy as np
@@ -13,19 +19,10 @@ ReceiverStats = namedtuple('ReceiverStats', [
 ])
 
 def build_objstats(receivers, source, window, vred=0.0, t0=0.0):
-    """
-    Converts Receivers and GenericPointSource into a list of ReceiverStats
-    suitable for GF computation.
+    """One ``ReceiverStats`` per receiver, the input CPS needs for a Green's function.
 
-    Parameters:
-    - receivers: Receivers object
-    - source: GenericPointSource object
-    - window: float, window duration (s)
-    - vred: float, reduction velocity (km/s), default 0.0
-    - t0: float, reference time shift, default 0.0
-
-    Returns:
-    - List[ReceiverStats]
+    ``window`` is the window duration in s, ``vred`` the reduction speed in km/s and ``t0``
+    the reference time shift in s.
     """
     src_lat = source.source_location.latitude
     src_lon = source.source_location.longitude
@@ -57,8 +54,5 @@ def build_objstats(receivers, source, window, vred=0.0, t0=0.0):
 
 
 def load_velocity_model(filepath):
-    """
-    Loads a 1D velocity model using NumPy's loadtxt.
-    Skips comments and returns (6, N) array for write_Model96.
-    """
-    return np.loadtxt(filepath).T  # shape: (6, N)
+    """A layered velocity model read from ``filepath``, shaped ``(6, n_layers)``."""
+    return np.loadtxt(filepath).T

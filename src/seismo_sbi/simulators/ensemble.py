@@ -13,26 +13,23 @@ from .base import Simulator
 
 
 class GFEnsembleSimulator(Simulator, ABC):
-    """Simulator backed by an ensemble of precomputed 1D Earth-model GFs.
+    """Simulator backed by an ensemble of precomputed one-dimensional Earth models.
 
-    One member is drawn per simulation; the fiducial member is used when
-    use_fiducial=True.  Subclasses must expose `members` and `fiducial_member`
-    and implement `_simulate_with_member` if they rely on the member-dispatch
-    pattern (e.g. Instaseis).  CPS subclasses keep their own
-    generic_point_source_simulation and call select_member() directly inside
-    their GF-loading routine.
+    A subclass exposes ``members`` and ``fiducial_member``. It then either implements
+    ``_simulate_with_member``, or calls :meth:`select_member` inside its own
+    ``generic_point_source_simulation``, as the CPS backends do.
     """
 
     @property
     @abstractmethod
     def members(self) -> list:
-        """Ordered list of ensemble members (e.g. folder paths or DB paths)."""
+        """Ensemble members in a fixed order, usually database paths."""
         ...
 
     @property
     @abstractmethod
     def fiducial_member(self):
-        """The fiducial (reference) member of the ensemble."""
+        """The reference member of the ensemble."""
         ...
 
     @property
@@ -40,10 +37,9 @@ class GFEnsembleSimulator(Simulator, ABC):
         return len(self.members)
 
     def select_member(self, *, use_fiducial=False, seed=None):
-        """Draw one member from the ensemble.
+        """One member drawn from the ensemble.
 
-        Reproduces the legacy CPS call sequence exactly:
-        np.random.seed(seed) then np.random.choice(members).
+        A seed is applied as ``np.random.seed(seed)`` then ``np.random.choice(members)``.
         """
         if use_fiducial:
             return self.fiducial_member
@@ -52,12 +48,7 @@ class GFEnsembleSimulator(Simulator, ABC):
         return np.random.choice(self.members)
 
     def _simulate_with_member(self, member, source, **kwargs) -> dict:
-        """Simulate seismograms using a specific ensemble member.
-
-        Override in subclasses that use the select_member →
-        _simulate_with_member dispatch pattern (e.g. InstaseisEnsembleSimulator).
-        CPS subclasses integrate member selection into their GF loading instead.
-        """
+        """``{station: {component: waveform}}`` simulated on one ensemble member."""
         raise NotImplementedError(
             f"{type(self).__name__} must implement _simulate_with_member "
             "to use the member-dispatch pattern."

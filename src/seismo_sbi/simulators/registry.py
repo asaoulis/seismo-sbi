@@ -22,13 +22,10 @@ from .cps.simulator import (
 
 
 def _build_cps_multi_models_from_path(simulation_parameters):
-    """Read a single JSON config file and build list of sub-model dicts.
+    """Sub-model dicts read from the JSON file ``cps_multi_models_path`` names.
 
-    The JSON file must contain a list of objects, each with at least:
-
-    - "cps_GFs_path": str
-    - "cps_GFs_fiducial_path": str
-    - "receivers": [station_name, ...]
+    The file holds a list of objects, each with ``cps_GFs_path``, ``cps_GFs_fiducial_path``
+    and ``receivers``, a list of station names.
     """
     cfg_path_str = simulation_parameters.cps_multi_models_path
     if not cfg_path_str:
@@ -180,7 +177,6 @@ def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, 
 
 
 def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_effects, data_flattening):
-    # simulator_config[1] can override and directly provide model dicts.
     if simulator_config[1] is not None:
         models = simulator_config[1]
     else:
@@ -205,7 +201,6 @@ def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_
 
 
 def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_flattening):
-    # simulator_config[1] can override and directly provide model dicts.
     if simulator_config[1] is not None:
         models = simulator_config[1]
     else:
@@ -239,8 +234,7 @@ def _build_cps_covariance(simulation_parameters, simulator_config, pp_effects, d
 
 #: Forward-model builders, selectable by ``simulation_type``. Each takes the simulation
 #: parameters, the ``(name, payload)`` configuration tuple, the post-processing effects and the
-#: callable that flattens a simulation into a data vector, and returns a
-#: :class:`~seismo_sbi.simulators.base.Simulator`.
+#: callable that flattens a simulation into a data vector, and returns a ``Simulator``.
 SIMULATOR_REGISTRY = {
     "instaseis": _build_instaseis,
     "instaseis_ensemble": _build_instaseis_ensemble,

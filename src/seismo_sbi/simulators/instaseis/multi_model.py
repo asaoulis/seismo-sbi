@@ -9,39 +9,24 @@ from .ensemble import InstaseisEnsembleSimulator
 
 
 class InstaseisMultiModelSimulator(MultiModelSimulator):
-    """Multi-region simulator backed by per-region Instaseis-DB ensembles.
+    """Multi-region simulator backed by one Instaseis database ensemble per region.
 
-    Each sub-model config dict provides either a pre-built ``"simulator"`` (an
-    :class:`InstaseisEnsembleSimulator`) or the paths to build one:
-
-    - ``"receivers"``  : a :class:`Receivers` subset for this region,
-    - ``"ensemble_dir"``: directory of member Instaseis DBs (drawn per sim),
-    - ``"fiducial_dir"``: the fiducial (reference) DB (used when
-      ``use_fiducial=True``).
-
-    With ``use_fiducial=True`` each region routes its receivers to ITS OWN
-    fiducial DB (per-mode fiducial), so the merged output is the regionally
-    consistent reference seismogram.
-
-    ``resample_member_per_station`` is forwarded to every region's
-    :class:`InstaseisEnsembleSimulator` (each region then independently draws a
-    fresh member per station — the intra-ensemble / per-station theory-error
-    mode). Pre-built ``"simulator"`` entries keep whatever flag they were built
-    with.
+    Each sub-model dict carries ``"receivers"`` and either a pre-built ``"simulator"`` or
+    ``"ensemble_dir"`` and ``"fiducial_dir"``. Under ``use_fiducial=True`` each region uses its
+    own reference database, so the merged output is regionally consistent.
+    ``resample_member_per_station`` is forwarded to every region built here; a pre-built
+    simulator keeps the flag it was built with.
     """
 
     def __init__(self, models, *args, resample_member_per_station=False, member_sampling=None,
                  sector_lambda=None, **kwargs):
-        # Set BEFORE super().__init__: MultiModelSimulator.__init__ builds the sub-simulators
-        # (via _init_sub_models -> _build_sub_simulator) inside its own __init__, and
-        # _build_sub_simulator reads this flag to forward it into each region's ensemble.
+        # Set before super().__init__, which builds the sub-simulators and reads these.
         self.resample_member_per_station = resample_member_per_station
         self.member_sampling = member_sampling
         self.sector_lambda = sector_lambda
         super().__init__(models, *args, **kwargs)
-        # Parity with InstaseisEnsembleSimulator / InstaseisSourceSimulator:
-        # expose a sampling_rate (all regions share period/sampling).  Optional
-        # via getattr so dependency-free mock sub-sims (no DB) still construct.
+        # Every region shares the sampling rate; via getattr so a mock sub-simulator with no
+        # database still constructs.
         self.sampling_rate = getattr(self.sub_sims[0], "sampling_rate", None)
 
     def _build_sub_simulator(self, cfg, sub_receivers):
@@ -60,7 +45,6 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
             receivers=sub_receivers,
             seismogram_duration_in_s=self.seismogram_length,
             synthetics_processing=self.synthetics_processing,
-            # Parent applies the post-processing chain once over the union.
             post_processing_effects=[],
             resample_member_per_station=self.resample_member_per_station,
             member_sampling=getattr(self, 'member_sampling', None),

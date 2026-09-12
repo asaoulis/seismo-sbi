@@ -9,11 +9,10 @@ import contextlib
 import joblib
 
 
-# Monkey-patch of joblib to report into tqdm progress bar,
-# solution taken from https://stackoverflow.com/a/61689175
+# After https://stackoverflow.com/a/61689175
 @contextlib.contextmanager
 def tqdm_joblib(tqdm_object):
-    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+    """Patch joblib to advance ``tqdm_object`` as a parallel loop completes tasks."""
 
     def tqdm_print_progress(self):
         if self.n_completed_tasks > tqdm_object.n:

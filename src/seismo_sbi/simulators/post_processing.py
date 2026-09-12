@@ -20,27 +20,10 @@ import numpy as np
 
 
 class SeismogramEffect(ABC):
-    """A single post-processing transformation applied to a seismogram map.
+    """One transformation of a ``{station: {component: waveform}}`` map.
 
-    Subclasses implement ``__call__`` and extract their own key(s) from
-    ``nuisance_params``.  If the relevant key is absent the method must return
-    the input map unchanged (identity behaviour).
-
-    Parameters
-    ----------
-    seismograms_map:
-        ``{station_name: {component: np.ndarray}}`` — the raw simulator output.
-    receivers:
-        ``Receivers`` object (provides station ordering and metadata).
-    **nuisance_params:
-        Key-value pairs from the sampled nuisance parameter dict; effects
-        select their own key and ignore everything else.
-
-    Returns
-    -------
-    dict
-        A new (or the same) ``{station_name: {component: np.ndarray}}`` dict
-        with the effect applied.
+    A subclass implements ``__call__``, takes its own key out of ``nuisance_params``, ignores
+    every other key, and returns the input unchanged when its key is absent.
     """
 
     @abstractmethod
@@ -57,15 +40,8 @@ class SeismogramEffect(ABC):
 
 
 class PostProcessingChain:
-    """Sequential composition of zero or more :class:`SeismogramEffect` objects.
-
-    An empty chain is the identity transformation.
-
-    Parameters
-    ----------
-    effects:
-        Ordered list of :class:`SeismogramEffect` instances to apply in
-        sequence.  Defaults to an empty list.
+    """Effects applied in order, each one's output feeding the next; an empty chain is
+    the identity.
     """
 
     def __init__(self, effects: list[SeismogramEffect] | None = None) -> None:
@@ -77,22 +53,7 @@ class PostProcessingChain:
         receivers,
         nuisance_params: dict,
     ) -> dict:
-        """Apply all effects in order.
-
-        Parameters
-        ----------
-        seismograms_map:
-            ``{station_name: {component: np.ndarray}}``
-        receivers:
-            ``Receivers`` instance.
-        nuisance_params:
-            Full nuisance parameter dict — each effect extracts its own key.
-
-        Returns
-        -------
-        dict
-            Post-processed seismogram map.
-        """
+        """The seismogram map with every effect applied in order."""
         result = seismograms_map
         for effect in self.effects:
             result = effect(result, receivers, **nuisance_params)
@@ -105,21 +66,9 @@ class PostProcessingChain:
 def _apply_per_station_gated(seismograms_map: dict, probability, transform) -> dict:
     """Apply ``transform`` to each station independently with the given probability.
 
-    For each station a Bernoulli gate is drawn (``np.random.uniform() < p``); if it
-    fires, ``transform(components)`` produces the new ``{component: trace}`` dict for
-    that station, otherwise the station's traces are passed through (copied to
-    ``float64``).  This is the common skeleton of the probability-gated effects; the
-    RNG call order is **gate draw first, then whatever ``transform`` draws** — matching
-    the original per-effect loops so seeded behaviour is unchanged.
-
-    Parameters
-    ----------
-    seismograms_map:
-        ``{station: {component: np.ndarray}}``.
-    probability:
-        Per-station activation probability, clipped to ``[0, 1]``.
-    transform:
-        ``components_dict -> components_dict`` applied to a selected station.
+    ``probability`` is clipped to ``[0, 1]``; a station that does not fire is copied through
+    as float64. The gate is drawn before whatever ``transform`` draws, which fixes the order
+    the random number generator is called in.
     """
     p = float(np.clip(probability, 0.0, 1.0))
     result = {}
@@ -137,67 +86,26 @@ def _apply_per_station_gated(seismograms_map: dict, probability, transform) -> d
 
 
 class AmplitudeErrorEffect(SeismogramEffect):
-    """Stochastic amplitude modulation — per-station gated (legacy) or per-trace always-on.
+    """Multiply a station's traces by a random amplitude factor.
 
-    **Legacy model** (``distribution='uniform'``, ``per_component=False``,
-    ``always_on=False`` — the defaults; RNG call order byte-identical to the original):
+    Nuisance key ``amplitude_error``: a per-station activation probability, or, under
+    ``always_on``, a strength multiplier on the width (0 is the identity, 1 the configured
+    width, 2 double).
 
-    1. **Dropout stage** — decide whether to apply modulation at all.
-       The probability is ``amplitude_error`` (a value in ``[0, 1]``).
-       ``amplitude_error = 0.0`` → no station is ever modulated (identity).
-       ``amplitude_error = 1.0`` → every station is modulated.
-    2. **Scale stage** — if the station is selected, multiply all its component
-       traces by ONE scale factor drawn uniformly from ``[scale_low, scale_high]``.
-
-    The measured per-trace amplitude error of regional records against 1-D synthetics is
-    log-normal with σ ≈ 0.3 dex, independent between the components of a station and present
-    on every trace, rather than one flat factor per station on a gated minority of them.
-    Three switches express that structure:
-
-    * ``distribution='lognormal'`` — ``g = 10 ** (σ · N(0, 1))`` with
-      ``σ = log_sigma_dex`` (default :data:`DEFAULT_LOG_SIGMA_DEX`) instead of
-      ``U(scale_low, scale_high)``.
-    * ``per_component=True`` — an independent draw per (station, component) trace
-      instead of one draw per station.
-    * ``always_on=True`` — no Bernoulli gate: every station is modulated, and the
-      nuisance value ``amplitude_error`` becomes a **strength multiplier** on σ
-      (``0`` → identity, ``1`` → the configured σ, ``2`` → double), the same
-      convention as :class:`ScatteringCodaEffect` in distance mode.  With the
-      uniform distribution the multiplier only switches the effect on/off.
-
-    Nuisance key: ``amplitude_error`` — a probability in ``[0, 1]`` (legacy) or a
-    strength multiplier (``always_on``).  If ``amplitude_error`` is absent from
-    ``nuisance_params`` the input map is returned unchanged.
-
-    Parameters
-    ----------
-    scale_range:
-        Optional ``(low, high)`` tuple overriding the default uniform scale range.
-        Useful in tests to make the output deterministic (e.g.
-        ``scale_range=(2.0, 2.0)`` always applies a factor of exactly 2).
-        Defaults to ``(DEFAULT_SCALE_LOW, DEFAULT_SCALE_HIGH)``.
-    distribution:
-        ``'uniform'`` (default, legacy) or ``'lognormal'``.
-    log_sigma_dex:
-        Width of the log-normal in dex (``distribution='lognormal'`` only).
-    per_component:
-        Draw independently per component trace instead of once per station.
-    always_on:
-        Disable the per-station Bernoulli gate; nuisance value = strength multiplier.
-
-    Note
-    ----
-    This effect is stochastic; different calls with the same inputs may
-    produce different outputs.  Use ``numpy.random.seed`` in tests that
-    require reproducibility.
+    By default one factor per station is drawn from ``uniform(*scale_range)``.
+    ``distribution='lognormal'`` draws ``10 ** (log_sigma_dex * N(0, 1))`` instead;
+    ``per_component`` draws once per trace rather than once per station. Measured per-trace
+    amplitude errors of regional records against one-dimensional synthetics are log-normal at
+    about 0.3 dex and independent between a station's components, which is what those two
+    switches express.
     """
 
     #: Default lower bound of the per-station scale factor distribution.
     DEFAULT_SCALE_LOW: float = 0.5
     #: Default upper bound of the per-station scale factor distribution.
     DEFAULT_SCALE_HIGH: float = 2.0
-    #: Default log-normal width in dex (``distribution='lognormal'``); measured per-trace
-    #: widths on regional broadband records run 0.31-0.38 dex.
+    #: Default log-normal width in dex; measured per-trace widths on regional broadband
+    #: records run 0.31 to 0.38 dex.
     DEFAULT_LOG_SIGMA_DEX: float = 0.3
     VALID_DISTRIBUTIONS = ("uniform", "lognormal")
 
@@ -228,7 +136,7 @@ class AmplitudeErrorEffect(SeismogramEffect):
         self._always_on = bool(always_on)
 
     def _draw_scale(self, multiplier: float) -> float:
-        """One scale factor.  Uniform ignores ``multiplier`` (legacy RNG call preserved)."""
+        """One amplitude scale factor; the uniform distribution ignores ``multiplier``."""
         if self._distribution == "lognormal":
             return float(10.0 ** (multiplier * self._log_sigma * np.random.normal()))
         return float(np.random.uniform(self._scale_low, self._scale_high))
@@ -263,29 +171,16 @@ class AmplitudeErrorEffect(SeismogramEffect):
             }
 
         def _scale(components):
-            # Independent per-station (or per-trace) scale factor
             return self._scale_components(components, 1.0)
 
         return _apply_per_station_gated(seismograms_map, amplitude_error, _scale)
 
 
 class InstrumentDropoutEffect(SeismogramEffect):
-    """Randomly zero-out entire stations with a given probability.
+    """Zero a whole station's traces, independently per station.
 
-    Nuisance key: ``instrument_dropout`` — a probability in ``[0, 1]`` that
-    each station's traces are replaced with zeros.  Each station is sampled
-    independently.
-
-    Special cases:
-    - ``instrument_dropout = 0.0`` → no station is zeroed (identity).
-    - ``instrument_dropout = 1.0`` → all stations are zeroed.
-    - Key absent → input map returned unchanged.
-
-    Note
-    ----
-    This effect is stochastic; different calls with the same inputs may produce
-    different outputs.  To fix the random state in tests use
-    ``numpy.random.seed``.
+    Nuisance key ``instrument_dropout``: the probability in ``[0, 1]`` that a station is
+    zeroed. Absent or zero is the identity.
     """
 
     def __call__(
@@ -300,42 +195,23 @@ class InstrumentDropoutEffect(SeismogramEffect):
             return seismograms_map
 
         def _zero(components):
-            # zero out all components for this station
             return {comp: np.zeros_like(trace, dtype=np.float64) for comp, trace in components.items()}
 
         return _apply_per_station_gated(seismograms_map, instrument_dropout, _zero)
 
 
 class ComponentDropoutEffect(SeismogramEffect):
-    """Randomly zero individual *present* components (channels) per station.
+    """Zero individual present channels of a station, modelling an event missing a subset
+    of them.
 
-    Models events that are missing a subset of channels (different from the fixed
-    ``components.json`` pattern a model trains on).  A missing component is represented
-    everywhere as an **exactly-zero** channel, so this effect simply zeros selected
-    present channels.
+    Nuisance key ``component_dropout``: the probability each present channel is dropped,
+    drawn independently per channel in ``receivers.iterate()`` order. At least one channel
+    per station is always kept, a whole absent station being
+    :class:`InstrumentDropoutEffect`'s business.
 
-    Nuisance key: ``component_dropout`` — a per-channel drop probability ``p`` in
-    ``[0, 1]``.  For each station, every *present* component (``receiver.components``)
-    is independently dropped with probability ``p`` (Bernoulli).  At least one present
-    component is always kept (a station never becomes all-zero — full-station absence is
-    the domain of :class:`InstrumentDropoutEffect` / variable-station masking), so
-    stations with a single present component are never touched.
-
-    Special cases:
-    - ``component_dropout = 0.0`` → identity.
-    - ``component_dropout = 1.0`` → all-but-one present channel zeroed, per station.
-    - Key absent → input map returned unchanged.
-
-    **Ordering contract (critical):** this effect must be applied to the data *after*
-    sensor noise has been added, so a dropped channel is exactly zero (matching a
-    genuinely-absent channel).  Applying it before noise would leave ``0 + noise``.  It
-    is therefore staged ``training_augmentation_post_noise`` (see
-    :data:`POST_NOISE_EFFECT_KEYS`), never baked into a simulation.
-
-    Note
-    ----
-    Stochastic; seed ``numpy.random`` in tests for reproducibility.  Draws proceed in
-    ``receivers.iterate()`` order, one Bernoulli per present channel.
+    It must run after sensor noise is added, so a dropped channel is exactly zero as a
+    genuinely absent one is, which is why it is staged post-noise and never baked into a
+    simulation.
     """
 
     def __call__(
@@ -350,8 +226,8 @@ class ComponentDropoutEffect(SeismogramEffect):
             return seismograms_map
 
         p = float(np.clip(component_dropout, 0.0, 1.0))
-        # Present components per station come from the receivers (NOT the map keys, which
-        # also carry zero-filled *absent* components the adapter inserts).
+        # From the receivers, not the map keys, which also carry zero-filled absent
+        # components the adapter inserts.
         present_by_station = {rec.station_name: list(rec.components) for rec in receivers.iterate()}
 
         result = {}
@@ -360,8 +236,8 @@ class ComponentDropoutEffect(SeismogramEffect):
             present = [c for c in present_by_station.get(station, []) if c in new_components]
             if len(present) >= 2:
                 drop = [c for c in present if np.random.uniform() < p]
-                # Keep >= 1 present channel: if every present channel was selected, restore
-                # one at random so the station never becomes all-zero.
+                # One channel is restored at random if every one was selected, so the
+                # station never becomes all-zero.
                 if len(drop) == len(present):
                     keep = present[np.random.randint(len(present))]
                     drop = [c for c in drop if c != keep]
@@ -375,23 +251,7 @@ class ComponentDropoutEffect(SeismogramEffect):
 
 
 def _lanczos_kernel_values(x: np.ndarray, order: int) -> np.ndarray:
-    """Evaluate the Lanczos kernel L(x) = sinc(x) * sinc(x/a) element-wise.
-
-    The kernel is zero outside the support ``|x| >= order``.  At ``x = 0``
-    the limit value 1.0 is returned.
-
-    Parameters
-    ----------
-    x:
-        Argument values (any shape).
-    order:
-        Kernel half-width / number of lobes (``a`` in the literature).
-
-    Returns
-    -------
-    np.ndarray
-        Kernel values with the same shape as ``x``.
-    """
+    """The Lanczos kernel ``sinc(x) * sinc(x / order)``, zero outside ``|x| < order``."""
     x = np.asarray(x, dtype=np.float64)
     with np.errstate(invalid="ignore", divide="ignore"):
         pi_x = np.pi * x
@@ -408,27 +268,10 @@ def _apply_lanczos_shift_batch(
     tau_samples: float,
     order: int = 5,
 ) -> np.ndarray:
-    """Shift every row of a ``(n_traces, T)`` array by the SAME ``tau_samples``.
+    """Every row of ``(n_traces, n_samples)`` shifted by the same ``tau_samples``.
 
-    Vectorised form of :func:`_apply_lanczos_shift`: the Lanczos kernel weights
-    depend only on ``tau_samples`` (not on the trace), so for a set of traces that
-    share a shift (e.g. all components of one station, which get one per-station
-    shift) the kernel is built **once** and the tap-additions are applied to all
-    rows at once.  Each output element is the same weighted sum of the same input
-    samples as the per-trace loop, so the result is numerically identical (no
-    reassociation across rows).
-
-    Parameters
-    ----------
-    traces:
-        ``(n_traces, T)`` array of input signals sharing one shift.
-    tau_samples, order:
-        As in :func:`_apply_lanczos_shift`.
-
-    Returns
-    -------
-    np.ndarray
-        ``(n_traces, T)`` shifted traces, dtype ``float64``.
+    The kernel weights depend only on the shift, so it is built once for all the rows; each
+    output sample is the same weighted sum as the per-trace form.
     """
     traces_f = np.asarray(traces, dtype=np.float64)
     n = traces_f.shape[-1]
@@ -438,20 +281,18 @@ def _apply_lanczos_shift_batch(
     result = np.zeros_like(traces_f)
 
     tau_floor = int(np.floor(tau_samples))
-    tau_frac = tau_samples - tau_floor  # in [0, 1)
+    tau_frac = tau_samples - tau_floor
 
-    # Kernel support: 2*order taps centred at the fractional shift
     offsets = np.arange(-order + 1, order + 1, dtype=np.float64)
     weights = _lanczos_kernel_values(offsets - tau_frac, order)
     w_sum = weights.sum()
     if abs(w_sum) > 1e-10:
-        weights /= w_sum  # normalise to unit gain
+        weights /= w_sum
 
     for k_int, w in zip(offsets.astype(int), weights):
         if abs(w) < 1e-12:
             continue
-        shift = tau_floor + k_int  # total integer displacement for this tap
-        # y[:, i] += w * x[:, i - shift] for valid i
+        shift = tau_floor + k_int
         dst_lo = max(0, shift)
         dst_hi = min(n, n + shift)
         src_lo = max(0, -shift)
@@ -467,32 +308,11 @@ def _apply_lanczos_shift(
     tau_samples: float,
     order: int = 5,
 ) -> np.ndarray:
-    """Shift a 1-D trace by ``tau_samples`` using Lanczos interpolation.
+    """``trace`` shifted by ``tau_samples``, positive delaying, by Lanczos interpolation.
 
-    Implements y[n] = x[n − τ] by convolving with a Lanczos kernel of the
-    given order.  The kernel weights are normalised so the total gain is
-    exactly 1.0 for any fractional shift.
-
-    Boundary handling: samples that fall outside the original trace contribute
-    zero (zero-padding).  The output length equals the input length.
-
-    Thin wrapper over :func:`_apply_lanczos_shift_batch` for a single trace.
-
-    Parameters
-    ----------
-    trace:
-        Input signal (1-D array).
-    tau_samples:
-        Shift in samples.  **Positive values delay** the trace (event moves
-        later); negative values advance it.
-    order:
-        Lanczos kernel order (half-width in samples).  Typical values: 3–8.
-        Higher order reduces spectral leakage at the cost of more computation.
-
-    Returns
-    -------
-    np.ndarray
-        Shifted trace of the same length, dtype ``float64``.
+    ``order`` is the kernel half-width in samples, typically 3 to 8; a higher order leaks
+    less spectrally and costs more. The weights are normalised to unit gain at any fractional
+    shift, samples outside the trace contribute zero, and the length is unchanged.
     """
     return _apply_lanczos_shift_batch(np.asarray(trace)[np.newaxis, :], tau_samples, order)[0]
 
@@ -501,77 +321,21 @@ def _apply_lanczos_shift(
 
 
 class TimeShiftErrorEffect(SeismogramEffect):
-    """Sub-sample time shift via Lanczos interpolation: common offset + per-station Gaussian.
+    """Shift a station's traces in time by a sub-sample amount, via Lanczos interpolation.
 
-    The total time shift (seconds) applied to a station is the sum of two
-    components, mirroring the legacy ``random_shift_distribution`` pattern but
-    flipped (uniform common offset + per-station Gaussian):
+    The shift in s is an array-wide common offset plus an independent per-station draw from
+    ``N(0, gaussian_sigma)``. The common offset models a constant velocity or source-time
+    bias and is drawn once per call, from ``uniform(-uniform_offset, uniform_offset)`` or,
+    under ``common_offset_dist='gaussian'``, from ``N(0, common_offset_sigma)``; measured
+    array-wide offsets are peaked at zero rather than flat. Positive shifts delay.
 
-    1. **Common offset** (array-wide) — a single value drawn once per call and
-       applied identically to every station.  Models a constant velocity /
-       source-time bias.  Its distribution is selected by ``common_offset_dist``:
+    ``sigma_per_1000km`` and ``distance_cap_km`` grow the per-station width with path length
+    and need the source location; zero keeps it flat. ``sampling_rate`` in samples per second
+    converts the shift to samples and is injected by the caller rather than configured.
 
-       * ``"uniform"`` (default, back-compat) — ``uniform(-uniform_offset,
-         +uniform_offset)``; with ``uniform_offset = 0.0`` this component is zero.
-       * ``"gaussian"`` — ``N(0, common_offset_sigma)``.  Calibrated array-wide
-         offsets are peaked at zero (not flat), so a Gaussian fits them better
-         than a uniform.
-
-    2. **Per-station Gaussian** — each station additionally gets an independent
-       draw from ``N(0, gaussian_sigma)`` seconds.
-
-    The total per-station shift ``common_offset + station_gaussian`` is converted
-    to samples (``* sampling_rate``) and applied via Lanczos interpolation, so
-    fractional-sample accuracy is preserved.  Positive shifts delay the trace.
-
-    Nuisance key: ``time_shift_error`` — an **on/off switch**, NOT a probability.
-    ``0.0`` (or absent) ⇒ identity (no shift); any non-zero value ⇒ the effect is
-    active and the shift magnitude is governed entirely by ``uniform_offset`` and
-    ``gaussian_sigma``.  (There is **no** per-station probability gate — this
-    replaces the earlier gated model; see the task log for the rationale.)
-
-    Parameters
-    ----------
-    sampling_rate:
-        Samples per second of the synthetic traces.  Required to convert the
-        time shift from seconds to samples before Lanczos interpolation.
-        Injected automatically from ``SimulationParameters`` by
-        ``GeneralSimulatorWrapper`` / the augmentation chain builder and does
-        **not** need to appear in the YAML config.
-    uniform_offset:
-        Half-width (seconds) of the array-wide common-offset uniform
-        distribution.  Defaults to ``DEFAULT_UNIFORM_OFFSET`` (0.0 → no common
-        offset).  Set via the YAML key ``uniform_offset``.
-    gaussian_sigma:
-        Standard deviation of the per-station Gaussian time-shift distribution
-        in seconds.  Defaults to ``DEFAULT_GAUSSIAN_SIGMA`` (1.0 s).  Set via
-        the YAML key ``gaussian_sigma``.
-    sigma_per_1000km, distance_cap_km:
-        Distance scaling of the per-station sigma (seconds per 1000 km, optional cap in km);
-        ``0`` (default) keeps the flat legacy sigma.  Requires the source location (nuisance
-        dict ``source_location`` at the simulation stage, or ``source_latitude`` /
-        ``source_longitude`` in the effect config).
-    lanczos_order:
-        Lanczos kernel order.  Higher values are more accurate but slower.
-        Defaults to ``DEFAULT_LANCZOS_ORDER`` (5).  Set via YAML key
-        ``lanczos_order`` if needed.
-
-    YAML example
-    ------------
-    .. code-block:: yaml
-
-        parameters:
-          nuisance:
-            time_shift_error:
-              fiducial: [1.0]        # >0 ⇒ active (0.0 ⇒ identity)
-              bounds:   [0.0, 1.0]
-              uniform_offset: 1.5    # seconds; array-wide common shift
-              gaussian_sigma: 2.0    # std dev in seconds; omit to use default 1.0
-
-    Note
-    ----
-    This effect is stochastic; use ``numpy.random.seed`` in tests that require
-    reproducibility.
+    Nuisance key ``time_shift_error``: a switch, not a probability. Absent or zero is the
+    identity; any other value makes the effect active, with the magnitude set entirely by the
+    configuration.
     """
 
     #: Default half-width of the array-wide common-offset uniform distribution (s).
@@ -597,8 +361,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
         source_longitude: Optional[float] = None,
     ) -> None:
         self._sampling_rate = float(sampling_rate)
-        # Timing error of 1-D synthetics grows with path length, so the per-station width is
-        # sigma(D) = gaussian_sigma + sigma_per_1000km * min(D, cap) / 1000; 0 leaves it flat.
+        # Timing error of one-dimensional synthetics grows with path length.
         self._sigma_per_1000km = float(sigma_per_1000km)
         if self._sigma_per_1000km < 0.0:
             raise ValueError("sigma_per_1000km must be >= 0")
@@ -630,8 +393,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
                 "common_offset_dist must be 'uniform' or 'gaussian'; got "
                 f"{common_offset_dist!r}"
             )
-        # Width of the array-wide common offset under a Gaussian distribution; it defaults to
-        # uniform_offset so an existing scale carries over when the distribution is switched.
+        # Defaults to uniform_offset so an existing scale carries over when the distribution
+        # is switched.
         self._common_sigma = (
             float(common_offset_sigma)
             if common_offset_sigma is not None
@@ -639,8 +402,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
         )
 
     def station_sigmas(self, receivers, source_location=None) -> dict:
-        """``{station_name: sigma_s}`` — the per-station Gaussian width, distance-scaled if
-        ``sigma_per_1000km > 0`` (otherwise the flat ``gaussian_sigma`` for every station)."""
+        """``{station: width in s}`` of the per-station Gaussian, distance-scaled when
+        ``sigma_per_1000km`` is positive and flat otherwise."""
         if self._sigma_per_1000km <= 0.0:
             return {}
         src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
@@ -666,20 +429,18 @@ class TimeShiftErrorEffect(SeismogramEffect):
         source_location=None,
         **_ignored,
     ) -> dict:
-        # On/off switch: absent or 0.0 ⇒ identity (back-compat).
         if time_shift_error is None or float(time_shift_error) == 0.0:
             return seismograms_map
 
         station_sigma = self.station_sigmas(receivers, source_location)
 
-        # One array-wide common offset for this call, from the chosen distribution.
         if self._common_dist == "gaussian":
             common_offset_s = (
                 np.random.normal(0.0, self._common_sigma)
                 if self._common_sigma > 0.0
                 else 0.0
             )
-        else:  # uniform (back-compat default)
+        else:
             common_offset_s = (
                 np.random.uniform(-self._uniform_offset, self._uniform_offset)
                 if self._uniform_offset > 0.0
@@ -687,7 +448,6 @@ class TimeShiftErrorEffect(SeismogramEffect):
             )
         result = {}
         for station, components in seismograms_map.items():
-            # One per-station Normal draw, in map order (RNG order preserved).
             station_shift_s = common_offset_s + np.random.normal(
                 0.0, station_sigma.get(station, self._sigma))
             shift_samples = station_shift_s * self._sampling_rate
@@ -695,8 +455,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
             if not comps:
                 result[station] = {}
                 continue
-            # All components of a station share this shift, so build the Lanczos
-            # kernel once and apply it to the stacked (C, T) traces at once.
+            # All components of a station share the shift, so the kernel is built once.
             traces = np.stack([components[c] for c in comps])
             shifted = _apply_lanczos_shift_batch(traces, shift_samples, self._order)
             result[station] = {c: shifted[j] for j, c in enumerate(comps)}
@@ -715,44 +474,14 @@ def _apply_stahler_phase_filter(
     alpha: float,
     coda_fraction: float = DEFAULT_CODA_FRACTION,
 ) -> np.ndarray:
-    """Convolve trace with the Stähler & Sigloch (2016) modelling-error filter.
+    """``trace`` convolved with the Stahler and Sigloch (2016) modelling-error filter.
 
-    Implements ``u_me = u_i^c ∗ T_error,i`` (Eq. 17): the synthetic is *convolved*
-    with a modelling-error transfer function ``T_error,i`` that has a **unit
-    amplitude spectrum** and a **random phase spectrum in ``[0, α·π/2]``**.  The
-    transfer function is built explicitly (not by multiplying the synthetic's own
-    spectrum), so the operation is a genuine convolution with a compact filter
-    rather than a circular spectral product.
-
-    Construction of ``T_error,i``
-    -----------------------------
-    1. Take a **compact** filter of length ``L = round(coda_fraction · n)`` — this
-       is the support of the coda the filter can add.  A compact filter is what
-       keeps the effect *local*: stretches of the synthetic that are zero and lie
-       further than ``L`` samples from any arrival stay zero, matching the paper
-       (its Fig. 2 coda decays and quiet windows are unaffected).
-    2. Draw a random phase ``φ[k] ~ U(0, α·π/2)`` on the filter's rfft bins; set a
-       unit amplitude, ``H[k] = exp(i·φ[k])``.
-    3. ``irfft`` → a real, length-``L`` FIR filter ``h`` with ``|rfft(h)| ≡ 1``
-       (all-pass / unit amplitude, exactly as specified).
-    4. Convolve the trace with ``h`` **linearly** and truncate to the input
-       length.  Linear convolution with a causal FIR cannot wrap energy to the
-       start of the window and cannot place energy *before* an arrival.
-
-    α regulates the perturbing effect: ``α = 0`` → ``φ ≡ 0`` → ``h = δ`` → identity;
-    larger α → stronger phase scrambling → more coda.
-
-    On phase pinning
-    ----------------
-    DC (``φ[0]``) and — for even ``L`` — Nyquist (``φ[-1]``) are pinned to zero.
-    This is required, not incidental: ``irfft`` discards the imaginary part of the
-    DC and Nyquist bins, so a non-zero phase there would pull ``|H|`` below unity
-    at those bins and break the unit-amplitude property (and bias the filter gain).
-    Pinning them keeps ``|H| ≡ 1`` and yields a real filter.
-
-    For broadband signals the unit-amplitude filter conserves energy; narrowband
-    inputs see band-dependent gain (the filter response is only flat on its own
-    ``L``-point grid).
+    The filter is a compact FIR of length ``round(coda_fraction * len(trace))`` with a unit
+    amplitude spectrum and a phase drawn uniformly on ``[0, alpha * pi / 2]``, so ``alpha``
+    sets the coda strength and zero is the identity. Being compact and linearly convolved, it
+    leaves quiet stretches quiet and can place no energy before an arrival. The phase is
+    pinned to zero at DC and Nyquist, where ``irfft`` discards the imaginary part and a
+    non-zero phase would break the unit amplitude.
     """
     n = len(trace)
     trace_f = trace.astype(np.float64)
@@ -762,9 +491,9 @@ def _apply_stahler_phase_filter(
     coda_len = max(2, int(round(coda_fraction * n)))
     n_bins = coda_len // 2 + 1
     phi = np.random.uniform(0.0, alpha * np.pi / 2.0, size=n_bins)
-    phi[0] = 0.0  # DC must stay real → keeps |H| = 1 at DC
+    phi[0] = 0.0
     if coda_len % 2 == 0:
-        phi[-1] = 0.0  # Nyquist must stay real → keeps |H| = 1 at Nyquist
+        phi[-1] = 0.0
     transfer_function = np.fft.irfft(np.exp(1j * phi), n=coda_len)
 
     return np.convolve(trace_f, transfer_function)[:n]
@@ -775,52 +504,15 @@ def _apply_random_coda_filter(
     alpha: float,
     max_coda_fraction: float = DEFAULT_CODA_FRACTION,
 ) -> np.ndarray:
-    """Convolve trace with a causal, energy-conserving random coda kernel.
+    """``trace`` convolved with a causal random coda kernel, modelling scattered energy
+    trailing the direct arrival.
 
-    Models the waveform modelling error of Stähler & Sigloch (2016), §2.3–2.4:
-    scattering adds oscillatory coda that *trails* the direct arrival.  The
-    kernel is
-
-        h = [1, alpha·r₁·e^{-1/τ}, alpha·r₂·e^{-2/τ}, …]   (then L2-normalised)
-
-    i.e. a unit spike at lag 0 followed by an exponentially decaying tail of
-    i.i.d. random taps ``rₖ ~ U(-1, 1)``.  It is applied by **linear**
-    convolution and truncated to the input length.
-
-    Why not the spectral all-pass of the original plan
-    --------------------------------------------------
-    A circular FFT all-pass filter has two unavoidable, unphysical artifacts:
-
-    1. **Wrap-around** — coda from energy near the right edge of the window
-       wraps back to the start (circular convolution).
-    2. **Bulk time shift** — any non-trivial *causal* all-pass filter has a
-       strictly positive average group delay, so the whole trace (including the
-       direct arrival) is delayed by an ``alpha``-dependent amount.
-
-    A causal time-domain kernel with a unit spike at lag 0 avoids both: linear
-    convolution + truncation cannot wrap (artifact 1), and the lag-0 spike pins
-    the direct-arrival onset in place so only the tail is added (artifact 2).
-    The amplitude spectrum is no longer flat — but exact all-pass, strict
-    causality, and zero bulk delay are mutually exclusive (only the identity
-    satisfies all three), and physical scattering does ripple the spectrum.
-    The L2-normalised kernel conserves total energy on average.
-
-    Parameters
-    ----------
-    trace:
-        Input signal (1-D array).
-    alpha:
-        Coda strength in ``[0, 1]``.  Scales both the tail amplitude (relative
-        to the unit direct spike) and the tail length.  ``alpha <= 0`` is the
-        identity.
-    max_coda_fraction:
-        Tail length at ``alpha = 1`` as a fraction of ``len(trace)``.  The
-        actual tail length is ``round(alpha · max_coda_fraction · n)``.
-
-    Returns
-    -------
-    np.ndarray
-        Filtered trace of the same length, dtype ``float64``.
+    The kernel is a unit spike at lag zero followed by an exponentially decaying tail of
+    independent taps drawn on ``[-1, 1]``, normalised so total energy is conserved on average.
+    ``alpha`` in ``[0, 1]`` scales both the tail amplitude and its length, which is
+    ``round(alpha * max_coda_fraction * len(trace))``; zero is the identity. The spike pins
+    the onset, so the filter adds no bulk delay, and linear convolution cannot wrap coda back
+    to the start of the window as a circular all-pass filter would.
     """
     n = len(trace)
     trace_f = trace.astype(np.float64)
@@ -833,8 +525,8 @@ def _apply_random_coda_filter(
     tail = np.random.uniform(-1.0, 1.0, size=coda_len + 1) * envelope
 
     kernel = alpha * tail
-    kernel[0] = 1.0  # unit spike at lag 0 → direct arrival onset preserved
-    kernel /= np.linalg.norm(kernel)  # ~unit gain (energy conserved on average)
+    kernel[0] = 1.0
+    kernel /= np.linalg.norm(kernel)
 
     return np.convolve(trace_f, kernel)[:n]
 
@@ -848,14 +540,11 @@ def distance_scaled_alpha(
     alpha_per_1000km: float = 0.0,
     distance_cap_km: Optional[float] = None,
 ):
-    """Coda strength as a function of source–station distance.
+    """Coda strength in ``[0, 1]`` at source-station distances ``dist_km``.
 
-    ``alpha(D) = alpha_intercept + alpha_per_1000km * min(D, cap) / 1000``, clipped to
-    ``[0, 1]``.  A linear growth with path length is the first-order scattering-theory
-    expectation: the scattered (coda) energy fraction accumulates as ``D / l`` with ``l``
-    the mean free path (Sato, Fehler & Maeda 2012, ch. 3), so the strength of the
-    delayed-replica kernel grows with the path.  The cap lets the far-field saturate.
-    Vectorised in ``dist_km``.
+    Linear in path length up to ``distance_cap_km``, which is the first-order scattering
+    expectation: the scattered energy fraction accumulates as distance over mean free path
+    (Sato, Fehler and Maeda 2012).
     """
     d = np.asarray(dist_km, dtype=np.float64)
     if distance_cap_km is not None:
@@ -869,19 +558,12 @@ def distance_tail_energy(
     excess_dex_per_1000km: float = 0.0,
     distance_cap_km: Optional[float] = None,
 ):
-    """Target coda (tail) energy relative to the direct arrival, from a distance ramp.
+    """Coda energy relative to the direct arrival at distances ``dist_km``.
 
-    The kernel of :func:`_apply_distance_coda_kernel` is ``[1, tail]`` with
-    ``||tail||^2 = E_tail``; for a broadband input the output energy is ``(1 + E_tail)``
-    times the input energy, i.e. an RMS excess of ``0.5 log10(1 + E_tail)`` dex.  Inverting
-    a linear RMS-dex ramp ``excess_dex_per_1000km * min(D, cap) / 1000`` gives
-
-        E_tail(D) = 10^(2 * excess_dex_per_1000km * min(D, cap) / 1000) - 1 .
-
-    This is the *kernel-level* target; the excess measured in a group-velocity window
-    of a real seismogram also depends on the trace's own time structure, so the
-    per-1000 km value must be calibrated against the same window diagnostics used on
-    the data (not read off this formula).  Vectorised in ``dist_km``.
+    Inverts a linear ramp in root-mean-square excess, in dex per 1000 km, into the tail
+    energy the kernel needs. This is the kernel-level target; the excess measured in a
+    group-velocity window also depends on the trace's own time structure, so the ramp must be
+    calibrated against the same window diagnostic used on the data.
     """
     d = np.asarray(dist_km, dtype=np.float64)
     if distance_cap_km is not None:
@@ -896,22 +578,12 @@ def _apply_distance_coda_kernel(
     tail_energy: float,
     max_coda_fraction: float = DEFAULT_CODA_FRACTION,
 ) -> np.ndarray:
-    """Delayed-replica (multipath) coda kernel with prescribed tail energy.
+    """``trace`` convolved with a delayed-replica coda kernel of energy ``tail_energy``.
 
-    Same construction as :func:`_apply_random_coda_filter` — a unit spike at lag 0 (direct
-    arrival pinned: no bulk time shift) followed by an exponentially decaying tail of
-    i.i.d. ``U(-1, 1)`` taps whose length is ``round(alpha * max_coda_fraction * n)`` —
-    but the tail is scaled to ``||tail||^2 = tail_energy`` and the kernel is **not**
-    re-normalised.  Convolution therefore adds a superposition of delayed, randomly
-    weighted replicas of the signal (single-scattering / multipathing picture), which
-    both decorrelates the waveform from the unperturbed one (coherence loss growing with
-    ``alpha`` and ``tail_energy``) and *adds* incoherent energy behind every arrival —
-    the two far-path signatures measured on F-net data (cross-correlation with the 1-D
-    synthetic falling with distance while the surface-wave-window energy exceeds the
-    prediction).  ``tail_energy <= 0`` or ``alpha <= 0`` is the identity.
-
-    RNG: exactly one ``np.random.uniform`` call of size ``coda_len + 1`` (as the legacy
-    kernel), so per-station seeding behaves identically.
+    Built as :func:`_apply_random_coda_filter` but with the tail scaled to the given energy
+    and the kernel left un-normalised, so convolution both decorrelates the waveform and adds
+    incoherent energy behind every arrival, which are the two signatures a long path leaves.
+    A non-positive ``tail_energy`` or ``alpha`` is the identity.
     """
     n = len(trace)
     trace_f = trace.astype(np.float64)
@@ -927,111 +599,30 @@ def _apply_distance_coda_kernel(
         return trace_f.copy()
     tail *= np.sqrt(float(tail_energy)) / norm
     kernel = tail
-    kernel[0] = 1.0  # unit spike at lag 0 -> direct arrival preserved, energy ADDED by the tail
+    kernel[0] = 1.0
     return np.convolve(trace_f, kernel)[:n]
 
 
 class ScatteringCodaEffect(SeismogramEffect):
-    """Per-station stochastic coda filter (waveform modelling error).
+    """Add scattered coda trailing the direct arrivals, per station.
 
-    Models the waveform modelling error T_model,i from Stähler & Sigloch
-    (2016), §2.3–2.4: scattering / unmodelled 3-D structure adds oscillatory
-    coda that *trails* the direct arrivals.  Each selected station's component
-    traces are convolved with a causal random coda kernel
-    (:func:`_apply_random_coda_filter`).
+    Nuisance key ``scattering_coda``: a per-station activation probability, or, in distance
+    mode, a strength multiplier on the ramps below.
 
-    Two-stage model applied independently per station:
+    By default a gated station draws its own strength from ``uniform(*alpha_range)``, shared
+    across its components, or uses a fixed ``alpha``. ``mode='causal'`` convolves with the
+    spike-plus-decaying-tail kernel of :func:`_apply_random_coda_filter`; ``mode='stahler'``
+    convolves with the unit-amplitude random-phase filter of
+    :func:`_apply_stahler_phase_filter`. Both are causal and leave quiet stretches quiet.
 
-    1. **Probability gate** — station is perturbed with probability
-       ``scattering_coda`` (a value in ``[0, 1]``).
-       ``scattering_coda = 0.0`` → no station is ever perturbed (identity).
-
-    2. **Coda perturbation** — if selected, each component trace is filtered
-       according to ``mode``:
-
-       - ``'causal'`` (default) — convolution with a causal kernel: a unit spike
-         at lag 0 (so the direct-arrival onset is unchanged — no bulk time shift)
-         followed by an exponentially decaying random tail.  Linear convolution
-         truncated to the window means the coda can never wrap back to the start.
-       - ``'stahler'`` — convolution with the Stähler & Sigloch (2016) modelling-
-         error transfer function: a compact, unit-amplitude, random-phase FIR
-         filter (Eq. 17, ``u_me = u ∗ T_error``).  See
-         :func:`_apply_stahler_phase_filter`.
-
-    Both modes are causal and leave quiet (zero) stretches of the synthetic
-    untouched; they differ in the coda envelope (``'stahler'``: unit-amplitude
-    all-pass filter; ``'causal'``: explicit spike + exponentially decaying tail).
-
-    Nuisance key: ``scattering_coda`` — a probability in ``[0, 1]``.
-
-    Coda strength ``alpha``
-    -----------------------
-    The coda strength is **drawn independently per station** from
-    ``uniform(alpha_range[0], alpha_range[1])`` (default ``(0.0, 1.0)``), so each
-    station gets its own scattering strength every realisation.  All components of
-    a given station share that station's ``alpha`` draw.  ``alpha`` controls the
-    coda: in ``'causal'`` mode it scales the tail amplitude (relative to the unit
-    direct spike) and tail length; in ``'stahler'`` mode it is the upper bound of
-    the per-bin random phase.  ``alpha = 0`` is the identity.
-
-    Parameters
-    ----------
-    alpha_range:
-        ``(low, high)`` bounds of the per-station uniform ``alpha`` distribution.
-        Defaults to :data:`DEFAULT_ALPHA_RANGE` = ``(0.0, 1.0)``.  Set via the YAML
-        key ``alpha_range`` inside the ``scattering_coda`` nuisance block.
-    alpha:
-        Optional **fixed** coda strength.  If given, every station uses exactly this
-        value (equivalent to ``alpha_range=(alpha, alpha)``) — back-compatible with
-        the previous deterministic behaviour.  Mutually exclusive with ``alpha_range``.
-    mode:
-        ``'causal'`` (default, physical) or ``'stahler'`` (paper-exact).
-    coda_fraction:
-        Coda length as a fraction of the trace length (``'causal'``: tail length
-        at ``alpha = 1``; ``'stahler'``: transfer-function FIR length).  Defaults
-        to :data:`DEFAULT_CODA_FRACTION`.
-
-    Distance mode (``distance_mode=True``) — far-path scattering emulation
-    ---------------------------------------------------------------------
-    The legacy model above is per-station i.i.d. and **distance-blind**: 60 % of stations
-    are untouched whatever their path length and the strength never grows with distance.
-    On F-net regional data (paths 100–1500 km, 10–50 s) the 1-D Green's functions
-    decohere with path length (best cross-correlation 0.86 at < 200 km falling to ~0.4
-    beyond 1200 km) while the surface-wave-window energy exceeds the 1-D prediction by a
-    frequency-independent ~+0.25 dex per 1000 km — a scattering/3-D-path regime the
-    legacy operator cannot express.  Distance mode replaces the Bernoulli gate and the
-    uniform ``alpha`` draw with a **deterministic distance ramp**, applied to every
-    station:
-
-        alpha_s      = clip(m * alpha(D_s) * (1 + U(-alpha_jitter, +alpha_jitter)), 0, 1)
-        alpha(D)     = alpha_intercept + alpha_per_1000km * min(D, cap) / 1000
-        E_tail(D_s)  = 10^(2 * m * excess_dex_per_1000km * min(D, cap) / 1000) - 1
-
-    with ``D_s`` the source–station distance (km) and ``m`` the nuisance value
-    ``scattering_coda``, which in distance mode is a **strength multiplier** (0 or absent
-    → identity, 1 → the configured ramp, 2 → double), not a gate probability — the same
-    convention as :class:`AzimuthalAnisotropyEffect`.  ``mode='causal'`` uses
-    :func:`_apply_distance_coda_kernel` (delayed-replica kernel with tail energy
-    ``E_tail``: decoherence *and* added incoherent energy); ``mode='stahler'`` uses the
-    unit-amplitude phase filter at ``alpha_s`` (decoherence only, energy conserved —
-    ``excess_dex_per_1000km`` is then ignored).  The path-length scaling follows the
-    scattering-theory expectation that coda energy accumulates as ``D / l`` (mean free
-    path ``l``; Sato, Fehler & Maeda 2012), on top of the Stähler & Sigloch (2016)
-    modelling-error operator.  All ramp defaults are **inert** (0 slope, 0 excess): the
-    calibrated values are config, not code, and are set from the data-side coherence and
-    window-energy curves (see ``station_scattering_params`` for provenance).
-
-    The source location is taken from the nuisance dict (``source_location``, first two
-    entries = lat, lon — forwarded by ``Simulator.run_simulation``) or from the
-    constructor; if distance mode is active and neither is available the effect raises.
-    ``training_augmentation`` does not yet forward the source location, so distance mode
-    is a simulation-stage / injection-harness feature for now.
-
-    Note
-    ----
-    This effect is stochastic.  Use ``numpy.random.seed`` in tests that
-    require reproducibility.  With ``distance_mode=False`` (default) the behaviour and
-    the RNG call order are exactly those of the legacy model.
+    ``distance_mode`` replaces the gate and the uniform draw with ramps in source-station
+    distance: the strength from :func:`distance_scaled_alpha`, jittered by ``alpha_jitter``,
+    and, in causal mode, the tail energy from :func:`distance_tail_energy`. It models the way
+    one-dimensional Green's functions decohere with path length while the observed
+    surface-wave energy exceeds their prediction, neither of which the distance-blind gate can
+    express. The ramp defaults are inert, the calibrated slopes being configuration. The
+    source location comes from the nuisance dict or the constructor, and distance mode raises
+    without one.
     """
 
     #: Default per-station ``alpha`` sampling range (uniform).
@@ -1074,7 +665,6 @@ class ScatteringCodaEffect(SeismogramEffect):
                     "ScatteringCodaEffect: alpha_per_1000km and excess_dex_per_1000km must be >= 0"
                 )
         if alpha is not None:
-            # Fixed alpha: degenerate range so every station gets exactly `alpha`.
             self._alpha_low = self._alpha_high = float(alpha)
         else:
             rng = alpha_range if alpha_range is not None else self.DEFAULT_ALPHA_RANGE
@@ -1095,7 +685,6 @@ class ScatteringCodaEffect(SeismogramEffect):
             return _apply_stahler_phase_filter(trace, alpha, self._coda_fraction)
         return _apply_random_coda_filter(trace, alpha, self._coda_fraction)
 
-    # ------------------------------------------------------------------ distance mode
     @property
     def distance_mode(self) -> bool:
         return self._distance_mode
@@ -1111,9 +700,8 @@ class ScatteringCodaEffect(SeismogramEffect):
         return src
 
     def station_scattering_params(self, receivers, source_latlon, multiplier: float = 1.0) -> dict:
-        """``{station_name: (dist_km, alpha_nominal, tail_energy)}`` for provenance.
-
-        ``alpha_nominal`` is the ramp value *before* the per-station jitter draw.
+        """``{station: (distance in km, strength, tail energy)}``, the strength being the
+        ramp value before the per-station jitter draw.
         """
         src_lat, src_lon = source_latlon
         m = float(multiplier)
@@ -1139,7 +727,6 @@ class ScatteringCodaEffect(SeismogramEffect):
                     f"ScatteringCodaEffect(distance_mode=True): station {station!r} has no "
                     "receiver coordinates")
             dist, a_nom, e_tail = params[station]
-            # RNG order per station: one jitter draw, then one tail draw per component.
             jitter = (np.random.uniform(-self._alpha_jitter, self._alpha_jitter)
                       if self._alpha_jitter > 0.0 else 0.0)
             alpha = float(np.clip(a_nom * (1.0 + jitter), 0.0, 1.0))
@@ -1169,7 +756,6 @@ class ScatteringCodaEffect(SeismogramEffect):
                                              scattering_coda, source_location)
 
         def _coda(components):
-            # One alpha per station, shared across its components.
             alpha = np.random.uniform(self._alpha_low, self._alpha_high)
             return {comp: self._filter_trace(trace, alpha) for comp, trace in components.items()}
 
@@ -1180,11 +766,7 @@ class ScatteringCodaEffect(SeismogramEffect):
 
 
 def _bearing_and_distance_km(src_lat, src_lon, sta_lat, sta_lon):
-    """Source→station azimuth (deg, clockwise from north) and distance (km).
-
-    Spherical-Earth formulas (R = 6371 km); numpy-only so the effect stays
-    dependency-free.  Accuracy is far beyond what a cos 2φ anomaly needs.
-    """
+    """``(azimuth in deg clockwise from north, distance in km)`` on a spherical Earth."""
     la1, lo1 = np.deg2rad(src_lat), np.deg2rad(src_lon)
     la2, lo2 = np.deg2rad(sta_lat), np.deg2rad(sta_lon)
     dlon = lo2 - lo1
@@ -1198,31 +780,17 @@ def _bearing_and_distance_km(src_lat, src_lon, sta_lat, sta_lon):
 
 
 class AzimuthalAnisotropyEffect(SeismogramEffect):
-    """Coherent azimuth-dependent travel-time anomaly (weak-anisotropy cos 2φ).
+    """Delay each station by the travel-time anomaly weak azimuthal anisotropy gives it.
 
-    Models the P-delay signature of weak azimuthal anisotropy (Backus 1965
-    parameterisation, as used operationally by Silver & Chan 1991): the
-    velocity varies as ``V(φ) = V₀(1 + A cos 2(φ − φ_fast))``, so a path of
-    length ``D`` at source→station azimuth ``φ`` accumulates a delay
+    With the speed varying as ``V(phi) = V0 (1 + A cos 2(phi - phi_fast))``, a path of length
+    D at source-station azimuth phi accumulates ``-(D / V0) A cos(2 (phi - phi_fast))``, so
+    the fast azimuth arrives early. The delay grows with path length and is coherent across
+    the array, unlike the independent per-station shifts of :class:`TimeShiftErrorEffect`. All
+    components of a station share it, applied by Lanczos interpolation; there is no randomness.
 
-        Δt(φ) = −(D / V₀) · A · cos(2(φ − φ_fast))
-
-    (fast azimuth ⇒ early arrival ⇒ negative delay).  The shift grows with
-    path length and is **coherent across the array by construction** — this is
-    the causal variable the injection experiment isolates, in contrast to the
-    random per-station shifts of :class:`TimeShiftErrorEffect`.
-
-    All components of a station share the shift (applied via Lanczos, as in
-    :class:`TimeShiftErrorEffect`).  Deterministic — no RNG.
-
-    Nuisance key: ``azimuthal_anisotropy`` — 0.0/absent ⇒ identity; otherwise
-    the value is a **strength multiplier** on ``aniso_fraction`` (so arms ×1,
-    ×5, ×10 are driven through the nuisance value with fixed configs).
-
-    The source location is required to compute azimuths.  It is taken from the
-    nuisance dict (``source_location = (lat, lon)``-like) if present, else from
-    the constructor.  If the effect is ACTIVE and no source location is
-    available it raises rather than silently no-oping.
+    Nuisance key ``azimuthal_anisotropy``: a strength multiplier on ``aniso_fraction``, absent
+    or zero being the identity. The source location comes from the nuisance dict or the
+    constructor, and an active effect raises without one rather than silently doing nothing.
     """
 
     DEFAULT_REF_VELOCITY_KMS: float = 3.5
@@ -1249,7 +817,7 @@ class AzimuthalAnisotropyEffect(SeismogramEffect):
                           else self.DEFAULT_LANCZOS_ORDER)
 
     def station_delays(self, receivers, source_latlon) -> dict:
-        """``{station_name: delay_seconds}`` at multiplier 1 (for provenance)."""
+        """``{station: delay in s}`` at multiplier one."""
         src_lat, src_lon = source_latlon
         out = {}
         for r in receivers.iterate():
@@ -1294,19 +862,15 @@ class AzimuthalAnisotropyEffect(SeismogramEffect):
 
 
 class ShearSplittingEffect(SeismogramEffect):
-    """Shear-wave splitting via the Silver & Chan (1991) operator.
+    """Split the horizontals of each station, the Silver and Chan (1991) operator.
 
-    Station-side, geographic frame, horizontals only: rotate (N, E) into the
-    (fast, slow) frame defined by the fast-polarisation azimuth ``φ_fast``,
-    delay the SLOW trace by ``δt`` (Lanczos), rotate back.  Z is untouched.
-    Deterministic — no RNG.  Stations missing either horizontal are passed
-    through unchanged.
+    Station-side and in the geographic frame: rotate north and east into the fast and slow
+    frame given by ``fast_azimuth_deg``, delay the slow trace by ``delay_s``, rotate back. The
+    vertical is untouched, a station missing either horizontal passes through, and there is no
+    randomness.
 
-    Nuisance key: ``shear_wave_splitting`` — 0.0/absent ⇒ identity; otherwise
-    a **multiplier** on ``delay_s`` (arms ×1/×5/×10).
-
-    Operator form confirmed against Silver & Chan (1991) eqs. 1–13 (see the
-    anisotropy-robustness task, artifacts/lit/03).
+    Nuisance key ``shear_wave_splitting``: a multiplier on ``delay_s``, absent or zero being
+    the identity.
     """
 
     DEFAULT_LANCZOS_ORDER: int = 5
@@ -1358,37 +922,25 @@ class ShearSplittingEffect(SeismogramEffect):
 
 # Registry and factory
 
-#: Maps nuisance parameter key → effect class.  Register new effects here.
+#: Nuisance parameter key to effect class; a new effect is registered here.
 
 class DispersionSpreadEffect(SeismogramEffect):
-    """Frequency-dependent travel-time (dispersion) error — a pure phase delay per station.
+    """Delay each station by a frequency-dependent travel-time error: a pure phase delay
+    ``u'(f) = u(f) exp(-2 pi i f tau(f))``.
 
-    The operator is a pure phase delay,
+    The delay is given at the octave centres ``octave_centres_s``, interpolated in log period
+    between them and held constant outside. Per station and octave it is the product of the
+    nuisance multiplier, a standard normal and a width that grows linearly with source-station
+    distance from ``sigma_intercept_s`` at ``sigma_per_1000km_s`` per 1000 km.
 
-        u'(f) = u(f) · exp(−2πi f τ(f))
+    The correlation of those normals is the physics: a crust that is too fast delays every
+    octave of the path the same way, so ``octave_correlation`` shares one draw across octaves
+    by default, and ``common_fraction`` puts that share of the variance into a single
+    array-wide draw, which is the coherent same-sign far-station delay independent per-station
+    sampling can never produce. A systematic bias belongs in the reference model, not here.
 
-    with τ(f) interpolated in log-period between octave centres ``octave_centres_s`` and held
-    constant outside them.  Per station the octave delays are
-
-        τ_o = m · z_o · σ_o(D),   σ_o(D) = sigma_intercept_s[o] + sigma_per_1000km_s[o] · min(D, cap) / 1000
-
-    where ``m`` is the nuisance value (strength multiplier; ``0`` → identity) and the ``z_o`` are
-    standard normals.  Their correlation structure is the physics: a too-fast (or too-slow)
-    crust delays *every* octave of a path in the same sense, so ``z_o`` is by default ONE draw
-    per station shared across octaves (``octave_correlation=1``); ``octave_correlation=0`` draws
-    each octave independently, and intermediate values mix the two.
-    ``common_fraction`` puts that share of the variance into ONE array-wide draw (the coherent,
-    same-sign far-station delay the measured data contain and per-station-independent sampling
-    can never produce).
-
-    One measured regional calibration, from the phase-velocity spread of a 61-member ensemble at
-    12.5 / 17.5 / 25 / 40 s, is ``sigma_intercept_s ≈ [0, 0, 0, 0]`` with
-    ``sigma_per_1000km_s ≈ [19, 15, 9, 3]``. A systematic bias is deliberately not part of this
-    effect: a bias belongs in the fiducial model, not in a nuisance.
-
-    Nuisance key: ``dispersion_spread`` — strength multiplier.  Simulation stage only (needs the
-    source location, forwarded by ``Simulator.run_simulation``, or ``source_latitude`` /
-    ``source_longitude`` in the effect config).  ``sampling_rate`` is injected automatically.
+    Nuisance key ``dispersion_spread``: a strength multiplier. Needs the source location, so
+    it is a simulation-stage effect; ``sampling_rate`` is injected by the caller.
     """
 
     DEFAULT_OCTAVE_CENTRES_S = (12.5, 17.5, 25.0, 40.0)
@@ -1426,7 +978,7 @@ class DispersionSpreadEffect(SeismogramEffect):
                      else (float(source_latitude), float(source_longitude)))
 
     def station_sigmas(self, receivers, source_location=None) -> dict:
-        """``{station_name: sigma_per_octave (array)}`` in seconds."""
+        """``{station: width per octave}`` in s."""
         src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
                if source_location is not None else self._src)
         if src is None:
@@ -1442,7 +994,8 @@ class DispersionSpreadEffect(SeismogramEffect):
         return out
 
     def tau_of_freq(self, freqs: np.ndarray, tau_octaves: np.ndarray) -> np.ndarray:
-        """Interpolate per-octave delays (s) onto a frequency axis, log-period, clamped."""
+        """Per-octave delays in s interpolated onto ``freqs`` in log period, held constant
+        outside the octave centres."""
         with np.errstate(divide="ignore"):
             per = np.where(freqs > 0, 1.0 / np.maximum(freqs, 1e-12), self._T[-1])
         per = np.clip(per, self._T[0], self._T[-1])
@@ -1470,7 +1023,6 @@ class DispersionSpreadEffect(SeismogramEffect):
         m = float(dispersion_spread)
         sig = self.station_sigmas(receivers, source_location)
         n_oct = len(self._T)
-        # ONE array-wide draw (shared by every station), then per-station draws.
         z_common = np.random.normal(size=n_oct)
         z_common_shared = np.random.normal()
         dt = 1.0 / self._sampling_rate
@@ -1506,8 +1058,7 @@ EFFECT_REGISTRY: dict[str, type[SeismogramEffect]] = {
 }
 
 
-#: Category-2 (post-processing) nuisance keys eligible for **pre-noise** training-time
-#: augmentation (folded into the clean signal before sensor noise is added).
+#: Nuisance keys eligible for pre-noise training augmentation, folded into the clean signal.
 AUGMENTABLE_EFFECT_KEYS: tuple[str, ...] = (
     "amplitude_error",
     "instrument_dropout",
@@ -1516,21 +1067,21 @@ AUGMENTABLE_EFFECT_KEYS: tuple[str, ...] = (
 )
 
 
-#: Nuisance keys eligible for post-noise augmentation, applied to ``x = D + noise``.
+#: Nuisance keys eligible for post-noise augmentation, applied to the data plus noise.
 #: ``component_dropout`` must run there so a dropped channel is exactly zero.
 POST_NOISE_EFFECT_KEYS: tuple[str, ...] = (
     "component_dropout",
 )
 
 
-#: Nuisance keys that augment the source-location conditioning vector rather than the waveform,
-#: so they have no effect class and are applied to ``source_vec`` by the dataloader instead.
+#: Nuisance keys that augment the source-location conditioning vector rather than the
+#: waveform, so they have no effect class and the dataloader applies them.
 CONDITIONING_AUGMENTABLE_KEYS: tuple[str, ...] = (
     "source_location_error",
 )
 
 
-#: Maps an augmentation stage value → the effect keys eligible at that stage.
+#: The effect keys eligible at each augmentation stage.
 _STAGE_EFFECT_KEYS: dict[str, tuple[str, ...]] = {
     "training_augmentation": AUGMENTABLE_EFFECT_KEYS,
     "training_augmentation_post_noise": POST_NOISE_EFFECT_KEYS,
@@ -1541,15 +1092,8 @@ _STAGE_EFFECT_KEYS: dict[str, tuple[str, ...]] = {
 
 
 def _array_to_map(D: np.ndarray, receivers, components):
-    """Convert a stacked ``(n_stations, n_components, T)`` array → seismograms map.
-
-    Mirrors the station/component ordering of
-    :meth:`SimulationDataLoader.convert_sim_data_to_array` (station order from
-    ``receivers.iterate()``, component order from the loader ``components`` string,
-    with zero-filled unused components carried verbatim).
-
-    Returns ``(seismograms_map, station_names)`` where ``seismograms_map`` is
-    ``{station_name: {component: np.ndarray}}``.
+    """``(seismograms map, station names)`` from a ``(n_stations, n_components, n_samples)``
+    array, in receiver order and loader component order.
     """
     station_names = [rec.station_name for rec in receivers.iterate()]
     seismograms_map = {
@@ -1560,11 +1104,7 @@ def _array_to_map(D: np.ndarray, receivers, components):
 
 
 def _map_to_array(seismograms_map: dict, station_names, components) -> np.ndarray:
-    """Inverse of :func:`_array_to_map` — stack back to ``(n_stations, n_components, T)``.
-
-    Builds the array in one allocation from the nested map rather than pre-zeroing
-    and copying cell by cell; the shape follows from the traces.
-    """
+    """The inverse of :func:`_array_to_map`: back to ``(n_stations, n_components, n_samples)``."""
     return np.array(
         [[seismograms_map[station][comp] for comp in components] for station in station_names],
         dtype=np.float64,
@@ -1578,40 +1118,16 @@ def apply_chain_to_array(
     components,
     nuisance_params: dict,
 ) -> np.ndarray:
-    """Apply a :class:`PostProcessingChain` to a stacked data array.
+    """``D``, shaped ``(n_stations, n_components, n_samples)``, with ``chain`` applied.
 
-    Bridges the dict-based :class:`SeismogramEffect` API (used per-simulation) to
-    the stacked ``(n_stations, n_components, T)`` array produced by the dataloader,
-    so the SAME effect classes can be reused as training-time augmentation with no
-    duplicated shift/amplitude/dropout logic.
-
-    An empty chain returns ``D`` unchanged (lossless round-trip).
-
-    Parameters
-    ----------
-    chain:
-        The :class:`PostProcessingChain` of training-augmentation effects.
-    D:
-        Stacked data array, shape ``(n_stations, n_components, T)`` — the same
-        layout as ``convert_sim_data_to_array(..., stacked=True, fill_unused=True)``.
-    receivers:
-        ``Receivers`` instance (provides station ordering, matching ``D``).
-    components:
-        The loader ``components`` string/sequence (provides the component axis
-        ordering, matching ``D``'s second axis).
-    nuisance_params:
-        Nuisance parameter dict forwarded to each effect.
-
-    Returns
-    -------
-    np.ndarray
-        Augmented array of the same shape as ``D`` (dtype ``float64``).
+    Lets the same effect classes serve as training-time augmentation on the dataloader's
+    stacked array. ``receivers`` and ``components`` give the station and component orders that
+    array is in. An empty chain returns ``D`` unchanged.
     """
     if not chain.effects:
         return D
     D = np.asarray(D)
-    # The array layout must match the receiver and component ordering this adapter assumes,
-    # since a silent mismatch would scramble stations rather than raise.
+    # A silent mismatch would scramble stations rather than raise.
     n_stations = len(list(receivers.iterate()))
     if D.ndim != 3 or D.shape[0] != n_stations or D.shape[1] != len(components):
         raise ValueError(
@@ -1625,7 +1141,7 @@ def apply_chain_to_array(
 
 
 def _fiducial_scalar(value) -> float:
-    """Extract the activation scalar from a nuisance fiducial entry (e.g. ``[0.3]`` → 0.3)."""
+    """The activation scalar of a nuisance fiducial entry, so ``[0.3]`` gives 0.3."""
     arr = np.ravel(value)
     return float(arr[0])
 
@@ -1637,41 +1153,15 @@ def build_augmentation_chain(
     sampling_rate: Optional[float] = None,
     stage: str = "training_augmentation",
 ) -> Tuple[PostProcessingChain, dict]:
-    """Build the training-time augmentation chain + its nuisance-param dict.
+    """``(chain, nuisance_params)`` for the training-time augmentation at ``stage``.
 
-    Selects only the nuisance keys staged ``training_augmentation`` that are
-    Category-2 post-processing effects, builds a :class:`PostProcessingChain` from
-    them (injecting ``sampling_rate`` for ``time_shift_error``), and returns
-    ``(chain, nuisance_params)`` where ``nuisance_params`` maps each augmented key
-    to its **configured fiducial value** — i.e. the per-station probability for
-    ``amplitude_error`` / ``instrument_dropout`` / ``scattering_coda`` (a fiducial of
-    ``[0.3]`` ⇒ 30% per-station probability), or the on/off switch for
-    ``time_shift_error``.  The effects draw their own random offsets/scales/decisions
-    internally per call; the shift/coda *magnitudes* live in ``effect_configs``
-    (``uniform_offset``, ``gaussian_sigma``, ``alpha``, ...), not here.
-
-    An empty selection yields ``(PostProcessingChain([]), {})`` — a no-op that the
-    dataloader treats as "no augmentation" (back-compat).
-
-    Parameters
-    ----------
-    nuisance:
-        ``{key: fiducial_values}`` (``ModelParameters.nuisance``).  The fiducial
-        scalar of each augmented key becomes its activation probability/switch.
-    nuisance_stage:
-        ``{key: "simulation" | "training_augmentation" | "training_augmentation_post_noise"}``
-        (``ModelParameters.nuisance_stage``).  Keys absent from this map default to
-        ``"simulation"`` (not augmented).
-    effect_configs:
-        Optional ``{key: {ctor kwarg: value}}`` (``ModelParameters.nuisance_effect_config``).
-    sampling_rate:
-        Synthetic sampling rate (samples/s), injected into ``time_shift_error``'s
-        effect config so the Lanczos shift can convert seconds → samples.
-    stage:
-        Which augmentation stage to build for — ``"training_augmentation"`` (pre-noise,
-        default) or ``"training_augmentation_post_noise"`` (applied to the noisy data, e.g.
-        ``component_dropout``).  Only keys eligible for that stage (see
-        :data:`_STAGE_EFFECT_KEYS`) and staged accordingly are included.
+    ``nuisance`` is ``{key: fiducial values}`` and ``nuisance_stage`` is ``{key: stage}``, a
+    key absent from it defaulting to the simulation stage and so not augmented. Only keys
+    staged at ``stage`` and eligible there are included. Each key's activation value in
+    ``nuisance_params`` is its configured fiducial scalar; the magnitudes live in
+    ``effect_configs``, and the effects draw their own randomness per call. ``sampling_rate``
+    in samples per second is injected into the shift effect. An empty selection gives an empty
+    chain, which the dataloader treats as no augmentation.
     """
     configs = dict(effect_configs or {})
     eligible = _STAGE_EFFECT_KEYS.get(stage, ())
@@ -1685,21 +1175,15 @@ def build_augmentation_chain(
         configs["time_shift_error"]["sampling_rate"] = sampling_rate
 
     chain = build_post_processing_chain(aug_keys, configs)
-    # Each effect's activation scalar is its configured fiducial value, a per-station
-    # probability or an on/off switch; a hardcoded 1.0 would perturb every station.
+    # The configured fiducial value, not a hardcoded 1.0, which would perturb every station.
     nuisance_params = {key: _fiducial_scalar(nuisance[key]) for key in aug_keys}
     return chain, nuisance_params
 
 
 def build_augmentation_chain_from_parameters(parameters, sampling_rate=None,
                                              stage="training_augmentation"):
-    """Convenience wrapper: build the augmentation chain straight from a ModelParameters.
-
-    Unpacks ``nuisance`` / ``nuisance_stage`` / ``nuisance_effect_config`` from a parsed
-    :class:`ModelParameters` and forwards to :func:`build_augmentation_chain`.  Used by the
-    training (`train_NPE`) and evaluation (`seismo_sbi.evaluation`) entrypoints so the
-    unpacking isn't duplicated.  ``stage`` selects the pre-noise (default) or
-    ``training_augmentation_post_noise`` chain.  Returns ``(chain, nuisance_params)``.
+    """``(chain, nuisance_params)`` as :func:`build_augmentation_chain`, unpacking the
+    nuisance blocks from a parsed ``ModelParameters``.
     """
     return build_augmentation_chain(
         parameters.nuisance,
@@ -1714,31 +1198,10 @@ def build_post_processing_chain(
     nuisance_keys,
     effect_configs: Optional[dict] = None,
 ) -> PostProcessingChain:
-    """Build a :class:`PostProcessingChain` from a collection of nuisance keys.
+    """A chain of the effects :data:`EFFECT_REGISTRY` has for ``nuisance_keys``.
 
-    Only keys present in :data:`EFFECT_REGISTRY` result in an effect being
-    added.  Unknown keys (e.g. ``source_location``) are silently skipped, so
-    callers can safely pass the full ``parameters.nuisance.keys()`` list.
-
-    Parameters
-    ----------
-    nuisance_keys:
-        Iterable of nuisance parameter names (strings).
-    effect_configs:
-        Optional mapping of ``nuisance_key → dict`` of constructor keyword
-        arguments forwarded to each effect's ``__init__``.  Missing entries
-        default to ``{}``.  For example::
-
-            effect_configs = {
-                "amplitude_error": {"scale_range": (0.5, 2.0)},
-                "time_shift_error": {"sampling_rate": 4.0, "gaussian_sigma": 2.0},
-            }
-
-    Returns
-    -------
-    PostProcessingChain
-        A chain containing exactly the effects whose keys appear in
-        ``EFFECT_REGISTRY``.
+    A key naming no effect is skipped, so a caller can pass every nuisance key it has.
+    ``effect_configs`` is ``{nuisance key: constructor keyword arguments}``.
     """
     configs = effect_configs or {}
     effects = [

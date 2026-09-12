@@ -23,11 +23,7 @@ class SimulationSaver:
         self.misc_data = misc_data
 
     def dump_data_as_hdf5(self, filepath):
-        """Dump the inputs and outputs of the simulation to a single HDF5 file.
-
-        Args:
-            filepath (str): Filepath to dump the HDF5 to.
-        """
+        """Write the simulation to ``filepath``, creating its parent directory."""
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         instance_file = h5py.File(filepath, 'w')
 
@@ -61,15 +57,12 @@ class SimulationSaver:
 
 
 def to_numpy(obj):
-    # 1) If Dataset → load to NumPy
     if isinstance(obj, h5py.Dataset):
-        return obj[...]  # or obj[:]
+        return obj[...]
     
-    # 2) If Group or dict → recurse
     if isinstance(obj, (h5py.Group, dict)):
         return {k: to_numpy(v) for k, v in obj.items()}
     
-    # 3) If it's already a numpy array or other object → return as is
     return obj
 class SimulationDataLoader():
 
@@ -95,32 +88,22 @@ class SimulationDataLoader():
             return self._read_input_dict(simulation_data_file)
 
     def load_flattened_simulation_vector(self, sim_name, *args, **kwargs):
-        # make sure this is returning things in the order we want
         return self.load_simulation_data_array(sim_name, *args, **kwargs)
 
     def load_flattened_simulation_vector_with_presence(self, sim_name, *args, **kwargs):
-        """As :meth:`load_flattened_simulation_vector`, tolerating absent stations.
-
-        Returns ``(flat_vector, present_mask)``; see
-        :meth:`convert_sim_data_to_array_with_presence`.
-        """
+        """``(flat_vector, present_mask)``, tolerating stations absent from the file."""
         with h5py.File(sim_name, 'r') as simulation_data_map:
             return self.convert_sim_data_to_array_with_presence(
                 simulation_data_map, *args, **kwargs)
 
     def load_simulation_data_array(self, sim_name, *args, **kwargs):
-        # context manager to close file
         with h5py.File(sim_name, 'r') as simulation_data_map:
             return self.convert_sim_data_to_array(simulation_data_map, *args, **kwargs)
 
     def load_input_and_data_array(self, sim_name, *args, **kwargs):
-        """Open the h5 file ONCE and return ``(input_data_dict, data_array)``.
+        """``(input_data_dict, data_array)`` from a single open of the file.
 
-        Equivalent to calling :meth:`load_input_data` followed by
-        :meth:`load_simulation_data_array`, but with a single ``h5py.File`` open
-        instead of two — the per-sample hot path in the ML dataloader needs both
-        theta (from ``inputs``) and the seismogram array (from ``outputs``), and
-        opening the file twice per ``__getitem__`` is a measurable cost.
+        The dataloader's per-sample path needs both, and opening the file twice costs.
         """
         with h5py.File(sim_name, 'r') as simulation_data_file:
             input_data = self._read_input_dict(simulation_data_file)
@@ -128,25 +111,16 @@ class SimulationDataLoader():
         return input_data, data
 
     def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *args, **kwargs):
-        # context manager to close file
         self.receivers.set_time_shifts(shift_dict)
         with h5py.File(sim_name, 'r') as simulation_data_map:
             shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}
             return self.convert_sim_data_to_array(shifted_map, *args, **kwargs)
 
     def load_event_subset(self, sim_name, subset_station_names, stacked=True):
-        """Load an event/simulation H5 restricted to a SUBSET of stations.
+        """``(data, coords)`` for the named stations only, in the order they are named.
 
-        Because the H5 ``outputs`` group is keyed by station name, selecting a subset is a
-        load-time operation: we temporarily restrict ``self.receivers`` to the requested
-        stations (preserving the order of ``subset_station_names``) and read only those.
-        Used for variable-station inference, where a trained model is applied to a subset of
-        its master station set.
-
-        Returns
-        -------
-        (data, coords) : data is ``(N, C, T)`` when ``stacked`` else a flat vector; coords is
-        ``(N, 2)`` of ``(latitude, longitude)``, ordered to match ``subset_station_names``.
+        ``data`` is ``(n_stations, n_components, n_samples)`` when ``stacked``, else a flat
+        vector; ``coords`` is ``(n_stations, 2)`` of latitude and longitude in degrees.
         """
         name_to_rec = {rec.station_name: rec for rec in self.receivers.iterate()}
         missing = [n for n in subset_station_names if n not in name_to_rec]
@@ -167,30 +141,16 @@ class SimulationDataLoader():
         return data, coords
 
     def load_event_subset_with_components(self, sim_name, components_map, stacked=True):
-        """Load an event H5 for variable-station inference, KEEPING a per-station
-        component subset and ZERO-FILLING the dropped components.
+        """``(data, coords, kept_stations)`` keeping only the components ``components_map``
+        names and zero-filling the rest.
 
-        ``components_map`` is the per-event QA ``components.json`` dict
-        ``{station: [kept components] | []}`` (the same structure
-        ``data_quality.components_from_verdicts`` writes): a station mapped to ``[]``
-        (or absent) is excluded entirely; a station mapped to a PARTIAL component list
-        keeps those channels and has its dropped channels replaced by zeros — exactly
-        the ``component_dropout`` nuisance the model trained on.
-
-        Returns ``(data, coords, kept_stations)``: ``data`` is ``(N, C, T)`` when ``stacked``
-        (``C`` = the station's master component count; dropped channels are zero rows),
-        ``coords`` is ``(N, 2)`` of ``(latitude, longitude)``, both ordered to match the
-        kept stations in master receiver order.
-
-        The channel ROW ORDER is by construction identical to :meth:`load_event_subset`
-        (each receiver's MASTER ``components`` order — the order the model trained on):
-        the full array is loaded exactly as ``load_event_subset`` would, then the dropped
-        channels are zeroed in array space, mirroring the training-time
-        ``component_dropout`` nuisance. The order of the lists inside ``components_map``
-        is irrelevant (membership only), and ``E``/``N`` are matched to their ``1``/``2``
-        aliases. [Fixed 2026-07: the previous implementation rebuilt receivers with the
-        CALLER's component-list order, silently swapping N/E whenever that order differed
-        from the master order — every components_map inference saw swapped horizontals.]
+        ``components_map`` is ``{station: [kept components]}``; a station mapped to an empty
+        list or absent is dropped entirely, and a partial list keeps those channels and zeroes
+        the others, which is the ``component_dropout`` nuisance the model trained on. Channel
+        rows always follow each receiver's master component order, never the order inside
+        ``components_map``, and ``E``/``N`` match their ``1``/``2`` aliases. ``data`` is
+        ``(n_stations, n_components, n_samples)`` when ``stacked``, ``coords`` is
+        ``(n_stations, 2)`` of latitude and longitude in degrees.
         """
         name_to_rec = {rec.station_name: rec for rec in self.receivers.iterate()}
         master_order = [rec.station_name for rec in self.receivers.iterate()]
@@ -214,11 +174,7 @@ class SimulationDataLoader():
         return data, coords, kept_stations
 
     def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False, fill_unused=False):
-        """Convert simulation data map into seismogram array.
-
-        Unchanged behaviour: a station absent from the file raises ``KeyError``.
-        Use :meth:`convert_sim_data_to_array_with_presence` to tolerate absences.
-        """
+        """Seismogram array from a simulation map; an absent station raises ``KeyError``."""
         array, _ = self._convert_sim_data(
             simulation_data_map, scale_dict, stacked, fill_unused, allow_missing=False
         )
@@ -226,17 +182,11 @@ class SimulationDataLoader():
 
     def convert_sim_data_to_array_with_presence(self, simulation_data_map, scale_dict=None,
                                                 stacked=False, fill_unused=False):
-        """As :meth:`convert_sim_data_to_array`, but tolerate absent stations.
+        """``(array, present_mask)``, tolerating absent stations.
 
-        Returns ``(array, present_mask)``, where ``present_mask`` is a boolean array over
-        ``receivers`` marking which stations the file actually carried. Absent stations are
-        zero-filled so the array keeps its canonical full-station shape; the caller is
-        responsible for masking them out (they are NOT valid data).
-
-        This exists for real-noise pools, where a window that is missing one station is
-        still perfectly good noise for every station it does have -- discarding the whole
-        window (the ``KeyError`` path) throws away most of the pool once the station count
-        is large.
+        ``present_mask`` is a boolean over ``receivers`` saying which stations the map
+        carried. An absent station is zero-filled so the array keeps its full-station shape;
+        those samples are padding, not data, and the caller must mask them out.
         """
         return self._convert_sim_data(
             simulation_data_map, scale_dict, stacked, fill_unused, allow_missing=True
@@ -244,17 +194,10 @@ class SimulationDataLoader():
 
     def _convert_sim_data(self, simulation_data_map, scale_dict=None, stacked=False,
                           fill_unused=False, allow_missing=False):
-        """Shared implementation. See the two public wrappers above.
+        """Shared implementation of the two public wrappers above.
 
-        Args:
-            simulation_data_map (dict): Mapping of simulation outputs.
-            scale_dict (dict, optional): Nested dict {station: {component: scale_factor}}.
-            stacked (bool, optional): If True, returns shape 
-                (num_stations, num_components, trace_length). Otherwise returns flat array.
-                Defaults to False.
-
-        Returns:
-            np.ndarray: Seismogram data.
+        ``scale_dict`` is ``{station: {component: scale factor}}``; ``stacked`` returns
+        ``(n_stations, n_components, n_samples)`` instead of a flat vector.
         """
         try:
             seismogram_array_length = self._get_seismogram_array_length(simulation_data_map)
@@ -269,8 +212,8 @@ class SimulationDataLoader():
         station_data = []
         present = []
 
-        # Fetch the outputs group once (not once per (station, component)); reading
-        # each per-component dataset is the per-sample dataloader hot path.
+        # Fetched once rather than per station and component: this is the dataloader's
+        # per-sample path.
         outputs_group = simulation_data_map["outputs"]
         for receiver in self.receivers.iterate():
             receiver_name = receiver.station_name
@@ -278,8 +221,7 @@ class SimulationDataLoader():
             if allow_missing:
                 station_outputs = outputs_group.get(receiver_name)
                 if station_outputs is None:
-                    # Zero-fill so the vector keeps its canonical shape; the mask tells the
-                    # caller these samples are padding, not noise.
+                    # Zero-filled so the vector keeps its shape; the mask marks it as padding.
                     station_data.append([np.zeros(seismogram_array_length)
                                          for _ in rec_components])
                     present.append(False)
@@ -288,27 +230,24 @@ class SimulationDataLoader():
                 station_outputs = outputs_group[receiver_name]
             comp_data = []
             for component in rec_components:
-                # Handle component name remapping
                 alt_component = component.replace('E', '1').replace('N', '2')
 
-                # Get trace data
                 trace_data = station_outputs.get(component)
                 if trace_data is None:
                     trace_data = station_outputs.get(alt_component)
 
                 if trace_data is None:
                     if allow_missing:
-                        # A station present but missing a component counts as absent: a
-                        # partial station would otherwise enter the model as part-zero data.
+                        # A part-present station counts as absent; otherwise it would reach
+                        # the model as part-zero data.
                         comp_data = None
                         break
                     raise KeyError(f"No data found for {receiver_name}:{component}")
 
                 trace_data_vector = trace_data[:seismogram_array_length]
 
-                # Apply the scale factor only when a scale_dict is supplied. With no
-                # scale_dict every factor is 1.0, so the old `/ np.sqrt(1.0)` just
-                # allocated a redundant copy of every trace — skip it.
+                # Skipped without a scale_dict: every factor would be 1.0, and dividing by it
+                # copies every trace for nothing.
                 if scale_dict is not None:
                     factor = scale_dict.get(receiver_name, {}).get(component)
                     if factor is None:
@@ -327,16 +266,13 @@ class SimulationDataLoader():
         if fill_unused:
             station_data = self.zero_fill_unused_components([comp for station in station_data for comp in station], seismogram_array_length)
         if stacked:
-            # shape (num_stations, num_components, trace_length)
             array = np.array(station_data)
         else:
-            # Flatten into single long vector
             array= np.concatenate([comp for comps in station_data for comp in comps])
         return array, np.asarray(present, dtype=bool)
 
     def zero_fill_unused_components(self, flattened_list, seismogram_array_length):
-        """Zero-fill unused components in the seismogram array.
-        """
+        """Zero-fill unused components in the seismogram array."""
         all_comps = []
         index = 0
         for receiver in self.receivers.iterate():

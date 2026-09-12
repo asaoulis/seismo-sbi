@@ -12,11 +12,7 @@ def compute_data_vector_length(data_length, sampling_rate):
     return int(data_length * sampling_rate)
 
 def shift_1d_with_padding(x: np.ndarray, shift: int) -> np.ndarray:
-    """
-    Shift 1D array by `shift` samples using zero padding.
-      shift > 0 : delay (shift right)
-      shift < 0 : advance (shift left)
-    """
+    """``x`` shifted by ``shift`` samples and zero-padded; positive delays, negative advances."""
     n = len(x)
     if shift > 0:
         return np.concatenate([np.zeros(shift), x[:-shift]])
@@ -27,18 +23,15 @@ def shift_1d_with_padding(x: np.ndarray, shift: int) -> np.ndarray:
         return x.copy()
 
 def apply_station_time_shifts(receivers, all_seismograms_map: dict) -> dict:
-    """
-    all_seismograms_map: {station_name: {component: waveform_array}}
-    Uses receiver.time_shift (int, in samples) for each station.
-    Returns a NEW shifted map (does not modify input in-place).
+    """A new ``{station: {component: waveform}}`` map with each station's
+    ``receiver.time_shift``, in samples, applied. The input map is not modified.
     """
     shifted_map = {}
 
     for receiver in receivers.iterate():
         station = receiver.station_name
-        shift = int(receiver.time_shift)  # in samples
+        shift = int(receiver.time_shift)
 
-        # Copy to avoid modifying original
         station_dict = all_seismograms_map.get(station, {})
         shifted_map[station] = {}
 

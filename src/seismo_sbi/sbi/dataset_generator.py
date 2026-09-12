@@ -32,33 +32,21 @@ class ParallelSimulationRunner(ABC):
 
         def _error_handled_simulation_callable(*args, **kwargs):
 
-            # Bind the exception OUTSIDE the except block: in Python 3 the
-            # `except ... as exc` target is deleted when the block exits, so a
-            # later `raise exc` after the loop hits `UnboundLocalError` and masks
-            # the real worker error. Keep the last failure to re-raise faithfully.
+            # Bound outside the except block, whose target Python deletes on exit, so the
+            # real worker error survives to be re-raised.
             last_exc = None
             for attempt_number in range(num_attempts):
                 try:
                     simulation_callable(*args, **kwargs)
-                    return True  # success
+                    return True
                 except Exception as exc:
-                    # Error handling for remote instaseis simulations
-                    # to prevent hanging on single connection failure
                     last_exc = exc
                     print(f"Simulation terminated with exception {attempt_number + 1} times:")
-                    # format_exc() formats the exception CURRENTLY being handled. The previous
-                    # `format_exception()` (no args) is invalid on Python >=3.10 and itself raised
-                    # a TypeError inside the except block — masking the real worker error.
                     print(traceback.format_exc())
                     print("Retrying simulation...")
 
-            # All retries exhausted. A small fraction of sampled sources can fall
-            # outside a forward model's valid domain (e.g. instaseis 'Element not
-            # found' when a source/receiver geometry is off the DB mesh — retrying
-            # redraws the ensemble member but NOT the source, so it can't recover).
-            # SKIP this sample (write no output) and continue rather than aborting
-            # the whole run; an excessive skip fraction is caught downstream in
-            # run_parallel_simulations (guards against a systemic bad-config run).
+            # A sampled source can fall outside the forward model's valid domain, which no
+            # retry recovers; skip it and let run_parallel_simulations catch a large fraction.
             print(f"Simulation FAILED after {num_attempts} attempts; SKIPPING sample. "
                   f"Last error: {type(last_exc).__name__}: {last_exc}")
             return False
@@ -94,13 +82,10 @@ class ParallelSimulationRunner(ABC):
 
     @staticmethod
     def _guard_against_excessive_skips(results, max_skip_fraction=0.2):
-        """Report skipped simulations and abort if too many failed.
+        """Report the skipped simulations, and raise if too large a fraction failed.
 
-        Each wrapped simulation callable returns True on success and False when it
-        was skipped after exhausting retries (rare out-of-domain sources). A few
-        skips are expected and harmless; a large fraction means a systemic problem
-        (e.g. a wrong DB path) that would otherwise silently produce a near-empty
-        dataset, so we raise instead.
+        A few out-of-domain sources are expected; a large fraction means a systemic problem
+        that would otherwise produce a near-empty dataset in silence.
         """
         total = len(results)
         n_skipped = sum(1 for r in results if r is False)
@@ -123,8 +108,6 @@ class ParallelSimulationRunner(ABC):
 
 from scipy.stats.qmc import LatinHypercube
 
-## TODO: convert all of these into torch.Distributions,
-## so that they can be used as priors in sbi
 
 def constant_sampler(value, num_samples):
     for _ in range(num_samples):
@@ -161,7 +144,7 @@ def transform_sampling_func(sampling_func, transform_func):
                     else:
                         flat.append(v)
                 else:
-                    flat.append(v)  # fallback for unknown types
+                    flat.append(v)
             yield transform_func(np.array(flat, dtype=object))
     return wrapper
 
@@ -170,14 +153,12 @@ class MomentTensorLogScaleHomogeneous:
     @staticmethod
     def _generate_sample(bounds):
 
-        # following `Fully probabilistic seismic source inversion – Part 1: Efficient parameterisation.`
-        # Stahler-Sigloch (2014), 2.2: Parametrisation of the moment tensor
+        # Parametrisation of Stahler and Sigloch (2014), section 2.2.
         x = [np.random.uniform(0, 1) for _ in range(5)]
         Y3 = 1
         Y2 = np.sqrt(x[1])
         Y1 = Y2*x[0]
 
-        # log prior on M_0
         M0 = np.exp(np.random.uniform(np.log(bounds[0]), np.log(bounds[1])))
 
         M_xx = np.sqrt(Y1) * np.cos(2*np.pi*x[2]) * np.sqrt(2) * M0
@@ -187,8 +168,7 @@ class MomentTensorLogScaleHomogeneous:
         M_yz = np.sqrt(Y3 - Y2) * np.cos(2*np.pi*x[4]) * M0
         M_xz = np.sqrt(Y3 - Y2) * np.sin(2*np.pi*x[4]) * M0
 
-        # Now convert to (r, t, p) coordinates - see
-        # Aki & Richards (2002) p. 113
+        # Into the (r, theta, phi) order, after Aki and Richards (2002) p. 113.
         M = [M_zz, M_xx, M_yy, M_xz, -M_yz, -M_xy]
 
         return np.array(M)
@@ -218,7 +198,6 @@ class RejectionSamplingWrapper:
     
     def __iter__(self):
         counter = 0
-        #tqdm pbar
         pbar = tqdm(total=self.num_samples, desc="Rejection Sampling prior")
         while counter < self.num_samples:
             sample_generator = self.sampler(100)
@@ -267,7 +246,6 @@ class VelocityModelSampler:
         self.velocity_model = velocity_model
         self.kappa = kappa
         self.num_samples = num_samples
-        # check of first arg is "smooth"
         self.kwargs = {}
         if len(args) > 0 and args[0] == "smooth":
             self.perturbation_function = self.perturbation_methods["smooth"]
@@ -282,12 +260,9 @@ class VelocityModelSampler:
     def __iter__(self):
         for _ in range(self.num_samples):
             yield self.perturbation_function(self.velocity_model, **self.kwargs)
-            # yield self.per(self.velocity_model, **self.kwargs)
 
 def velocity_model_sampler(velocity_model_args, num_samples):
-    """
-    Returns a generator of perturbed velocity models.
-    """
+    """A generator of perturbed velocity models."""
     velocity_model_path, kappa, *options = velocity_model_args
     velocity_model = load_velocity_model(velocity_model_path)
     sampler = iter(VelocityModelSampler(velocity_model, kappa, num_samples, *options))
@@ -339,7 +314,6 @@ class DatasetGenerator(ParallelSimulationRunner):
 
 
         simulation_job_args_list = [input_config for input_config in input_generator]
-        # print(simulation_job_args_list[::25])
         self.run_parallel_simulations(simulation_job_args_list)
     
     def run_predefined_batch(self, thetas, indices, parameters : ModelParameters):
@@ -351,12 +325,10 @@ class DatasetGenerator(ParallelSimulationRunner):
     
     @staticmethod
     def _resolve_sampler(entry):
-        """Resolve a ``sampling_method`` entry to a ``(args, num_samples)`` sampler.
+        """The ``(args, num_samples)`` sampler a ``sampling_method`` entry names.
 
-        An entry is either a string naming a built-in sampler (looked up in
-        :attr:`sampler_lookup_map`) or an already-built closure produced by a
-        catalogue-prior factory at config-parse time (see
-        ``SBI_Configuration._normalise_sampling_method``).
+        The entry is either the name of a built-in sampler or an already-built closure the
+        configuration produced.
         """
         if callable(entry):
             return entry
@@ -374,12 +346,7 @@ class DatasetGenerator(ParallelSimulationRunner):
     @staticmethod
     def create_samplers(parameters : ModelParameters, sampler_details, priors = (None, None)):
         sampler_generators = DatasetGenerator._create_sampler_generator_dict(parameters, sampler_details, priors)
-        # if priors[0] is None:
         sampler_args = parameters.bounds
-        # else:
-        #     sampler_args = {key : (parameters.vector_to_simulation_inputs(priors[0])[key], 
-        #                            parameters.vector_to_simulation_inputs(priors[1])[key]) 
-        #                            for key in parameters.names.keys()}
         samplers = {key : partial(sampler, sampler_args[key]) for key, sampler in sampler_generators.items()}
 
         return samplers
@@ -391,5 +358,4 @@ class DatasetGenerator(ParallelSimulationRunner):
             yield self.output_base_path + f"/sim_{i}.h5"
 
     def clear_all_outputs(self):
-        # just delete the output folder
         import shutil

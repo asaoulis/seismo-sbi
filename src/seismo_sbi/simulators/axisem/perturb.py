@@ -1,11 +1,12 @@
-"""Perturb AxiSEM external background models to build a velocity-model ensemble.
+"""Draw perturbed one-dimensional Earth models around a reference profile.
 
-The signed increments of ``vpv`` and ``vsv`` between successive nodes are scaled by a mean-one
-log-normal factor ``exp(N(-sigma^2/2, sigma))`` and the profile is rebuilt from a fixed deep
-anchor, which keeps the profile monotone and the ensemble centred on the reference
-(``E[v'] = v``). The radial gaps between nodes are perturbed and renormalised so the surface
-and centre radii stay fixed, shifting discontinuity depths. Fluid rows stay fluid and
-``vsv < vpv/sqrt(2)`` is enforced; density is fixed or re-derived from Brocher (2005).
+An inference that treats one Earth model as exact reports a confidence the data cannot
+support, so the forward model is an ensemble of profiles. :func:`perturb_background_model`
+perturbs a whole AxiSEM background model, including its discontinuity depths; the functions
+below it perturb a layered profile given as arrays, with the spread tapering or interpolated
+with depth. Every draw keeps the reference as its mean and stays a physically possible Earth:
+speeds keep their ordering, fluid layers stay fluid, and the speed ratio stays below the
+Poisson bound.
 """
 
 from __future__ import annotations
@@ -20,18 +21,15 @@ MAX_VS_OVER_VP = 1.0 / np.sqrt(2.0)
 
 
 def _perturb_widths(radius: np.ndarray, width_sigma: float, rng) -> np.ndarray:
-    """Return a new descending radius array with perturbed layer widths.
+    """A descending radius array in m with the gaps between nodes perturbed.
 
-    Gaps between successive radii are scaled by ``exp(N(0, width_sigma))``;
-    zero gaps (the duplicated-radius discontinuity rows) stay exactly zero so
-    the double-line structure is preserved.  Gaps are renormalised so the total
-    span (surface radius minus centre radius) is unchanged, pinning both
-    endpoints.
+    Zero gaps, which are the duplicated rows marking a discontinuity, stay zero, and the gaps
+    are renormalised so the surface and centre radii are unchanged.
     """
     if width_sigma <= 0 or len(radius) < 3:
         return radius.copy()
 
-    gaps = -np.diff(radius)               # positive gaps (descending radius)
+    gaps = -np.diff(radius)
     nonzero = gaps > 0
     total = gaps.sum()
 
@@ -39,7 +37,6 @@ def _perturb_widths(radius: np.ndarray, width_sigma: float, rng) -> np.ndarray:
     factors[nonzero] = np.exp(rng.normal(0.0, width_sigma, size=nonzero.sum()))
     new_gaps = gaps * factors
 
-    # Renormalise non-zero gaps so the total span is preserved (endpoints fixed).
     span_nonzero = new_gaps[nonzero].sum()
     if span_nonzero > 0:
         new_gaps[nonzero] *= total / span_nonzero
@@ -51,45 +48,22 @@ def _perturb_widths(radius: np.ndarray, width_sigma: float, rng) -> np.ndarray:
 
 
 def _perturb_monotone_increments(v, anchor_idx, sigma, rng):
-    """Perturb a velocity column while preserving its monotonic structure.
+    """A perturbed copy of the velocity column ``v``, unchanged from ``anchor_idx`` down.
 
-    Instead of perturbing absolute node values (which lets closely-spaced nodes
-    cross and produce unphysical velocity reversals / low-velocity zones), we
-    perturb the *increments* between successive nodes multiplicatively:
-
-        g_i  = v[i+1] - v[i]                  (signed gap, top -> down)
-        g_i' = g_i * exp(N(-sigma^2/2, sigma)) (exp > 0 -> sign of g_i preserved)
-
-    and rebuild the profile **upward from a fixed anchor** at ``anchor_idx``
-    (``v[anchor_idx]`` and everything below it are left unchanged):
-
-        v'[i] = v[anchor_idx] - sum_{j>=i} g_j'
-
-    Because every gap keeps its sign, the perturbed profile has exactly the same
-    monotonicity as the fiducial (increases stay increases; a genuine LVZ stays
-    an LVZ) — no backward bending is ever introduced — and the shallow nodes can
-    never overtake the fixed deep anchor.  Spread is largest at the surface and
-    shrinks toward the anchor (the shallow crust being the least constrained),
-    which is the physically sensible uncertainty structure.
-
-    **Mean-preserving:** the log-normal factor uses a ``-sigma^2/2`` drift so it
-    has *mean* 1 (``E[exp(N(-sigma^2/2, sigma))] = 1``), not just median 1.  Then
-    ``E[g_i'] = g_i`` and, since the reconstruction is linear in the gaps with a
-    fixed anchor, ``E[v'] = v`` exactly at every node.  A plain ``N(0, sigma)``
-    factor would have mean ``exp(sigma^2/2) > 1``, inflating every increment and
-    systematically biasing the shallow velocities below the fiducial (the bias
-    grows toward the surface and scales as ``exp(sigma^2/2)``), so the ensemble
-    mean would drift away from the 1-D reference.  The drift correction keeps the
-    *marginal* deliberately non-log-normal (no LVZ/cliff artifacts) while
-    centring the ensemble on the reference model.
+    The signed increments between nodes are scaled rather than the node values, so every
+    increment keeps its sign and the profile keeps the reference's monotonicity: a real
+    low-velocity zone survives and no spurious reversal appears. The profile is then rebuilt
+    upward from the fixed anchor, so the spread is widest at the surface and vanishes at depth.
+    The log-normal factor carries a ``-sigma^2/2`` drift, which makes its mean one rather than
+    its median, so the ensemble mean is the reference at every node.
     """
     v_new = v.copy()
     if sigma <= 0 or anchor_idx < 1:
         return v_new
-    gaps = v[1:anchor_idx + 1] - v[:anchor_idx]              # g_i, i=0..anchor_idx-1
-    factors = np.exp(rng.normal(-0.5 * sigma ** 2, sigma, size=anchor_idx))  # E[factor]=1
+    gaps = v[1:anchor_idx + 1] - v[:anchor_idx]
+    factors = np.exp(rng.normal(-0.5 * sigma ** 2, sigma, size=anchor_idx))
     gaps_p = gaps * factors
-    suffix = np.cumsum(gaps_p[::-1])[::-1]                   # suffix[i] = sum_{j>=i} g_j'
+    suffix = np.cumsum(gaps_p[::-1])[::-1]
     v_new[:anchor_idx] = v[anchor_idx] - suffix
     return v_new
 
@@ -104,27 +78,15 @@ def perturb_background_model(
     max_depth_km: float = None,
     seed=None,
 ) -> BackgroundModel:
-    """Return a perturbed copy of ``model``.
+    """A perturbed copy of ``model``.
 
-    Parameters
-    ----------
-    vp_sigma, vs_sigma : float
-        Std-dev of the log-normal fractional perturbation on Vp / Vs.
-    width_sigma : float
-        Std-dev of the log-normal layer-width / depth perturbation (0 disables).
-    rho_mode : {'fixed', 'brocher'}
-        Keep density as-is, or re-derive it from the perturbed Vp via Brocher
-        (2005).  Brocher expects Vp in km/s; we convert based on the model's
-        UNITS (``m`` -> m/s assumed, scaled to km/s).
-    max_depth_km : float or None
-        If set, only nodes **shallower** than this depth are perturbed (Vp/Vs,
-        layer widths, and Brocher density); deeper nodes are left exactly as the
-        fiducial.  Use this to perturb only the (uncertain) crust and keep the
-        deep reference (e.g. PREM) fixed — Brocher is a *crustal* relation and is
-        invalid for the mantle/core, and perturbing deep discontinuities is not
-        intended.  ``None`` perturbs the whole model (legacy).
-    seed : int or None
-        Seed for reproducibility.
+    ``vp_sigma`` and ``vs_sigma`` are the fractional spreads of the compressional and shear
+    speeds, ``width_sigma`` that of the layer widths, which moves the discontinuity depths;
+    zero disables it. ``rho_mode`` keeps the density or re-derives it from the perturbed
+    compressional speed with Brocher (2005). ``max_depth_km`` perturbs only nodes shallower
+    than that depth, which is how the uncertain crust is perturbed while a well-constrained
+    deep reference is held fixed, and is also what keeps Brocher inside the crust where it is
+    valid; ``None`` perturbs the whole model.
     """
     rng = np.random.default_rng(seed)
     out = model.copy()
@@ -135,7 +97,6 @@ def perturb_background_model(
     r_i = out.col_index("radius")
     n = out.n_rows
 
-    # Which nodes to perturb (leading shallow block, since radius is descending).
     radius = out.radius
     surface_r = float(radius.max())
     if max_depth_km is None:
@@ -143,40 +104,37 @@ def perturb_background_model(
     else:
         depth_km = (surface_r - radius) / 1000.0
         mask = depth_km < float(max_depth_km)
-    k = int(mask.sum())                     # crust = leading block 0..k-1
-    # Build upward from the first FIXED node below the perturbed block (so the
-    # deep reference stays put and the crust connects to it without overtaking).
+    k = int(mask.sum())
+    # Anchored on the first fixed node below the perturbed block, so the crust connects to the
+    # deep reference without overtaking it.
     anchor_idx = k if k < n else n - 1
 
-    # -- velocities (monotonicity-preserving increment perturbation) -------
     vp_new = _perturb_monotone_increments(data[:, vp_i], anchor_idx, vp_sigma, rng)
     vs_new = _perturb_monotone_increments(data[:, vs_i], anchor_idx, vs_sigma, rng)
 
-    fluid = data[:, vs_i] == 0.0          # keep fluid layers fluid
+    fluid = data[:, vs_i] == 0.0
     vs_new[fluid] = 0.0
-    over = (~fluid) & (vs_new > MAX_VS_OVER_VP * vp_new)   # enforce Vs < Vp/sqrt(2)
+    over = (~fluid) & (vs_new > MAX_VS_OVER_VP * vp_new)
     vs_new[over] = vp_new[over] * (0.99 * MAX_VS_OVER_VP)
 
     data[:, vp_i] = vp_new
     data[:, vs_i] = vs_new
 
-    # -- layer widths / depths --------------------------------------------
-    # Perturb only the shallow block's radii, pinning the surface and the first
-    # un-perturbed (deep) node so deeper structure is untouched.
+    # Only the shallow block's radii move; the surface and the first fixed deep node are
+    # pinned, so deeper structure is untouched.
     if width_sigma > 0:
-        k = int(mask.sum())               # mask is a leading contiguous block
+        k = int(mask.sum())
         if 0 < k < n:
-            sub = radius[:k + 1].copy()    # surface .. first fixed deep node
+            sub = radius[:k + 1].copy()
             data[:k + 1, r_i] = _perturb_widths(sub, width_sigma, rng)
         elif k == n:
             data[:, r_i] = _perturb_widths(radius, width_sigma, rng)
 
-    # -- density (Brocher) on perturbed nodes only ------------------------
     if rho_mode == "brocher" and "rho" in out.columns:
         rho_i = out.col_index("rho")
         units = out.meta.get("UNITS", "m").lower()
         to_km_s = 1.0e-3 if units == "m" else 1.0
-        rho = brocher_rho(vp_new[mask] * to_km_s)         # g/cm^3
+        rho = brocher_rho(vp_new[mask] * to_km_s)
         rho = np.maximum(rho, 1.0)
         data[mask, rho_i] = rho * 1000.0 if units == "m" else rho
     elif rho_mode not in ("fixed", "brocher"):

@@ -1,3 +1,11 @@
+"""Simulators backed by Computer Programs in Seismology Green's functions.
+
+:class:`CPSVariableKernelSimulator` computes the Green's functions for the velocity model it is
+handed; :class:`CPSPrecomputedSimulator` draws one from a stored ensemble;
+:class:`MultiModelCPSSimulator` gives disjoint receiver regions their own stored model. All of
+them contract the Green's-function tensor with the six moment-tensor components.
+"""
+
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +22,6 @@ from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.multi_model import MultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
 
-# convert newtons into dynes
 CPS_INPUT_COVERSION = 1.e-13
 CPS_OUTPUT_COVERSION = 1.e-2
 def convert_mt_convention(mt_rr_phi_theta):
@@ -41,14 +48,10 @@ def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
 import torch
 
 def compute_stft(x, fs=1.0, win_length=20, hop_length=10, n_fft=256, fmin=0.025, fmax=0.1, real_and_imag = False):
-    """
-    x: torch.Tensor (batch, time)
-    fs: sampling frequency (Hz)
-    """
+    """Short-time Fourier transform of ``x``, shaped ``(batch, n_samples)``, at ``fs`` Hz."""
     x = torch.tensor(x, dtype=torch.float32)
     window = torch.hann_window(win_length)
 
-    # STFT
     stft = torch.stft(
         x,
         n_fft=n_fft,
@@ -56,22 +59,16 @@ def compute_stft(x, fs=1.0, win_length=20, hop_length=10, n_fft=256, fmin=0.025,
         win_length=win_length,
         window=window,
         return_complex=True
-    )  # shape: (batch, freq_bins, frames)
-    # Frequency bins
-    freqs = torch.fft.rfftfreq(n_fft, d=1/fs)  # shape (freq_bins,)
-    # Mask by frequency range
+    )
+    freqs = torch.fft.rfftfreq(n_fft, d=1/fs)
     band_mask = (freqs >= fmin) & (freqs <= fmax)
     stft_band = stft[:, band_mask, :]
     if real_and_imag:
         stft_band = torch.view_as_real(stft_band)
     else:
-        # compute the magnitude and phases and stack them
         magnitudes = torch.abs(stft_band)
         phases = torch.angle(stft_band)
         stft_band = torch.stack((magnitudes, phases), dim=-1)
-        # stft_band = magnitudes  # shape: (batch, freq_bins, frames, 1)
-    # compute magitued
-    # print(f"STFT shape: {stft_band.shape}, Frequency bins: {freqs[band_mask].shape}")
     return stft_band.numpy()
 
 
@@ -84,22 +81,18 @@ class CPSSimulator(Simulator):
         self.gf_storage_root = gf_storage_root
         self.cps_path = cps_path
         self.synthetics_summary = lambda x: x
-        # self.synthetics_summary = self.compute_spectrograms
     
     def compute_spectrograms(self, seismograms):
         seismograms = seismograms.reshape(self.num_traces, -1)
-        # Compute the spectrograms for each trace
-        torch_batch_stfts = compute_stft(seismograms)#.reshape(self.num_traces, -1)
+        torch_batch_stfts = compute_stft(seismograms)
         return torch_batch_stfts
         
     def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
         
         all_seismograms_map = {}
         velocity_model = kwargs.pop('velocity_model', None)
-        # stf_duration is a Category-1 (simulator-level) nuisance for the Instaseis
-        # path; CPS precomputed Green's functions do not support STF convolution, so
-        # drop it here rather than forwarding it to update_with_Gtensor (which has a
-        # fixed signature and would raise on the unexpected kwarg).
+        # CPS Green's functions carry no source time function, and update_with_Gtensor would
+        # raise on the unexpected keyword.
         kwargs.pop('stf_duration', None)
         self.sensitivity_kernels = self.compute_greens_functions(source, velocity_model, **kwargs)
 
@@ -118,22 +111,12 @@ class CPSSimulator(Simulator):
         return all_seismograms_map
 
     def to_enu_convention(self, gf_tensor):
+        """Green's functions from ``(Z, E, N)`` to the ``(up, south, east)`` order the moment
+        tensor components use. Both are shaped ``(n_stations, 3, n_elements, n_samples)``.
         """
-        Convert GF tensor from (Z, E, N) [with Z positive up]
-        into (U, S, E) convention, matching moment tensors.
-
-        Input shape: (ns, 3, ne, nt)
-            index 0 = Z (Up)
-            index 1 = E
-            index 2 = N
-        Output shape: (ns, 3, ne, nt)
-            index 0 = U (Up)
-            index 1 = S (South)
-            index 2 = E
-        """
-        Z = gf_tensor[:, 0, :, :]   # up
-        N = gf_tensor[:, 2, :, :]   # north
-        E = gf_tensor[:, 1, :, :]   # east
+        Z = gf_tensor[:, 0, :, :]
+        N = gf_tensor[:, 2, :, :]
+        E = gf_tensor[:, 1, :, :]
 
         U = Z
         return np.stack([E, N, U], axis=1)
@@ -141,7 +124,6 @@ class CPSSimulator(Simulator):
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
         greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)
-        # greens_functions = self.to_enu_convention(greens_functions)
         greens_functions = greens_functions.transpose(2, 0, 1, 3)
 
         trace_counter = 0
@@ -158,18 +140,13 @@ class CPSSimulator(Simulator):
         moment_tensor_components = source.moment_tensor.components
         mt = mtm.MomentTensor(m_up_south_east=create_matrix(convert_mt_convention(moment_tensor_components)))
         moment_tensor_components = mt.m6_east_north_up()
-        # print('converting to NED')
         moment_tensor_components = np.array(enu_to_ned(*moment_tensor_components))
         seismograms = moment_tensor_components @ self.sensitivity_kernels * CPS_INPUT_COVERSION * CPS_OUTPUT_COVERSION
-        # seismograms = np.dot(self.sensitivity_kernels.T, np.array(moment_tensor_components) * CPS_INPUT_COVERSION) * CPS_OUTPUT_COVERSION
         return seismograms
     
     @abstractmethod
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
-        """
-        Abstract method to compute or load Green's functions.
-        Should be implemented in subclasses.
-        """
+        """Green's functions for this simulator's receivers; implemented by each subclass."""
         raise NotImplementedError("This method should be implemented in subclasses.")
     
 class CPSVariableKernelSimulator(CPSSimulator):
@@ -177,7 +154,6 @@ class CPSVariableKernelSimulator(CPSSimulator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # delete everything in gf_storage_root
         if self.gf_storage_root is not None and Path(self.gf_storage_root).exists():
             for item in Path(self.gf_storage_root).iterdir():
                 if item.is_file():
@@ -212,7 +188,6 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
         self.cps_data_path = self.gf_storage_root
         cps_data_path = Path(self.cps_data_path)
         self._fiducial_model_path = Path(fiducial_model_path)
-        # first check if GF.mseed file exists
         single_gf_path = Path(cps_data_path) / 'GF.mseed'
         if single_gf_path.exists():
             self._cps_data_folders = [cps_data_path]
@@ -229,7 +204,6 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
     def fiducial_member(self):
         return self._fiducial_model_path
 
-    # Back-compat aliases used in legacy code and tests
     @property
     def cps_data_folders(self):
         return self._cps_data_folders
@@ -258,14 +232,12 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
         )
 
     def get_all_models_array(self):
-        """
-        Returns an array of all models in the CPS data folders.
-        """
+        """Every velocity model under the Green's-function storage root, as one array."""
         all_models = []
         for folder in self.cps_data_folders:
             model_path = folder / 'vel.mod'
             if model_path.exists():
-                model = np.genfromtxt(model_path, skip_header=12)  # Skip header line
+                model = np.genfromtxt(model_path, skip_header=12)
                 all_models.append(model)
         
         fiducial_model = np.genfromtxt(self.fiducial_model_path / 'vel.mod', skip_header=12)
@@ -273,39 +245,12 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
 
 
 class MultiModelCPSSimulator(MultiModelSimulator, CPSSimulator):
-    """Dispatch different receiver subsets to different CPS precomputed models.
+    """Dispatch receiver subsets to different CPS precomputed models.
 
-    This wraps multiple :class:`CPSPrecomputedSimulator`-like simulators, each
-    responsible for a *subset* of the global receiver geometry. All
-    simulators share the same components and processing configuration, but
-    may use different CPS Green's function roots / fiducial models.
-
-    The per-station merge + sub-simulator bookkeeping live in the backend-
-    agnostic :class:`MultiModelSimulator` base; this subclass only specialises
-    how a CPS sub-simulator is built.  It also inherits :class:`CPSSimulator`
-    (so it remains a CPSSimulator instance and keeps ``cps_path`` / ``num_traces``).
-
-    Parameters
-    ----------
-    models : list
-        A list of dictionaries specifying sub-model configuration. Each dict
-        must contain at least:
-
-        - ``receivers``: a :class:`Receivers` object describing the subset of
-          receivers handled by this model.
-        - either
-            * ``simulator``: an already-constructed sub-simulator (in which case
-              ``cps_GFs_path`` / ``cps_GFs_fiducial_path`` are ignored), or
-            * ``cps_GFs_path`` and ``cps_GFs_fiducial_path``: used to
-              construct a new :class:`CPSPrecomputedSimulator`.
-
-        Any additional keys are ignored.
-
-    Notes
-    -----
-    * ``components`` are assumed identical across all receiver groups.
-    * From the outside this behaves like a single :class:`CPSSimulator` over
-      the *union* of all receivers.
+    Each entry of ``models`` carries ``receivers`` and either a pre-built ``simulator`` or the
+    ``cps_GFs_path`` and ``cps_GFs_fiducial_path`` to build one. Every region shares the
+    components and the processing configuration, so from outside this is one CPS simulator
+    over the union of the receivers.
     """
 
     def _build_sub_simulator(self, cfg, sub_receivers):
@@ -339,11 +284,7 @@ class MultiModelCPSSimulator(MultiModelSimulator, CPSSimulator):
         return_gf=True,
         **kwargs,
     ):
-        """Not used directly.
-
-        Each sub-simulator computes its own Green's functions; this method is
-        only present to satisfy the abstract interface.
-        """
+        """Never called: each sub-simulator computes its own Green's functions."""
         raise NotImplementedError(
             "MultiModelCPSSimulator does not expose a single global "
             "compute_or_load_greens_functions; it delegates to its sub-simulators."

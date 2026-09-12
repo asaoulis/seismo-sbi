@@ -1,3 +1,10 @@
+"""Theory-error covariance measured from an ensemble of Earth models.
+
+Wraps an ensemble simulator so that one "simulation" is a whole set of draws for the same
+source, and returns the covariance of their residuals about the reference member. The result
+travels through the pipeline in the shape of a simulation, one covariance block per trace.
+"""
+
 import numpy as np
 import joblib
 
@@ -11,10 +18,11 @@ def parallel_execution(inputs, func, num_jobs = 20):
     return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
 
 class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
-    """Estimate per-trace theory-error covariance from a GF ensemble simulator.
+    """Per-trace theory-error covariance estimated from an ensemble simulator.
 
-    Runs num_models draws from the ensemble, forms demeaned residuals vs the
-    fiducial (or ensemble mean), and returns empirical block-diagonal covariance.
+    One draw per ensemble member, demeaned against the reference member or the ensemble mean;
+    the result is a ``(n_samples, n_samples)`` covariance per trace, returned in the shape of a
+    simulation map.
     """
 
     def __init__(self, simulator: GFEnsembleSimulator, data_flattening, *args, internal_jobs=20, covariance_mean='fiducial', **kwargs):
@@ -25,7 +33,6 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.covariance_mean = covariance_mean
         self.num_jobs = internal_jobs
-        # self.receivers = self.simulator.receivers
         self.receivers.set_time_shifts({rec.station_name: 0 for rec in self.simulator.receivers.iterate()})
 
     def generic_point_source_simulation(self, source, **kwargs):
@@ -35,9 +42,8 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         
         simulations = np.array(simulations)
         seismograms = simulations.reshape(self.num_realisations,self.num_traces, -1)
-        seismograms = seismograms.transpose(1, 0, 2)  # Rearranging to (num_traces, num_realisations, trace_length)
+        seismograms = seismograms.transpose(1, 0, 2)
 
-        # now compute covariance arrays of each trace such that we have (num_traces, trace_length, trace_length)
         if self.covariance_mean == 'fiducial':
             fiducial_data = self.data_flattening_callable({"outputs":apply_station_time_shifts(self.simulator.receivers, self.simulator.generic_point_source_simulation(source, **{**kwargs, **{'use_fiducial': True}} ))})
             fiducial_data = fiducial_data.reshape(self.num_traces, -1)
@@ -47,7 +53,6 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         demeaned = seismograms - mean_obs
         cov_blocks = np.einsum('nrt,nru->ntu', demeaned, demeaned) / (demeaned.shape[1] - 1)
         cov_blocks = cov_blocks.reshape(self.num_traces, -1)
-        # repack into map of maps in same format as simulation dict
         all_cov_blocks_map = {}
         counter = 0
         for receiver in self.simulator.receivers.iterate():
@@ -59,6 +64,4 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         return all_cov_blocks_map
 
 
-# Back-compat alias — existing code using CPSTheoryCovarianceEstimationSimulator
-# continues to work without modification.
 CPSTheoryCovarianceEstimationSimulator = EnsembleTheoryCovarianceEstimationSimulator

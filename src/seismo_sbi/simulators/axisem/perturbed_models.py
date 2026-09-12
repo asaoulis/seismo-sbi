@@ -36,11 +36,10 @@ def generate_ensemble(
     base_seed: int = 0,
     seeds=None,
 ) -> dict:
-    """Write ``fiducial/`` plus ``n_members`` perturbed members under ``out_dir``.
+    """Write ``fiducial/`` and ``n_members`` perturbed members under ``out_dir``.
 
-    Returns the manifest dict (also written to ``ensemble_manifest.json``).
-    Each member gets a distinct seed: either the supplied ``seeds`` list or
-    ``base_seed + index``.
+    Returns the manifest, also written to ``ensemble_manifest.json``. Member ``i`` is drawn
+    with ``seeds[i]`` or, with no ``seeds``, ``base_seed + i``.
     """
     fiducial = read_bm(fiducial_bm)
     out_dir = Path(out_dir)
@@ -51,7 +50,6 @@ def generate_ensemble(
     elif len(seeds) != n_members:
         raise ValueError("len(seeds) must equal n_members")
 
-    # Fiducial (unperturbed reference).
     fid_dir = out_dir / "fiducial"
     fid_dir.mkdir(exist_ok=True)
     write_bm(fiducial, fid_dir / BM_FILENAME)
