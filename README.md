@@ -32,7 +32,7 @@ Simulation-based inference (SBI) uses machine learning (ML) to build empirical m
 
 Seismic waveform data contains complicated noise and theory errors that common Gaussian likelihood assumptions fail to adequately model. This package uses the [`sbi`](https://github.com/sbi-dev/sbi) library to build, train, and sample from NDEs, which then serve as empirical surrogates of the likelihood. 
 
-Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic.
+Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic. Every forward model lives in `seismo_sbi.simulators`; [docs/simulators.md](docs/simulators.md) maps the package and shows how to plug in your own.
 
 ### `seismo-sbi` workflow
 

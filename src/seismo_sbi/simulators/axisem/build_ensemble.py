@@ -16,6 +16,10 @@ import yaml
 from .model_io import read_bm
 from .perturbed_models import BM_FILENAME, generate_ensemble
 
+#: Solver input templates a member's inparam files are rendered from, overridable per ensemble
+#: with the ``axisem.templates_dir`` configuration key.
+DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parent / "inparams"
+
 
 def _set_inparam_key(text: str, key: str, value) -> str:
     """Replace the value on the line ``^<key> ...`` (preserving the key)."""
@@ -110,7 +114,7 @@ def build_ensemble(config_path, *, dry_run: bool = False, from_bm_dir=None, name
             f"ntheta*nrad = {ncpu} exceeds cpus_per_node = {cl['cpus_per_node']}; "
             "the solver would not fit on one node."
         )
-    templates_dir = Path(ax["templates_dir"])
+    templates_dir = Path(ax.get("templates_dir") or DEFAULT_TEMPLATES_DIR)
     if not templates_dir.is_absolute():
         templates_dir = config_path.parent / templates_dir
 

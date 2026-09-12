@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from seismo_sbi.simulators.axisem.build_ensemble import _set_inparam_key, build_ensemble
+from seismo_sbi.simulators.axisem.build_ensemble import (
+    DEFAULT_TEMPLATES_DIR, _set_inparam_key, build_ensemble,
+)
 
 EXAMPLE_CONFIG = Path(__file__).resolve().parents[2] / "examples/configs/axisem_ensemble.yaml"
 
@@ -15,7 +17,6 @@ EXAMPLE_CONFIG = Path(__file__).resolve().parents[2] / "examples/configs/axisem_
 def staged(tmp_path):
     config = yaml.safe_load(EXAMPLE_CONFIG.read_text())
     config["ensemble"]["out_dir"] = str(tmp_path / "ensemble")
-    config["axisem"]["templates_dir"] = str(EXAMPLE_CONFIG.parent / "axisem")
     config["ensemble"]["fiducial_bm"] = str(EXAMPLE_CONFIG.parent
                                             / config["ensemble"]["fiducial_bm"])
     config_path = tmp_path / "config.yaml"
@@ -25,11 +26,12 @@ def staged(tmp_path):
 
 def test_example_config_names_paths_that_exist():
     config = yaml.safe_load(EXAMPLE_CONFIG.read_text())
-    base = EXAMPLE_CONFIG.parent
-    assert (base / config["ensemble"]["fiducial_bm"]).exists()
-    templates = base / config["axisem"]["templates_dir"]
-    assert (templates / "inparam_basic").exists()
-    assert (templates / "inparam_advanced").exists()
+    assert (EXAMPLE_CONFIG.parent / config["ensemble"]["fiducial_bm"]).exists()
+
+
+def test_the_library_ships_the_solver_input_templates():
+    assert (DEFAULT_TEMPLATES_DIR / "inparam_basic").exists()
+    assert (DEFAULT_TEMPLATES_DIR / "inparam_advanced").exists()
 
 
 def test_dry_run_stages_the_reference_and_one_member(staged):

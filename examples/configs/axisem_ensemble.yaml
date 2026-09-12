@@ -22,8 +22,8 @@ ensemble:
 
 # Solver parameters, applied to every member.
 axisem:
-  # inparam_basic and inparam_advanced templates, relative to this file or absolute.
-  templates_dir: axisem
+  # inparam_basic and inparam_advanced templates; the library's own are used when unset.
+  templates_dir: null
   dominant_period: 5.0       # s, the shortest period the mesh resolves
   seismogram_length: 300.0   # s
   simulation_type: force     # backward kernels, which is what an Instaseis database needs
