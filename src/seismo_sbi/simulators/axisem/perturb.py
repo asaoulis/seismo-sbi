@@ -5,8 +5,7 @@ support, so the forward model is an ensemble of profiles. :func:`perturb_backgro
 perturbs a whole AxiSEM background model, including its discontinuity depths; the functions
 below it perturb a layered profile given as arrays, with the spread tapering or interpolated
 with depth. Every draw keeps the reference as its mean and stays a physically possible Earth:
-speeds keep their ordering, fluid layers stay fluid, and the speed ratio stays below the
-Poisson bound.
+speeds keep their ordering, fluid layers stay fluid, and the ratio stays below the Poisson bound.
 """
 
 from __future__ import annotations
