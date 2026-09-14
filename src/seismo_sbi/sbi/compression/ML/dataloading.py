@@ -534,6 +534,8 @@ def make_torch_dataloaders(
     if station_subsampler is not None:
         extra["collate_fn"] = variable_station_collate
 
+    # drop_last on TRAIN only: a trailing batch of one sample makes the flow's BatchNorm raise,
+    # and sharding across ranks can produce one. Validation runs in eval mode, where it is safe.
     train_loader = DataLoader(
         train_subset,
         batch_size=train_batch_size,
@@ -541,6 +543,7 @@ def make_torch_dataloaders(
         num_workers=num_workers,
         pin_memory=pin_memory,
         persistent_workers=persistent_workers,
+        drop_last=True,
         **extra,
     )
     val_loader = DataLoader(
