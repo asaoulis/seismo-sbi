@@ -129,23 +129,31 @@ def gaussian_sampler(bounds, num_samples):
     for _ in range(num_samples):
         yield np.random.multivariate_normal(bounds[0], np.diag(bounds[1]))
 
+def flatten_sample(values):
+    """One draw per parameter -> the flat sample vector ``vector_to_simulation_inputs`` reads.
+
+    A scalar draw takes one slot, a 1-D draw takes one slot per element, and anything else
+    (a velocity model) takes one slot holding the object itself.
+    """
+    flat = []
+    for v in values:
+        if np.isscalar(v):
+            flat.append(v)
+        elif isinstance(v, (list, tuple)):
+            flat.extend(v)
+        elif isinstance(v, np.ndarray):
+            if v.ndim == 1:
+                flat.extend(v)
+            else:
+                flat.append(v)
+        else:
+            flat.append(v)
+    return np.array(flat, dtype=object)
+
 def transform_sampling_func(sampling_func, transform_func):
     def wrapper(*args, **kwargs):
         for value in sampling_func(*args, **kwargs):
-            flat = []
-            for v in value:
-                if np.isscalar(v):
-                    flat.append(v)
-                elif isinstance(v, (list, tuple)):
-                    flat.extend(v)
-                elif isinstance(v, np.ndarray):
-                    if v.ndim == 1:
-                        flat.extend(v)
-                    else:
-                        flat.append(v)
-                else:
-                    flat.append(v)
-            yield transform_func(np.array(flat, dtype=object))
+            yield transform_func(flatten_sample(value))
     return wrapper
 
 class MomentTensorLogScaleHomogeneous:
@@ -297,7 +305,7 @@ class DatasetGenerator(ParallelSimulationRunner):
 
         samplers = self._create_sampler_generator_dict(parameters, sampler_details, priors=priors)
         if priors[0] is None:
-            sampler_args = parameters.bounds
+            sampler_args = self._sampler_args(parameters, samplers)
         else:
             sampler_args = {key : (parameters.vector_to_simulation_inputs(priors[0])[key], 
                                    parameters.vector_to_simulation_inputs(priors[1])[key],
@@ -344,9 +352,21 @@ class DatasetGenerator(ParallelSimulationRunner):
         return samplers
 
     @staticmethod
+    def _sampler_args(parameters : ModelParameters, sampler_generators):
+        """The first argument each sampler is bound to: bounds, except `constant`, which takes the fiducial.
+
+        A constant parameter must contribute exactly ``len(fiducial)`` slots to the sample vector,
+        because that is what ``ModelParameters.vector_to_simulation_inputs`` consumes; its bounds
+        pair would contribute two and shift every parameter after it.
+        """
+        return {key: (parameters.get_parameter_values(key) if sampler is constant_sampler
+                      else parameters.bounds[key])
+                for key, sampler in sampler_generators.items()}
+
+    @staticmethod
     def create_samplers(parameters : ModelParameters, sampler_details, priors = (None, None)):
         sampler_generators = DatasetGenerator._create_sampler_generator_dict(parameters, sampler_details, priors)
-        sampler_args = parameters.bounds
+        sampler_args = DatasetGenerator._sampler_args(parameters, sampler_generators)
         samplers = {key : partial(sampler, sampler_args[key]) for key, sampler in sampler_generators.items()}
 
         return samplers

@@ -130,7 +130,7 @@ def _build_mt_model_parameters(include_velocity_model=False):
 
     if include_velocity_model:
         mp.nuisance["velocity_model"] = _SOCAL_VMODEL
-        # constant_sampler yields bounds value as-is
+        # constant sampling reads the fiducial; bounds are unused for it.
         mp.bounds["velocity_model"] = _SOCAL_VMODEL
 
     return mp

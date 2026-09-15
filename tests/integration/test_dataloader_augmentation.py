@@ -18,6 +18,8 @@ from seismo_sbi.simulators.post_processing import (
     AmplitudeErrorEffect,
     TimeShiftErrorEffect,
     ComponentDropoutEffect,
+    InstrumentDropoutEffect,
+    ScatteringCodaEffect,
 )
 from seismo_sbi.sbi.compression.ML.dataloading import (
     TorchSimulationDataset,
@@ -93,6 +95,48 @@ def test_time_shift_augmentation_changes_data():
     _, x = ds[0]
     assert not np.allclose(x.numpy(), D_clean)
     assert x.shape == (2, 1, TRACE_LEN)
+
+
+def _impulse_D():
+    """A single early spike per station, so any coda shows up as energy in the tail."""
+    D = np.zeros((2, 1, TRACE_LEN), dtype=np.float64)
+    D[:, 0, 4] = 1.0
+    return D
+
+
+def test_scattering_coda_augmentation_adds_energy_in_the_coda():
+    """A gated coda must put energy after the direct arrival, leaving the lead-in quiet."""
+    D_clean = _impulse_D()
+    chain = PostProcessingChain([
+        ScatteringCodaEffect(alpha_range=(0.5, 0.5), mode="stahler", coda_fraction=0.25)
+    ])
+    # 1.0 gates every station, so the effect is not left to the draw.
+    ds = _make_dataset(chain, {"scattering_coda": 1.0}, D_clean)
+    np.random.seed(2)
+    _, x = ds[0]
+    augmented = x.numpy()
+
+    tail = slice(8, TRACE_LEN)
+    assert np.sum(D_clean[:, 0, tail] ** 2) == 0.0
+    assert np.sum(augmented[:, 0, tail] ** 2) > 0.0
+    assert np.allclose(augmented[:, 0, :4], 0.0)
+
+
+def test_instrument_dropout_augmentation_zeroes_whole_stations():
+    """Probability 1 zeroes every station's traces; probability 0 is the identity."""
+    D_clean = _clean_D()
+
+    ds = _make_dataset(PostProcessingChain([InstrumentDropoutEffect()]),
+                       {"instrument_dropout": 1.0}, D_clean)
+    np.random.seed(3)
+    _, dropped = ds[0]
+    assert np.allclose(dropped.numpy(), 0.0)
+
+    ds = _make_dataset(PostProcessingChain([InstrumentDropoutEffect()]),
+                       {"instrument_dropout": 0.0}, D_clean)
+    np.random.seed(3)
+    _, kept = ds[0]
+    assert np.allclose(kept.numpy(), D_clean)
 
 
 def test_augmentation_is_reproducible_under_fixed_seed():

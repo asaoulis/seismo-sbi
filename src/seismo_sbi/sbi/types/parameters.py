@@ -162,10 +162,25 @@ class ModelParameters:
                 i +=1
         if only_theta_fiducial:
             return inputs
+        inputs.update(self.vector_to_nuisance_inputs(vector[i:]))
+        return inputs
+
+    def vector_to_nuisance_inputs(self, vector):
+        """Read one value per nuisance from a vector holding ONLY the nuisance slots.
+
+        Each nuisance consumes ``len(fiducial)`` slots in the order the configuration declares
+        them; a scalar (0-D) fiducial and one whose fiducial is 2-D (a velocity model) each
+        consume a single slot, the latter holding the object itself.
+        """
+        i = 0
+        inputs = {}
         copied_map = deepcopy(self._parameters_register['nuisance'])
         for param, parameter_value in copied_map.items():
             parameter_value = np.asarray(parameter_value)
-            if np.isscalar(parameter_value) or parameter_value.ndim < 2:
+            if parameter_value.ndim == 0:
+                inputs[param] = np.asarray(vector[i], dtype=parameter_value.dtype)
+                i +=1
+            elif parameter_value.ndim == 1:
                 inputs[param] = np.zeros_like(parameter_value)
                 for j in range(len(parameter_value)):
                     inputs[param][j] = vector[i]

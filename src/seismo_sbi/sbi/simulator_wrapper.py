@@ -8,6 +8,7 @@ that returns a flat data vector for a parameter vector, and one that writes a si
 from functools import partial
 from copy import deepcopy
 
+from seismo_sbi.sbi.dataset_generator import flatten_sample
 from seismo_sbi.simulators.post_processing import build_post_processing_chain
 from seismo_sbi.simulators.registry import build_simulator
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
@@ -70,7 +71,8 @@ class GeneralSimulatorWrapper:
         if len(theta.shape) == 1:
             theta = theta.reshape(1,-1)
         theta_fiducial_map = parameters.vector_to_parameters(theta[0], 'theta_fiducial')
-        sampled_nuisance = {key: next(samplers[key](1)) for key in parameters.nuisance.keys()}
+        nuisance_draws = [next(samplers[key](1)) for key in parameters.nuisance.keys()]
+        sampled_nuisance = parameters.vector_to_nuisance_inputs(flatten_sample(nuisance_draws))
         inputs_map = {**theta_fiducial_map, **sampled_nuisance, **kwargs}
         return data_loader.convert_sim_data_to_array(
                     {"outputs": simulator.run_simulation(inputs_map)[1]}
