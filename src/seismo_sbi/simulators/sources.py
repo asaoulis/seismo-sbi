@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 
 from typing import NamedTuple
 
+from seismo_sbi.utils.mt_conventions import scalar_moment
+
 
 class MomentTensor(ABC):
     
@@ -57,21 +59,13 @@ _MIN_STF_SAMPLES: int = 1000
 GCMT_SCALE_FACTOR: float = 2.262e-6
 
 
-def _scalar_moment(mt_components: np.ndarray) -> float:
-    """Scalar moment ``M0 = sqrt(0.5 * sum(m_ij^2))`` in N.m.
-
-    ``mt_components`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m.
-    """
-    return float(np.sqrt(0.5 * np.dot(mt_components, mt_components)))
-
-
 def _gcmt_half_duration(mt_components: np.ndarray) -> float:
     """Half-duration in s of the triangular source time function the GCMT law predicts.
 
     ``mt_components`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m. The law gives the
     mean duration at a magnitude; individual earthquakes scatter by about a factor of two.
     """
-    m0 = _scalar_moment(mt_components)
+    m0 = scalar_moment(mt_components)
     return GCMT_SCALE_FACTOR * m0 ** (1.0 / 3.0)
 
 

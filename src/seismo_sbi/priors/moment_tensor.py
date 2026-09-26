@@ -16,16 +16,6 @@ MT_COMPONENT_ORDER = ("m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp")
 _SQRT2 = np.sqrt(2.0)
 
 
-def scalar_moment(mt6) -> float:
-    """Scalar moment ``M0 = sqrt(0.5 * dot(mt6, mt6))`` (N.m).
-
-    Mirrors ``simulators.sources._scalar_moment`` but is kept here so the
-    ``priors`` package does not depend on instaseis (imported by the Instaseis querier).
-    """
-    mt6 = np.asarray(mt6, dtype=float)
-    return float(np.sqrt(0.5 * np.dot(mt6, mt6)))
-
-
 def uniform_moment_tensor_on_sphere(m0: float, rng: np.random.Generator) -> np.ndarray:
     """One moment tensor of scalar moment ``m0`` oriented uniformly on the sphere.
 

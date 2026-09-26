@@ -13,6 +13,7 @@ from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from seismo_sbi.utils.parallel import tqdm_joblib
+from seismo_sbi.utils.mt_conventions import compute_scalar_moment, convert_mt_convention, create_matrix
 from .rocko_beachball_patch import plot_beachball_on_axes
 from contextlib import contextmanager
 import logging
@@ -89,20 +90,6 @@ def get_MW_and_epsilon(moment_tensor_sol):
 
 # delta_deg is the angle from the deviatoric plane to the lune point, -90 to 90 deg,
 # following Tape & Tape (2012) Eq. 21a.
-
-def compute_scalar_moment(moment_tensor_sol):
-    moment_tensor_matrix = create_matrix(moment_tensor_sol)
-    
-    M_0 = (1/np.sqrt(2)) * np.sum(moment_tensor_matrix**2)**(1/2)
-    return moment_tensor_matrix, M_0
-
-
-def create_matrix(moment_tensor_sol):
-    moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
-                                        [moment_tensor_sol[3], moment_tensor_sol[1], moment_tensor_sol[5]],
-                                        [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
-                                        
-    return moment_tensor_matrix
 
 def convert_to_pyrocko(mt):
     #up, south, east to north east down
@@ -1072,11 +1059,7 @@ class PosteriorPlotter:
             fig.savefig(figsave)
         plt.close()
     
-    @staticmethod
-    def convert_mt_convention(mt_rr_phi_theta):
-        """(mnn, mee, mdd, mne, mnd, med)"""
-
-        return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
+    convert_mt_convention = staticmethod(convert_mt_convention)
 
 
     def add_beachball_plot(self, ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):

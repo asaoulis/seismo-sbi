@@ -2,7 +2,7 @@
 
 Tests are organised in four sections:
 
-1. **Scalar moment helpers** — ``_scalar_moment`` and ``_gcmt_half_duration``.
+1. **Scalar moment helpers** — ``scalar_moment`` and ``_gcmt_half_duration``.
 2. **Triangular STF shape** — ``_build_triangular_stf`` geometry and
    ``build_stf_sliprate`` with a GCMT half-duration.
 3. **Dirac delta** — ``build_stf_sliprate(None, dt)`` backward-compat path.
@@ -17,7 +17,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from seismo_sbi.simulators.sources import GCMT_SCALE_FACTOR, _MIN_STF_SAMPLES, _scalar_moment, _gcmt_half_duration, _build_triangular_stf, build_stf_sliprate, GenericPointSource, GeneralMomentTensor
+from seismo_sbi.utils.mt_conventions import scalar_moment
+from seismo_sbi.simulators.sources import GCMT_SCALE_FACTOR, _MIN_STF_SAMPLES, _gcmt_half_duration, _build_triangular_stf, build_stf_sliprate, GenericPointSource, GeneralMomentTensor
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 
@@ -78,7 +79,7 @@ def _mt_params(stf_duration=None):
 
 
 class TestScalarMoment:
-    """Tests for ``_scalar_moment(mt_components)``."""
+    """Tests for ``scalar_moment(mt_components)``."""
 
     def test_isotropic_explosion(self):
         """A pure isotropic source [M, M, M, 0, 0, 0] has M₀ = M√(3/2)."""
@@ -86,28 +87,28 @@ class TestScalarMoment:
         mt = np.array([M, M, M, 0.0, 0.0, 0.0])
         # Frobenius: sqrt(0.5 * (M²+M²+M²)) = M * sqrt(3/2)
         expected = M * np.sqrt(1.5)
-        assert _scalar_moment(mt) == pytest.approx(expected, rel=1e-10)
+        assert scalar_moment(mt) == pytest.approx(expected, rel=1e-10)
 
     def test_pure_double_couple(self):
         """A canonical DC [M, -M, 0, 0, 0, 0] has M₀ = M."""
         M = 2e14
         mt = np.array([M, -M, 0.0, 0.0, 0.0, 0.0])
         # Frobenius: sqrt(0.5 * (M² + M²)) = M
-        assert _scalar_moment(mt) == pytest.approx(M, rel=1e-10)
+        assert scalar_moment(mt) == pytest.approx(M, rel=1e-10)
 
     def test_zero_tensor(self):
-        assert _scalar_moment(np.zeros(6)) == pytest.approx(0.0)
+        assert scalar_moment(np.zeros(6)) == pytest.approx(0.0)
 
     def test_scales_with_amplitude(self):
         """M₀ is linear in the MT amplitude."""
         base = np.array([1e14, -5e13, -5e13, 1e13, 0.0, 0.0])
-        m0_1 = _scalar_moment(base)
-        m0_2 = _scalar_moment(2.0 * base)
+        m0_1 = scalar_moment(base)
+        m0_2 = scalar_moment(2.0 * base)
         assert m0_2 == pytest.approx(2.0 * m0_1, rel=1e-10)
 
     def test_returns_float(self):
         mt = np.array([1e15] * 6)
-        assert isinstance(_scalar_moment(mt), float)
+        assert isinstance(scalar_moment(mt), float)
 
 
 class TestGcmtHalfDuration:
@@ -117,7 +118,7 @@ class TestGcmtHalfDuration:
         """T_half = GCMT_SCALE_FACTOR * M0^(1/3) for a pure DC."""
         M = 1e15  # N·m  (Mw ≈ 4)
         mt = np.array([M, -M, 0.0, 0.0, 0.0, 0.0])
-        m0 = _scalar_moment(mt)  # = M
+        m0 = scalar_moment(mt)  # = M
         expected = GCMT_SCALE_FACTOR * m0 ** (1.0 / 3.0)
         assert _gcmt_half_duration(mt) == pytest.approx(expected, rel=1e-10)
 
@@ -136,10 +137,10 @@ class TestGcmtHalfDuration:
     def test_realistic_mw4(self):
         """Mw≈4 event (DC representation) should give T_half ≈ 0.26 s.
 
-        For a pure double-couple [M, -M, 0, 0, 0, 0], _scalar_moment returns M
+        For a pure double-couple [M, -M, 0, 0, 0, 0], scalar_moment returns M
         exactly.  Mw=4 → M0 ≈ 1.26e15 N·m → T_half ≈ 0.26 s via GCMT formula.
         """
-        # DC: _scalar_moment([m0, -m0, 0, 0, 0, 0]) = m0 exactly
+        # DC: scalar_moment([m0, -m0, 0, 0, 0, 0]) = m0 exactly
         m0 = 10 ** (1.5 * 4 + 9.1)   # ≈ 1.26e15 N·m
         mt = np.array([m0, -m0, 0.0, 0.0, 0.0, 0.0])
         t_half = _gcmt_half_duration(mt)

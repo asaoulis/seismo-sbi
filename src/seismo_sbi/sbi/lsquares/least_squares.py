@@ -14,7 +14,7 @@ except Exception:
 import numpy as np
 
 from ..compression.derivative_stencil import DerivativeStencil
-from ...plotting.distributions import compute_scalar_moment
+from seismo_sbi.utils.mt_conventions import compute_scalar_moment
 from ...utils.errors import error_handling_wrapper
 from ..types.parameters import IterativeLeastSquaresParameters
 

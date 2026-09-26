@@ -21,21 +21,10 @@ from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.multi_model import MultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
+from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
 
 CPS_INPUT_COVERSION = 1.e-13
 CPS_OUTPUT_COVERSION = 1.e-2
-def convert_mt_convention(mt_rr_phi_theta):
-    """(mnn, mee, mdd, mne, mnd, med)"""
-
-    return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
-
-def create_matrix(moment_tensor_sol):
-    moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
-                                        [moment_tensor_sol[3], moment_tensor_sol[1], moment_tensor_sol[5]],
-                                        [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
-                                        
-    return moment_tensor_matrix
-
 def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
     Mnn = Myy
     Mee = Mxx
