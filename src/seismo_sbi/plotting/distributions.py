@@ -7,8 +7,6 @@ import joblib
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib.transforms import Affine2D
 
-plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
-
 from .parameters import ParameterInformation
 import torch
 from .patched_chainconsumer import CustomChainConsumer as ChainConsumer
@@ -631,7 +629,7 @@ class PosteriorPlotter:
         plt.close()
 
     def plot_chain_consumer(self, inversion_data, kde=True, extents=None, inverse=False, figsave= None, tick_font_size=30, *args, **kwargs):
-
+        plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
         colors = LUNE_ENSEMBLE_COLORS
 
         scaled_data_dict = {name: self._prepare_data_for_plotting(*data) 

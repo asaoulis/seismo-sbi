@@ -29,8 +29,9 @@ NOTEBOOKS = {
     "theory_errors_LV2": [REPO / "examples" / "data", REPO / "examples" / "ml-checkpoints"],
 }
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
-#: unseeded noise draws, network training, git output); only whether they raise is compared.
-STOCHASTIC_CELLS = {"theory_errors_LV2": {3, 8, 10, 13}}
+#: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
+#: they raise is compared.
+STOCHASTIC_CELLS = {"theory_errors_LV2": {3, 8, 10, 11, 13}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),
          re.compile(r"\d\d:\d\d(:\d\d)?"), re.compile(r"0x[0-9a-f]+"),

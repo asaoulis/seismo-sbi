@@ -34,7 +34,6 @@ class Receivers:
             self.receivers = self._generate_receivers_from_config(station_config, stations, station_codes_paths)
         else:
             self.receivers = receivers
-        print("At receiver init",[rec.time_shift for rec in self.receivers])
     def set_time_shifts(self, time_shifts_map):
         self.receiver_time_shifts_map = time_shifts_map
         new_receivers = []
