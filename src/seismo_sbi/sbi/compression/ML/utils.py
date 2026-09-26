@@ -1,27 +1,10 @@
 from pathlib import Path
 
-import torch
 import numpy as np
 
 from .seismogram_transformer import LightningModel
 
-from pytorch_lightning.callbacks import ModelCheckpoint
 
-def get_checkpoint_callback(name, save_top_k = -1, checkpoint_path = "model_ckpts", model=None):
-    # filename template
-    file_name = name + '-{epoch:02d}-{' + 'val_loss' + ':.6f}'
-    path = Path(f'{checkpoint_path}/{name}/ckpts')
-    
-    if model:
-        torch.save(model.state_dict(), path / "model.pt")
-    # callback
-    checkpoint_callback = ModelCheckpoint(
-        monitor='val_loss',
-        dirpath=path,
-        filename=file_name,
-        save_top_k=save_top_k
-    )
-    return checkpoint_callback
 import re
 def get_best_epoch(ckpts):
     exp = "(?<=val_loss=)(?:(?:\d+(?:\.\d*)?|\.\d+))"

@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import math as m
 
 from collections import OrderedDict
 
@@ -1060,45 +1059,6 @@ class MisfitsPlotting:
 # ...existing code...
 
 # ...existing code...
-def plot_stacked_spectrograms(receivers, flattened_seismogram_array, reference_noise_array=None, sampling_rate = 1, figname = None):
-    num_receivers = len(receivers)
-    station_names = [receiver.station_name for receiver in receivers]
-    time_series_length = int(flattened_seismogram_array.shape[0]//num_receivers)
-    seismograms = np.reshape(flattened_seismogram_array, (num_receivers,time_series_length))
-    if reference_noise_array is not None:
-        reference_noise_array = np.reshape(reference_noise_array, (num_receivers,time_series_length))
-
-
-    fig, axes = plt.subplots(m.ceil(num_receivers/6), 6, figsize=(15, num_receivers//2))
-    
-    colors = []
-    for index, (ax, seismogram, station_name) in enumerate(zip(axes.ravel(), seismograms, station_names)):
-        # ax.specgram(seismogram, Fs=sampling_rate, NFFT=64, noverlap=32, cmap="jet")
-        if reference_noise_array is None:
-            norm = spectrogram(seismogram, sampling_rate, 
-                        per_lap=0.9, wlen=20, log=True, dbscale=True, 
-                        cmap="jet", show=False, axes=ax)
-        else:
-            specgram,freq,time, end = compute_spectrogram(seismogram, sampling_rate, per_lap=0.9, wlen=20, dbscale=False)
-            specgram_noise, _, _, _ = compute_spectrogram(reference_noise_array[index], sampling_rate, per_lap=0.9, wlen=20, dbscale=False)
-            norm = generate_spectrogram_plot(10 * np.log10(specgram / specgram_noise), freq, time, end, log=True, axes=ax, cmap="jet")
-        
-        ax.set_title(f"{station_name} - Peak: {int(norm.vmax)} dB/Hz")
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("Frequency [Hz]")
-
-
-    for i in range(num_receivers, len(axes.ravel())):
-        axes.ravel()[i].axis("off")
-    plt.tight_layout()
-    if figname is not None:
-        fig.savefig(figname)
-        fig.clear()
-    else:
-        plt.show()
-    plt.close()
-    return colors
-
 import math
 
 from matplotlib import mlab
@@ -1275,5 +1235,3 @@ def compute_spectrogram(data, samp_rate, per_lap=0.9, wlen=None, dbscale=False,m
         specgram = np.sqrt(specgram[1:, :])
     freq = freq[1:]
     return specgram,freq,time, end
-
-

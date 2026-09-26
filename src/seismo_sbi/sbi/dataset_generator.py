@@ -187,36 +187,6 @@ class MomentTensorLogScaleHomogeneous:
 
 from itertools import chain
 
-class RejectionSamplingWrapper:
-
-    def __init__(self, sampler, prior_bounds, num_samples):
-        self.sampler = sampler
-        self.sample_in_prior = self.create_prior(prior_bounds)
-        self.num_samples = num_samples
-
-    def create_prior(self, bounds):
-        def prior(sample):
-            for key in bounds.keys():
-                if key == 'source_location':
-                    if not np.all(np.logical_and(sample[key] > bounds[key][0], sample[key] < bounds[key][1])):
-                        return False
-            return True
-        return prior
-    
-    def __iter__(self):
-        counter = 0
-        pbar = tqdm(total=self.num_samples, desc="Rejection Sampling prior")
-        while counter < self.num_samples:
-            sample_generator = self.sampler(100)
-            for sample in sample_generator:
-                if self.sample_in_prior(sample):
-                    print(sample)
-                    yield sample
-                    counter+=1
-                    pbar.update(1)
-
-                    break
-
 from scipy.stats import truncnorm
 class TruncatedGaussianSampler:
 

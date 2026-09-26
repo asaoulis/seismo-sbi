@@ -213,15 +213,3 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
         return gf_tensor
     else:
         for s, obj in enumerate(objstats): obj.update({'Gtensor':gf_tensor[s]})
-
-def update_with_dGtensor(dep_array, objstats, vmodel, filter_params, delta=None,
-                         force_calc=False, verbose=False, rootdir='.', cps_path=None):
-    tmpstats = objstats.copy()
-    dGtensor = []
-    for evdp in dep_array:
-        update_with_Gtensor(tmpstats, vmodel, filter_params, delta=delta, evdp_in_km=evdp,
-                             force_calc=force_calc, verbose=verbose, rootdir=rootdir, cps_path=cps_path)
-        dGtensor.append([obj.Gtensor for obj in tmpstats])
-    dGtensor = np.array(dGtensor)
-    for _s in range(len(objstats)):
-        objstats[_s].update({'dGtensor':np.array(dGtensor[:, _s, ...]), 'dep_array':dep_array})

@@ -1,6 +1,5 @@
 
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
 
 from seismo_sbi.sbi.configuration import ModelParameters
 
@@ -27,38 +26,6 @@ class SymmetricLogScaler:
         X_clipped = sign* np.clip(X_unscaled, self.lower_bound, self.upper_bound)
         return X_clipped
     
-class LinearSymmetricLogScaler:
-    def __init__(self, lower_bound, upper_bound, linear_range = 0.05):
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
-        self.linear_range = linear_range
-
-    def transform(self, X):
-        sign = np.sign(X)
-        X_abs = np.abs(X)
-        X_clipped = np.clip(X_abs, 0, self.upper_bound)
-        
-        X_linear = np.where(X_clipped <= self.lower_bound, 
-                            (X_clipped / self.lower_bound) * self.linear_range, 
-                            (0.5 - self.linear_range) * (np.log10(X_clipped) - np.log10(self.lower_bound)) / (np.log10(self.upper_bound) - np.log10(self.lower_bound)))
-        
-        X_scaled = sign * X_linear + 0.5
-        return X_scaled
-
-    def inverse_transform(self, X_scaled):
-        X_scaled = (X_scaled - 0.5)
-        sign = np.sign(X_scaled)
-        X_abs_scaled = np.abs(X_scaled)
-        # print(np.max((((X_abs_scaled / (0.5 - self.linear_range) )* (np.log10(self.upper_bound) - np.log10(self.lower_bound))) + np.log10(self.lower_bound))))
-        
-        X_inverse = np.where(X_abs_scaled <= self.linear_range, 
-                             (X_abs_scaled / self.linear_range) * self.lower_bound, 
-                             10 ** (((X_abs_scaled / (0.5 - self.linear_range) )* (np.log10(self.upper_bound) - np.log10(self.lower_bound))) + np.log10(self.lower_bound)))
-
-        X_unscaled = sign * np.clip(X_inverse, 0, self.upper_bound)
-        return X_unscaled
-
-
 class ZeroOneScaler:
     def __init__(self, bounds):
         self.bounds = bounds
@@ -361,18 +328,6 @@ def _mt_log10_m0_range_from_prior(raw_config: dict):
     return (lo, hi)
 
 
-class GeneralScaler:
-    def __init__(self, raw_compressed_dataset):
-        self.log_scaler = SymmetricLogScaler(5*np.min(np.abs(raw_compressed_dataset), axis=0), np.max(np.abs(raw_compressed_dataset),axis=0))
- 
-        first_transform = self.log_scaler.transform(raw_compressed_dataset)
-        self.scaler = MinMaxScaler()
-        self.scaler.fit(first_transform)
-
-    def transform(self, X):
-        first_transform = self.log_scaler.transform(X)
-        return self.scaler.transform(first_transform)
-    
     # def inverse_transform(self, X):
     #     # pad X to length 35
     #     X = np.concatenate([X, np.zeros((X.shape[0], self.num_statistics))], axis=1)

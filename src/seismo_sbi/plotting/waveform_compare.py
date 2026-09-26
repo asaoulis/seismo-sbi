@@ -84,45 +84,6 @@ def record_section(obs, syn, station_names, coords, event_location, *, sampling_
         _finish(fig, figname)
 
 
-def station_overlays(obs, syn, station_names, coords, event_location, *, sampling_rate=1.0,
-                     align="none", max_lag=60, per_trace=True, stations=None,
-                     figname=None, color_syn="#1f4e79"):
-    """Grid of per-station rows × 3 component columns (Z/E/N). obs (black) vs syn (colour) with the
-    zero-lag xcorr (and, for ``align='best'``, the best lag) annotated in every panel title.
-
-    ``align``: 'none' (raw), 'window60' (advance syn 60 s to undo the build offset), or 'best'
-    (per-trace best-lag). ``per_trace`` normalises each panel by its own obs peak.
-    ``stations``: optional subset (list of names) to keep the figure small.
-    """
-    import matplotlib.pyplot as plt
-    obs = np.asarray(obs, float); syn = np.asarray(syn, float)
-    idx = [station_names.index(s) for s in stations] if stations else list(range(len(station_names)))
-    T = obs.shape[2]
-    t = np.arange(T) / float(sampling_rate)
-    n = len(idx)
-    fig, axes = plt.subplots(n, 3, figsize=(13, 1.7 * n + 1), squeeze=False)
-    global_max = np.max(np.abs(obs)) or 1.0
-    for r, i in enumerate(idx):
-        for c in range(3):
-            ax = axes[r][c]
-            o = obs[i, c]; s = syn[i, c]
-            s_al, lbl = _apply_align(o, s, align, max_lag, sampling_rate)
-            xc0, _ = _xcorr_lag(o, s_al, 0)                 # xcorr at the chosen alignment
-            norm = (np.max(np.abs(o)) or 1.0) if per_trace else global_max
-            ax.plot(t, o / norm, color="black", lw=0.9, zorder=3)
-            ax.plot(t, s_al / norm, color=color_syn, lw=0.9, alpha=0.9, zorder=2)
-            ax.set_title(f"{station_names[i]} {COMPONENTS[c]}  xc={xc0:+.2f} ({lbl})", fontsize=8)
-            ax.tick_params(labelsize=7)
-            if r < n - 1:
-                ax.set_xticklabels([])
-            for sp in ax.spines.values():
-                sp.set_visible(False)
-    axes[-1][1].set_xlabel("time [s]")
-    fig.suptitle(f"obs (black) vs synthetic ({color_syn}) — align={align}, "
-                 f"{'per-trace' if per_trace else 'global'} norm", y=1.002)
-    _finish(fig, figname)
-
-
 def _finish(fig, figname):
     import matplotlib.pyplot as plt
     fig.tight_layout()

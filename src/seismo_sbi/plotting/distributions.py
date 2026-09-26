@@ -25,33 +25,6 @@ from seismo_sbi.plotting.lune import (
     kde_hpd_contour_levels,
 )
 
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import Polygon
-
-def make_beachball_collection(mt, facecolor, edgecolor, alpha=1.0, linewidth=1.3):
-    # Get raw, unit beachball polygons
-    data = rocko_beachball.mt2beachball(
-        mt,
-        beachball_type='full',
-        position=(0., 0.),
-        size=.06
-    )
-
-    patches = []
-    for (path, fc, ec, lw) in data:
-        patches.append(
-            Polygon(
-                xy=path,
-                facecolor=facecolor if fc != 'none' else 'none',
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                alpha=alpha
-            )
-        )
-
-    return PatchCollection(patches, match_original=True)
-
-
 
 # The angle distributions of a reparametrised moment tensor cover a periodic sample space,
 # which the corner-plot library warns about on every call.
@@ -89,39 +62,6 @@ def transfer_labels_and_ticks(src_ax, dest_ax):
     dest_ax.set_yticklabels(src_ax.get_yticklabels())
     dest_ax.yaxis.set_ticks_position(src_ax.yaxis.get_ticks_position())
 
-def flip_subplots(fig, axes):
-    n = len(axes)
-    
-    # Store the original positions of the subplots that need to be moved
-    positions = {}
-    for i in range(n):
-        for j in range(n):
-            if i > j:
-                positions[(i, j)] = axes[i, j].get_position()
-    for i in range(n):
-        transfer_labels_and_ticks(axes[0, i], axes[i, 0]) # Temporarily set the original axis to the new position
-        transfer_labels_and_ticks(axes[i, 0], axes[0, i])
-
-    # Move the subplots to the new positions
-    for (i, j), pos in positions.items():
-        new_i, new_j = j, i
-        axes[i, j].set_position(axes[new_i, new_j].get_position())  # Temporarily set the original axis to the new position
-        axes[new_i, new_j].set_position(pos)  # Move the target axis to the original position
-
-    for i in range(n):
-        transfer_labels_and_ticks(axes[0, i], axes[i, 0]) # Temporarily set the original axis to the new position
-        transfer_labels_and_ticks(axes[i, 0], axes[0, i])
-
-
-        
-    # Clean up the moved axes
-    for i in range(n):
-        for j in range(n):
-            if i < j:
-                axes[i, j].remove()
-
-    return fig, axes
-
 class DummyDataScaler:
 
     def __init__(self, n_features_in_):
@@ -149,26 +89,6 @@ def get_MW_and_epsilon(moment_tensor_sol):
 
 # delta_deg is the angle from the deviatoric plane to the lune point, -90 to 90 deg,
 # following Tape & Tape (2012) Eq. 21a.
-
-def get_delta(moment_tensor_sol: np.ndarray) -> float:
-    """
-    Compute Tape & Tape lune delta (in degrees) for a 6-component moment tensor.
-    Input ordering matches create_matrix: [Mxx, Myy, Mzz, Mxy, Mxz, Myz] in up-south-east.
-    """
-    M = create_matrix(moment_tensor_sol)
-    # For symmetric tensors, eigvalsh is faster and yields ordered real vals (ascending)
-    lam = np.linalg.eigvalsh(M)[::-1]  # descending: lam1 >= lam2 >= lam3
-    rho = float(np.sqrt(np.sum(lam**2)))
-    if rho == 0.0:
-        return 0.0
-    trM = float(np.sum(lam))
-    # numerical safety: if trace(M) == 0 => delta = 0
-    if np.isclose(trM, 0.0, atol=1e-12, rtol=0.0):
-        return 0.0
-    bdot = trM / (np.sqrt(3.0) * rho)
-    bdot = float(np.clip(bdot, -1.0, 1.0))
-    delta = 90.0 - np.degrees(np.arccos(bdot))
-    return float(delta)
 
 def compute_scalar_moment(moment_tensor_sol):
     moment_tensor_matrix = create_matrix(moment_tensor_sol)
