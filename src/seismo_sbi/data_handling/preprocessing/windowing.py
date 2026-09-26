@@ -21,9 +21,9 @@ def slice_event_window(
     t_end,
     sampling_rate: float,
 ) -> Stream:
-    """Slice a Stream to an event window, reproducing ProcessedDataSlicer semantics.
+    """Slice a Stream to an event window whose end sample is inclusive.
 
-    The legacy pipeline does:
+    The window is:
         fixed_num_seconds = ceil(duration / sr) * sr
         exact_end = t_start + fixed_num_seconds
         data.slice(t_start, exact_end)   # inclusive → +1 sample

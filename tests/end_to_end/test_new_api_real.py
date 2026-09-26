@@ -1,14 +1,6 @@
-"""Phase 3 — New preprocessing API tests on real IRIS data.
+"""The preprocessing API on real IRIS data for the Ridgecrest M5.1 event.
 
-Uses the same Ridgecrest M5.1 event as the legacy real-data test (0.2), but
-drives the full pipeline through the NEW preprocessing API functions instead
-of the legacy NoiseCollector / ProcessedDataSlicer classes.
-
-Key differences from the legacy real test:
-- Response removal via load_inventory + deconvolve_and_filter (instrument_correction=True)
-- No UPFLOW_config dict, no path_structure format strings
-- No mseed write/read round-trip between processing and slicing
-- Uses export_to_sbi_h5 directly for the final h5
+Response removal via load_inventory + deconvolve_and_filter, then export_to_sbi_h5.
 
 Opt-in for network access: set SEISMO_SBI_RUN_NETWORK=1 (inherited from
 conftest; tests will still run from cache if data is present).

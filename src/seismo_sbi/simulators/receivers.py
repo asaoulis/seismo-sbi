@@ -12,7 +12,6 @@ import json
 
 import matplotlib.pyplot as plt
 from pyproj import Geod
-from ..data_handling.noise_collection import NoiseCollector, convert_channel_type
 
 class Receiver(NamedTuple):
 
@@ -26,11 +25,9 @@ class Receiver(NamedTuple):
 
 class Receivers:
 
-    def __init__(self, path_to_stations =None, receiver_components_map = None, receiver_time_shifts_map = None, station_config=None, stations=None, station_codes_paths=None, receivers=None):
+    def __init__(self, path_to_stations =None, receiver_components_map = None, receiver_time_shifts_map = None, receivers=None):
         if path_to_stations is not None:
             self.receivers = self._convert_to_instaseis_receivers(path_to_stations, receiver_components_map, receiver_time_shifts_map)
-        elif station_config is not None:
-            self.receivers = self._generate_receivers_from_config(station_config, stations, station_codes_paths)
         else:
             self.receivers = receivers
     def set_time_shifts(self, time_shifts_map):
@@ -81,26 +78,6 @@ class Receivers:
 
         return receivers
     
-    def _generate_receivers_from_config(self, station_config, stations, station_codes_paths):
-        receivers = []
-
-        channel = 'Z'
-        for station in stations:
-            config = station_config[station_codes_paths[station]]
-            formatted_channel =  convert_channel_type(channel, config['sta_cha'])
-            instrument_response_path = NoiseCollector.evaluate_response_filepath(config['response_seismometer'], config['master_path'], "", station, config['network'], formatted_channel, config['location'])
-
-            station_location = NoiseCollector.get_station_location(instrument_response_path)
-
-            rec = Receiver(latitude=station_location[0],
-                            longitude=station_location[1],
-                            network=config['network'], 
-                            station_name=station)
-            
-            receivers.append(rec)
-
-        return receivers
-
     def iterate(self):
         for rec in self.receivers:
             yield rec

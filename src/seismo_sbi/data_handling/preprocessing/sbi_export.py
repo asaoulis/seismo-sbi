@@ -25,7 +25,7 @@ from seismo_sbi.simulators.simulation_io import SimulationSaver
 def _rename_component(channel: str) -> str:
     """Map a full channel code (e.g. 'BHE') to the SBI component key ('1').
 
-    Rules (matching ProcessedDataSlicer.rename_component):
+    Rules:
         Z in channel  → 'Z'
         1 in channel or channel ends with E → '1'
         2 in channel or channel ends with N → '2'
@@ -42,7 +42,7 @@ def _rename_component(channel: str) -> str:
 def _compute_autocorrelation(data: np.ndarray) -> np.ndarray:
     """Compute the normalised one-sided autocorrelation used for /misc.
 
-    Reproduces ProcessedDataSlicer lines 374-376:
+    That is:
         auto_correlate = np.correlate(data, data, mode='full')
         averaged = auto_correlate[:n][::-1] / np.arange(n, 0, -1)
     """

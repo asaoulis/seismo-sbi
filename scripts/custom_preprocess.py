@@ -1,7 +1,6 @@
 """Custom preprocessing script using the new obspy-centred pipeline.
 
-Replaces the legacy NoiseCollector / EventNoiseAggregator / ProcessedDataSlicer
-pipeline.  The new flow:
+The flow:
 
   1. find_mseed_files  — locate raw data on disk
   2. load_waveforms    — read into a single obspy.Stream

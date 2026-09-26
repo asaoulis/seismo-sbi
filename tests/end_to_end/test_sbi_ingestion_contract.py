@@ -1,11 +1,7 @@
-"""Phase 0.3 — SBI ingestion contract test.
+"""SBI ingestion contract for an event h5 written by ``export_to_sbi_h5``.
 
-Takes the event h5 produced by the synthetic pipeline test (0.1) and feeds
-it to RealNoiseSampler and DataManager exactly as pipeline.py does. Pins the
-flattened-vector shape, dtype, and ordering.
-
-This test is the gate for Phase 2: the new mseed_to_sbi_h5 tool must produce
-h5 files that make this test pass without modification.
+The h5 is fed to SimulationDataLoader, RealNoiseSampler and DataManager exactly as
+pipeline.py does, pinning the flattened-vector shape, dtype and ordering.
 """
 
 import numpy as np
@@ -18,7 +14,7 @@ from seismo_sbi.sbi.types.parameters import SimulationParameters
 from seismo_sbi.sbi.data_manager import DataManager
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
 
-from tests.end_to_end.test_preprocessing_synthetic import (
+from tests.end_to_end.test_new_api_synthetic import (
     STATIONS,
     NETWORK,
     SR_TARGET,
@@ -62,19 +58,15 @@ def _build_sim_params(receivers):
 
 
 @pytest.fixture(scope="module")
-def event_h5(pipeline_output):  # reuse the module-scoped fixture from the synthetic test
-    path = pipeline_output["event_h5"]
-    assert path.exists(), "Event h5 must exist (run test_preprocessing_synthetic first)"
-    return path
+def event_h5(processed_context):
+    return processed_context["h5"]
 
 
-# We need the pipeline_output fixture from test_preprocessing_synthetic.
-# Import it explicitly so pytest can discover it even when running this file alone.
-from tests.end_to_end.test_preprocessing_synthetic import pipeline_output  # noqa: F401
+from tests.end_to_end.test_new_api_synthetic import processed_context  # noqa: F401,E402
 
 
 class TestSimulationDataLoader:
-    """SimulationDataLoader correctly reads the event h5 written by ProcessedDataSlicer."""
+    """SimulationDataLoader correctly reads the event h5 written by export_to_sbi_h5."""
 
     @pytest.fixture(autouse=True)
     def setup(self, event_h5):
@@ -134,7 +126,7 @@ class TestSimulationDataLoader:
 class TestRealNoiseSamplerWithSyntheticH5:
     """RealNoiseSampler can consume a catalogue directory of synthetic h5 files.
 
-    The event_dir produced by test_preprocessing_synthetic contains one h5.
+    The directory of the exported event h5 contains one h5.
     We verify the sampler loads it correctly — this mirrors how training noise
     is consumed by the SBI pipeline.
     """
