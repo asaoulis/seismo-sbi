@@ -58,7 +58,6 @@ class RunningStandardDeviations:
 
 
 def stable_inverse(C, eps=1e-18):
-    # ensure symmetry
     return np.linalg.inv(C)
 
 
@@ -84,8 +83,6 @@ class EmpiricalCovarianceEstimator:
         else:
             print("Computing empirical covariance matrix...", end=' ')
             station_component_deviations = self._compute_standard_deviation_online()
-                                # compute autocorrelation
-                                # auto_correlate = np.correlate(noise_window_data, noise_window_data, mode='full')
             station_component_covariances = self.convert_to_covariance(station_component_deviations)
             if self.covariance_exp_tapering:
                 station_component_covariances = self.taper_covariances(station_component_covariances)
@@ -108,7 +105,6 @@ class EmpiricalCovarianceEstimator:
                                 continue
                             data_length = noise_window_data.shape[0]
 
-                            # compute autocorrelation
                             auto_correlate = np.correlate(noise_window_data, noise_window_data, mode='full')
                             averaged_auto_correlations = auto_correlate[:data_length][::-1]/np.arange(data_length, 0, -1)
 

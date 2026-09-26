@@ -6,6 +6,8 @@ block to a measured variance; ``BlockGaussianSampler`` draws from precomputed fa
 import numpy as np
 from scipy.linalg import toeplitz
 
+from seismo_sbi.sbi.noises.covariance_base import station_component_value
+
 
 class GaussianNoiseSampler:
     """Gaussian sampler that owns covariance and can be adapted.
@@ -32,14 +34,12 @@ class GaussianNoiseSampler:
         self.data_vector_length = data_vector_length
         self.station_component_covariances = station_component_covariances
 
-        # Build (station, component) list in the same order as BlockDiagonal*.
         self.receiver_components = [
             (receiver.station_name, component)
             for receiver in self.receivers.iterate()
             for component in receiver.components
         ]
 
-        # Normalise internal representation.
         if toeplitz_cols is not None:
             self.toeplitz_cols = np.asarray(toeplitz_cols, dtype=float)
             self.cov_blocks = np.asarray(
@@ -60,7 +60,6 @@ class GaussianNoiseSampler:
 
         self._build_cholesky()
 
-    # Internal helpers
     def _build_cholesky(self):
         """Build Cholesky factors for all covariance blocks."""
         Ls = []
@@ -72,17 +71,11 @@ class GaussianNoiseSampler:
 
     def _get_target_variance(self, misc_data, station, component):
         """Extract scalar variance from misc_data[station][component]."""
-        try:
-            val = misc_data[station][component]
-        except KeyError:
-            # Handle "E"/"N" vs "1"/"2" naming.
-            mapped = component.replace("E", "1").replace("N", "2")
-            val = misc_data[station][mapped]
+        val = station_component_value(misc_data, station, component)
         if hasattr(val, "size") and val.size > 1:
             return float(val.ravel()[0])
         return float(val)
 
-    # Public API
     def __call__(self, *args, **kwargs):
         """Draw a sample from the current covariance.
 
@@ -128,9 +121,7 @@ class GaussianNoiseSampler:
             scaled_cols.append(col * scale)
         self.toeplitz_cols = np.asarray(scaled_cols, dtype=float)
 
-        # Rebuild covariance blocks from scaled Toeplitz columns.
         self.cov_blocks = np.asarray([toeplitz(c) for c in self.toeplitz_cols], dtype=float)
-        # Rebuild Cholesky factors to update the sampler dynamically.
         self._build_cholesky()
 
 

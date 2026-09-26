@@ -119,8 +119,6 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     
     @staticmethod
     def loss_callable(residuals, toeplitz_cols, data_vector_length):
-        # This static method was previously using C_inverse.
-        # Now it delegates to quadratic_form which uses toeplitz solves.
         return TheoryBlockDiagonalEmpiricalCovariance.quadratic_form(residuals, toeplitz_cols, data_vector_length)
 
     @staticmethod

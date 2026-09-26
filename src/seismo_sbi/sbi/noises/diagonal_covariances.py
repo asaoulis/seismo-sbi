@@ -7,7 +7,7 @@ from functools import partial
 
 import numpy as np
 
-from seismo_sbi.sbi.noises.covariance_base import EmpiricalCovariance
+from seismo_sbi.sbi.noises.covariance_base import EmpiricalCovariance, station_component_value
 from seismo_sbi.sbi.noises.noise_samplers import GaussianNoiseSampler
 
 
@@ -79,18 +79,11 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
         covariance_matrix_diagonals = []
 
         for receiver in  self.receivers.iterate():
-            components_dict = station_component_covariances[receiver.station_name]
             for component in receiver.components:
-                try:
-                    component_data = components_dict[component]
-                except KeyError:
-                    component = component.replace('E', '1').replace('N', '2')
-                    component_data = components_dict[component]
-                
+                component_data = station_component_value(station_component_covariances, receiver.station_name, component)
                 if len(component_data.shape) != 0:
                     component_data = component_data[0]
                 covariance_matrix_diagonals.append(component_data * np.ones(data_vector_length))
-        # if len(covariance_matrix_diagonals) > 1 add new axis at start
         if not stack:
             return np.concatenate(covariance_matrix_diagonals) if len(covariance_matrix_diagonals) > 1 else covariance_matrix_diagonals[0][np.newaxis]
         else:
@@ -129,7 +122,6 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
     def create_sampler(self):
         def sampler(*args, **kwargs):
             return np.random.randn(self.covariance_matrix.shape[0]) * np.sqrt(self.covariance_matrix), self.station_component_covariances
-        # Diagonal case keeps previous simple sampler behaviour.
         sampling_object = GaussianNoiseSampler(  # type: ignore[arg-type]
             receivers=None,
             data_vector_length=self.covariance_matrix.shape[0],
