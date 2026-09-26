@@ -36,14 +36,11 @@ from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.simulators.post_processing import (
-    AmplitudeErrorEffect,
-    InstrumentDropoutEffect,
-    TimeShiftErrorEffect,
-    ScatteringCodaEffect,
-    PostProcessingChain,
-    build_post_processing_chain,
-)
+from seismo_sbi.simulators.post_processing import PostProcessingChain, build_post_processing_chain
+from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect
+from seismo_sbi.simulators.dropout_effects import InstrumentDropoutEffect
+from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect
+from seismo_sbi.simulators.scattering_coda_effect import ScatteringCodaEffect
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 from seismo_sbi.sbi.simulator_wrapper import GeneralSimulatorWrapper
 from seismo_sbi.sbi.types.parameters import ModelParameters
@@ -293,7 +290,7 @@ class TestRunSimulationWithNuisance:
 
     def test_scale_within_default_range(self, one_station):
         """With default scale range, the applied factor must be in [SCALE_LOW, SCALE_HIGH]."""
-        from seismo_sbi.simulators.post_processing import AmplitudeErrorEffect as AEE
+        from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect as AEE
         sim = MockSimulator(
             one_station, amplitude=1.0,
             post_processing_effects=[AmplitudeErrorEffect()]

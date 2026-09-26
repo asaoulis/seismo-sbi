@@ -3,10 +3,15 @@ import numpy as np
 import pytest
 
 from seismo_sbi.simulators import post_processing as pp
-from seismo_sbi.simulators.post_processing import (
-    ScatteringCodaEffect, build_post_processing_chain, distance_scaled_alpha,
-    distance_tail_energy, _apply_distance_coda_kernel, _apply_random_coda_filter,
-    _apply_stahler_phase_filter, _apply_per_station_gated,
+from seismo_sbi.simulators.post_processing import build_post_processing_chain
+from seismo_sbi.simulators.seismogram_effect import _apply_per_station_gated
+from seismo_sbi.simulators.scattering_coda_effect import (
+    ScatteringCodaEffect,
+    distance_scaled_alpha,
+    distance_tail_energy,
+    _apply_distance_coda_kernel,
+    _apply_random_coda_filter,
+    _apply_stahler_phase_filter,
 )
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 

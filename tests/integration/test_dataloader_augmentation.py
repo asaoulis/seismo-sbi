@@ -13,14 +13,11 @@ import torch
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.simulators.post_processing import (
-    PostProcessingChain,
-    AmplitudeErrorEffect,
-    TimeShiftErrorEffect,
-    ComponentDropoutEffect,
-    InstrumentDropoutEffect,
-    ScatteringCodaEffect,
-)
+from seismo_sbi.simulators.post_processing import PostProcessingChain
+from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect
+from seismo_sbi.simulators.dropout_effects import ComponentDropoutEffect, InstrumentDropoutEffect
+from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect
+from seismo_sbi.simulators.scattering_coda_effect import ScatteringCodaEffect
 from seismo_sbi.sbi.compression.ML.dataloading import (
     TorchSimulationDataset,
     make_torch_dataloader,

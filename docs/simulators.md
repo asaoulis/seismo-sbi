@@ -13,7 +13,10 @@ dependencies.
 | `kernel.py` | seismograms from precomputed moment-tensor sensitivity kernels |
 | `ensemble.py` | `GFEnsembleSimulator`: draw one Earth model per simulation |
 | `multi_model.py` | `MultiModelSimulator`: a different Earth model per receiver region |
-| `post_processing.py` | the nuisance effects applied to every simulation |
+| `post_processing.py` | `PostProcessingChain`, `EFFECT_REGISTRY` and the chain builders |
+| `seismogram_effect.py` | `SeismogramEffect`, the base class of every nuisance effect |
+| `amplitude_effect.py`, `dropout_effects.py`, `time_shift_effect.py`, `scattering_coda_effect.py`, `anisotropy_effects.py`, `dispersion_effect.py` | the nuisance effects, one family per module |
+| `lanczos_shift.py` | sub-sample time shifts by Lanczos interpolation |
 | `simulation_io.py` | the HDF5 layout one simulation is written to and read back from |
 | `theory_covariance.py` | per-trace theory-error covariance estimated from an ensemble |
 | `registry.py` | `simulation_type` → builder |

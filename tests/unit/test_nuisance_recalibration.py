@@ -9,14 +9,14 @@ import numpy as np
 import pytest
 
 from seismo_sbi.simulators.post_processing import (
-    AmplitudeErrorEffect,
-    DispersionSpreadEffect,
     EFFECT_REGISTRY,
     PostProcessingChain,
-    TimeShiftErrorEffect,
     apply_chain_to_array,
     build_post_processing_chain,
 )
+from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect
+from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect
+from seismo_sbi.simulators.dispersion_effect import DispersionSpreadEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators import ensemble as ens_mod
 from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator

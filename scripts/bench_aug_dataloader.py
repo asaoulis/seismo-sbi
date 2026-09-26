@@ -34,10 +34,7 @@ for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
 import numpy as np
 import torch
 
-from seismo_sbi.simulators.post_processing import (
-    build_augmentation_chain,
-    apply_chain_to_array,
-)
+from seismo_sbi.simulators.post_processing import build_augmentation_chain, apply_chain_to_array
 from seismo_sbi.sbi.compression.ML.dataloading import (
     TorchSimulationDataset,
     make_torch_dataloaders,

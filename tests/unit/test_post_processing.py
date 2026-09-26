@@ -33,15 +33,15 @@ post_processing = pytest.importorskip(
 
 PostProcessingChain = post_processing.PostProcessingChain
 build_post_processing_chain = post_processing.build_post_processing_chain
-AmplitudeErrorEffect = post_processing.AmplitudeErrorEffect
-InstrumentDropoutEffect = post_processing.InstrumentDropoutEffect
-TimeShiftErrorEffect = post_processing.TimeShiftErrorEffect
-ScatteringCodaEffect = post_processing.ScatteringCodaEffect
-_apply_lanczos_shift = post_processing._apply_lanczos_shift
-_apply_lanczos_shift_batch = post_processing._apply_lanczos_shift_batch
-_apply_random_coda_filter = post_processing._apply_random_coda_filter
-_apply_stahler_phase_filter = post_processing._apply_stahler_phase_filter
-_lanczos_kernel_values = post_processing._lanczos_kernel_values
+from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect  # noqa: E402
+from seismo_sbi.simulators.dropout_effects import InstrumentDropoutEffect  # noqa: E402
+from seismo_sbi.simulators.lanczos_shift import (  # noqa: E402
+    _apply_lanczos_shift, _apply_lanczos_shift_batch, _lanczos_kernel_values,
+)
+from seismo_sbi.simulators.scattering_coda_effect import (  # noqa: E402
+    ScatteringCodaEffect, _apply_random_coda_filter, _apply_stahler_phase_filter,
+)
+from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1226,7 +1226,7 @@ class TestApplyChainToArray:
 # ComponentDropoutEffect — per-channel zeroing of PRESENT components
 # ===========================================================================
 
-ComponentDropoutEffect = post_processing.ComponentDropoutEffect
+from seismo_sbi.simulators.dropout_effects import ComponentDropoutEffect  # noqa: E402
 
 
 def _multi_comp_map_and_receivers():
