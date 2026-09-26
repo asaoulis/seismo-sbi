@@ -30,6 +30,8 @@ than they save.
   configuration). Free functions are the default; do not wrap a function in a class.
 - No file is longer than it needs to be. When a module passes ~500 lines, something in it is a
   separate concern. New functions never go into a module already past that size; open a new one.
+- Every package `__init__` holds a docstring and nothing else: no imports, no re-exports. A
+  caller imports a name from the module that defines it.
 
 ## Comments
 
@@ -48,7 +50,8 @@ A section banner is one line. A region name appears in library prose only as a p
 number needs (a latitude, a station count), never as the label of where a threshold came from.
 
 Docstrings state what a function returns, the units and shapes of its arguments, and any
-convention the caller must know. Nothing else.
+convention the caller must know. Nothing else. They are reStructuredText, because the
+documentation site renders them: ``literal`` for code, :func:`name` for a cross-reference.
 
 A design note or plan is a sketch of the code, not the code. Where it conflicts with what the
 code actually does, the code wins; say so in the change description rather than following the sketch.
@@ -166,15 +169,16 @@ it afterwards: the same functions doing the same steps, with the same names, in 
 - Consolidate instead of duplicating: when two files do the same step, keep the one people use
   and point the other's callers at it.
 - A package of backends (simulators, pickers, data sources) never imports the pipeline that
-  consumes it, and its `__init__` holds a docstring, not imports. Say the rule in the plan and
-  list every current violation with a verdict before moving anything.
+  consumes it. Say the rule in the plan and list every current violation with a verdict before
+  moving anything.
 - A rename or move has no compatibility layer. Every importer, in every repository and notebook
   that depends on this one, is rewritten in the same commit from one explicit old-to-new table.
 - Before moving code that produces files, run the current code into a scratch directory; the
   rebuilt code is diffed against that, not against outputs made by an older version.
 - One thing at a time: a module far over the size limit is moved as it is and split in its own
   change, so the diff of a move stays a move.
-- Two modules in one package tree never share a name. If a name would repeat, the second
+- A module name repeats only across sibling backend packages (`simulators/cps/simulator.py`
+  beside `simulators/instaseis/simulator.py`). Anywhere else, if a name would repeat, the second
   describes what it produces.
 
 ## Checklist before finishing a change
