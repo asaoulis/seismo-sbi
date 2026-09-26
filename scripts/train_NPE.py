@@ -8,11 +8,13 @@ workflow), ``--stage meta`` rebuilds a run's ``model_meta.json`` sidecar without
 
 import argparse
 
-from seismo_sbi.utils.environment import cap_blas_threads, configure_numba_cache, cap_querier_cache
+from seismo_sbi.utils.environment import (cap_blas_threads, configure_numba_cache, cap_querier_cache,
+                                          stamp_arviz_daily_warning)
 
-# Both read by their libraries at import time, so they run before the science imports.
+# All read by their libraries at import time, so they run before the science imports.
 cap_blas_threads()
 configure_numba_cache()
+stamp_arviz_daily_warning()
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.training_data import (build_pipeline, generate_training_dataset,
