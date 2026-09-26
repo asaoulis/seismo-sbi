@@ -1,5 +1,4 @@
 import numpy as np
-import contextlib
 import warnings
 import joblib
 from tqdm import tqdm
@@ -14,39 +13,8 @@ except Exception:
     welch = None
 
 from seismo_sbi.simulators.post_processing import PostProcessingChain
-
-
-@contextlib.contextmanager
-def tqdm_joblib(tqdm_object):
-    """
-    Context manager to patch joblib to report into tqdm progress bar.
-    Robust to exceptions and restores original method on exit.
-    """
-    original = joblib.parallel.Parallel.print_progress
-
-    def print_progress(self):
-        try:
-            # self.n_completed_tasks exists on joblib >=0.14
-            completed = getattr(self, "n_completed_tasks", None)
-            if completed is None:
-                return original(self)
-            # update by difference
-            delta = int(completed - getattr(tqdm_object, "n", 0))
-            if delta > 0:
-                tqdm_object.update(n=delta)
-        except Exception:
-            # fallback to original if anything goes wrong
-            try:
-                original(self)
-            except Exception:
-                pass
-
-    joblib.parallel.Parallel.print_progress = print_progress
-    try:
-        yield tqdm_object
-    finally:
-        joblib.parallel.Parallel.print_progress = original
-        tqdm_object.close()
+from seismo_sbi.simulators.simulation_io import component_alias
+from seismo_sbi.utils.parallel import tqdm_joblib
 
 
 class PosteriorPredictiveChecks:
@@ -664,9 +632,7 @@ class PosteriorPredictiveChecks:
             for comp in rec.components:
                 trace = outputs[station].get(comp)
                 if trace is None:
-                    # support alt component names if needed
-                    alt = comp.replace('E', '1').replace('N', '2')
-                    trace = outputs[station].get(alt)
+                    trace = outputs[station].get(component_alias(comp))
                 if trace is None:
                     raise KeyError(f"Missing trace for {station}:{comp}")
                 parts.append(np.asarray(trace))

@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import statsmodels.api as sm
 
-from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader, component_alias
 
 
 class RunningStandardDeviations:
@@ -66,7 +66,7 @@ class EmpiricalCovarianceEstimator:
     def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True):
         self.data_directory = data_directory
         self.receivers = receivers
-        self.components = components.replace('E', '1').replace('N', '2')
+        self.components = component_alias(components)
         self.covariance_exp_tapering = covariance_exp_tapering
 
         self.track = track

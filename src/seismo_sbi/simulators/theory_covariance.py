@@ -6,16 +6,12 @@ travels through the pipeline in the shape of a simulation, one covariance block 
 """
 
 import numpy as np
-import joblib
 
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.utils.parallel import parallel_execution
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 
-def parallel_execution(inputs, func, num_jobs = 20):
-    if num_jobs in [None, 0 , 1]:
-        return [func(block) for block in inputs]
-    return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
 
 class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
     """Per-trace theory-error covariance estimated from an ensemble simulator.

@@ -1,7 +1,8 @@
-"""Progress reporting for joblib-parallel loops.
+"""joblib helpers: a mapped loop and progress reporting.
 
-``tqdm_joblib`` is a context manager that patches ``joblib.parallel.Parallel.print_progress`` so
-a parallel loop advances the tqdm bar given to it, and restores the original on exit.
+``parallel_execution`` maps a function over inputs, serially for one job. ``tqdm_joblib`` is a
+context manager that patches ``joblib.parallel.Parallel.print_progress`` so a parallel loop
+advances the tqdm bar given to it, and restores the original on exit.
 """
 
 import contextlib
@@ -27,3 +28,10 @@ def tqdm_joblib(tqdm_object):
     finally:
         joblib.parallel.Parallel.print_progress = original_print_progress
         tqdm_object.close()
+
+
+def parallel_execution(inputs, func, num_jobs = 20):
+    """``[func(x) for x in inputs]``, with ``num_jobs`` joblib workers unless it is 0, 1 or None."""
+    if num_jobs in [None, 0 , 1]:
+        return [func(block) for block in inputs]
+    return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)

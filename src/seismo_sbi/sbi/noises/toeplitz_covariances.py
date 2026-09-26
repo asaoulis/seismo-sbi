@@ -10,9 +10,10 @@ from functools import partial
 import numpy as np
 from scipy.linalg import solve_toeplitz, toeplitz
 
-from seismo_sbi.sbi.noises.covariance_base import EmpiricalCovariance, parallel_execution, station_component_value
+from seismo_sbi.sbi.noises.covariance_base import EmpiricalCovariance, station_component_value
 from seismo_sbi.sbi.noises.covariance_estimator import EmpiricalCovarianceEstimator
 from seismo_sbi.sbi.noises.noise_samplers import GaussianNoiseSampler
+from seismo_sbi.utils.parallel import parallel_execution
 
 
 class BlockDiagonalCovariance(EmpiricalCovariance):

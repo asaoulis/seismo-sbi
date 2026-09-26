@@ -8,8 +8,8 @@ from functools import partial
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
 
-from seismo_sbi.sbi.noises.covariance_base import parallel_execution
 from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalCovariance
+from seismo_sbi.utils.parallel import parallel_execution
 
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):

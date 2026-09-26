@@ -2,7 +2,8 @@ from pathlib import Path
 import numpy as np
 
 from seismo_sbi.sbi.configuration import SimulationParameters
-from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.sbi.noises.covariance_base import station_component_value
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader, component_alias
 
 
 class RealNoiseSampler:
@@ -33,7 +34,7 @@ class RealNoiseSampler:
         receivers = simulation_parameters.receivers
         self.num_stations = len(receivers.receivers)
         self.components = simulation_parameters.components
-        self.components = self.components.replace('E', '1').replace('N', '2')
+        self.components = component_alias(self.components)
         self.vector_length = round(simulation_parameters.seismogram_duration * simulation_parameters.sampling_rate)
 
         self.data_loader = SimulationDataLoader(self.components, simulation_parameters.receivers, data_length)
@@ -244,11 +245,7 @@ class RealNoiseSampler:
             scales[receiver] = {}
             for component in misc_data[receiver].keys():
                 noise_instance_variance = misc_data[receiver][component] if misc_data[receiver][component].size == 1 else misc_data[receiver][component][0]
-                try:
-                    data_noise_variance = self.adaptive_covariance[receiver][component]
-                except KeyError:
-                    new_comp = component.replace('E', '1').replace('N', '2')
-                    data_noise_variance = self.adaptive_covariance[receiver][new_comp]
+                data_noise_variance = station_component_value(self.adaptive_covariance, receiver, component)
   
 
                 ratio = noise_instance_variance / data_noise_variance

@@ -3,6 +3,7 @@
 :class:`SimulationSaver` writes the source parameters under ``inputs`` and the seismograms under
 ``outputs``; :class:`SimulationDataLoader` reads that layout back and flattens it into the
 ``(n_traces * n_samples,)`` data vector the inference pipeline consumes, in receiver order.
+Horizontal components may be stored as 1 and 2 rather than E and N; ``component_alias`` maps them.
 """
 
 import h5py
@@ -13,6 +14,11 @@ from pathlib import Path
 from .receivers import Receivers
 from .sources import GenericPointSource
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
+
+
+def component_alias(components: str) -> str:
+    """``components`` with E and N renamed 1 and 2; one component or a string of them."""
+    return components.replace('E', '1').replace('N', '2')
 
 
 class SimulationSaver:
@@ -159,7 +165,7 @@ class SimulationDataLoader():
         data, coords = self.load_event_subset(sim_name, kept_stations, stacked=True)
 
         def _aliases(c):
-            return {c, c.replace('E', '1').replace('N', '2'),
+            return {c, component_alias(c),
                     c.replace('1', 'E').replace('2', 'N')}
 
         for i, s in enumerate(kept_stations):
@@ -230,7 +236,7 @@ class SimulationDataLoader():
                 station_outputs = outputs_group[receiver_name]
             comp_data = []
             for component in rec_components:
-                alt_component = component.replace('E', '1').replace('N', '2')
+                alt_component = component_alias(component)
 
                 trace_data = station_outputs.get(component)
                 if trace_data is None:
@@ -301,7 +307,7 @@ class SimulationDataLoader():
                     try:
                         misc_data[receiver_name][component] = misc_group[receiver_name][component][()]
                     except KeyError:
-                        component = component.replace('E', '1').replace('N', '2')
+                        component = component_alias(component)
                         misc_data[receiver_name][component] = misc_group[receiver_name][component][()]
             return misc_data
 
@@ -311,5 +317,5 @@ class SimulationDataLoader():
             first_component = dummy_receiver.components[0]
             return len(simulation_data_file["outputs"][dummy_receiver.station_name][first_component])
         except KeyError:
-            first_component = dummy_receiver.components[0].replace('E', '1').replace('N', '2')
+            first_component = component_alias(dummy_receiver.components[0])
             return len(simulation_data_file["outputs"][dummy_receiver.station_name][first_component])
