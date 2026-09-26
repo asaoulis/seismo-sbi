@@ -9,7 +9,7 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.lanczos_shift import _apply_lanczos_shift_batch
+from seismo_sbi.simulators.lanczos_shift import _apply_lanczos_shift_batch, _shift_components
 from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
 
 
@@ -45,8 +45,7 @@ class AzimuthalAnisotropyEffect(SeismogramEffect):
         self._fraction = float(aniso_fraction)
         self._v0 = float(ref_velocity_kms if ref_velocity_kms is not None
                          else self.DEFAULT_REF_VELOCITY_KMS)
-        self._src = (None if source_latitude is None or source_longitude is None
-                     else (float(source_latitude), float(source_longitude)))
+        self._src = self._configured_source(source_latitude, source_longitude)
         self._order = int(lanczos_order if lanczos_order is not None
                           else self.DEFAULT_LANCZOS_ORDER)
 
@@ -74,24 +73,15 @@ class AzimuthalAnisotropyEffect(SeismogramEffect):
         if azimuthal_anisotropy is None or float(azimuthal_anisotropy) == 0.0:
             return seismograms_map
         mult = float(azimuthal_anisotropy)
-        src = (tuple(np.asarray(source_location, float)[:2])
-               if source_location is not None else self._src)
-        if src is None:
-            raise ValueError(
-                "AzimuthalAnisotropyEffect is active but no source location is "
-                "available (pass source_location in nuisance_params or "
-                "source_latitude/longitude in the effect config)")
-        delays = self.station_delays(receivers, src)
+        delays = self.station_delays(receivers, self._resolve_source(source_location))
         result = {}
         for station, components in seismograms_map.items():
             comps = list(components)
             if station not in delays or not comps:
                 result[station] = dict(components)
                 continue
-            shift_samples = mult * delays[station] * self._sampling_rate
-            traces = np.stack([components[c] for c in comps])
-            shifted = _apply_lanczos_shift_batch(traces, shift_samples, self._order)
-            result[station] = {c: shifted[j] for j, c in enumerate(comps)}
+            result[station] = _shift_components(components, mult * delays[station] * self._sampling_rate,
+                                                self._order)
         return result
 
 

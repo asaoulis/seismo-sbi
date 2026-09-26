@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _apply_per_station_gated
+from seismo_sbi.simulators.seismogram_effect import SeismogramEffect
 
 
 class InstrumentDropoutEffect(SeismogramEffect):
@@ -31,7 +31,7 @@ class InstrumentDropoutEffect(SeismogramEffect):
         def _zero(components):
             return {comp: np.zeros_like(trace, dtype=np.float64) for comp, trace in components.items()}
 
-        return _apply_per_station_gated(seismograms_map, instrument_dropout, _zero)
+        return self._apply_per_station_gated(seismograms_map, instrument_dropout, _zero)
 
 
 class ComponentDropoutEffect(SeismogramEffect):

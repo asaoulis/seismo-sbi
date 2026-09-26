@@ -73,3 +73,10 @@ def _apply_lanczos_shift(
     shift, samples outside the trace contribute zero, and the length is unchanged.
     """
     return _apply_lanczos_shift_batch(np.asarray(trace)[np.newaxis, :], tau_samples, order)[0]
+
+
+def _shift_components(components: dict, tau_samples: float, order: int = 5) -> dict:
+    """``{component: trace}`` of one station, every trace shifted by the same ``tau_samples``."""
+    comps = list(components)
+    shifted = _apply_lanczos_shift_batch(np.stack([components[c] for c in comps]), tau_samples, order)
+    return {c: shifted[j] for j, c in enumerate(comps)}

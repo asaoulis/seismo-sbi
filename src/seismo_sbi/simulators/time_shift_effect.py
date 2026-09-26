@@ -9,8 +9,8 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.lanczos_shift import _apply_lanczos_shift_batch
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
+from seismo_sbi.simulators.lanczos_shift import _shift_components
+from seismo_sbi.simulators.seismogram_effect import SeismogramEffect
 
 
 class TimeShiftErrorEffect(SeismogramEffect):
@@ -59,8 +59,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
         if self._sigma_per_1000km < 0.0:
             raise ValueError("sigma_per_1000km must be >= 0")
         self._distance_cap = None if distance_cap_km is None else float(distance_cap_km)
-        self._src = (None if source_latitude is None or source_longitude is None
-                     else (float(source_latitude), float(source_longitude)))
+        self._src = self._configured_source(source_latitude, source_longitude)
         self._uniform_offset = (
             float(uniform_offset)
             if uniform_offset is not None
@@ -99,19 +98,10 @@ class TimeShiftErrorEffect(SeismogramEffect):
         ``sigma_per_1000km`` is positive and flat otherwise."""
         if self._sigma_per_1000km <= 0.0:
             return {}
-        src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
-               if source_location is not None else self._src)
-        if src is None:
-            raise ValueError(
-                "TimeShiftErrorEffect(sigma_per_1000km > 0) is active but no source location "
-                "is available (pass source_location in nuisance_params or "
-                "source_latitude/longitude in the effect config)")
-        out = {}
-        for r in receivers.iterate():
-            _, dist = _bearing_and_distance_km(src[0], src[1], r.latitude, r.longitude)
-            d = dist if self._distance_cap is None else min(dist, self._distance_cap)
-            out[r.station_name] = self._sigma + self._sigma_per_1000km * d / 1000.0
-        return out
+        distances = self._station_distances_km(receivers, self._resolve_source(source_location),
+                                               self._distance_cap)
+        return {station: self._sigma + self._sigma_per_1000km * d / 1000.0
+                for station, d in distances.items()}
 
     def __call__(
         self,
@@ -148,8 +138,5 @@ class TimeShiftErrorEffect(SeismogramEffect):
             if not comps:
                 result[station] = {}
                 continue
-            # All components of a station share the shift, so the kernel is built once.
-            traces = np.stack([components[c] for c in comps])
-            shifted = _apply_lanczos_shift_batch(traces, shift_samples, self._order)
-            result[station] = {c: shifted[j] for j, c in enumerate(comps)}
+            result[station] = _shift_components(components, shift_samples, self._order)
         return result

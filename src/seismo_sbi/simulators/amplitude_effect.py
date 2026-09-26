@@ -9,7 +9,7 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _apply_per_station_gated
+from seismo_sbi.simulators.seismogram_effect import SeismogramEffect
 
 
 class AmplitudeErrorEffect(SeismogramEffect):
@@ -100,4 +100,4 @@ class AmplitudeErrorEffect(SeismogramEffect):
         def _scale(components):
             return self._scale_components(components, 1.0)
 
-        return _apply_per_station_gated(seismograms_map, amplitude_error, _scale)
+        return self._apply_per_station_gated(seismograms_map, amplitude_error, _scale)

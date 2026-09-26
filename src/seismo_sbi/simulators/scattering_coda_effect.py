@@ -10,9 +10,7 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.seismogram_effect import (
-    SeismogramEffect, _apply_per_station_gated, _bearing_and_distance_km,
-)
+from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
 
 
 #: Default coda-tail length as a fraction of the trace length (at ``alpha = 1``).
@@ -205,8 +203,7 @@ class ScatteringCodaEffect(SeismogramEffect):
         self._alpha_jitter = float(alpha_jitter)
         self._excess_dex = float(excess_dex_per_1000km)
         self._distance_cap = None if distance_cap_km is None else float(distance_cap_km)
-        self._src = (None if source_latitude is None or source_longitude is None
-                     else (float(source_latitude), float(source_longitude)))
+        self._src = self._configured_source(source_latitude, source_longitude)
         if self._distance_mode:
             if not (0.0 <= self._alpha_jitter < 1.0):
                 raise ValueError("ScatteringCodaEffect: alpha_jitter must be in [0, 1)")
@@ -238,16 +235,6 @@ class ScatteringCodaEffect(SeismogramEffect):
     @property
     def distance_mode(self) -> bool:
         return self._distance_mode
-
-    def _resolve_source(self, source_location):
-        src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
-               if source_location is not None else self._src)
-        if src is None:
-            raise ValueError(
-                "ScatteringCodaEffect(distance_mode=True) is active but no source location "
-                "is available (pass source_location in nuisance_params or "
-                "source_latitude/longitude in the effect config)")
-        return src
 
     def station_scattering_params(self, receivers, source_latlon, multiplier: float = 1.0) -> dict:
         """``{station: (distance in km, strength, tail energy)}``, the strength being the
@@ -309,4 +296,4 @@ class ScatteringCodaEffect(SeismogramEffect):
             alpha = np.random.uniform(self._alpha_low, self._alpha_high)
             return {comp: self._filter_trace(trace, alpha) for comp, trace in components.items()}
 
-        return _apply_per_station_gated(seismograms_map, scattering_coda, _coda)
+        return self._apply_per_station_gated(seismograms_map, scattering_coda, _coda)

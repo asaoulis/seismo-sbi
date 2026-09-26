@@ -9,7 +9,7 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
+from seismo_sbi.simulators.seismogram_effect import SeismogramEffect
 
 
 class DispersionSpreadEffect(SeismogramEffect):
@@ -62,24 +62,12 @@ class DispersionSpreadEffect(SeismogramEffect):
         self._common = float(common_fraction)
         if not (0.0 <= self._rho <= 1.0) or not (0.0 <= self._common <= 1.0):
             raise ValueError("octave_correlation and common_fraction must lie in [0, 1]")
-        self._src = (None if source_latitude is None or source_longitude is None
-                     else (float(source_latitude), float(source_longitude)))
+        self._src = self._configured_source(source_latitude, source_longitude)
 
     def station_sigmas(self, receivers, source_location=None) -> dict:
         """``{station: width per octave}`` in s."""
-        src = (tuple(np.asarray(source_location, dtype=np.float64).ravel()[:2])
-               if source_location is not None else self._src)
-        if src is None:
-            raise ValueError(
-                "DispersionSpreadEffect is active but no source location is available "
-                "(pass source_location in nuisance_params or source_latitude/longitude "
-                "in the effect config)")
-        out = {}
-        for r in receivers.iterate():
-            _, dist = _bearing_and_distance_km(src[0], src[1], r.latitude, r.longitude)
-            d = dist if self._cap is None else min(dist, self._cap)
-            out[r.station_name] = self._a + self._b * d / 1000.0
-        return out
+        distances = self._station_distances_km(receivers, self._resolve_source(source_location), self._cap)
+        return {station: self._a + self._b * d / 1000.0 for station, d in distances.items()}
 
     def tau_of_freq(self, freqs: np.ndarray, tau_octaves: np.ndarray) -> np.ndarray:
         """Per-octave delays in s interpolated onto ``freqs`` in log period, held constant
