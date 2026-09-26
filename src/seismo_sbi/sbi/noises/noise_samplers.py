@@ -1,7 +1,8 @@
 """Gaussian noise samplers drawing from block-diagonal covariances.
 
 ``GaussianNoiseSampler`` draws from Cholesky factors of the per-trace blocks and can rescale each
-block to a measured variance; ``BlockGaussianSampler`` draws from precomputed factors.
+block to a measured variance; ``BlockGaussianSampler`` draws from precomputed factors. Both draw
+with ``draw_block_noise``.
 """
 import numpy as np
 from scipy.linalg import toeplitz
@@ -82,17 +83,10 @@ class GaussianNoiseSampler:
         Returns
         -------
         noise_vector : np.ndarray, shape (n_total,)
-        meta : any
-            For compatibility with previous interfaces we return
-            station_component_covariances as the second value,
-            if available, else None.
+        meta : dict or None
+            ``station_component_covariances``, if the sampler was given it.
         """
-        noise_vectors = []
-        for L, n in zip(self.Ls, self.block_sizes):
-            z = np.random.randn(n)
-            noise_vectors.append(L @ z)
-        noise_vector = np.concatenate(noise_vectors)
-        return noise_vector, self.station_component_covariances
+        return draw_block_noise(self.Ls, self.block_sizes), self.station_component_covariances
 
     def set_adaptive_covariance_with_misc_data(self, misc_data):
         """Adapt Toeplitz columns and covariance blocks using misc_data.
@@ -132,9 +126,13 @@ class BlockGaussianSampler:
         self.station_component_covariances = station_component_covariances
 
     def __call__(self, *args, **kwargs):
-        noise_vectors = []
-        for L, n in zip(self.Ls, self.block_sizes):
-            z = np.random.randn(n)
-            noise_vectors.append(L @ z)
-        noise_vector = np.concatenate(noise_vectors)
-        return noise_vector, self.station_component_covariances
+        return draw_block_noise(self.Ls, self.block_sizes), self.station_component_covariances
+
+
+def draw_block_noise(cholesky_factors, block_sizes):
+    """One draw of block-diagonal Gaussian noise: each block's Cholesky factor times a standard normal."""
+    noise_vectors = []
+    for L, n in zip(cholesky_factors, block_sizes):
+        z = np.random.randn(n)
+        noise_vectors.append(L @ z)
+    return np.concatenate(noise_vectors)
