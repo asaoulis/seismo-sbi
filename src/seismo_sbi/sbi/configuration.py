@@ -294,20 +294,20 @@ class SBI_Configuration:
 
         """Parse compression section into fully-qualified compressor keys.
 
-        Example YAML:
+        Example YAML::
 
-        compression:
-          - optimal_score:
-              filtered_block: '/path/to/noise'
-          - optimal_score:
-              empirical_diagonal: '/path/to/noise'
+            compression:
+              - optimal_score:
+                  filtered_block: '/path/to/noise'
+              - optimal_score:
+                  empirical_diagonal: '/path/to/noise'
 
-        becomes
+        becomes::
 
-        self.compression_methods = [
-            ("optimal_score_filtered_block", {"type": "optimal_score", "covariance": "filtered_block", "path": "/path/to/noise"}),
-            ("optimal_score_empirical_diagonal", {"type": "optimal_score", "covariance": "empirical_diagonal", "path": "/path/to/noise"}),
-        ]
+            self.compression_methods = [
+                ("optimal_score_filtered_block", {"type": "optimal_score", "covariance": "filtered_block", "path": "/path/to/noise"}),
+                ("optimal_score_empirical_diagonal", {"type": "optimal_score", "covariance": "empirical_diagonal", "path": "/path/to/noise"}),
+            ]
         """
         compression_config = config
         self.compression_methods = []

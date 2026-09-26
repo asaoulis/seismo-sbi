@@ -87,7 +87,7 @@ def load_inventory(resp_dir: Path) -> Inventory:
     """Read all StationXML files found under resp_dir into one Inventory.
 
     Args:
-        resp_dir: Directory (searched recursively) containing *.xml files.
+        resp_dir: Directory (searched recursively) containing ``*.xml`` files.
 
     Returns:
         Combined Inventory.

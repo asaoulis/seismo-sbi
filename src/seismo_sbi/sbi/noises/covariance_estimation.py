@@ -546,8 +546,11 @@ class BlockDiagonalFilteredCovariance(BlockDiagonalCovariance):
 
 class BlockDiagonalKolbCovariance(BlockDiagonalCovariance):
     """
-    Block diagonal covariance with Kolb structure:
-    C_ij = e^(-lambda * |t_j - t_i|) * cos(lambda * omega_0 * |t_j - t_i|)
+    Block diagonal covariance with Kolb structure.
+
+    Each block is::
+
+        C_ij = e^(-lambda * |t_j - t_i|) * cos(lambda * omega_0 * |t_j - t_i|)
     """
     def __init__(self, station_component_covariances, omega_0=4.4, lam=1./20, *args, **kwargs):
         super().__init__(*args, **kwargs)

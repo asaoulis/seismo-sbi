@@ -526,9 +526,9 @@ class MisfitsPlotting:
         use_arrivals : bool
             Compute taup P-arrivals so ``order_by='arrival'`` / ``window=('arrival', ...)``
             can be used. Costs a taup call per station.
-
-        Remaining ``kwargs`` go straight to ``moveout_record_section`` (``order_by``,
-        ``y_scale``, ``normalise``, ``layout``, ``window``, ``ensemble_style``, ...).
+        **kwargs
+            Passed straight to ``moveout_record_section`` (``order_by``, ``y_scale``,
+            ``normalise``, ``layout``, ``window``, ``ensemble_style``, ...).
         """
         from seismo_sbi.plotting.waveform_compare import moveout_record_section
 

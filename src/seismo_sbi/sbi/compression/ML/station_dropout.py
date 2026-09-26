@@ -305,7 +305,7 @@ def flow_sample_chunked(est, ctx, num_samples, *, chunk=None):
       ``CUBLAS_STATUS_NOT_SUPPORTED`` once ``B * num_samples`` exceeds 2**19 rows, which
       caps the usable context batch far below the GPU's memory;
     * ``nflows.distributions.Distribution.sample(..., batch_size=...)``, which looks like
-      the fix, is broken for the CONDITIONAL case — it ``torch.cat``s the chunks along
+      the fix, is broken for the CONDITIONAL case — it concatenates the chunks (``torch.cat``) along
       dim 0, which is the *context* dimension when a context is given, so the returned
       tensor is mis-shaped. It also re-runs the embedding net per chunk.
 

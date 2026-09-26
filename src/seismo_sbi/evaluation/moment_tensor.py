@@ -93,7 +93,7 @@ def kagan_batch(m6_a, m6_b):
     ``m6_a``/``m6_b`` are ``(n, 6)`` or a single ``(6,)``/``(1, 6)`` tensor,
     which broadcasts against the other.  Returns a ``(n,)`` array.
 
-    Numerically identical to :func:`kagan` (max |Δ| ~1e-12 deg over random and
+    Numerically identical to :func:`kagan` (max ``|Δ|`` ~1e-12 deg over random and
     real posterior tensors — locked by ``tests/unit/test_evaluation_moment_tensor.py``)
     but ~4e4x faster, which is what makes posterior-wide orientation statistics
     affordable.  The rotation between the two eigen-frames is converted to a

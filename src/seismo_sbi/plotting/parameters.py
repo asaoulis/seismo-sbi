@@ -7,6 +7,7 @@ UPFLOW_LONGITUDE_SCALE = 86
 LATITUDE_DEG_TO_KM_SCALE = 111.1
 
 class DegreeType(Enum):
+    """Which horizontal coordinate a degree offset is measured along."""
 
     LATITUDE = 0
     LONGITUDE = 1

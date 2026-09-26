@@ -258,15 +258,17 @@ def extract_experiment_results_by_keys(
     Returns
     -------
     results_by_key : dict
-        {
-          key: {
-            "results":      list of np.ndarray  # scaled samples for that key
-            "raw_results":  list of np.ndarray  # unscaled samples for that key
-            "theta0s":      list of np.ndarray  # scaled theta0 vectors
-            "raw_theta0s":  list of np.ndarray  # unscaled theta0 vectors
-          },
-          ...
-        }
+        Keyed by the requested keys::
+
+            {
+              key: {
+                "results":      list of np.ndarray  # scaled samples for that key
+                "raw_results":  list of np.ndarray  # unscaled samples for that key
+                "theta0s":      list of np.ndarray  # scaled theta0 vectors
+                "raw_theta0s":  list of np.ndarray  # unscaled theta0 vectors
+              },
+              ...
+            }
     x0s : np.ndarray
         Array of x0 (compressed_job) across all processed jobs.
     theta0_dicts : list

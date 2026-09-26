@@ -38,12 +38,13 @@ def process_daily_files(
 
     For each calendar day in [t_start, t_end] and each station in
     *station_networks*, this function:
-      1. Finds the raw mseed files for that station-day.
-      2. Removes instrument response (if stationxml_dir is given), applies
-         bandpass filter, resamples to *sampling_rate*.
-      3. Writes the result as a daily mseed file into *processed_dir* using
-         the same ``{station}/{YYYY.DDD}/`` directory layout as raw data so
-         that ``find_mseed_files`` works transparently on processed_dir.
+
+    1. Finds the raw mseed files for that station-day.
+    2. Removes instrument response (if stationxml_dir is given), applies
+       bandpass filter, resamples to *sampling_rate*.
+    3. Writes the result as a daily mseed file into *processed_dir* using
+       the same ``{station}/{YYYY.DDD}/`` directory layout as raw data so
+       that ``find_mseed_files`` works transparently on processed_dir.
 
     Existing files are silently skipped (resumable). Pass ``overwrite=True``
     to force reprocessing.

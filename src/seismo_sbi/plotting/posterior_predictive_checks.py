@@ -60,12 +60,12 @@ class PosteriorPredictiveChecks:
     covariance_matrix : optional object
         Optional covariance wrapper used to compute Mahalanobis distance.
         Supported (attempted) interfaces (in order):
-          - obj.solve(rhs) -> C^{-1} rhs  OR obj.apply_inverse(vec)
-            then chi2 = r^T (C^{-1} r)
-          - obj.compute_loss(residual, reduce=True) returning either
-              * -0.5 * chi2   (common in some codebases), or
-              * 0.5 * chi2
-            we try to infer sign/scale, but fallback to dot(r, r).
+
+        - obj.solve(rhs) -> C^{-1} rhs  OR obj.apply_inverse(vec)
+          then chi2 = r^T (C^{-1} r)
+        - obj.compute_loss(residual, reduce=True) returning either
+          -0.5 * chi2 (common in some codebases) or 0.5 * chi2;
+          we try to infer sign/scale, but fallback to dot(r, r).
     receivers : optional
         Object with .iterate() yielding receivers where each receiver has .components,
         used to infer per-trace shapes.

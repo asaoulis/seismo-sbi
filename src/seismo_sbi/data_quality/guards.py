@@ -32,11 +32,10 @@ def data_qa_thresholds(level: str = "minimal", **overrides) -> QAThresholds:
     trace (nodal / distant / small event) is always KEPT. Levels:
 
     * ``"minimal"`` — the ESSENTIAL gates only (each catches a distinct, eyeball-confirmed
-      failure mode that no other gate sees):
-        DEAD (signal predicted >=5 sigma, observed <10% of it, or <25% with xcorr<0.1),
-        SIGMA-OUTLIER (pre-event sigma >50x network median: broken channel),
-        EXCESS (obs energy >25x the signal+noise budget: glitches / interloper events).
-      Classical fit gates are neutralised.
+      failure mode that no other gate sees): DEAD (signal predicted >=5 sigma, observed <10%
+      of it, or <25% with xcorr<0.1), SIGMA-OUTLIER (pre-event sigma >50x network median:
+      broken channel), EXCESS (obs energy >25x the signal+noise budget: glitches /
+      interloper events). Classical fit gates are neutralised.
     * ``"full"`` — minimal + the CONDITIONAL FIT gates: where signal is clearly expected
       (snr_syn>=5) AND observed (snr_sig>=2), drop if best-lag xcorr<0.2 or the amplitude
       ratio leaves [0.1, 5] (catches coherent gain errors). ~1% extra drops on the clean

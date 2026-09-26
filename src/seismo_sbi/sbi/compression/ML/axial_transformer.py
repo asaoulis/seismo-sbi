@@ -447,17 +447,24 @@ class SeismogramAxialTransformer(nn.Module):
 
     def forward(self, x: torch.Tensor, key_padding_mask=None, station_coords_override=None,
                 source_depth=None, station_mask=None):
-        """
-        x: (B, N, L, D)
-        station_coords: (B, N, 2) or (1, N, 2) fixed coordinates
-        station_coords_override: optional (B, N, 2) per-sample coordinates (e.g.
-            source-relative distance/azimuth) used instead of the shared station
-            coords. ``None`` reproduces the original shared-coords behaviour.
-        source_depth: optional (B, 1) source depth, RFF-encoded by the §3.2 positional
-            encoder when ``include_depth`` is set. Ignored on the legacy sinusoid path.
-        station_mask: optional (B, N) station validity (True=real) passed to the RFF
-            positional encoder so padded stations don't corrupt its running stats.
-        key_padding_mask: axial mode -> (B, N, L) booleans (True=pad), full mode -> same input is accepted
+        """Encode a batch of station traces.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            ``(B, N, L, D)``; the fixed station coordinates are ``(B, N, 2)`` or ``(1, N, 2)``.
+        key_padding_mask : optional
+            Axial mode: ``(B, N, L)`` booleans (True=pad); full mode accepts the same input.
+        station_coords_override : optional
+            ``(B, N, 2)`` per-sample coordinates (e.g. source-relative distance/azimuth)
+            used instead of the shared station coords. ``None`` reproduces the original
+            shared-coords behaviour.
+        source_depth : optional
+            ``(B, 1)`` source depth, RFF-encoded by the §3.2 positional encoder when
+            ``include_depth`` is set. Ignored on the legacy sinusoid path.
+        station_mask : optional
+            ``(B, N)`` station validity (True=real) passed to the RFF positional encoder
+            so padded stations don't corrupt its running stats.
         """
         B, N, L, D = x.shape
         # if D != self.d_model:

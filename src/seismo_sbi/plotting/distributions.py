@@ -65,9 +65,10 @@ def warning_logging_disabled(highest_level=logging.WARNING):
     """
     A context manager that will prevent any logging messages
     triggered during the body from being processed.
+
     :param highest_level: the maximum logging level in use.
-      This would only need to be changed if a custom level greater than WARNING
-      is defined.
+        This would only need to be changed if a custom level greater than WARNING
+        is defined.
     """
 
     previous_level = logging.root.manager.disable
@@ -1185,11 +1186,17 @@ def plot_lune_histories(histories, figsave=None, linewidth=2.0, mark_endpoints=T
     """
     Plot trajectories of MT histories on the Tape & Tape lune (Hammer projection).
 
-    histories: dict mapping name -> sequence of MTs in 6-component form [Mxx, Myy, Mzz, Mxy, Mxz, Myz].
-               Each value can be an array of shape (T, 6) or an iterable of length T with 6-vectors.
-    figsave: optional path to save the figure; if None, shows the plot.
-    linewidth: line width for the trajectory.
-    mark_endpoints: if True, mark start (circle) and end (cross) points of each trajectory.
+    Parameters
+    ----------
+    histories : dict
+        Name -> sequence of MTs in 6-component form [Mxx, Myy, Mzz, Mxy, Mxz, Myz]. Each
+        value can be an array of shape (T, 6) or an iterable of length T with 6-vectors.
+    figsave : str, optional
+        Path to save the figure; if None, shows the plot.
+    linewidth : float
+        Line width for the trajectory.
+    mark_endpoints : bool
+        If True, mark start (circle) and end (cross) points of each trajectory.
     """
     fig, ax = plt.subplots(figsize=(14, 14))
     bm = plot_lune_frame(ax)
