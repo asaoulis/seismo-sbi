@@ -1,5 +1,4 @@
 import numpy as np
-import time
 from abc import ABC, abstractclassmethod
 from typing import List
 
@@ -7,9 +6,7 @@ from typing import NamedTuple, Callable
 
 import torch
 
-# from .ML.seismogram_transformer import LightningModel
-# from .ML.utils import get_best_model
-from ..noises.covariance_estimation import EmpiricalCovariance, DiagonalEmpiricalCovariance
+from ..noises.covariance_estimation import EmpiricalCovariance
 
 class ScoreCompressionData(NamedTuple):
 
@@ -29,6 +26,7 @@ class MachineLearningCompressor(Compressor):
 
     def __init__(self, model_type, model_name, seismogram_preprocessor : Callable, scaler,
                  source_location=None, **model_kwargs):
+        from .ML.utils import get_best_model
 
         self.trained_ml_compressor = get_best_model(model_type, model_name, checkpoint_path="ml_models", **model_kwargs)
         self.seismogram_preprocessor = seismogram_preprocessor
