@@ -9,7 +9,7 @@ This is the official repo used to produce the results in [Saoulis et al. (2025)]
 
 After installation (see below), try running the minimal example to perform SBI on the LV2 SoCal Long Valley Caldera event:
 
-[examples/theory_errors_LV2.ipynb](examples/theory_errors_LV2.ipynb)
+[examples/theory_errors_LV2.ipynb](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb)
 
 ### Data errors paper
 
@@ -17,16 +17,7 @@ We are currently working on an updated, unified version of this repository. Howe
 
 https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
 
-## Table of Contents
-
-- [About](#about)
-- [Getting Started](#getting_started)
-- [Usage](#usage)
-- [Data Preparation](#data)
-- [Testing](#testing)
-- [Technical Details](#technical)
-
-## About <a name = "about"></a>
+## About
 
 Simulation-based inference (SBI) uses machine learning (ML) to build empirical models of key quantities in Bayesian inference. For example, SBI can train neural density estimators (NDEs) to build probabilistic models of the likelihood (which encodes a model of the data errors) or the posterior distribution explicitly. 
 
@@ -41,7 +32,7 @@ SBI builds a dataset of realistic observations, drawing samples from likelihood 
 ![SBI Cartoon](assets/imgs/sbi_diagram.png)
 _Fig. 3 from the `seismo-sbi` paper._
 
-## Getting Started <a name = "getting_started"></a>
+## Getting Started
 
 ### Prerequisites
 
@@ -68,9 +59,9 @@ Installation of the library can then be done by navigating to the top-level dire
 pip install -e .
 ```
 
-## Usage <a name = "usage"></a>
+## Usage
 
-An example notebook is provided under [examples/azores_inversion.ipynb](examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
+An example notebook is provided under [examples/azores_inversion.ipynb](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
 
 Before running the notebook, download the data and build the catalogues:
 ```bash
@@ -85,7 +76,7 @@ python build_catalogue.py --catalogue azores_events.xml \
 ```
 This downloads the nearby IPMA permanent land station data and builds event + noise h5 catalogues.
 
-## Data Preparation <a name = "data"></a>
+## Data Preparation
 
 Preparing real seismic data for the SBI pipeline requires three steps: downloading raw waveforms and instrument responses, building event and noise h5 catalogues, and pointing the YAML config at the results.  All intermediate files are standard obspy formats (`.mseed` + StationXML); HDF5 is produced only at the final boundary step.
 
@@ -174,7 +165,7 @@ Every h5 file produced by the pipeline has this layout, read directly by `RealNo
 
 Channel keys are always `Z`, `1`, `2` (never `E` or `N`).
 
-## Testing <a name = "testing"></a>
+## Testing
 
 The test suite lives in `tests/` and uses [pytest](https://docs.pytest.org/) with [pytest-cov](https://pytest-cov.readthedocs.io/) for coverage.
 
