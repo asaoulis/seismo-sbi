@@ -1,12 +1,17 @@
-"""Covariance paths that used to fail: samplers without receivers, per-element scalar loss and the
-estimator's default taper.
+"""Covariance paths that used to fail: samplers without receivers, per-element scalar loss, the
+estimator's default taper and the theory covariance's parameter derivatives.
 """
 import numpy as np
+from scipy.linalg import block_diag
 
+from seismo_sbi.sbi.compression.gaussian import GaussianCompressor
 from seismo_sbi.sbi.noises.covariance_estimator import EmpiricalCovarianceEstimator
 from seismo_sbi.sbi.noises.diagonal_covariances import DiagonalEmpiricalCovariance, ScalarEmpiricalCovariance
+from seismo_sbi.sbi.noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
+from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalKolbCovariance
 from tests.unit.test_covariance_characterisation import (
-    BLOCK_SIZE, autocovariances, make_receivers, write_noise_windows,
+    BLOCK_SIZE, autocovariances, make_receivers, synthetic_problem, theory_covariance_blocks,
+    variances, write_noise_windows,
 )
 
 
@@ -43,4 +48,37 @@ def test_estimator_default_taper_matches_explicit_taper(tmp_path):
     for station, components in expected.items():
         for component, autocovariance in components.items():
             np.testing.assert_allclose(tapered[station][component], autocovariance, rtol=1e-12)
+
+
+def dense_theory_problem():
+    data_covariance = BlockDiagonalKolbCovariance(
+        variances(), receivers=make_receivers(), data_vector_length=BLOCK_SIZE, num_jobs=1)
+    theory = theory_covariance_blocks()
+    covariance = TheoryBlockDiagonalEmpiricalCovariance(
+        theory, data_covariance.covariance_matrix_arrays, make_receivers(), BLOCK_SIZE,
+        diag_regularisation=0.01, covariance_gradients=True, num_jobs=1)
+    dense = block_diag(*covariance.covariance_matrix_arrays)
+    derivatives = [block_diag(*blocks) for blocks in
+                   theory.data_parameter_gradients.reshape(-1, 6, BLOCK_SIZE, BLOCK_SIZE)]
+    return covariance, dense, derivatives
+
+
+def test_theory_fisher_includes_the_covariance_derivative_term():
+    covariance, dense, derivatives = dense_theory_problem()
+    _, compression_data = synthetic_problem(6 * BLOCK_SIZE)
+    gradients = compression_data.data_parameter_gradients
+    inverse = np.linalg.inv(dense)
+    expected = gradients @ inverse @ gradients.T + 0.5 * np.array(
+        [[np.trace(inverse @ da @ inverse @ db) for db in derivatives] for da in derivatives])
+    np.testing.assert_allclose(GaussianCompressor(compression_data, covariance).Fisher_mat, expected, rtol=1e-8)
+
+
+def test_theory_score_includes_the_covariance_derivative_term():
+    covariance, dense, derivatives = dense_theory_problem()
+    residual, compression_data = synthetic_problem(6 * BLOCK_SIZE)
+    inverse = np.linalg.inv(dense)
+    expected = compression_data.data_parameter_gradients @ inverse @ residual + np.array(
+        [0.5 * residual @ inverse @ da @ inverse @ residual - 0.5 * np.trace(inverse @ da) for da in derivatives])
+    score = GaussianCompressor(compression_data, covariance).compute_score(compression_data.data_fiducial + residual)
+    np.testing.assert_allclose(score, expected, rtol=1e-8)
 

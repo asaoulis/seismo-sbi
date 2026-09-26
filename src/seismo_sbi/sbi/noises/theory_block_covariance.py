@@ -13,6 +13,13 @@ from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalCovariance
 
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
+    """Theory plus data covariance, one block per trace.
+
+    ``station_component_covariances`` carries the flattened theory blocks as ``data_fiducial``,
+    shape (n_traces * L * L,), and their parameter derivatives as ``data_parameter_gradients``,
+    shape (n_params, n_traces * L * L). With ``covariance_gradients=True`` the derivatives enter
+    the Fisher matrix and the score; by default the covariance is treated as parameter-free.
+    """
     inverse_metadata = None
     def __init__(
         self,
@@ -34,6 +41,8 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
         self.traces = None
 
         self.set_covariance(station_component_covariances)
+        if self.covariance_gradients:
+            self.set_C_derivative(station_component_covariances)
 
     # Covariance construction
 
@@ -136,6 +145,12 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
         return np.concatenate(out)
 
     # Gradient kernels & traces
+
+    def set_C_derivative(self, station_component_covariances):
+        identity = np.eye(self.data_vector_length)
+        self.C_inverse = np.array([cho_solve(cf, identity, check_finite=False) for cf in self.inverse_metadata])
+        self.C_derivative = self.create_C_derivative(station_component_covariances)
+        self.set_covariance_constants()
 
     def set_covariance_constants(self):
         self.kernels = []
