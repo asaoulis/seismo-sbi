@@ -30,4 +30,5 @@ markers = [
     "unit: fast, isolated, no I/O",
     "integration: loads data stubs or runs short pipelines",
     "slow: end-to-end tests including network downloads (skipped by default; use -m slow to run)",
+    "requires_data: needs local data or a local forward-model database; skipped when absent",
 ]
