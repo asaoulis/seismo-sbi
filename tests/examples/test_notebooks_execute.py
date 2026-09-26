@@ -6,6 +6,7 @@ prints is compared with ``notebook_outputs.json``, as is which cells raise. A no
 broken today is recorded broken, so the test also notices the day it is repaired. After a
 deliberate change, rewrite the reference with ``python tests/examples/test_notebooks_execute.py``.
 """
+import hashlib
 import json
 import os
 import re
@@ -57,6 +58,14 @@ def mirror_repository(root: Path) -> Path:
                     ignore=shutil.ignore_patterns("wandb", "sbi-logs", "__pycache__",
                                                   ".ipynb_checkpoints"))
     return root / "examples"
+
+
+def input_checksums() -> dict:
+    """``{path: sha256}`` of every file under ``examples/data`` except the pipeline outputs."""
+    data = REPO / "examples" / "data"
+    return {str(path.relative_to(data)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(data.rglob("*"))
+            if path.is_file() and "pipeline_outputs" not in path.relative_to(data).parts}
 
 
 def execute(name: str, root: Path):
@@ -124,8 +133,10 @@ def test_the_notebook_prints_what_it_printed_before(name, tmp_path, monkeypatch)
     if missing:
         pytest.skip(f"needs {missing}")
     reference = json.loads(REFERENCE.read_text())[name]
+    inputs_before = input_checksums()
     summary = summarise(execute(name, tmp_path))
     assert mismatches(summary, reference, STOCHASTIC_CELLS.get(name, ())) == []
+    assert input_checksums() == inputs_before, "the notebook changed the checkout's examples/data"
 
 
 if __name__ == "__main__":
