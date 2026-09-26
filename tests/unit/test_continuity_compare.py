@@ -1,29 +1,16 @@
 """
-Regression tests for scripts/continuity/compare_to_baseline.py.
+Regression tests for tests/continuity/compare_to_baseline.py.
 
 Locks shut the silent no-op bug: when a fresh summary shares no method keys
 with the baseline, the comparison must NOT report a green "looks good" result.
 Also covers the normal within-tolerance (green) and out-of-tolerance (flag)
 paths.
 """
-import importlib.util
 import json
-from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[2]
-COMPARE_PY = REPO / "scripts" / "continuity" / "compare_to_baseline.py"
-
-
-def _load_compare_module():
-    spec = importlib.util.spec_from_file_location("compare_to_baseline", COMPARE_PY)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-compare_mod = _load_compare_module()
+import tests.continuity.compare_to_baseline as compare_mod
 
 
 def _entry(gamma=0.0, delta=40.0, mw=4.9, std=2.0, tol=15.0, mw_tol=0.3):

@@ -1,0 +1,104 @@
+{
+  "LV2__theory_optimal_score": {
+    "gamma_deg": {
+      "median": -4.244692087173462,
+      "ci68_lo": -6.0128014945983885,
+      "ci68_hi": -2.528851089477539,
+      "ci95_lo": -7.804468512535095,
+      "ci95_hi": -0.7961712688207647,
+      "std": 1.7837938070297241
+    },
+    "delta_deg": {
+      "median": 38.390594482421875,
+      "ci68_lo": 34.27700271606445,
+      "ci68_hi": 42.26060272216797,
+      "ci95_lo": 29.944682312011718,
+      "ci95_hi": 45.56364002227783,
+      "std": 3.9903907775878906
+    },
+    "Mw": {
+      "median": 4.932384645100678,
+      "ci68_lo": 4.914816780155259,
+      "ci68_hi": 4.9490414711124195,
+      "ci95_lo": 4.896852752097412,
+      "ci95_hi": 4.964127616493605,
+      "std": 0.017277840322672777
+    },
+    "num_samples": 10000,
+    "note": "data/pipeline_outputs/continuity/jobs/continuity/results/inversion_results.pkl",
+    "tolerances": {
+      "gamma_deg": 15.0,
+      "delta_deg": 15.0,
+      "Mw": 0.3,
+      "std_ratio": 2.0
+    }
+  },
+  "LV2__gaussian_likelihood_theory_optimal_score": {
+    "gamma_deg": {
+      "median": -3.624615859445877,
+      "ci68_lo": -5.072717188552725,
+      "ci68_hi": -2.261109436525711,
+      "ci95_lo": -6.5378945531987185,
+      "ci95_hi": -0.7780530640386399,
+      "std": 1.4345645403624925
+    },
+    "delta_deg": {
+      "median": 41.59048535643512,
+      "ci68_lo": 39.860240261752274,
+      "ci68_hi": 43.18319920418223,
+      "ci95_lo": 37.89092621994059,
+      "ci95_hi": 44.631922119673945,
+      "std": 1.6896354944093708
+    },
+    "Mw": {
+      "median": 4.934777651992845,
+      "ci68_lo": 4.924702571103841,
+      "ci68_hi": 4.945153313323617,
+      "ci95_lo": 4.913205476915764,
+      "ci95_hi": 4.953788346660974,
+      "std": 0.010301458189014246
+    },
+    "num_samples": 19980,
+    "note": "data/pipeline_outputs/continuity/jobs/continuity/results/inversion_results.pkl",
+    "tolerances": {
+      "gamma_deg": 15.0,
+      "delta_deg": 15.0,
+      "Mw": 0.3,
+      "std_ratio": 2.0
+    }
+  },
+  "LV2__ml_compressor": {
+    "gamma_deg": {
+      "median": -5.116665601730347,
+      "ci68_lo": -6.420692138671875,
+      "ci68_hi": -3.811269063949585,
+      "ci95_lo": -7.780207359790802,
+      "ci95_hi": -2.454205834865574,
+      "std": 1.3826851844787598
+    },
+    "delta_deg": {
+      "median": 45.41976737976074,
+      "ci68_lo": 42.340905303955076,
+      "ci68_hi": 48.8758349609375,
+      "ci95_lo": 39.42894515991211,
+      "ci95_hi": 52.33750057220459,
+      "std": 3.287637710571289
+    },
+    "Mw": {
+      "median": 4.893176642273167,
+      "ci68_lo": 4.877521921628406,
+      "ci68_hi": 4.91146345539865,
+      "ci95_lo": 4.864350996356243,
+      "ci95_hi": 4.93467155971654,
+      "std": 0.018012253366467234
+    },
+    "num_samples": 10000,
+    "note": "ML gold standard: the pre-trained examples/ml-checkpoints/best_model-LV2.ckpt that the gate loads (re-recorded 2026-09-26; the previous centre, gamma -13.6 / delta 37.7, came from the deleted train-cnn-nonuisance checkpoint; code at 0754765 and HEAD give identical medians on this one).",
+    "tolerances": {
+      "gamma_deg": 15.0,
+      "delta_deg": 15.0,
+      "Mw": 0.3,
+      "std_ratio": 2.0
+    }
+  }
+}
