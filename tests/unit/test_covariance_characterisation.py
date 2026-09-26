@@ -13,17 +13,17 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.compression.gaussian import GaussianCompressor, ScoreCompressionData
-from seismo_sbi.sbi.noises.covariance_estimation import (
+from seismo_sbi.sbi.noises.noise_samplers import BlockGaussianSampler, GaussianNoiseSampler
+from seismo_sbi.sbi.noises.diagonal_covariances import DiagonalEmpiricalCovariance, ScalarEmpiricalCovariance
+from seismo_sbi.sbi.noises.toeplitz_covariances import (
     BlockDiagonalEmpiricalCovariance,
     BlockDiagonalFilteredCovariance,
     BlockDiagonalKolbCovariance,
-    BlockGaussianSampler,
-    DiagonalEmpiricalCovariance,
+)
+from seismo_sbi.sbi.noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
+from seismo_sbi.sbi.noises.covariance_estimator import (
     EmpiricalCovarianceEstimator,
-    GaussianNoiseSampler,
     RunningStandardDeviations,
-    ScalarEmpiricalCovariance,
-    TheoryBlockDiagonalEmpiricalCovariance,
     build_cov_sigma2_dict,
 )
 from seismo_sbi.simulators.receivers import Receiver, Receivers

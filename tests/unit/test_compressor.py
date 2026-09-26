@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.compression.gaussian import GaussianCompressor, ScoreCompressionData
-from seismo_sbi.sbi.noises.covariance_estimation import ScalarEmpiricalCovariance
+from seismo_sbi.sbi.noises.diagonal_covariances import ScalarEmpiricalCovariance
 
 from tests.conftest import TRACE_LEN, N_PARAMS
 

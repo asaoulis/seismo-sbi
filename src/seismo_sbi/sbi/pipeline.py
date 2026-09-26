@@ -17,7 +17,14 @@ from .compression.gaussian import GaussianCompressor, MachineLearningCompressor,
 from .compression.gaussian import ScoreCompressionData
 
 from .noises.real_noise import RealNoiseSampler
-from .noises.covariance_estimation import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance, BlockDiagonalEmpiricalCovariance, TheoryBlockDiagonalEmpiricalCovariance, BlockDiagonalFilteredCovariance, BlockDiagonalKolbCovariance, build_cov_sigma2_dict
+from .noises.diagonal_covariances import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance
+from .noises.toeplitz_covariances import (
+    BlockDiagonalEmpiricalCovariance,
+    BlockDiagonalFilteredCovariance,
+    BlockDiagonalKolbCovariance,
+)
+from .noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
+from .noises.covariance_estimator import build_cov_sigma2_dict
 
 from .inference import SBI_Inference
 from . import likelihood as likelihood

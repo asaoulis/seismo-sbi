@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 from scipy.linalg import toeplitz
 
-from seismo_sbi.sbi.noises.covariance_estimation import (
-    ScalarEmpiricalCovariance,
-    GaussianNoiseSampler,
+from seismo_sbi.sbi.noises.noise_samplers import GaussianNoiseSampler
+from seismo_sbi.sbi.noises.diagonal_covariances import ScalarEmpiricalCovariance
+from seismo_sbi.sbi.noises.toeplitz_covariances import (
     BlockDiagonalFilteredCovariance,
     BlockDiagonalKolbCovariance,
 )

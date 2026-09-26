@@ -6,7 +6,7 @@ import h5py
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData, GaussianCompressor
-from seismo_sbi.sbi.noises.covariance_estimation import ScalarEmpiricalCovariance
+from seismo_sbi.sbi.noises.diagonal_covariances import ScalarEmpiricalCovariance
 
 TRACE_LEN = 60   # samples per component per station
 N_PARAMS = 3     # number of inference parameters in toy models

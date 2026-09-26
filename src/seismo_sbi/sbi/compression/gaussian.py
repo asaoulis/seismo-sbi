@@ -6,7 +6,7 @@ from typing import NamedTuple, Callable
 
 import torch
 
-from ..noises.covariance_estimation import EmpiricalCovariance
+from ..noises.covariance_base import EmpiricalCovariance
 
 class ScoreCompressionData(NamedTuple):
 
