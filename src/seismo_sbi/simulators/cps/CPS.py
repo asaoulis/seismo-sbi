@@ -5,13 +5,11 @@ and hpulse96 over a list of epicentral distances, and reads the elementary Green
 back. ``update_with_Gtensor`` rotates them to a receiver's azimuth and into the moment-tensor
 frame, so a simulation is a contraction of the tensor with the six components.
 """
-import json
 import subprocess
 from obspy import read, Stream
 from pathlib import Path
 import hashlib
 import numpy as np
-import json
 
 DEG2M = 111.195e3
 TEN = 10

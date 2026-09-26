@@ -8,7 +8,6 @@ dependency. Plotting and torch imports are lazy, so importing this module stays 
 """
 from __future__ import annotations
 
-import glob
 import json
 import pickle
 import time

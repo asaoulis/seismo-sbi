@@ -3,7 +3,6 @@
 These are pure transformations on obspy.Stream — no file I/O.
 """
 
-import obspy
 from obspy import Stream, Inventory
 
 _DEFAULT_PREFILTER = dict(

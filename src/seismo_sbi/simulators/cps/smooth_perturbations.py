@@ -52,7 +52,6 @@ def perturb_cps_model(vmodel,
     H   = vmodel[0].copy()
     vp  = vmodel[1].copy()
     vs  = vmodel[2].copy()
-    rho = vmodel[3].copy()
     Qp  = vmodel[4].copy()
     Qs  = vmodel[5].copy()
 
@@ -62,7 +61,6 @@ def perturb_cps_model(vmodel,
     dz_km = np.median(np.diff(depth)) if N > 1 else H[0]
 
 
-    rng = np.random.default_rng(seed)
 
     shared = smooth_frac_field(N, dz_km, corr_length_km,
                                std_frac=1.0,)

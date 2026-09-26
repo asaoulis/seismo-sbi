@@ -1,10 +1,7 @@
 import torch
-import math
 
 from torch import nn
 
-from .cnn_feature_extractor import ConvolutionalFeatureExtractor
-from .csdi_transformer import ConditionalTransformer
 from .axial_transformer import SeismogramAxialTransformer
 from .station_encoders import build_station_encoder, InputDecimator
 from .amplitude_embedding import AmplitudeTokenEmbedding
@@ -21,9 +18,6 @@ import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR, StepLR
 from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LambdaLR, CyclicLR
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 class SeismogramTransformer(nn.Module):
 

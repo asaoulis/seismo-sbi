@@ -1,6 +1,5 @@
 import numpy as np
 import joblib
-import os
 
 from .compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
 from .compression.gaussian import Compressor, ScoreCompressionData
@@ -70,7 +69,7 @@ class DatasetCompressor:
         matmul_callable = cov.create_matmul_inverse_covariance(cov.inverse_metadata, cov.data_vector_length)
         if self.num_parallel_jobs not in [0,1]:
             try:
-                with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))) as progress_bar:
+                with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))):
 
                     with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
                         results = joblib.Parallel()(

@@ -1,13 +1,9 @@
-from typing import Iterable, List, Dict
+from typing import Iterable, List
 import numpy as np
 import os
 import pickle
 
-import numpy as np
-import matplotlib.pyplot as plt
 import joblib
-from scipy.stats import norm
-import numpy as np
 # Progress patch from your codebase
 from seismo_sbi.utils.parallel import tqdm_joblib
 from tqdm import tqdm
@@ -217,7 +213,7 @@ def bias_z_from_posteriors_mt6_parallel(
         return out_bias, out_z, out_u, out_std
 
 
-    with tqdm_joblib(tqdm(desc="Computing events", total=E)) as _pbar:
+    with tqdm_joblib(tqdm(desc="Computing events", total=E)):
         results = joblib.Parallel(n_jobs=n_jobs, backend='loky')(
             joblib.delayed(_event_worker)(e) for e in range(E)
         )

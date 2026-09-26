@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import pyrocko.moment_tensor as mtm
 
 
@@ -98,7 +98,6 @@ class CPSSimulator(Simulator):
 
         seismograms = self._compute_seismograms_from_kernels(source)
         seismograms = self.synthetics_summary(seismograms)
-        trace_length = self.sensitivity_kernels.shape[1] // self.num_traces
         seismograms = seismograms.reshape(self.num_traces, -1)
 
         trace_counter = 0
@@ -126,7 +125,6 @@ class CPSSimulator(Simulator):
         greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)
         greens_functions = greens_functions.transpose(2, 0, 1, 3)
 
-        trace_counter = 0
         used_greens_functions = []
         comp_ids = ['Z', 'E', 'N']
         for rec_idx, receiver in enumerate(self.receivers.iterate()):
@@ -165,8 +163,7 @@ class CPSVariableKernelSimulator(CPSSimulator):
 
     
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
-        seed = kwargs.get('seed', None)
-        use_fiducial = kwargs.pop('use_fiducial', False)
+        kwargs.pop('use_fiducial', False)
         return update_with_Gtensor(
             objstats,
             velocity_model,
@@ -180,7 +177,7 @@ class CPSVariableKernelSimulator(CPSSimulator):
             **kwargs,
         )
 
-from pathlib import Path
+
 class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
 
     def __init__(self, fiducial_model_path, *args, **kwargs):

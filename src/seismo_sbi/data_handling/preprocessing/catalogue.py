@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple
 
 import joblib
 import obspy
-from obspy import UTCDateTime
 
 from seismo_sbi.data_handling.preprocessing.io import (
     find_mseed_files,
@@ -26,8 +25,7 @@ from seismo_sbi.data_handling.preprocessing.io import (
 )
 from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
 from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
-from seismo_sbi.data_handling.preprocessing.quality import (
-    check_window_quality, partition_window_quality)
+from seismo_sbi.data_handling.preprocessing.quality import partition_window_quality
 from seismo_sbi.data_handling.preprocessing.windowing import (
     compute_event_arrival_windows,
     get_continuous_regions,

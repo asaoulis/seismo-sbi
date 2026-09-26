@@ -418,7 +418,6 @@ def sample_subsets_batched(posterior, items, data_scaler, *, num_samples: int,
     limit so ``max_batch`` can be raised past it (see :func:`flow_sample_chunked`).
     ``progress`` is an optional ``callable(n_done, n_total)``.
     """
-    import torch
     out = []
     n = len(items)
     for start in range(0, n, max_batch):

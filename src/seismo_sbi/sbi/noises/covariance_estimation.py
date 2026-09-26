@@ -1,8 +1,6 @@
 import numpy as np
 import statsmodels.api as sm
 import joblib
-import os
-import torch
 
 EPS = 1e-20
 
@@ -649,8 +647,6 @@ def stable_inverse(C, eps=1e-18):
     # ensure symmetry
     return np.linalg.inv(C)
 
-import numpy as np
-from scipy.linalg import cho_factor, cho_solve
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     inverse_metadata = None

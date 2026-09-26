@@ -10,10 +10,9 @@ the pre-event window and averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -
 import math
 from datetime import timedelta
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 import numpy as np
-import obspy
 from obspy import Stream, UTCDateTime
 
 from seismo_sbi.simulators.simulation_io import SimulationSaver

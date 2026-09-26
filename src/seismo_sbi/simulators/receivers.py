@@ -11,7 +11,6 @@ import numpy as np
 import json
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 from pyproj import Geod
 from ..data_handling.noise_collection import NoiseCollector, convert_channel_type
 
@@ -153,7 +152,7 @@ class Receivers:
         if add_receiver_icons:
             self.add_receiver_icons(ax, add_labels=add_labels)
 
-        gl = ax.gridlines(draw_labels=False, linewidth=0.4, color='gray', alpha=0.5, linestyle='--', zorder=0)
+        ax.gridlines(draw_labels=False, linewidth=0.4, color='gray', alpha=0.5, linestyle='--', zorder=0)
 
         ax.set_xticks(range(int(min_lon), int(max_lon) + 1, 1), crs=ccrs.PlateCarree())
         ax.set_yticks(range(int(min_lat), int(max_lat) + 1, 1), crs=ccrs.PlateCarree())

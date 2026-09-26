@@ -1,8 +1,7 @@
 """File I/O helpers: read waveforms, read inventory, write mseed windows."""
 
 from pathlib import Path
-from typing import Iterable, List, Optional
-import datetime
+from typing import Iterable, List
 
 import obspy
 from obspy import Stream, Inventory, UTCDateTime

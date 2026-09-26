@@ -134,7 +134,6 @@ def write_bm(model: BackgroundModel, path, surface_radius_m: float | None = None
 
     columns = model.columns
     radius_idx = columns.index("radius")
-    disc_rows = set(model.discontinuity_rows())
 
     lines: list = []
     for c in model.header_comments:

@@ -1,5 +1,5 @@
 
-from typing import NamedTuple, List, Callable
+from typing import NamedTuple, Callable
 from enum import Enum
 
 # TODO SHOULD MAKE THIS GENERAL

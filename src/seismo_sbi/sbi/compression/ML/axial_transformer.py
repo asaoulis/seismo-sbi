@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
+from typing import Optional
 import math
 
 from .positional_encoding import FourierStationPositionalEncoding

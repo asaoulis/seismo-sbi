@@ -1,10 +1,14 @@
 # Minimal, reusable lune utilities: conversion to Tape & Tape gamma/delta and Basemap-projected plotting
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from scipy.stats import gaussian_kde
 from pyproj import Geod
-import matplotlib.pyplot as plt
+
+if TYPE_CHECKING:
+    from mpl_toolkits.basemap import Basemap
 
 
 # Core math: eigenvalue handling and lam2lune

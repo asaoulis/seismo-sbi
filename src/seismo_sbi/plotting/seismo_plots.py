@@ -185,7 +185,6 @@ class MisfitsPlotting:
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
 
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
@@ -246,7 +245,6 @@ class MisfitsPlotting:
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
 
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
@@ -312,7 +310,6 @@ class MisfitsPlotting:
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
 
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
@@ -405,8 +402,6 @@ class MisfitsPlotting:
             comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
             for comp in components
         }
-        n_per_comp = {comp: len(ordered_by_comp[comp]) for comp in components}
-        n_max = max(n_per_comp.values()) if n_per_comp else 0
 
         # Time axis
         t = np.arange(time_series_length) / float(self.sampling_rate)
@@ -1106,7 +1101,6 @@ def plot_stacked_spectrograms(receivers, flattened_seismogram_array, reference_n
 
 import math
 
-import numpy as np
 from matplotlib import mlab
 from matplotlib.colors import Normalize
 

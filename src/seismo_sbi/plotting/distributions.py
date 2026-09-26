@@ -5,18 +5,15 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import joblib
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from matplotlib.transforms import Affine2D
 
 from .parameters import ParameterInformation
 import torch
 from .patched_chainconsumer import CustomChainConsumer as ChainConsumer
 from obspy.imaging.beachball import beach
-from obspy.imaging import beachball
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from seismo_sbi.utils.parallel import tqdm_joblib
 from .rocko_beachball_patch import plot_beachball_on_axes
-from tqdm import tqdm
 from contextlib import contextmanager
 import logging
 from pyrocko import moment_tensor as pmt
@@ -186,7 +183,6 @@ def create_matrix(moment_tensor_sol):
                                         [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
                                         
     return moment_tensor_matrix
-from pyrocko import moment_tensor as pmt
 
 def convert_to_pyrocko(mt):
     #up, south, east to north east down
@@ -441,7 +437,7 @@ class PosteriorPlotter:
         u_compressions = self.data_scaler.inverse_transform(compressions)
         # print(parameter.scaling_transform(u_thetas[:200, parameter_index]),
         #         parameter.scaling_transform(u_compressions[:10, parameter_index]))
-        contours = ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
+        ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
                     parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), probabilities.reshape(20,20).detach().numpy().T
                     # ,alpha=0.3, levels=[-5000,-2000,-1000,-500,-200,-100,0, 1000])
                     ,alpha=0.3, levels=[-200,-100,-50, -25, -10,0, 200])
@@ -481,7 +477,7 @@ class PosteriorPlotter:
                 probability = likelihood_estimator.log_prob(theta, compression)
                 probabilities.append(probability)
         else:
-             with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(thetas))) as progress_bar:
+             with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(thetas))):
                 with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
                     probabilities = joblib.Parallel()(
                         joblib.delayed(likelihood_estimator.log_prob)(theta, compression) for theta, compression in zip(thetas, compressions)
@@ -500,7 +496,7 @@ class PosteriorPlotter:
             cust_compressions_saved = self.data_scaler.inverse_transform(cust_compressions)
             cust_compression_vals.append(cust_compressions_saved)
             # compressions = torch.Tensor(np.full_like(flat_observations, compression_val))
-            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(cust_thetas))) as progress_bar:
+            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(cust_thetas))):
                 with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
                     posterior_vals = joblib.Parallel()(
                         joblib.delayed(likelihood_estimator.log_prob)(theta, compression) for theta, compression in zip(cust_thetas, cust_compressions)
@@ -526,7 +522,6 @@ class PosteriorPlotter:
         param_ground_truths = ground_truths[:, parameter_index]
         param_compressions = compressions[:, parameter_index]
         
-        transform = lambda x: x - np.min(param_ground_truths)/ (np.max(param_ground_truths) - np.min(param_ground_truths))
         #width aspect 2:1 
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(6,5), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
         ax =axes[0]
@@ -542,7 +537,7 @@ class PosteriorPlotter:
         ax.set_ylim(np.min(parameter.scaling_transform(u_thetas[:,parameter_index])), 
                     np.max(parameter.scaling_transform(u_thetas[:, parameter_index])))
         shaped_probs = probabilities.reshape(20,20).detach().numpy().T
-        contours = ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
+        ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
                     parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), np.clip(shaped_probs,-700,10000),
                     alpha=0.4, levels=[ -750,-500, -350, -200, -100, -50, -25,0,50])
                     # levels=[  -200, -150, -125, -100, -75,-50,-35, -20, -10, 0,20])
@@ -552,14 +547,14 @@ class PosteriorPlotter:
         posterior = np.exp(0.05*np.array(posterior_lines[2][1]))
         posterior /= np.max(posterior) * 0.2
         ys =  parameter.scaling_transform(posterior_lines[0][1][0,parameter_index])* np.ones_like(xs)
-        posterior_line = ax.plot(xs, ys, color='blue', label='Posterior', linestyle='--', linewidth=2)
+        ax.plot(xs, ys, color='blue', label='Posterior', linestyle='--', linewidth=2)
         # post_ax.plot(xs, posterior, color='black', label='Posterior', linestyle='--')
         post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='cornflowerblue')
         
         posterior = np.exp(0.05*np.array(posterior_lines[2][0]))
         posterior /= np.max(posterior) * 0.2
         ys =parameter.scaling_transform(posterior_lines[0][0][0,parameter_index]) * np.ones_like(xs)
-        posterior_line = ax.plot(xs, ys, color='red', label='Posterior', linestyle='--', linewidth=2)
+        ax.plot(xs, ys, color='red', label='Posterior', linestyle='--', linewidth=2)
         # post_ax.plot(xs, posterior, color='black', label='Posterior', linestyle='--')
         post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='red')
         post_ax.set_ylim(0.001, np.max(posterior.flatten()) * 1.2)

@@ -3,7 +3,6 @@ import numpy as np
 from sbi.inference import SNLE, SNPE
 from sbi.inference import likelihood_estimator_based_potential, MCMCPosterior
 from sbi import utils as utils
-from sbi import analysis as analysis
 
 from seismo_sbi.sbi.configuration import InvalidConfiguration
 

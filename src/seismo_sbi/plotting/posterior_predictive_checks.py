@@ -169,7 +169,7 @@ class PosteriorPredictiveChecks:
         samples = inversion_data.samples 
         np.random.shuffle(samples) 
         samples = samples[:num_samples] 
-        with tqdm_joblib(tqdm(desc="Simulating synthetics for PPCs", total=len(samples))) as progress_bar:
+        with tqdm_joblib(tqdm(desc="Simulating synthetics for PPCs", total=len(samples))):
              with joblib.parallel_backend('loky', n_jobs=self.n_jobs):
                 results = joblib.Parallel()( 
                      joblib.delayed(self.simulator)(param_dict) for param_dict in samples 

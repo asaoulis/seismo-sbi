@@ -1,7 +1,5 @@
 from pathlib import Path
 import tempfile
-from sbi import utils as utils
-from sbi import analysis as analysis
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor

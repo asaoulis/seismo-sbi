@@ -5,7 +5,6 @@ turn a configuration block into the callables that draw each parameter. A sample
 and a sample count and returns an array of draws.
 """
 
-from typing import List
 from abc import ABC, abstractmethod
 import joblib
 import traceback
@@ -14,7 +13,7 @@ from functools import partial
 
 import numpy as np
 
-from seismo_sbi.sbi.configuration import InvalidConfiguration, ModelParameters
+from seismo_sbi.sbi.configuration import ModelParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 from seismo_sbi.utils.parallel import tqdm_joblib
 
@@ -62,7 +61,7 @@ class ParallelSimulationRunner(ABC):
 
         if self.num_parallel_jobs not in [0, 1]:
             try:
-                with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))) as progress_bar:
+                with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))):
                     with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
                         results = joblib.Parallel()(
                             joblib.delayed(self.simulator)(*simulation_job_args) for
@@ -378,4 +377,4 @@ class DatasetGenerator(ParallelSimulationRunner):
             yield self.output_base_path + f"/sim_{i}.h5"
 
     def clear_all_outputs(self):
-        import shutil
+        pass

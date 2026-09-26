@@ -13,7 +13,6 @@ def compute_data_vector_length(data_length, sampling_rate):
 
 def shift_1d_with_padding(x: np.ndarray, shift: int) -> np.ndarray:
     """``x`` shifted by ``shift`` samples and zero-padded; positive delays, negative advances."""
-    n = len(x)
     if shift > 0:
         return np.concatenate([np.zeros(shift), x[:-shift]])
     elif shift < 0:

@@ -2,7 +2,6 @@
 """
 
 import yaml
-from math import log10
 from functools import partial
 from copy import copy
 
@@ -396,11 +395,10 @@ class SBI_Configuration:
                 scale = bounds[1]
             scale = nearest_power_of_ten(scale)
             moment_tensor_scaler = partial(generic_scaler_callable, scale)
-            scale_string = str(round(log10(scale) - 1))
             moment_tensor_components = ["rr", "\\theta \\theta", "\\phi \\phi", "r \\theta", "r \\phi", "\\theta \\phi"]
             self.model_parameters.information[parameter_type] = [
                     # ParameterInformation(f"$m_{{{mt_component}}}$", f"$\\times 10^{{{scale_string}}} Nm$", moment_tensor_scaler)
-                    ParameterInformation(f"$M_{{{mt_component}}}$", f"", moment_tensor_scaler)
+                    ParameterInformation(f"$M_{{{mt_component}}}$", "", moment_tensor_scaler)
                         for mt_component in moment_tensor_components
             ]
         elif parameter_type == "earthquake_magnitude":

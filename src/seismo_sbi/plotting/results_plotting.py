@@ -1,7 +1,5 @@
 from pathlib import Path
 import numpy as np
-from sbi import utils as utils
-from sbi import analysis as analysis
 
 
 from seismo_sbi.simulators.receivers import Receivers
@@ -62,7 +60,7 @@ class SBIPipelinePlotter:
         if savefig:
             figure_path.mkdir(parents=True, exist_ok=True)
 
-        self.plot_chain_consumer(f"inversions", test_name, {"":inversion_data}, kde=kde, savefig=savefig)
+        self.plot_chain_consumer("inversions", test_name, {"":inversion_data}, kde=kde, savefig=savefig)
 
         if "moment_tensor" in self.parameters.names.keys():
             plot_path = self.base_output_path / f"./beachballs/{test_name}"  if savefig else None

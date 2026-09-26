@@ -3,7 +3,6 @@ import joblib
 from copy import deepcopy
 
 from pathlib import Path
-from itertools import product
 from functools import partial
 
 from .gaussian import ScoreCompressionData

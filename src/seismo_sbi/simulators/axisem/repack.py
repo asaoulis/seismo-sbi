@@ -14,7 +14,6 @@ Requires click, netCDF4, and numpy.
 import contextlib
 import math
 import os
-import sys
 
 import click
 import netCDF4
@@ -22,10 +21,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 
-if sys.version_info.major == 2:
-    str_type = (basestring, str, unicode)  # NOQA
-else:
-    str_type = (bytes, str)
+str_type = (bytes, str)
 
 
 __netcdf_version = tuple(int(i) for i in netCDF4.__version__.split("."))

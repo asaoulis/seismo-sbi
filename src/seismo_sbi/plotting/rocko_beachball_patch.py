@@ -1,15 +1,9 @@
 # rocko_beachball_patch.py
-import numpy as num
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
 from matplotlib.transforms import IdentityTransform
 
-from pyrocko.plot.beachball import *
-
-# Import helpers from your old module (the user said to do this)
-# e.g. from rocko_beachball import choose_transform, deco_part, eig2gx, project, NA, BeachballError, mtm
-# We'll assume the user will do `from rocko_beachball import *` before using this file,
-# but to be explicit you can also import the needed symbols here if preferred.
+from pyrocko.plot.beachball import BeachballError, choose_transform, deco_part, eig2gx, project
 
 def plot_beachball_mpl(
         mt, axes,
@@ -94,7 +88,6 @@ def plot_beachball_mpl(
 
 
 # rocko_beachball_helpers.py
-import numpy as np
 from matplotlib.transforms import Affine2D
 
 def plot_beachball_on_axes(

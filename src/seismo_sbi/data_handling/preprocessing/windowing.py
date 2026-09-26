@@ -10,11 +10,9 @@ from datetime import timedelta, datetime
 from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
-import obspy
 from obspy import Stream, UTCDateTime
 from obspy.geodetics import locations2degrees
 
-from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 def slice_event_window(

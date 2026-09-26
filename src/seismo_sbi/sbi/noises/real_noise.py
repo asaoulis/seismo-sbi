@@ -1,7 +1,5 @@
 from pathlib import Path
 import numpy as np
-import obspy
-import os
 
 from seismo_sbi.sbi.configuration import SimulationParameters
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader

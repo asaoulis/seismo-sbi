@@ -1,26 +1,14 @@
 
-import sys
-import os
-import argparse
-import shutil
-import pickle
-from pathlib import Path
-import multiprocessing as mp
-from functools import partial
-import yaml
 
 
 
 from cartopy import crs as ccrs
 
 import numpy as np
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import numpy as np
 from pyrocko import moment_tensor as mtm
 from pyrocko.plot.beachball import plot_beachball_mpl
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
+
+
 def convert_mt_convention(mt_rr_phi_theta):
     """(mnn, mee, mdd, mne, mnd, med)"""
 

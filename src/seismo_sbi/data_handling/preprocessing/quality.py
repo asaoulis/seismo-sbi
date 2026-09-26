@@ -7,9 +7,8 @@ from datetime import timedelta
 from typing import List, Optional, Tuple
 
 import numpy as np
-from obspy import Stream, UTCDateTime
+from obspy import Stream
 
-from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 def check_window_quality(

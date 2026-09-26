@@ -1,11 +1,8 @@
 from pathlib import Path
-import os
 import shutil
 import numpy as np
 import torch
 from tqdm import tqdm
-from sbi import utils as utils
-from sbi import analysis as analysis
 from copy import deepcopy
 import time
 from typing import List
@@ -20,10 +17,7 @@ from .compression.gaussian import GaussianCompressor, MachineLearningCompressor,
 from .compression.gaussian import ScoreCompressionData
 
 from .noises.real_noise import RealNoiseSampler
-from .noises.covariance_estimation import EmpiricalCovariance,BlockDiagonalCovariance, ScalarEmpiricalCovariance, \
-                                                            DiagonalEmpiricalCovariance, \
-                                                                BlockDiagonalEmpiricalCovariance, \
-                                                                 TheoryBlockDiagonalEmpiricalCovariance, BlockDiagonalFilteredCovariance, BlockDiagonalKolbCovariance, build_cov_sigma2_dict
+from .noises.covariance_estimation import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance, BlockDiagonalEmpiricalCovariance, TheoryBlockDiagonalEmpiricalCovariance, BlockDiagonalFilteredCovariance, BlockDiagonalKolbCovariance, build_cov_sigma2_dict
 
 from .inference import SBI_Inference
 from . import likelihood as likelihood
@@ -32,7 +26,6 @@ from .lsquares.least_squares import IterativeLeastSquaresSolver
 from .scalers import FlexibleScaler
 from .dataset_compressor import DatasetCompressor
 
-from ..utils.errors import error_handling_wrapper
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.dataset_generator import DatasetGenerator
 
@@ -302,7 +295,6 @@ class SBIPipeline:
                 noise_callable =  self._build_lambda_noiselevel( noise_factor *train_noise_level)
                 self.test_noises[f"{noise_type}_x{noise_factor}"] = noise_callable
             elif noise_type == "gaussian_filtered":
-                noise_level = noise_options
                 cov = self.data_cov_mat
                 self.test_noises[noise_type] = cov.create_sampler()
             elif noise_type == "real_noise":
@@ -825,7 +817,6 @@ class MultiEventPipeline(SingleEventPipeline):
 
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
-        compressed_dataset = None
         for i, single_job in enumerate(job_data):
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
@@ -838,7 +829,6 @@ class MultiEventPipeline(SingleEventPipeline):
                 theta0 = None
             for compressor_name in self.compressor_keys:
                 start_time = time.time()
-                inversion_config = InversionConfig("", test_noise, compressor_name)
 
                 if i == 0:
                     # find MLE and build this compressor using per-compressor API
@@ -857,7 +847,6 @@ class MultiEventPipeline(SingleEventPipeline):
                         priors,
                         compressor_name=compressor_name,
                     )
-                    compressed_dataset = job_result.compressed_dataset
                 else:
                     pass
 
@@ -963,7 +952,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                     if covariance is not None:
                         self.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance)
 
-                    plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
+                    SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
 
                     if theta0_dict is not None:
                         theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
@@ -1042,7 +1031,6 @@ class MLEEstimatePipeline(SingleEventPipeline):
 
             for compressor_name in self.compressor_keys:
 
-                start_time = time.time()
                 
                 inversion_config = InversionConfig("", test_noise, compressor_name)
 

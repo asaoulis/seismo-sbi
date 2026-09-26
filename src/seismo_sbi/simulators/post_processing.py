@@ -9,7 +9,6 @@ silently skipping keys that name no effect, so a caller can pass every nuisance 
 
 from __future__ import annotations
 
-import copy
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
