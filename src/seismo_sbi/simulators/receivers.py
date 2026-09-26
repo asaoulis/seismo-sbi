@@ -11,9 +11,6 @@ import numpy as np
 import json
 
 import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from matplotlib.patches import Rectangle
 from pyproj import Geod
 from ..data_handling.noise_collection import NoiseCollector, convert_channel_type
@@ -118,6 +115,9 @@ class Receivers:
 
     def plot(self, ax=None, projection=None, add_labels=True, add_scalebar=True, add_north=False, add_receiver_icons=True):
         """Plot the receiver network on a map, on ``ax`` or on a new figure."""
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
 
         if projection is None:
@@ -218,6 +218,7 @@ class Receivers:
             plt.show()
 
     def add_receiver_icons(self, ax, add_labels=True, color='darkred'):
+        import cartopy.crs as ccrs
         for rec in self.iterate():
             ax.plot(rec.longitude, rec.latitude, marker='v', color=color,
                     markersize=7, transform=ccrs.PlateCarree(), zorder=5)

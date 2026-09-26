@@ -10,7 +10,8 @@ from functools import partial
 import matplotlib.pyplot as plt
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline, SBIPipelinePlotter
+from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
 
 
 # %%

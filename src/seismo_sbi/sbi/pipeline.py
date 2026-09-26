@@ -33,7 +33,6 @@ from .scalers import FlexibleScaler
 from .dataset_compressor import DatasetCompressor
 
 from ..utils.errors import error_handling_wrapper
-from ..plotting.results_plotting import SBIPipelinePlotter
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.dataset_generator import DatasetGenerator
 
@@ -425,6 +424,7 @@ class SBIPipeline:
             self.plot_result(job_result, inversion_result, bounds)
 
     def plot_result(self, job_result, inversion_result, output = True):
+        from ..plotting.results_plotting import SBIPipelinePlotter
         job_name, inversion_data, inversion_config = inversion_result
         train_noise, test_noise, method_name = inversion_config
         if not output:
@@ -441,6 +441,7 @@ class SBIPipeline:
 
     def plot_comparisons(self, inversion_results, chain_consumer_config, savefig = True):
 
+        from ..plotting.results_plotting import SBIPipelinePlotter
         flattened_param_info = self.parameters.parameter_to_vector('information')
 
         plotter = SBIPipelinePlotter(self.job_outputs_path / "./comparisons", self.parameters)
@@ -506,6 +507,7 @@ class SingleEventPipeline(SBIPipeline):
     
     def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details, do_plots = True):
 
+        from ..plotting.results_plotting import SBIPipelinePlotter
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
         original_parameters = deepcopy(self.parameters)
@@ -947,6 +949,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
 
     def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details):
 
+        from ..plotting.results_plotting import SBIPipelinePlotter
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
         compressed_dataset = None
@@ -1024,6 +1027,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
 
     def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details, plot = True):
 
+        from ..plotting.results_plotting import SBIPipelinePlotter
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
 
