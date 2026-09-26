@@ -24,6 +24,8 @@ paper/
 *.log
 *.png
 *.ipynb
+!examples/nuisance_parameters_demo.ipynb
+!examples/nuisance_augmentation_demo.ipynb
 *.yaml
 *.dat
 data/
