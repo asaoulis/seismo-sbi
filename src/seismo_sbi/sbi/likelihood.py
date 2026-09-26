@@ -1,9 +1,7 @@
 import numpy as np
 import emcee
 from emcee.moves import GaussianMove
-from multiprocessing import Pool
-# from multiprocess import Pool
-# from concurrent.futures import ProcessPoolExecutor as Pool
+import multiprocessing
 import os
 from tqdm import tqdm
 from functools import partial
@@ -132,6 +130,19 @@ def _evaluate_ensemble_log_probability(scaled_theta):
     return _ensemble_log_probability(scaled_theta)
 
 
+def _ensemble_pool(log_probability, num_processes):
+    """Process pool and the function emcee maps over it.
+
+    Where fork exists the workers inherit ``log_probability`` through a module global, so it and
+    the arrays it holds are never pickled; elsewhere it is pickled to spawned workers.
+    """
+    global _ensemble_log_probability
+    if "fork" in multiprocessing.get_all_start_methods():
+        _ensemble_log_probability = log_probability
+        return multiprocessing.get_context("fork").Pool(processes=num_processes), _evaluate_ensemble_log_probability
+    return multiprocessing.get_context("spawn").Pool(processes=num_processes), log_probability
+
+
 def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None, return_log_prob=False):
 
     if mle_start is not None:
@@ -139,12 +150,9 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
     else:
         initial_samples = np.random.rand(nwalkers, num_parameters)
     if ensemble:
-        # Forked workers inherit this global, so the log-probability and the arrays it holds
-        # are not pickled on every step.
-        global _ensemble_log_probability
-        _ensemble_log_probability = log_probability
-        with Pool(processes=num_processes) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, num_parameters, _evaluate_ensemble_log_probability, pool=pool)
+        pool, pooled_log_probability = _ensemble_pool(log_probability, num_processes)
+        with pool:
+            sampler = emcee.EnsembleSampler(nwalkers, num_parameters, pooled_log_probability, pool=pool)
 
             # burn in
             print("Starting burn in...", flush=True)
