@@ -34,7 +34,7 @@ class GaussianNoiseSampler:
         self.data_vector_length = data_vector_length
         self.station_component_covariances = station_component_covariances
 
-        self.receiver_components = [
+        self.receiver_components = [] if receivers is None else [
             (receiver.station_name, component)
             for receiver in self.receivers.iterate()
             for component in receiver.components
@@ -107,7 +107,7 @@ class GaussianNoiseSampler:
         hence preserves its correlation structure while adjusting its marginal
         variance.
         """
-        if self.toeplitz_cols is None or self.cov_blocks is None:
+        if self.toeplitz_cols is None or self.cov_blocks is None or not self.receiver_components:
             return
 
         scaled_cols = []

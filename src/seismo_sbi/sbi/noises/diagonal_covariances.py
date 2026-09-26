@@ -15,15 +15,18 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
 
     inverse_metadata = None
 
-    def __init__(self, sigma_noise_level):
+    def __init__(self, sigma_noise_level, data_vector_length=1):
+        """``data_vector_length`` is the number of samples each noise draw has."""
         self.noise_level = sigma_noise_level
         self.set_C_inverse(1/sigma_noise_level**2)
         self.inverse_metadata = self.C_inverse
-        self.data_vector_length = 1
+        self.data_vector_length = data_vector_length
 
     @classmethod
-    def generic_loss_callable(cls, residuals):
-        return -0.5 * np.sum(residuals**2) * cls.C_inverse
+    def generic_loss_callable(cls, residuals, reduce=True):
+        if reduce:
+            return -0.5 * np.sum(residuals**2) * cls.C_inverse
+        return -0.5 * residuals**2 * cls.C_inverse
 
     @staticmethod
     def create_loss_callable(C_inverse, data_vector_length):
@@ -51,14 +54,11 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
                        C_inverse=C_inverse)
 
     def create_sampler(self):
-        def sampler(*args, **kwargs):
-            return np.random.randn(1) * self.noise_level, None
-        sampling_object = GaussianNoiseSampler(  # type: ignore[arg-type]
-            receivers=None,  # not used in scalar case
+        return GaussianNoiseSampler(
+            receivers=None,
             data_vector_length=1,
-            cov_blocks=[np.array([[self.noise_level ** 2]])],
+            cov_blocks=np.full((self.data_vector_length, 1, 1), self.noise_level ** 2),
         )
-        return sampling_object
 
 
 class DiagonalEmpiricalCovariance(EmpiricalCovariance):
@@ -120,13 +120,9 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
     
     
     def create_sampler(self):
-        def sampler(*args, **kwargs):
-            return np.random.randn(self.covariance_matrix.shape[0]) * np.sqrt(self.covariance_matrix), self.station_component_covariances
-        sampling_object = GaussianNoiseSampler(  # type: ignore[arg-type]
-            receivers=None,
-            data_vector_length=self.covariance_matrix.shape[0],
-            cov_blocks=[np.diag(self.covariance_matrix)],
+        return GaussianNoiseSampler(
+            receivers=self.receivers,
+            data_vector_length=self.data_vector_length,
+            cov_blocks=self.covariance_matrix_arrays,
             station_component_covariances=self.station_component_covariances,
         )
-        sampling_object.sampler = sampler
-        return sampling_object

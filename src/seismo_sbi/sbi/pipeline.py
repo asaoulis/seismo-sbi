@@ -288,7 +288,7 @@ class SBIPipeline:
             cov_mat = DiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length)
         elif cov_matrix_option == "noise_level":
             noise_level = stationwise_covariances
-            cov_mat = ScalarEmpiricalCovariance(noise_level)
+            cov_mat = ScalarEmpiricalCovariance(noise_level, data_vector_length=self.data_vector_length)
         else:
             raise NotImplementedError(f"covariance matrix option {cov_matrix_option} not implemented")
         return cov_mat
