@@ -8,6 +8,7 @@ from .csdi_transformer import ConditionalTransformer
 from .axial_transformer import SeismogramAxialTransformer
 from .station_encoders import build_station_encoder, InputDecimator
 from .amplitude_embedding import AmplitudeTokenEmbedding
+from .legacy_checkpoints import remap_legacy_state_dict
 from .source_conditioning import (
     SourceConditioner,
     FiLM,
@@ -540,6 +541,10 @@ class NPELightningModule(pl.LightningModule):
         self._mmd_last_beta = float("nan")
         self._mmd_last_beta_ema = float("nan")
         self._mmd_last_z_scale = float("nan")
+
+    def on_load_checkpoint(self, checkpoint):
+        """Rename a pre-refactor checkpoint's keys before Lightning loads its weights."""
+        checkpoint["state_dict"] = remap_legacy_state_dict(checkpoint["state_dict"])
 
     def enable_mmd(self, mmd_config: dict, real_context, psim_loader):
         """Arm the summary-space MMD auxiliary loss (Huang et al. 2023-style, two-sample).
