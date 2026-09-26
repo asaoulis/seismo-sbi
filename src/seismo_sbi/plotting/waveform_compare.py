@@ -29,7 +29,7 @@ def _shift(x, lag: int):
 
 
 def _xcorr_lag(obs1d, syn1d, max_lag: int):
-    from seismo_sbi.data_quality import align_best_lag
+    from seismo_sbi.data_quality.metrics import align_best_lag
     return align_best_lag(np.asarray(obs1d, float), np.asarray(syn1d, float), max_lag)
 
 

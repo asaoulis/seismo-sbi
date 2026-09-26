@@ -5,16 +5,11 @@ import datetime as dt
 import numpy as np
 import pytest
 
-from seismo_sbi.data_quality import (
-    QAThresholds,
-    TraceDescriptor,
-    compose_component_qa,
-    compute_trace_metrics,
-    data_qa_thresholds,
-    neighbour_window_flag,
-    obs_dead_components,
-    snr_metrics,
+from seismo_sbi.data_quality.guards import (
+    compose_component_qa, data_qa_thresholds, neighbour_window_flag, obs_dead_components,
 )
+from seismo_sbi.data_quality.metrics import TraceDescriptor, compute_trace_metrics, snr_metrics
+from seismo_sbi.data_quality.policy import QAThresholds
 
 
 # ---------------------------------------------------------------- presets ----

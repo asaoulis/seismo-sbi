@@ -11,8 +11,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seismo_sbi.data_quality import (
-    QAThresholds, TraceDescriptor, compute_trace_metrics, summarise_event)
+from seismo_sbi.data_quality.metrics import TraceDescriptor, compute_trace_metrics
+from seismo_sbi.data_quality.policy import QAThresholds, summarise_event
 from seismo_sbi.data_quality.alignment import nonzero_shifts, optimise_event_shifts
 
 REPO = Path(__file__).resolve().parents[2]

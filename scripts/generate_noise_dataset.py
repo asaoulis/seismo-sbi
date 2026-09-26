@@ -22,17 +22,16 @@ import traceback
 import obspy
 import joblib
 
-from seismo_sbi.data_handling.preprocessing import (
-    find_mseed_files,
-    load_waveforms,
-    load_inventory,
-    deconvolve_and_filter,
-    export_to_sbi_h5,
-    check_window_quality,
-    process_daily_files,
-    build_noise_catalogue,
-    build_event_catalogue,
+from seismo_sbi.data_handling.preprocessing.catalogue import (
+    build_noise_catalogue, build_event_catalogue,
 )
+from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
+from seismo_sbi.data_handling.preprocessing.io import (
+    find_mseed_files, load_waveforms, load_inventory,
+)
+from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
+from seismo_sbi.data_handling.preprocessing.quality import check_window_quality
+from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
 from seismo_sbi.data_handling.preprocessing.windowing import (
     get_continuous_regions,
     make_noise_windows,

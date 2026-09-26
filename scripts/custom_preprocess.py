@@ -29,14 +29,11 @@ import numpy as np
 import obspy
 from obspy import UTCDateTime
 
-from seismo_sbi.data_handling.preprocessing import (
-    find_mseed_files,
-    load_waveforms,
-    load_inventory,
-    write_window,
-    deconvolve_and_filter,
-    export_to_sbi_h5,
+from seismo_sbi.data_handling.preprocessing.io import (
+    find_mseed_files, load_waveforms, load_inventory, write_window,
 )
+from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
+from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
 
 
 def get_arguments():

@@ -30,15 +30,10 @@ import obspy
 from obspy import Trace, Stream, UTCDateTime, Inventory
 import pytest
 
-from seismo_sbi.data_handling.preprocessing import (
-    load_waveforms,
-    load_inventory,
-    write_window,
-    deconvolve_and_filter,
-    slice_event_window,
-    make_noise_windows,
-    export_to_sbi_h5,
-)
+from seismo_sbi.data_handling.preprocessing.io import load_waveforms, load_inventory, write_window
+from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
+from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
+from seismo_sbi.data_handling.preprocessing.windowing import slice_event_window, make_noise_windows
 from seismo_sbi.data_handling.preprocessing.windowing import (
     make_daily_overlapping_windows,
     get_continuous_regions,

@@ -9,7 +9,8 @@ than raising for a degenerate (zero) tensor.
 import numpy as np
 import pytest
 
-from seismo_sbi.evaluation import kagan, recovered_mt_samples
+from seismo_sbi.evaluation.inference import recovered_mt_samples
+from seismo_sbi.evaluation.moment_tensor import kagan
 from seismo_sbi.evaluation.moment_tensor import pyrocko_mt
 
 pytest.importorskip("pyrocko")  # kagan/pyrocko_mt need pyrocko at call time

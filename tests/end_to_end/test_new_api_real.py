@@ -23,14 +23,10 @@ import obspy
 import pytest
 from obspy import UTCDateTime
 
-from seismo_sbi.data_handling.preprocessing import (
-    load_waveforms,
-    load_inventory,
-    write_window,
-    deconvolve_and_filter,
-    slice_event_window,
-    export_to_sbi_h5,
-)
+from seismo_sbi.data_handling.preprocessing.io import load_waveforms, load_inventory, write_window
+from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
+from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
+from seismo_sbi.data_handling.preprocessing.windowing import slice_event_window
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 from tests.end_to_end.conftest import RIDGECREST_EVENT, IRIS_TEST_STATIONS

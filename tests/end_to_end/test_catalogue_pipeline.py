@@ -31,14 +31,12 @@ from obspy import Stream, Trace, UTCDateTime, Inventory
 from obspy.core.event import Event, Origin, Magnitude, Catalog
 import pytest
 
-from seismo_sbi.data_handling.preprocessing import (
-    find_mseed_files,
-    load_waveforms,
-    deconvolve_and_filter,
-    export_to_sbi_h5,
-    check_window_quality,
-    compute_event_arrival_windows,
-    filter_events_by_distance,
+from seismo_sbi.data_handling.preprocessing.io import find_mseed_files, load_waveforms
+from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_filter
+from seismo_sbi.data_handling.preprocessing.quality import check_window_quality
+from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
+from seismo_sbi.data_handling.preprocessing.windowing import (
+    compute_event_arrival_windows, filter_events_by_distance,
 )
 from seismo_sbi.data_handling.preprocessing.windowing import get_continuous_regions
 from seismo_sbi.utils.seismograms import compute_data_vector_length
@@ -802,7 +800,7 @@ class TestProcessDailyFiles:
     def test_loadable_by_find_mseed_files(self, synthetic_data, tmp_path):
         """find_mseed_files() locates the processed daily files in processed_dir."""
         from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
-        from seismo_sbi.data_handling.preprocessing import find_mseed_files
+        from seismo_sbi.data_handling.preprocessing.io import find_mseed_files
 
         processed_dir = tmp_path / "daily"
         process_daily_files(
@@ -828,7 +826,7 @@ class TestProcessDailyFiles:
     def test_resampled_to_target_rate(self, synthetic_data, tmp_path):
         """Processed files are at the target sampling rate."""
         from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
-        from seismo_sbi.data_handling.preprocessing import find_mseed_files, load_waveforms
+        from seismo_sbi.data_handling.preprocessing.io import find_mseed_files, load_waveforms
 
         processed_dir = tmp_path / "daily"
         process_daily_files(
