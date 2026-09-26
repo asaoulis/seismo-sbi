@@ -70,3 +70,8 @@ ml-checkpoints/
 scripts/win32tools.tar.gz
 # Test fixtures are committed, unlike the configuration files the patterns above ignore.
 !tests/fixtures/**/*.yaml
+# Documentation build products; the pinned toolchain itself is committed.
+docs/_build/
+docs/_generated/
+docs/api/
+!docs/requirements.txt
