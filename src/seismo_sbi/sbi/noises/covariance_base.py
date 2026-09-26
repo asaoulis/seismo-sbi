@@ -11,8 +11,6 @@ import joblib
 
 
 class EmpiricalCovariance(ABC):
-    # The sampler uses multiprocessing, which would pickle a large object per call, so the
-    # heavy data is kept on the class instead and inherited by the pool.
     C_inverse = None
     data_vector_length = None
     C_derivative = None
@@ -21,14 +19,12 @@ class EmpiricalCovariance(ABC):
     def create_sampler(self):
         pass
 
-    @staticmethod
     @abstractmethod
-    def generic_loss_callable(residuals):
-        return 
+    def generic_loss_callable(self, residuals):
+        return
 
-    @classmethod
-    def create_loss_callable(cls):
-        return cls.generic_loss_callable
+    def create_loss_callable(self):
+        return self.generic_loss_callable
 
     def compute_loss(self, residuals, *args, **kwargs):
         return self.generic_loss_callable(residuals, *args, **kwargs)
@@ -37,13 +33,11 @@ class EmpiricalCovariance(ABC):
     def matmul_inverse_covariance(self, data_vector):
         pass
 
-    @classmethod
-    def set_C_inverse(cls, C_inverse):
-        cls.C_inverse = C_inverse
+    def set_C_inverse(self, C_inverse):
+        self.C_inverse = C_inverse
 
-    @classmethod
-    def set_data_vector_length(cls, data_vector_length):
-        cls.data_vector_length = data_vector_length
+    def set_data_vector_length(self, data_vector_length):
+        self.data_vector_length = data_vector_length
 
 
 def parallel_execution(inputs, func, num_jobs = 20):

@@ -46,9 +46,8 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
 
     # Covariance construction
 
-    @classmethod
-    def set_cholesky_factors(cls, cholesky_factors):
-        cls.inverse_metadata = cholesky_factors
+    def set_cholesky_factors(self, cholesky_factors):
+        self.inverse_metadata = cholesky_factors
 
     def set_covariance(self, station_component_covariances):
         covs = self.create_covariance_matrix(
@@ -116,14 +115,13 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
             vals.append(-0.5 * (x @ y))
         return np.repeat(vals, block_size)
 
-    @classmethod
-    def generic_loss_callable(cls, residuals, reduce=True):
+    def generic_loss_callable(self, residuals, reduce=True):
         if reduce:
-            return cls.quadratic_form(
-                residuals, cls.inverse_metadata, cls.data_vector_length
+            return self.quadratic_form(
+                residuals, self.inverse_metadata, self.data_vector_length
             )
-        return cls.quadratic_form_per_block(
-            residuals, cls.inverse_metadata, cls.data_vector_length
+        return self.quadratic_form_per_block(
+            residuals, self.inverse_metadata, self.data_vector_length
         )
     
     @staticmethod
@@ -136,11 +134,10 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
                         toeplitz_cols = toeplitz_cols, data_vector_length = data_vector_length)
     # Inverse covariance × vector
 
-    @classmethod
-    def matmul_inverse_covariance(cls, data_vector):
-        reshaped = data_vector.reshape(-1, cls.data_vector_length)
+    def matmul_inverse_covariance(self, data_vector):
+        reshaped = data_vector.reshape(-1, self.data_vector_length)
         out = []
-        for cf, x in zip(cls.inverse_metadata, reshaped):
+        for cf, x in zip(self.inverse_metadata, reshaped):
             out.append(cho_solve(cf, x, check_finite=False))
         return np.concatenate(out)
 

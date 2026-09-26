@@ -26,19 +26,13 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             self.covariance_gradients = covariance_gradients
             self.num_jobs = num_jobs
 
-        @classmethod
-        def set_toeplitz_cols(cls, inverse_metadata):
-            cls.inverse_metadata = inverse_metadata
+        def set_toeplitz_cols(self, inverse_metadata):
+            self.inverse_metadata = inverse_metadata
 
-        @classmethod
-        def set_data_vector_length(cls, data_vector_length):
-            cls.data_vector_length = data_vector_length
-
-        @classmethod
-        def generic_loss_callable(cls, residuals, reduce=True):
+        def generic_loss_callable(self, residuals, reduce=True):
             if reduce:
-                return cls.quadratic_form(residuals, cls.inverse_metadata, cls.data_vector_length)
-            return cls.quadratic_form_per_block(residuals, cls.inverse_metadata, cls.data_vector_length)
+                return self.quadratic_form(residuals, self.inverse_metadata, self.data_vector_length)
+            return self.quadratic_form_per_block(residuals, self.inverse_metadata, self.data_vector_length)
 
         @staticmethod
         def quadratic_form(residuals, toeplitz_cols, block_size):
@@ -67,9 +61,8 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
             return partial(BlockDiagonalCovariance.loss_callable,
                             toeplitz_cols = toeplitz_cols, data_vector_length = data_vector_length)
         
-        @classmethod
-        def matmul_inverse_covariance(cls, data_vector):
-            return cls.callable_matmul_inverse_covariance_toeplitz(data_vector, cls.inverse_metadata, cls.data_vector_length)
+        def matmul_inverse_covariance(self, data_vector):
+            return self.callable_matmul_inverse_covariance_toeplitz(data_vector, self.inverse_metadata, self.data_vector_length)
         
         @staticmethod
         def callable_matmul_inverse_covariance_toeplitz(data_vector, toeplitz_cols, data_vector_length):

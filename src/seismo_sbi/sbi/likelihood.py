@@ -125,6 +125,13 @@ def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
     return chain
 
 
+_ensemble_log_probability = None
+
+
+def _evaluate_ensemble_log_probability(scaled_theta):
+    return _ensemble_log_probability(scaled_theta)
+
+
 def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None, return_log_prob=False):
 
     if mle_start is not None:
@@ -132,8 +139,12 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
     else:
         initial_samples = np.random.rand(nwalkers, num_parameters)
     if ensemble:
+        # Forked workers inherit this global, so the log-probability and the arrays it holds
+        # are not pickled on every step.
+        global _ensemble_log_probability
+        _ensemble_log_probability = log_probability
         with Pool(processes=num_processes) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, num_parameters, log_probability, pool=pool)
+            sampler = emcee.EnsembleSampler(nwalkers, num_parameters, _evaluate_ensemble_log_probability, pool=pool)
 
             # burn in
             print("Starting burn in...", flush=True)

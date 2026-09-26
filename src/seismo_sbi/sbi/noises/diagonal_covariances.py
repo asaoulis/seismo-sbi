@@ -22,21 +22,15 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
         self.inverse_metadata = self.C_inverse
         self.data_vector_length = data_vector_length
 
-    @classmethod
-    def generic_loss_callable(cls, residuals, reduce=True):
+    def generic_loss_callable(self, residuals, reduce=True):
         if reduce:
-            return -0.5 * np.sum(residuals**2) * cls.C_inverse
-        return -0.5 * residuals**2 * cls.C_inverse
+            return -0.5 * np.sum(residuals**2) * self.C_inverse
+        return -0.5 * residuals**2 * self.C_inverse
 
     @staticmethod
     def create_loss_callable(C_inverse, data_vector_length):
-        """Compatible with the ensemble=False pipeline path.
-
-        Captures C_inverse in a closure so joblib/loky workers receive the
-        correct value via cloudpickle rather than reading the class attribute
-        (which would be None in freshly-imported worker processes).
-        """
-        c_inv = ScalarEmpiricalCovariance.C_inverse
+        """Loss closed over ``C_inverse``, so worker processes receive it with the function."""
+        c_inv = C_inverse
         def _loss(residuals):
             return -0.5 * np.sum(residuals ** 2) * c_inv
         return _loss
@@ -89,12 +83,11 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
         else:
             STACKED = np.stack([np.diag(diag) for diag in covariance_matrix_diagonals], axis=0)
             return STACKED
-    @classmethod
-    def generic_loss_callable(cls, residuals, reduce=True):
+    def generic_loss_callable(self, residuals, reduce=True):
         if reduce:
-            return DiagonalEmpiricalCovariance.loss_callable(residuals, cls.C_inverse)
+            return DiagonalEmpiricalCovariance.loss_callable(residuals, self.C_inverse)
         else:
-            elementwise_losses = -0.5 * np.einsum('i,i,i->i', residuals, cls.C_inverse, residuals)
+            elementwise_losses = -0.5 * np.einsum('i,i,i->i', residuals, self.C_inverse, residuals)
             return elementwise_losses
 
     @staticmethod
@@ -106,9 +99,8 @@ class DiagonalEmpiricalCovariance(EmpiricalCovariance):
         return partial(DiagonalEmpiricalCovariance.loss_callable,
                         C_inverse = C_inverse)
         
-    @classmethod
-    def matmul_inverse_covariance(cls, data_vector):
-        return cls.callable_matmul_inverse_covariance(data_vector, cls.C_inverse)
+    def matmul_inverse_covariance(self, data_vector):
+        return self.callable_matmul_inverse_covariance(data_vector, self.C_inverse)
     
     @staticmethod
     def callable_matmul_inverse_covariance(data_vector, C_inverse):

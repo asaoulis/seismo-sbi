@@ -1,5 +1,5 @@
 """Covariance paths that used to fail: samplers without receivers, per-element scalar loss, the
-estimator's default taper and the theory covariance's parameter derivatives.
+estimator's default taper, the theory covariance's parameter derivatives, and instance state.
 """
 import numpy as np
 from scipy.linalg import block_diag
@@ -81,4 +81,21 @@ def test_theory_score_includes_the_covariance_derivative_term():
         [0.5 * residual @ inverse @ da @ inverse @ residual - 0.5 * np.trace(inverse @ da) for da in derivatives])
     score = GaussianCompressor(compression_data, covariance).compute_score(compression_data.data_fiducial + residual)
     np.testing.assert_allclose(score, expected, rtol=1e-8)
+
+
+def test_two_instances_of_one_covariance_class_are_independent():
+    residual, _ = synthetic_problem(6 * BLOCK_SIZE)
+    first = BlockDiagonalKolbCovariance(0.8, receivers=make_receivers(), data_vector_length=BLOCK_SIZE, num_jobs=1)
+    loss_before = first.compute_loss(residual)
+    inverse_before = first.matmul_inverse_covariance(residual)
+    BlockDiagonalKolbCovariance(3.0, receivers=make_receivers(), data_vector_length=BLOCK_SIZE, num_jobs=1)
+    assert first.compute_loss(residual) == loss_before
+    np.testing.assert_array_equal(first.matmul_inverse_covariance(residual), inverse_before)
+
+
+def test_scalar_loss_closure_uses_its_own_inverse_variance():
+    residual = np.ones(4)
+    closure = ScalarEmpiricalCovariance(1.0).create_loss_callable(1 / 0.5**2, 1)
+    ScalarEmpiricalCovariance(2.0)
+    assert closure(residual) == -0.5 * 4 / 0.25
 
