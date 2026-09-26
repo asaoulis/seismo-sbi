@@ -155,10 +155,16 @@ longer informative, delete it together with its tests, comments, and config keys
 it behind a flag, rename it `_old`, or move it to an attic. Git keeps the history. Removal means
 `git rm`: files the repository does not track are left where they are, never deleted from disk.
 
+Broken functionality may be deleted too, with one exception: the Gaussian-likelihood
+covariances. Each is in use in some setting; one that is stale or incompatible is repaired and
+pinned by a test, never deleted.
+
 ## Refactoring existing code
 
 A refactor reorganises; it does not rewrite. Someone who knows the current code must recognise
 it afterwards: the same functions doing the same steps, with the same names, in a clearer place.
+An addition that changes no existing result (a new constructor, a `__repr__`, removing an
+import-time side effect) is allowed, in its own labelled commit.
 
 - Keep code verbatim wherever it already reads well. Move it, split it at step boundaries, and
   strip the comments; do not restyle it, rename its variables, or re-express its logic.
@@ -190,3 +196,7 @@ it afterwards: the same functions doing the same steps, with the same names, in 
 4. Names carry units; no region name inside library code.
 5. The fast test tier is green, and any deleted code took its tests with it.
 6. A refactor left every moved function recognisable: same name, same steps, same outputs.
+7. Package `__init__` files hold a docstring only; a module name repeats only across sibling
+   backends; docstrings build without warnings as reStructuredText.
+8. The example notebooks still execute and print the same numbers, the end-to-end tier is
+   green, and the LV2 posteriors stay within their golden tolerances.
