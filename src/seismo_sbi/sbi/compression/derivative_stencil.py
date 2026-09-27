@@ -13,7 +13,7 @@ from pathlib import Path
 from functools import partial
 
 from .gaussian import ScoreCompressionData
-from seismo_sbi.utils.parallel import spawn_workers_in_notebooks
+from seismo_sbi.utils.parallel import gc_paused_in_notebooks
 from ..configuration import ModelParameters
 
 
@@ -96,8 +96,7 @@ class DerivativeStencil:
     def run_parallel_simulations(self, simulator, simulation_job_args_list, num_parallel_jobs):
 
         if num_parallel_jobs > 1:
-            spawn_workers_in_notebooks()
-            with joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
+            with gc_paused_in_notebooks(), joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
                 joblib.Parallel()(
                     joblib.delayed(simulator)(*simulation_job_args) for simulation_job_args in simulation_job_args_list
                 )
@@ -201,8 +200,7 @@ class HessianDerivativeStencil:
     def run_parallel_simulations(self, simulator, simulation_job_args_list, num_parallel_jobs):
 
         if num_parallel_jobs > 1:
-            spawn_workers_in_notebooks()
-            with joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
+            with gc_paused_in_notebooks(), joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
                 joblib.Parallel()(
                     joblib.delayed(simulator)(*simulation_job_args) for simulation_job_args in simulation_job_args_list
                 )

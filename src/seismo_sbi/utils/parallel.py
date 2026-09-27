@@ -2,10 +2,11 @@
 
 ``parallel_execution`` maps a function over inputs, serially for one job. ``tqdm_joblib`` patches
 joblib so a parallel loop advances a tqdm bar given to it, and restores it on exit. Inside a
-Jupyter kernel both start their workers with ``spawn`` (``spawn_workers_in_notebooks``).
+Jupyter kernel both pause garbage collection while workers start (``gc_paused_in_notebooks``).
 """
 
 import contextlib
+import gc
 import sys
 
 import joblib
@@ -15,7 +16,6 @@ import joblib
 @contextlib.contextmanager
 def tqdm_joblib(tqdm_object):
     """Patch joblib to advance ``tqdm_object`` as a parallel loop completes tasks."""
-    spawn_workers_in_notebooks()
 
     def tqdm_print_progress(self):
         if self.n_completed_tasks > tqdm_object.n:
@@ -24,9 +24,9 @@ def tqdm_joblib(tqdm_object):
 
     original_print_progress = joblib.parallel.Parallel.print_progress
     joblib.parallel.Parallel.print_progress = tqdm_print_progress
-
     try:
-        yield tqdm_object
+        with gc_paused_in_notebooks():
+            yield tqdm_object
     finally:
         joblib.parallel.Parallel.print_progress = original_print_progress
         tqdm_object.close()
@@ -36,17 +36,23 @@ def parallel_execution(inputs, func, num_jobs = 20):
     """``[func(x) for x in inputs]``, with ``num_jobs`` joblib workers unless it is 0, 1 or None."""
     if num_jobs in [None, 0 , 1]:
         return [func(block) for block in inputs]
-    spawn_workers_in_notebooks()
-    return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
+    with gc_paused_in_notebooks():
+        return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
 
 
-def spawn_workers_in_notebooks():
-    """In a Jupyter kernel, start loky workers with ``spawn``; elsewhere change nothing.
+@contextlib.contextmanager
+def gc_paused_in_notebooks():
+    """Inside a Jupyter kernel, pause garbage collection while worker processes are forked.
 
-    ipykernel wraps ``Thread.__init__`` in a hook that takes threading's global lock. loky's default
-    start runs that hook in the forked child before its exec, and the child waits for ever when
-    another thread held the lock at the fork; ``spawn`` execs straight after forking.
+    ipykernel registers a collection callback that takes threading's global lock. A forked child
+    resets its threads while holding that lock, so a collection at that moment deadlocks the child
+    for ever. The child inherits the paused collector. Outside a kernel nothing changes.
     """
-    if "ipykernel" in sys.modules:
-        from joblib.externals.loky.backend.context import set_start_method
-        set_start_method("spawn", force=True)
+    if "ipykernel" not in sys.modules or not gc.isenabled():
+        yield
+        return
+    gc.disable()
+    try:
+        yield
+    finally:
+        gc.enable()

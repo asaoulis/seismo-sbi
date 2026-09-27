@@ -1,11 +1,11 @@
-"""Parallel stages kill the worker pool they ran on, and start workers by spawn in a notebook."""
+"""Parallel stages kill the worker pool they ran on, and pause garbage collection while forking in a notebook."""
+import gc
 import sys
 
 from joblib.externals.loky import reusable_executor
-from joblib.externals.loky.backend import context
 
 from seismo_sbi.sbi.dataset_generator import ParallelSimulationRunner
-from seismo_sbi.utils.parallel import spawn_workers_in_notebooks
+from seismo_sbi.utils.parallel import gc_paused_in_notebooks
 
 
 class _Runner(ParallelSimulationRunner):
@@ -25,12 +25,12 @@ def test_parallel_simulations_kill_the_pool_they_ran_on():
     assert executor._max_workers == 2
 
 
-def test_workers_start_by_spawn_only_inside_a_jupyter_kernel(monkeypatch):
-    monkeypatch.setattr(context, "_DEFAULT_START_METHOD", None)
+def test_garbage_collection_pauses_while_forking_only_inside_a_jupyter_kernel(monkeypatch):
     monkeypatch.delitem(sys.modules, "ipykernel", raising=False)
-    spawn_workers_in_notebooks()
-    assert context.get_start_method() is None
+    with gc_paused_in_notebooks():
+        assert gc.isenabled()
 
     monkeypatch.setitem(sys.modules, "ipykernel", object())
-    spawn_workers_in_notebooks()
-    assert context.get_start_method() == "spawn"
+    with gc_paused_in_notebooks():
+        assert not gc.isenabled()
+    assert gc.isenabled()
