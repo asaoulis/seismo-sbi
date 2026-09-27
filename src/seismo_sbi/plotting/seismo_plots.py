@@ -58,6 +58,9 @@ def plot_stacked_waveforms(receivers, flattened_seismogram_array, figname = None
         plt.show()
     plt.close()
 
+#: Seconds of record before the origin time in every synthetic and observed window.
+PRE_EVENT_PAD_S = 60
+
 class MisfitsPlotting:
 
     def __init__(self, receivers, sampling_rate, covariance_matrix = None):
@@ -480,9 +483,7 @@ class MisfitsPlotting:
             station_arrival = taup.get_travel_times(source_depth_in_km=depth,
                                                     distance_in_degree=distance
                                                     )      
-            # TODO: Replace hardcoded 60 with the arbitrary offset we use to ensure filtered
-            # synthetics and data are not cut out of the window
-            arrivals[station_details.station_name] = station_arrival[0].time + 60
+            arrivals[station_details.station_name] = station_arrival[0].time + PRE_EVENT_PAD_S
         
         return arrivals
 

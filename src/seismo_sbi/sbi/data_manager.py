@@ -14,6 +14,9 @@ from seismo_sbi.sbi.types.results import  JobData
 from seismo_sbi.utils.errors import error_handling_wrapper
 
 
+#: Every simulation file under ``train/`` is named ``sim_<index>.h5``.
+SIMULATION_FILE_PREFIX = "sim_"
+
 class DataManager:
 
     def __init__(self, data_loader : SimulationDataLoader, dataset_compressor : DatasetCompressor, data_length = None):
@@ -26,8 +29,7 @@ class DataManager:
         """Compress every simulation under ``simulations_output_path/train``, in file-name order;
         ``seed`` fixes each simulation's noise draw.
         """
-        sim_string = "sim_" # TODO: either remove this glob or make it a constant
-        sims_paths = sorted((Path(simulations_output_path) / 'train').glob(f"{sim_string}*"))
+        sims_paths = sorted((Path(simulations_output_path) / 'train').glob(f"{SIMULATION_FILE_PREFIX}*"))
         self.dataset_compressor.load_compressor_and_noise_model(compressor, synthetic_noise_model_sampler)
         raw_compressed_dataset = self.dataset_compressor.compress_dataset(sims_paths, param_names, seed=seed)
 
