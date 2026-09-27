@@ -15,9 +15,14 @@ examples: `examples/configs/LV2.yaml` (Gaussian likelihood and SBI) and
 | `parameters` | `ModelParameters` (`model_parameters`) | `inference` and `nuisance` parameters: fiducial values, stencil deltas, bounds, and each nuisance's `stage` |
 | `simulations` | `DatasetGenerationParameters` (`dataset_parameters`) | `num_simulations`, per-parameter `sampling_method`, iterative least squares |
 | `compression` | `compression_methods` | score compressors and their options, or `{}` for none |
-| `inference` | `sbi_method`, `likelihood_config` | the SBI method, pipeline type, training noise model, Gaussian-likelihood options |
+| `inference` | `sbi_method`, `sbi_seed`, `likelihood_config` | the SBI method, pipeline type, training noise model and optional `seed`; Gaussian-likelihood options |
 | `jobs` | `test_job_simulations`, `real_event_jobs` | synthetic test events, noise models to test against, real events, plots |
 | `ml_*` | `TrainingConfiguration` (`training`) | NPE architecture, encoder, conditioning, flow, optimiser, batches, caches, logging, scaler |
+
+`inference.sbi.seed` (an integer) makes the SBI leg of `scripts/event_inversion.py` reproducible:
+it seeds numpy and torch before each compressor's inversion, and gives every MCMC chain and every
+training simulation's noise draw its own seed, since worker processes start with fresh random
+state. The Gaussian-likelihood inversion that follows is not seeded.
 
 The `seismic_context`, `parameters`, `simulations`, `compression`, `inference` and `jobs` blocks
 are required. An `ml_*` block that the training configuration does not know is an error.

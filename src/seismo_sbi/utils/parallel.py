@@ -3,6 +3,7 @@
 ``parallel_execution`` maps a function over inputs, serially for one job. ``tqdm_joblib`` patches
 joblib so a parallel loop advances a tqdm bar given to it, and restores it on exit. Inside a
 Jupyter kernel both pause garbage collection while workers start (``gc_paused_in_notebooks``).
+``worker_seeds`` gives each task its own seed, since workers start with fresh random state.
 """
 
 import contextlib
@@ -10,6 +11,7 @@ import gc
 import sys
 
 import joblib
+import numpy as np
 
 
 # After https://stackoverflow.com/a/61689175
@@ -56,3 +58,12 @@ def gc_paused_in_notebooks():
         yield
     finally:
         gc.enable()
+
+
+def worker_seeds(seed, num_tasks):
+    """``num_tasks`` independent integer seeds drawn from ``seed``, or ``num_tasks`` Nones when
+    ``seed`` is None.
+    """
+    if seed is None:
+        return [None] * num_tasks
+    return [int(task_seed) for task_seed in np.random.SeedSequence(seed).generate_state(num_tasks)]

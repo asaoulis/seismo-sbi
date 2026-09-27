@@ -90,6 +90,8 @@ class SBIPipeline:
         self.compressor_keys = []
         self.compressors = {}
         self.compression_methods = None
+        #: Seeds the SBI leg (MLE chains, training set, noise draws, NPE training); None leaves it unseeded.
+        self.seed = None
         self.score_compression_data = None
         self.extra_gradients = None
 
@@ -546,6 +548,9 @@ class SingleEventPipeline(SBIPipeline):
                 start_time = time.time()
                 print("Starting on simulation:", sim_name, "with compressor:", compressor_name, flush=True)
                 inversion_config = InversionConfig("", test_noise, compressor_name)
+                if self.seed is not None:
+                    np.random.seed(self.seed)
+                    torch.manual_seed(self.seed)
 
                 compression_data = self.find_mle_and_set_compressor(D, covariance, priors, dataset_details, compressor_name=compressor_name)
                 for _ in range(self.mcmc_chain_for_mle):
@@ -592,6 +597,7 @@ class SingleEventPipeline(SBIPipeline):
             deepcopy(self.parameters),
             priors,
             mle_start=mle_start,
+            seed=self.seed,
         )))
         if len(result) == 3:
             _, res, logps = result
@@ -657,7 +663,8 @@ class SingleEventPipeline(SBIPipeline):
 
         dataset = self.generate_simulation_data(dataset_details, priors=priors)
         raw_compressed_dataset = self.data_manager.compress_dataset(
-            compressor, param_names, self.simulations_output_path, self.training_noise_sampler
+            compressor, param_names, self.simulations_output_path, self.training_noise_sampler,
+            seed=self.seed
         )
         dataset.clear_all_outputs()
 
@@ -785,7 +792,7 @@ class SingleEventPipeline(SBIPipeline):
             dataset_details = deepcopy(original_dataset_details)
         return theta0, dataset_details
 
-    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, priors=(None,None), mle_start = None):
+    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, priors=(None,None), mle_start = None, seed = None):
         """Sample the Gaussian-likelihood posterior of one job with emcee; yields
         ``(None, inversion_result)``, with the log-probabilities when ``return_log_prob`` is set.
         """
@@ -831,12 +838,12 @@ class SingleEventPipeline(SBIPipeline):
             samples_scaled, logps = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
                                                         nsamples_per_walker=nsamples_per_walker, nwalkers=num_processes,
-                                                        burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start, return_log_prob=True)
+                                                        burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start, return_log_prob=True, seed=seed)
         else:
             samples_scaled = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
                                                         self.num_dim,
                                                         nsamples_per_walker=nsamples_per_walker, nwalkers=num_processes,
-                                                        burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start)
+                                                        burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start, seed=seed)
         print("Finished MCMC chains.", flush=True)
         samples = scaler.inverse_transform(samples_scaled)
         inversion_data = InversionData(theta0, samples, scaler)

@@ -105,6 +105,7 @@ class SBI_Configuration:
         self.sbi_method = None
         self.pipeline_type = None
         self.sbi_noise_model = None
+        self.sbi_seed = None
 
         self.test_job_simulations = None
         self.real_event_jobs = []
@@ -362,6 +363,7 @@ class SBI_Configuration:
         self.sbi_method = inference_config["sbi"]["method"]
         self.pipeline_type = inference_config["sbi"].get("pipeline", "single_event")
         self.sbi_noise_model = inference_config["sbi"]["noise_model"]
+        self.sbi_seed = inference_config["sbi"].get("seed")
         self.likelihood_config = inference_config["likelihood"]
 
     def parse_jobs_config(self, config):
