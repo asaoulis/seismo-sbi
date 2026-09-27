@@ -59,7 +59,7 @@ def compute_summary(samples: np.ndarray) -> dict:
     dict with keys 'gamma_deg', 'delta_deg', 'Mw'.
     """
     from seismo_sbi.plotting.lune import mts6_to_gamma_delta
-    from seismo_sbi.plotting.distributions import get_MW_and_epsilon
+    from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon
 
     if samples.ndim != 2 or samples.shape[1] != 6:
         raise ValueError(

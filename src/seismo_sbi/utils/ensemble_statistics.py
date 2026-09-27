@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 # Use your existing utilities
 from seismo_sbi.plotting.lune import mts6_to_gamma_delta, m6_to_matrix
-from seismo_sbi.plotting.distributions import convert_to_pyrocko
+from seismo_sbi.utils.mt_decomposition import convert_to_pyrocko
 
 # -----------------------------
 # Helpers

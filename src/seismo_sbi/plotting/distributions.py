@@ -13,11 +13,11 @@ from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from seismo_sbi.utils.parallel import tqdm_joblib
-from seismo_sbi.utils.mt_conventions import compute_scalar_moment, convert_mt_convention, create_matrix
+from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
+from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon, get_nodal_planes
 from .rocko_beachball_patch import plot_beachball_on_axes
 from contextlib import contextmanager
 import logging
-from pyrocko import moment_tensor as pmt
 # New: reusable lune plotting utilities
 from seismo_sbi.plotting.lune import (
     mts6_to_gamma_delta,
@@ -73,40 +73,6 @@ class DummyDataScaler:
     
     def transform(self, data):
         return data
-
-def get_MW_and_epsilon(moment_tensor_sol):
-
-    moment_tensor_matrix, M_0 = compute_scalar_moment(moment_tensor_sol)
-
-    MW = (np.log10(M_0) - 9.1)/1.5
-
-    M_isotropic = 1/3 * np.trace(moment_tensor_matrix) * np.eye(3)
-    M_deviatoric = moment_tensor_matrix - M_isotropic
-
-    eigenvalues = list(sorted(np.linalg.eigvals(M_deviatoric), reverse=True))
-    epsilon = eigenvalues[1]/ max(abs(eigenvalues[0]), abs(eigenvalues[2]))
-    
-    return (MW, epsilon)
-
-# delta_deg is the angle from the deviatoric plane to the lune point, -90 to 90 deg,
-# following Tape & Tape (2012) Eq. 21a.
-
-def convert_to_pyrocko(mt):
-    #up, south, east to north east down
-    m = pmt.MomentTensor(
-        mnn=-mt[1],
-        mee=-mt[2],
-        mdd=-mt[0],
-        mne=-mt[4],
-        mnd=-mt[5],
-        med=-mt[3]
-    )
-    return m
-
-def get_nodal_planes(theta):
-    m = convert_to_pyrocko(theta)
-    nodal_planes = m.both_strike_dip_rake()
-    return nodal_planes
 
 class MomentTensorReparametrised:
 
