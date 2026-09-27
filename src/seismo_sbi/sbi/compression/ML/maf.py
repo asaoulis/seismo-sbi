@@ -1,6 +1,14 @@
 # This file is part of sbi, a toolkit for simulation-based inference. sbi is licensed
 # under the Affero General Public License v3, see <https://www.gnu.org/licenses/>.
 
+"""Neural spline flow builder for the NPE density estimator.
+
+:func:`build_nsf` stacks rational-quadratic spline coupling transforms, each followed by an LU
+linear layer, on a standard-normal base conditioned on the embedding net's output.
+:class:`ContextSplineMap` is the spline conditioner for a one-dimensional target, where
+coupling has nothing else to condition on. Adapted from ``sbi``.
+"""
+
 from functools import partial
 
 import torch.nn as nn

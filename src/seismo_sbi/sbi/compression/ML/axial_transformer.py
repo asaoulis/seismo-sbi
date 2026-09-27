@@ -1,3 +1,11 @@
+"""Axial station-by-time transformer that encodes a set of station traces.
+
+:class:`SeismogramAxialTransformer` takes per-station feature sequences ``(B, N, L, D)`` and the
+station coordinates, adds time and station-position embeddings, and stacks
+:class:`AxialOrFullBlock` layers that attend along time within a station and across stations.
+The result is pooled by query tokens, a CLS token or a PMA head into one summary per event.
+"""
+
 import torch
 import torch.nn as nn
 from typing import Optional

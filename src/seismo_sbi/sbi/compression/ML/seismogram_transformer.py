@@ -1,3 +1,12 @@
+"""Embedding network and Lightning modules for NPE training.
+
+:class:`SeismogramTransformer` encodes each station's traces with a pluggable station encoder,
+mixes stations with :class:`~.axial_transformer.SeismogramAxialTransformer`, and maps the result
+and any source conditioning to a fixed-length summary. :class:`NPELightningModule` trains a flow
+on that summary; :class:`LightningModel` is the regression wrapper that
+``MachineLearningCompressor`` loads.
+"""
+
 import torch
 
 from torch import nn

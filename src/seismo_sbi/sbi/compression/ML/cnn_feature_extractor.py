@@ -1,3 +1,10 @@
+"""Per-station 1-D convolutional trace encoder.
+
+:class:`SeismicTraceCNN` normalises each trace ``(B, C, T)`` by its peak amplitude, runs a
+configurable Conv1d stack over the components, and appends the log peak amplitude as an extra
+channel. ``station_encoders.CNNEncoder`` wraps it as the default station encoder.
+"""
+
 import torch
 
 from torch import nn

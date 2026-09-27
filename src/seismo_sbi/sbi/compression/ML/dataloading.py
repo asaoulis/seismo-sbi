@@ -1,4 +1,12 @@
-# New imports for PyTorch dataset/dataloader and globbing
+"""Torch datasets and loaders over a folder of HDF5 simulations for NPE training.
+
+:class:`TorchSimulationDataset` loads each clean simulation, applies the training-time nuisance
+augmentation, adds a noise draw, and returns ``(theta, x)``, optionally with a station subset and
+a source-conditioning vector. :class:`StationSubsampler` draws the subsets,
+:func:`variable_station_collate` pads them into a batch, and :func:`make_torch_dataloaders`
+builds the training and validation loaders.
+"""
+
 import glob
 import os
 import torch
