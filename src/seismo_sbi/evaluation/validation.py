@@ -266,6 +266,7 @@ def write_validation_outputs(
     dict  — the metrics dict written to ``evaluation_metrics.json``.
     """
     from seismo_sbi.plotting import evaluation as ev
+    from seismo_sbi.evaluation import posterior_metrics
     from seismo_sbi.plotting.coverage import plot_coverage
     from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
 
@@ -284,7 +285,7 @@ def write_validation_outputs(
 
     # ── TARP coverage ──────────────────────────────────────────────────────────
     try:
-        ecp, alpha = ev.tarp_coverage(samples_scaled, theta_scaled, num_bootstrap=100)
+        ecp, alpha = posterior_metrics.tarp_coverage(samples_scaled, theta_scaled, num_bootstrap=100)
         cov_path = out_dir / "tarp_coverage.png"
         plot_coverage(
             {"NPE ML": (ecp, alpha)},
@@ -332,7 +333,7 @@ def write_validation_outputs(
     # ── Metrics JSON ──────────────────────────────────────────────────────────
     metrics: dict = {}
     try:
-        metrics = ev.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
+        metrics = posterior_metrics.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
     except Exception as e:  # noqa: BLE001
         print(f"    [warn] metric computation failed: {type(e).__name__}: {e}")
 

@@ -10,6 +10,7 @@ from collections import namedtuple
 import numpy as np
 import pytest
 
+from seismo_sbi.evaluation import posterior_metrics as pm
 from seismo_sbi.plotting import evaluation as ev
 
 
@@ -82,7 +83,7 @@ def test_tarp_coverage_shapes():
     theta = rng.uniform(size=(n_sims, n_dims))
     # well-calibrated: samples centred on truth
     samples = theta[None, :, :] + rng.normal(scale=0.1, size=(n_samples, n_sims, n_dims))
-    ecp, alpha = ev.tarp_coverage(samples, theta, num_bootstrap=20, seed=0)
+    ecp, alpha = pm.tarp_coverage(samples, theta, num_bootstrap=20, seed=0)
     assert ecp.shape[0] == 20
     assert ecp.shape[1] == alpha.shape[0]
 
@@ -90,7 +91,7 @@ def test_tarp_coverage_shapes():
 def test_tarp_coverage_rejects_bad_shape():
     pytest.importorskip("tarp")
     with pytest.raises(ValueError):
-        ev.tarp_coverage(np.zeros((10, 3)), np.zeros((10, 3)))
+        pm.tarp_coverage(np.zeros((10, 3)), np.zeros((10, 3)))
 
 
 # --------------------------------------------------------------------------- #
@@ -112,7 +113,7 @@ def _synthetic_val(n_sims=400, n_samples=300, n_dims=3, scale=0.2, seed=0):
 
 def test_compute_metrics_structure_and_calibration():
     val = _synthetic_val(n_dims=3)
-    m = ev.compute_evaluation_metrics(val)
+    m = pm.compute_evaluation_metrics(val)
     # structure
     assert set(m) >= {"meta", "mt_space", "figure_of_merit", "coverage"}
     assert m["meta"]["n_val"] == 400 and m["meta"]["n_dims"] == 3
@@ -137,7 +138,7 @@ def test_figure_of_merit_matches_sqrt_det_cov():
     draws = rng.multivariate_normal([0, 0], cov, size=20000)
     val = {"theta_phys": np.zeros((1, 2)),
            "samples_phys": draws[:, None, :]}     # (n_samples, 1, 2)
-    m = ev.compute_evaluation_metrics(val)
+    m = pm.compute_evaluation_metrics(val)
     expected = np.sqrt(np.linalg.det(cov))
     assert abs(m["figure_of_merit"]["full_mt"] - expected) < 0.05
 
@@ -146,7 +147,7 @@ def test_tarp_calibration_error_zero_for_perfect():
     val = _synthetic_val(n_dims=2)
     alpha = np.linspace(0, 1, 11)
     ecp = np.tile(alpha, (5, 1))               # perfectly calibrated (ecp == alpha)
-    m = ev.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
+    m = pm.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
     assert m["coverage"]["tarp_calibration_error"] == pytest.approx(0.0, abs=1e-9)
 
 
@@ -154,7 +155,7 @@ def test_tarp_curve_persisted():
     val = _synthetic_val(n_dims=2)
     alpha = np.linspace(0, 1, 11)
     ecp = np.tile(alpha, (5, 1)) + np.linspace(-0.01, 0.01, 5)[:, None]
-    m = ev.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
+    m = pm.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
     curve = m["coverage"]["tarp_curve"]
     assert len(curve["alpha"]) == 11
     assert len(curve["ecp_mean"]) == 11 and len(curve["ecp_std"]) == 11
@@ -187,7 +188,7 @@ def test_compute_metrics_derived_6mt():
     rng = np.random.default_rng(7)
     theta = rng.normal(size=(6, 6)) * 1e15
     samples = theta[None] + rng.normal(scale=1e14, size=(200, 6, 6))
-    m = ev.compute_evaluation_metrics(
+    m = pm.compute_evaluation_metrics(
         {"theta_phys": theta, "samples_phys": samples}, derived_max_samples=50)
     assert set(m["derived"]) == {"gamma", "delta", "Mw", "strike", "dip", "rake"}
     for key in ("delta_gamma", "sdr", "full_mt", "Mw"):
@@ -206,27 +207,27 @@ def _write_metrics(path, label, ts, fom=1.0):
 
 def test_scan_run_metrics_dedup_and_cap(tmp_path):
     # two runs, one with an older + newer copy (newer should win); + an unreadable file
-    _write_metrics(tmp_path / "runA" / "artifacts" / ev.METRICS_FILENAME, "runA", 100, fom=5)
-    _write_metrics(tmp_path / "runA_v2" / "artifacts" / ev.METRICS_FILENAME, "runA", 200, fom=9)
-    _write_metrics(tmp_path / "runB" / "artifacts" / ev.METRICS_FILENAME, "runB", 150, fom=3)
-    bad = tmp_path / "runC" / "artifacts" / ev.METRICS_FILENAME
+    _write_metrics(tmp_path / "runA" / "artifacts" / pm.METRICS_FILENAME, "runA", 100, fom=5)
+    _write_metrics(tmp_path / "runA_v2" / "artifacts" / pm.METRICS_FILENAME, "runA", 200, fom=9)
+    _write_metrics(tmp_path / "runB" / "artifacts" / pm.METRICS_FILENAME, "runB", 150, fom=3)
+    bad = tmp_path / "runC" / "artifacts" / pm.METRICS_FILENAME
     bad.parent.mkdir(parents=True)
     bad.write_text("{not json")
 
-    scanned = ev.scan_run_metrics(tmp_path)
+    scanned = pm.scan_run_metrics(tmp_path)
     assert set(scanned) == {"runA", "runB"}                       # runC dropped (unreadable)
     assert scanned["runA"]["metrics"]["figure_of_merit"]["delta_gamma"] == 9  # newest wins
     # cap keeps the newest N
-    capped = ev.scan_run_metrics(tmp_path, max_runs=1)
+    capped = pm.scan_run_metrics(tmp_path, max_runs=1)
     assert set(capped) == {"runA"}                                # ts=200 newest
 
 
 def test_plot_cross_run_comparison_writes(tmp_path):
     import matplotlib
     matplotlib.use("Agg")
-    _write_metrics(tmp_path / "runA" / "artifacts" / ev.METRICS_FILENAME, "runA", 100, fom=5)
-    _write_metrics(tmp_path / "runB" / "artifacts" / ev.METRICS_FILENAME, "runB", 150, fom=3)
-    scanned = ev.scan_run_metrics(tmp_path)
+    _write_metrics(tmp_path / "runA" / "artifacts" / pm.METRICS_FILENAME, "runA", 100, fom=5)
+    _write_metrics(tmp_path / "runB" / "artifacts" / pm.METRICS_FILENAME, "runB", 150, fom=3)
+    scanned = pm.scan_run_metrics(tmp_path)
     out = tmp_path / "out"
     bars = ev.plot_cross_run_comparison("runA", scanned, out)
     assert bars and all(os.path.exists(p) for p in bars.values())
@@ -244,7 +245,7 @@ def _mt_cluster(n=200, seed=0):
 
 def test_spread_stats_keys_and_nonneg():
     pytest.importorskip("pyrocko")
-    s = ev.spread_stats(_mt_cluster())
+    s = pm.spread_stats(_mt_cluster())
     assert set(s) == {
         "gamma_deg_median", "gamma_deg_width68", "delta_deg_median",
         "delta_deg_width68", "Mw_median", "Mw_width68"}
