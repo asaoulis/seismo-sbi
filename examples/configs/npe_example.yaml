@@ -1,0 +1,90 @@
+# Neural posterior estimation of a moment tensor on synthetic data: five Californian stations,
+# vertical component, 10 s PREM Instaseis database, white Gaussian noise. Driven by
+# examples/03_npe_training_and_evaluation.ipynb, which overrides the database path and the
+# output directory.
+
+run_name: npe_example
+output_directory: './data/pipeline_outputs/npe_example'
+job_name: results
+generate_dataset: True
+num_jobs: 8
+skip_compression_data: True
+
+ml_architecture: tcn
+ml_encoder:
+  channels: 16
+  n_blocks: 2
+  kernel_size: 3
+  downsample: 4
+ml_optimizer:
+  lr: 3.e-3
+ml_batch:
+  train: 64
+  val: 256
+  num_workers: 4
+  train_fraction: 0.9
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'Z'
+  stations_path: './configs/stations.txt'
+  station_components_path: './configs/components_z.json'
+  seismogram_duration: 200
+  sampling_rate: 0.5
+  syngine_address: '/data/shared/ROSA_PREM_10s_disc'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.08
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [m_rr, m_tt, m_pp, m_rt, m_rp, m_tp] (N m)
+      fiducial: [1.e+17, 1.e+17, 1.e+17, 1.e+17, 1.e+17, 1.e+17]
+      stencil_deltas: [1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15, 1.e+15]
+      bounds: [[-2.e+17, -2.e+17, -2.e+17, -2.e+17, -2.e+17, -2.e+17],
+               [2.e+17, 2.e+17, 2.e+17, 2.e+17, 2.e+17, 2.e+17]]
+  nuisance:
+    source_location:
+      #         [latitude, longitude, depth_km, time shift s]
+      fiducial: [37.636, -118.936, 10, 0]
+      bounds: [37.636, -118.936, 10, 0]
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      gaussian_sigma: 1.0
+      stage: training_augmentation
+
+simulations:
+  num_simulations: 3000
+  sampling_method:
+    moment_tensor: "uniform"
+    source_location: "constant"
+    time_shift_error: "constant"
+
+compression: {}
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian'
+      noise_level: 3.e-6
+  likelihood:
+    run: False
+
+jobs:
+  real_events: {}
+  simulations:
+    random_events: 3000
+    fixed_events: []
+    custom_events: {}
+  noise_models: {}
+  plots:
+    disable_plotting: True

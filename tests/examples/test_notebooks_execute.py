@@ -20,10 +20,14 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 REFERENCE = Path(__file__).with_name("notebook_outputs.json")
 INSTASEIS_DB = Path(os.environ.get("INSTASEIS_DB", "/data/shared/ROSA_PREM_10s_disc"))
+CPS_PROGRAM = Path(os.environ.get("CPS_PATH", ""), "hprep96")
 #: Relative tolerance on every printed number.
 RTOL = 1e-6
 #: Notebook to the local inputs it needs; a missing one skips the notebook.
 NOTEBOOKS = {
+    "01_forward_models_and_receivers": [INSTASEIS_DB, CPS_PROGRAM],
+    "02_noise_covariances_and_likelihood": [INSTASEIS_DB],
+    "03_npe_training_and_evaluation": [INSTASEIS_DB],
     "nuisance_parameters_demo": [INSTASEIS_DB],
     "nuisance_augmentation_demo": [INSTASEIS_DB],
     "azores_inversion": [INSTASEIS_DB, REPO / "examples" / "data" / "azores"],
@@ -32,7 +36,8 @@ NOTEBOOKS = {
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
 #: they raise is compared.
-STOCHASTIC_CELLS = {"theory_errors_LV2": {3, 8, 10, 11, 13}, "azores_inversion": {2, 8, 13}}
+STOCHASTIC_CELLS = {"theory_errors_LV2": {3, 8, 10, 11, 13}, "azores_inversion": {2, 8, 13},
+                    "02_noise_covariances_and_likelihood": {7}, "03_npe_training_and_evaluation": {3, 4, 5}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),
          re.compile(r"\d\d:\d\d(:\d\d)?"), re.compile(r"0x[0-9a-f]+"),
