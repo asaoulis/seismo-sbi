@@ -44,3 +44,46 @@ def test_receivers_without_a_components_map_record_three_components(tmp_path):
 
     assert [receiver.components for receiver in receivers.iterate()] == [["Z", "E", "N"]] * 3
     assert receivers.receiver_time_shifts_map == {}
+
+
+def test_from_station_file_matches_the_positional_constructor(tmp_path):
+    stations, components, shifts = _write_station_files(tmp_path)
+
+    built = Receivers.from_station_file(str(stations), str(components), str(shifts))
+
+    assert built.receivers == Receivers(str(stations), str(components), str(shifts)).receivers
+    assert built.receiver_time_shifts_map == SHIFTS
+
+
+def test_from_arrays_builds_one_receiver_per_station():
+    receivers = Receivers.from_arrays(["BKS", "CMB"], ["BK", "BK"], [37.9, 38.0], [-122.2, -120.4],
+                                      components=("Z",))
+
+    assert receivers.receivers == [Receiver(37.9, -122.2, "BK", "BKS", ["Z"]),
+                                   Receiver(38.0, -120.4, "BK", "CMB", ["Z"])]
+
+
+def test_from_inventory_reads_every_station_in_order():
+    from obspy.core.inventory import Inventory, Network, Station
+
+    stations = [Station("BKS", 37.9, -122.2, 244.0), Station("CMB", 38.0, -120.4, 719.0)]
+    inventory = Inventory(networks=[Network("BK", stations=stations)], source="test")
+
+    receivers = Receivers.from_inventory(inventory)
+
+    assert [(rec.network, rec.station_name, rec.latitude, rec.components) for rec in receivers] == [
+        ("BK", "BKS", 37.9, ["Z", "E", "N"]), ("BK", "CMB", 38.0, ["Z", "E", "N"])]
+
+
+def test_receivers_built_from_a_list_have_no_time_shifts_map_entries():
+    receivers = Receivers(receivers=[Receiver(0.0, 0.0)])
+
+    assert receivers.receiver_time_shifts_map == {}
+
+
+def test_receivers_report_their_length_iteration_and_names():
+    receivers = Receivers(receivers=[Receiver(0.0, 0.0, "BK", "BKS"), Receiver(1.0, 1.0, "BK", "CMB")])
+
+    assert len(receivers) == 2
+    assert list(receivers) == list(receivers.iterate())
+    assert repr(receivers) == "Receivers(2 stations: BKS, CMB)"

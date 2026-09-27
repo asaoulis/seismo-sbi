@@ -2,8 +2,8 @@
 
 A :class:`Receiver` is one station: its position, network and station names, the components it
 records, and a time shift in samples. :class:`Receivers` holds an ordered set of them, which is
-the order every seismogram array in the pipeline is in, and builds one from a station file, a
-components map and an optional per-station shift map.
+the order every seismogram array in the pipeline is in. It is built from a station file (with an
+optional components map and per-station shift map), from arrays, or from an obspy ``Inventory``.
 """
 
 from typing import NamedTuple, List
@@ -24,12 +24,54 @@ class Receiver(NamedTuple):
 
 
 class Receivers:
+    """An ordered set of :class:`Receiver`, the order every seismogram array follows.
+
+    One ``Receivers`` object is shared by the simulator, the data loader and the theory-covariance
+    estimator; :meth:`set_time_shifts` changes it in place for all of them.
+    """
 
     def __init__(self, path_to_stations =None, receiver_components_map = None, receiver_time_shifts_map = None, receivers=None):
+        self.receiver_time_shifts_map = {}
         if path_to_stations is not None:
             self.receivers = self._convert_to_instaseis_receivers(path_to_stations, receiver_components_map, receiver_time_shifts_map)
         else:
             self.receivers = receivers
+
+    @classmethod
+    def from_station_file(cls, path, components_path=None, time_shifts_path=None):
+        """Read ``name network latitude longitude`` lines, with optional JSON maps.
+
+        ``components_path`` maps station name to its components (a station with none is dropped;
+        without the map every station records Z, E, N); ``time_shifts_path`` maps station name to a
+        shift in samples.
+        """
+        return cls(path, components_path, time_shifts_path)
+
+    @classmethod
+    def from_arrays(cls, station_names, networks, latitudes_deg, longitudes_deg, components=("Z", "E", "N")):
+        """One receiver per entry of the equal-length sequences, each recording ``components``."""
+        return cls(receivers=[
+            Receiver(float(latitude), float(longitude), network, name, list(components))
+            for name, network, latitude, longitude in zip(station_names, networks, latitudes_deg, longitudes_deg)
+        ])
+
+    @classmethod
+    def from_inventory(cls, inventory, components=("Z", "E", "N")):
+        """One receiver per station of an obspy ``Inventory`` (e.g. read from StationXML), in its order."""
+        return cls(receivers=[
+            Receiver(station.latitude, station.longitude, network.code, station.code, list(components))
+            for network in inventory for station in network
+        ])
+
+    def __len__(self):
+        return len(self.receivers or [])
+
+    def __iter__(self):
+        return iter(self.receivers or [])
+
+    def __repr__(self):
+        return f"Receivers({len(self)} stations: {', '.join(rec.station_name for rec in self)})"
+
     def set_time_shifts(self, time_shifts_map):
         self.receiver_time_shifts_map = time_shifts_map
         new_receivers = []
