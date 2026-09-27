@@ -147,7 +147,7 @@ class _TimePool(nn.Module):
 
 
 class SetTransformerPMAHead(nn.Module):
-    """Opt-in Set-Transformer PMA pooling head (review §3.4); see module docstring.
+    """Opt-in Set-Transformer PMA pooling head; see the module docstring.
 
     ``forward(x (B,N,L,D), key_padding_mask (B,N,L)|None) -> (B, d_model)``. ``key_padding_mask``
     uses ``True`` = pad (the same convention the axial transformer feeds the blocks). The axial

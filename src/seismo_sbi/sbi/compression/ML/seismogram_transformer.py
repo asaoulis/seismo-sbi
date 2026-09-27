@@ -90,7 +90,6 @@ class SeismogramTransformer(nn.Module):
         )
 
         mode = 'axial'
-        # New: allow configuring pooling and CLS from transformer_config
         pool_method = transformer_config.get("pooling", "mean")  # supports: mean, first, attn, max, gem
         use_cls = transformer_config.get("use_cls_token", False)
         num_q = transformer_config.get("num_query_tokens", 8)
@@ -327,7 +326,7 @@ class SeismogramTransformer(nn.Module):
         # Source embedding (shared across stations/time) — only when conditioning is active.
         source_emb = self.source_conditioner(source_vec) if (source_vec is not None) else None
 
-        # Source depth (km), RFF-encoded by the §3.2 positional encoder when include_depth is set.
+        # Source depth (km), RFF-encoded by the positional encoder when include_depth is set.
         # Conditioning param_map order is (latitude, longitude, depth, ...) ⇒ index 2.
         source_depth = (
             source_vec[:, 2:3] if (source_vec is not None and source_vec.shape[1] >= 3) else None

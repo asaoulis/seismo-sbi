@@ -64,7 +64,7 @@ class SBI_Configuration:
         "moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"],
         "earthquake_magnitude": ["earthquake_magnitude"],
         "velocity_model": ["velocity_model"],
-        # New nuisance types — single scalar per entry
+        # Nuisance types: a single scalar per entry
         "stf_duration": ["stf_duration"],
         "amplitude_error": ["amplitude_error"],
         "instrument_dropout": ["instrument_dropout"],

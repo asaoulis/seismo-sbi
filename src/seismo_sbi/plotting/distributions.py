@@ -26,7 +26,6 @@ from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon, get_nodal_plan
 from .rocko_beachball_patch import plot_beachball_on_axes
 from contextlib import contextmanager
 import logging
-# New: reusable lune plotting utilities
 from seismo_sbi.plotting.lune import (
     mts6_to_gamma_delta,
     plot_lune_frame,
@@ -517,7 +516,7 @@ class PosteriorPlotter:
     
     def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None, legend=True, extra_references=None, reference_label=None, primary_reference=None):
 
-        # New implementation: project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
+        # Project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
         fig, ax = plt.subplots(figsize=(14, 14))
         bm = plot_lune_frame(ax)
 

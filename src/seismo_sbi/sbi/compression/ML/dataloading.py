@@ -67,7 +67,7 @@ class StationSubsampler:
         n_keep = min(pool.size, max(min(self.min_stations, pool.size), n_keep))
         return np.sort(np.random.choice(pool, size=n_keep, replace=False))
 
-# New: Torch dataset that returns (theta, x) where x = D + noise
+
 class TorchSimulationDataset(Dataset):
     def __init__(
         self,
@@ -325,7 +325,7 @@ class TorchSimulationDataset(Dataset):
         return theta, x
 
     def _perturb_conditioning(self, source_vec):
-        """Source-location UNCERTAINTY augmentation (v3): add per-coordinate Gaussian noise to the
+        """Source-location uncertainty augmentation: add per-coordinate Gaussian noise to the
         raw conditioning vector. Fresh draw per call (⇒ training augmentation). ``getattr`` keeps
         ``__new__`` test stubs working. No-op when ``conditioning_noise_std`` is unset. The model
         then sees a noisy source (and, in relative-coords mode, noisy source-relative station

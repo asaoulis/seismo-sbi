@@ -229,13 +229,13 @@ class SeismogramAxialTransformer(nn.Module):
         mode: str = "axial",   # "axial" or "full"
         device=None,
         time_embedding_mode: str = "add",   # "add" or "concat"
-        use_cls_token: bool = False,         # New: CLS-style global token instead of query tokens
-        temporal_pool_tokens: int = 0,    # New: number of PMA temporal pool tokens per station (0=disable)
-        posemb_config: Optional[dict] = None,   # New: opt-in RFF station positional encoding (§3.2)
+        use_cls_token: bool = False,         # a CLS-style global token instead of query tokens
+        temporal_pool_tokens: int = 0,    # PMA temporal pool tokens per station (0 = off)
+        posemb_config: Optional[dict] = None,   # opt-in RFF station positional encoding
         posemb_coords_kind: str = "absolute",   # "relative" (distance, azimuth) or "absolute" (lat, lon)
-        inject_every_layer: bool = True,        # re-inject the RFF posenc before every block (§3.2.c)
-        pma_pooling_config: Optional[dict] = None,  # New: opt-in Set-Transformer PMA pooling head (§3.4)
-        use_sdpa: bool = False,                  # New: fused SDPA attention everywhere (opt-in perf)
+        inject_every_layer: bool = True,        # re-inject the RFF posenc before every block
+        pma_pooling_config: Optional[dict] = None,  # opt-in Set-Transformer PMA pooling head
+        use_sdpa: bool = False,                  # fused SDPA attention everywhere (opt-in)
     ):
         super().__init__()
         self.use_sdpa = bool(use_sdpa)
@@ -468,7 +468,7 @@ class SeismogramAxialTransformer(nn.Module):
             used instead of the shared station coords. ``None`` reproduces the original
             shared-coords behaviour.
         source_depth : optional
-            ``(B, 1)`` source depth, RFF-encoded by the §3.2 positional encoder when
+            ``(B, 1)`` source depth, RFF-encoded by the positional encoder when
             ``include_depth`` is set. Ignored on the legacy sinusoid path.
         station_mask : optional
             ``(B, N)`` station validity (True=real) passed to the RFF positional encoder
