@@ -500,8 +500,8 @@ def test_component_dropout_one_epoch(multicomp_kernel_pipeline, tmp_path):
     are actually being zeroed (2-component data, keep >=1/station). Exercises the full real
     training path: build post-noise chain -> dataloader applies it after noise -> flow."""
     import torch
-    from seismo_sbi.simulators.post_processing import PostProcessingChain
-    from seismo_sbi.simulators.dropout_effects import ComponentDropoutEffect
+    from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
+    from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect
     from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = multicomp_kernel_pipeline

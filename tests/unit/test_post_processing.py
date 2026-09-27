@@ -1,7 +1,7 @@
 """Tests for the post-processing effect framework.
 
 These tests describe the expected behaviour of the new
-`seismo_sbi.simulators.post_processing` module and will initially
+`seismo_sbi.nuisance_effects.post_processing` module and will initially
 fail (ImportError) until that module is implemented.  Once the refactor is
 complete every test here must pass to confirm the framework is correct.
 
@@ -27,21 +27,21 @@ from seismo_sbi.simulators.receivers import Receiver, Receivers
 # ---------------------------------------------------------------------------
 
 post_processing = pytest.importorskip(
-    "seismo_sbi.simulators.post_processing",
+    "seismo_sbi.nuisance_effects.post_processing",
     reason="post_processing module not yet implemented",
 )
 
 PostProcessingChain = post_processing.PostProcessingChain
 build_post_processing_chain = post_processing.build_post_processing_chain
-from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect  # noqa: E402
-from seismo_sbi.simulators.dropout_effects import InstrumentDropoutEffect  # noqa: E402
-from seismo_sbi.simulators.lanczos_shift import (  # noqa: E402
+from seismo_sbi.nuisance_effects.amplitude_effect import AmplitudeErrorEffect  # noqa: E402
+from seismo_sbi.nuisance_effects.dropout_effects import InstrumentDropoutEffect  # noqa: E402
+from seismo_sbi.nuisance_effects.lanczos_shift import (  # noqa: E402
     _apply_lanczos_shift, _apply_lanczos_shift_batch, _lanczos_kernel_values,
 )
-from seismo_sbi.simulators.scattering_coda_effect import (  # noqa: E402
+from seismo_sbi.nuisance_effects.scattering_coda_effect import (  # noqa: E402
     ScatteringCodaEffect, _apply_random_coda_filter, _apply_stahler_phase_filter,
 )
-from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect  # noqa: E402
+from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -737,7 +737,7 @@ class TestTimeShiftErrorEffect:
     # ------------------------------------------------------------------
 
     def test_time_shift_error_in_registry(self):
-        from seismo_sbi.simulators.post_processing import EFFECT_REGISTRY
+        from seismo_sbi.nuisance_effects.post_processing import EFFECT_REGISTRY
         assert "time_shift_error" in EFFECT_REGISTRY
 
     def test_build_chain_with_sampling_rate_config(self):
@@ -999,7 +999,7 @@ class TestScatteringCodaEffect:
         assert len(out["STA1"]["Z"]) == TRACE_LEN
 
     def test_registry_membership(self):
-        from seismo_sbi.simulators.post_processing import EFFECT_REGISTRY
+        from seismo_sbi.nuisance_effects.post_processing import EFFECT_REGISTRY
         assert "scattering_coda" in EFFECT_REGISTRY
         assert EFFECT_REGISTRY["scattering_coda"] is ScatteringCodaEffect
 
@@ -1226,7 +1226,7 @@ class TestApplyChainToArray:
 # ComponentDropoutEffect — per-channel zeroing of PRESENT components
 # ===========================================================================
 
-from seismo_sbi.simulators.dropout_effects import ComponentDropoutEffect  # noqa: E402
+from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect  # noqa: E402
 
 
 def _multi_comp_map_and_receivers():

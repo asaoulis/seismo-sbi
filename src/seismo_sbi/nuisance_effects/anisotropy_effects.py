@@ -9,8 +9,8 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.lanczos_shift import _apply_lanczos_shift_batch, _shift_components
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
+from seismo_sbi.nuisance_effects.lanczos_shift import _apply_lanczos_shift_batch, _shift_components
+from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
 
 
 class AzimuthalAnisotropyEffect(SeismogramEffect):

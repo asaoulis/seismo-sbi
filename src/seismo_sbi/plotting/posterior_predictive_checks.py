@@ -19,7 +19,7 @@ except Exception:
     hilbert = None
     welch = None
 
-from seismo_sbi.simulators.post_processing import PostProcessingChain
+from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
 from seismo_sbi.simulators.simulation_io import component_alias
 from seismo_sbi.utils.parallel import tqdm_joblib
 

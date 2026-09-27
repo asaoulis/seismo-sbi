@@ -10,7 +10,7 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
+from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect, _bearing_and_distance_km
 
 
 #: Default coda-tail length as a fraction of the trace length (at ``alpha = 1``).

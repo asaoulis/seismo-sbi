@@ -13,8 +13,8 @@ Contract (mirrors the module's other effects):
 import numpy as np
 import pytest
 
-from seismo_sbi.simulators.post_processing import EFFECT_REGISTRY, build_post_processing_chain
-from seismo_sbi.simulators.anisotropy_effects import AzimuthalAnisotropyEffect, ShearSplittingEffect
+from seismo_sbi.nuisance_effects.post_processing import EFFECT_REGISTRY, build_post_processing_chain
+from seismo_sbi.nuisance_effects.anisotropy_effects import AzimuthalAnisotropyEffect, ShearSplittingEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 SR = 1.0                          # samples per second

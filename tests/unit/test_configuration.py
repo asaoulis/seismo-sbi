@@ -165,7 +165,7 @@ def test_parse_source_location_nuisance():
 def test_parse_source_location_error_conditioning_nuisance():
     """v3: source_location_error parses as a training_augmentation nuisance, stores its
     per-coordinate std in nuisance_effect_config, and is NOT built as a waveform effect."""
-    from seismo_sbi.simulators.post_processing import build_augmentation_chain_from_parameters
+    from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
     cfg = SBI_Configuration()
     cfg.parse_parameters({
         "inference": {

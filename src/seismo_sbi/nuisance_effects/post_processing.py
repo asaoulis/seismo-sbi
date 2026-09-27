@@ -11,13 +11,13 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect
-from seismo_sbi.simulators.anisotropy_effects import AzimuthalAnisotropyEffect, ShearSplittingEffect
-from seismo_sbi.simulators.dispersion_effect import DispersionSpreadEffect
-from seismo_sbi.simulators.dropout_effects import ComponentDropoutEffect, InstrumentDropoutEffect
-from seismo_sbi.simulators.scattering_coda_effect import ScatteringCodaEffect
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect
-from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect
+from seismo_sbi.nuisance_effects.amplitude_effect import AmplitudeErrorEffect
+from seismo_sbi.nuisance_effects.anisotropy_effects import AzimuthalAnisotropyEffect, ShearSplittingEffect
+from seismo_sbi.nuisance_effects.dispersion_effect import DispersionSpreadEffect
+from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect, InstrumentDropoutEffect
+from seismo_sbi.nuisance_effects.scattering_coda_effect import ScatteringCodaEffect
+from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect
+from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 
 
 class PostProcessingChain:

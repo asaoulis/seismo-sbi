@@ -13,7 +13,7 @@ from .simulation_io import SimulationSaver
 from .sources import GenericPointSource, SimpleMomentTensor, GeneralMomentTensor, SourceLocation
 from seismo_sbi.utils.errors import InvalidConfiguration
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
-from .post_processing import PostProcessingChain
+from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
 
 
 #: Source-parameter keys the forward model consumes; every other key is a nuisance parameter

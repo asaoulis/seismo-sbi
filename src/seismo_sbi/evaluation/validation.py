@@ -92,7 +92,7 @@ def run_validation(
     import torch
     from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
     from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
-    from seismo_sbi.simulators.post_processing import build_augmentation_chain_from_parameters
+    from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
     from seismo_sbi.sbi.types.results import InversionData
 
     if device is None:

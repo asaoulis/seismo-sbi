@@ -316,7 +316,7 @@ def _patch_run_validation_deps(monkeypatch, stub_ds, recorder):
     ``recorder["calls"]`` means the DIRECT (fixed-station) branch was taken.
     """
     import seismo_sbi.sbi.compression.ML.dataloading as dl_mod
-    import seismo_sbi.simulators.post_processing as pp_mod
+    import seismo_sbi.nuisance_effects.post_processing as pp_mod
     import seismo_sbi.sbi.compression.ML.source_conditioning as sc_mod
 
     monkeypatch.setattr(dl_mod, "TorchSimulationDataset",

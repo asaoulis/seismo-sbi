@@ -14,7 +14,7 @@ from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.simulators.post_processing import (
+from seismo_sbi.nuisance_effects.post_processing import (
     AUGMENTABLE_EFFECT_KEYS,
     POST_NOISE_EFFECT_KEYS,
     CONDITIONING_AUGMENTABLE_KEYS,

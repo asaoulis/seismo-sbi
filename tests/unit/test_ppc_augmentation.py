@@ -10,9 +10,9 @@ import numpy as np
 import pytest
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
-from seismo_sbi.simulators.post_processing import PostProcessingChain
-from seismo_sbi.simulators.seismogram_effect import SeismogramEffect
-from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect
+from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
+from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect
+from seismo_sbi.nuisance_effects.amplitude_effect import AmplitudeErrorEffect
 from seismo_sbi.plotting.posterior_predictive_checks import PosteriorPredictiveChecks
 
 T = 16

@@ -59,7 +59,7 @@ parameters:
 
   # ---- Phase 6 deferred stub: extended nuisance parameters ----
   # Uncomment to enable nuisance parameter marginalisation.
-  # See src/seismo_sbi/simulators/post_processing.py for
+  # See src/seismo_sbi/nuisance_effects/post_processing.py for
   # Category 2 nuisance effects and wrapper.py for Category 1.
   #
   # nuisance_extended:

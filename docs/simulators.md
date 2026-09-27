@@ -13,16 +13,27 @@ dependencies.
 | `kernel.py` | seismograms from precomputed moment-tensor sensitivity kernels |
 | `gf_ensemble.py` | `GFEnsembleSimulator`: draw one Earth model per simulation |
 | `multi_region.py` | `MultiModelSimulator`: a different Earth model per receiver region |
-| `post_processing.py` | `PostProcessingChain`, `EFFECT_REGISTRY` and the chain builders |
-| `seismogram_effect.py` | `SeismogramEffect`, the base class of every nuisance effect |
-| `amplitude_effect.py`, `dropout_effects.py`, `time_shift_effect.py`, `scattering_coda_effect.py`, `anisotropy_effects.py`, `dispersion_effect.py` | the nuisance effects, one family per module |
-| `lanczos_shift.py` | sub-sample time shifts by Lanczos interpolation |
 | `simulation_io.py` | the HDF5 layout one simulation is written to and read back from |
 | `theory_covariance.py` | per-trace theory-error covariance estimated from an ensemble |
 | `registry.py` | `simulation_type` → builder |
 | `instaseis/` | Instaseis backend: querier, point source, ensemble, multi-model |
 | `cps/` | Computer Programs in Seismology backend |
 | `axisem/` | the perturbed 1-D Earth models a database ensemble is built from |
+
+## Nuisance effects
+
+What a real recording does to a synthetic seismogram lives in its own package,
+`seismo_sbi.nuisance_effects`, which imports nothing from the simulators:
+
+| module | what it holds |
+|---|---|
+| `post_processing.py` | `PostProcessingChain`, `EFFECT_REGISTRY` and the chain builders |
+| `seismogram_effect.py` | `SeismogramEffect`, the base class of every nuisance effect |
+| `amplitude_effect.py`, `dropout_effects.py`, `time_shift_effect.py`, `scattering_coda_effect.py`, `anisotropy_effects.py`, `dispersion_effect.py` | the nuisance effects, one family per module |
+| `lanczos_shift.py` | sub-sample time shifts by Lanczos interpolation |
+
+Every `Simulator` runs its output through a `PostProcessingChain`; the same effects run in the
+dataloader as training-time augmentation.
 
 ## Plug in your own forward model
 

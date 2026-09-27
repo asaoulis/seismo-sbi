@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from seismo_sbi.simulators.post_processing import build_post_processing_chain
-from seismo_sbi.simulators.scattering_coda_effect import (
+from seismo_sbi.nuisance_effects.post_processing import build_post_processing_chain
+from seismo_sbi.nuisance_effects.scattering_coda_effect import (
     ScatteringCodaEffect,
     distance_scaled_alpha,
     distance_tail_energy,

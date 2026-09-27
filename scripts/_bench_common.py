@@ -11,7 +11,7 @@ import numpy as np
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.utils.seismograms import compute_data_vector_length
-from seismo_sbi.simulators.post_processing import build_augmentation_chain
+from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 from seismo_sbi.sbi.types.parameters import (
     SimulationParameters,

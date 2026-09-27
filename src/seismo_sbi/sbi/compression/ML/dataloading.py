@@ -12,7 +12,7 @@ import os
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.simulators.post_processing import apply_chain_to_array
+from seismo_sbi.nuisance_effects.post_processing import apply_chain_to_array
 import numpy as np
 
 from .source_conditioning import pack_variable_context
