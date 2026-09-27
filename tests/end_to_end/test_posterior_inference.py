@@ -74,6 +74,7 @@ _PROCESSING = {
         "zerophase": False,
     },
     "sampling_rate": 1.0,
+    "filter_sampling_rate": 5.0,
 }
 
 

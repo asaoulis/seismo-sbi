@@ -80,6 +80,7 @@ _SYNTHETICS_PROCESSING = {
         "zerophase": False,
     },
     "sampling_rate": 1.0,
+    "filter_sampling_rate": 5.0,
 }
 _SEISMOGRAM_DURATION = 200.0  # seconds
 _COMPONENTS = ["Z"]

@@ -38,6 +38,7 @@ _PROC = {
     "filter": {"type": "bandpass", "freqmin": 0.03, "freqmax": 0.08,
                "corners": 4, "zerophase": False},
     "sampling_rate": 1.0,
+    "filter_sampling_rate": 5.0,
 }
 _DURATION = 200.0
 _COMPONENTS = ["Z"]

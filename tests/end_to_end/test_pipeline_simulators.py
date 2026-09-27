@@ -281,6 +281,7 @@ def instaseis_compressor(tmp_path_factory):
                 "zerophase": False,
             },
             "sampling_rate": 1.0,
+            "filter_sampling_rate": 5.0,
         },
         simulation_type="instaseis",
     )
@@ -381,6 +382,7 @@ def cps_compressor(tmp_path_factory):
                 "zerophase": False,
             },
             "sampling_rate": 1.0,
+            "filter_sampling_rate": 5.0,
         },
         simulation_type="cps_precomputed",
         cps_path=_CPS_PATH,
