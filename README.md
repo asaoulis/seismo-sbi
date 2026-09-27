@@ -5,12 +5,6 @@ Improving moment tensor solutions by accounting for non-Gaussian data and theory
 This is the official repo used to produce the results in [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112) and Saoulis et al. 2026 (in prep.).
 
 
-### NEW: Theory errors example
-
-After installation (see below), try running the minimal example to perform SBI on the LV2 SoCal Long Valley Caldera event:
-
-[examples/theory_errors_LV2.ipynb](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb)
-
 ### Data errors paper
 
 We are currently working on an updated, unified version of this repository. However, some example notebooks are not backware compatible yet. For the data errors paper [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112), revert to the earlier release to ensure all examples work correctly:
@@ -32,7 +26,66 @@ SBI builds a dataset of realistic observations, drawing samples from likelihood 
 ![SBI Cartoon](assets/imgs/sbi_diagram.png)
 _Fig. 3 from the `seismo-sbi` paper._
 
-### Library map
+## Getting started
+
+### Install
+
+`seismo-sbi` needs Python 3.11: the current conda-forge `instaseis` requires it. `instaseis` is the
+most fragile dependency, so start from a fresh environment and install it first, with the rest of
+the scientific, seismology and geospatial stack, from conda-forge. [`environment.yml`](https://github.com/asaoulis/seismo-sbi/blob/main/environment.yml)
+does this; `pip` then installs the ML and inference stack:
+
+```
+conda env create -f environment.yml      # python 3.11, instaseis, obspy, cartopy, basemap, ...
+conda activate seismo-sbi
+pip install -e .                          # torch, sbi, pytorch_lightning, pyrocko, ...
+```
+
+A modern conda (>= 23.10) solves this in minutes with the `libmamba` solver; on an older conda
+run `conda install -n base conda-libmamba-solver` first, or append `--solver libmamba`.
+
+Some notebooks and tests also need:
+
+- a local Instaseis database, named by the `INSTASEIS_DB` environment variable (a 10 s PREM
+  database is enough; the Azores notebook falls back to streaming `syngine://prem_i_2s`);
+- [Computer Programs in Seismology](https://www.eas.slu.edu/eqc/ComputerProgramsSeismology/index.html)
+  (CPS), with `CPS_PATH` naming the directory holding `hprep96`, `hspec96` and `hpulse96`;
+- `git lfs pull`, for the LV2 compression checkpoint.
+
+### Example notebooks, in order
+
+The notebooks under `examples/` run headless; the documentation site renders them with their
+outputs.
+
+1. [`01_forward_models_and_receivers`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/01_forward_models_and_receivers.ipynb): receivers,
+   the Instaseis, CPS and kernel forward models, a toy forward model plugged in through the
+   registry, and the post-processing chain. Synthetic inputs; needs `INSTASEIS_DB` and `CPS_PATH`.
+2. [`02_noise_covariances_and_likelihood`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/02_noise_covariances_and_likelihood.ipynb): every
+   Gaussian-likelihood covariance on synthetic noise, the noise samplers, score compression, and
+   MCMC with each covariance checked against the analytical posterior.
+3. [`03_npe_training_and_evaluation`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/03_npe_training_and_evaluation.ipynb): dataset
+   generation, training-time augmentation, training a neural compressor and flow, and the
+   validation, calibration (TARP) and evaluation plots.
+4. [`theory_errors_LV2`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb): theory-error SBI on the LV2 Long Valley
+   Caldera event, against the Gaussian likelihood. Needs CPS and the git-lfs checkpoint.
+5. [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_parameters_demo.ipynb): nuisance parameters drawn
+   at simulation time, the source time function's duration and the post-processing effects
+   (amplitude, dropout, time shift).
+6. [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb): the same effects
+   applied in the dataloader as training-time augmentation.
+7. [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb): the 13/01/2022 Azores event of
+   [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238), a fixed-location moment-tensor
+   inversion with SBI and the Gaussian likelihood, then the full 10-parameter moment tensor,
+   location and origin time.
+
+The Azores notebook's first cell downloads and prepares its data:
+```
+cd scripts
+python prepare_azores_example.py --output_dir ../examples/data/azores
+```
+This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
+
+## Library map
 
 `seismo_sbi` is a single-event library: one earthquake, its stations and its forward model in, a
 posterior out. Every package `__init__` holds only a docstring; import a name from the module
@@ -57,54 +110,7 @@ that defines it.
 The YAML configuration every pipeline is driven by is described in
 [docs/configuration.md](docs/configuration.md).
 
-## Getting Started
-
-### Prerequisites
-
-- Conda
-- Python >=3.8
-
-Install Anaconda or Miniconda. Set up your conda environment by executing the following command in the terminal, assuming `my_env` is the name of your conda environment:
-
-```
-conda create -n "my_env" python=3.8
-conda activate my_env
-```
-
-### Installing
-
-First, install `instaseis`, which is best installed through `conda-forge`:
-
-```
-conda install -y -c conda-forge instaseis
-```
-
-Installation of the library can then be done by navigating to the top-level directory `seismo-sbi` and running:
-```
-pip install -e .
-```
-
-## Usage
-
-The notebooks under `examples/` walk through the library on small inputs:
-`01_forward_models_and_receivers`, `02_noise_covariances_and_likelihood` and
-`03_npe_training_and_evaluation` run on synthetic data;
-`nuisance_parameters_demo` and `nuisance_augmentation_demo` show the nuisance effects on
-Instaseis synthetics; `theory_errors_LV2` inverts the LV2 Long Valley event; `azores_inversion`
-downloads its own data, as below. The documentation site renders all but the Azores notebook with their outputs.
-
-An example notebook is provided under [examples/azores_inversion.ipynb](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
-
-The notebook's first cell downloads and prepares all of the data for you by running:
-```
-cd scripts
-python prepare_azores_example.py --output_dir ../examples/data/azores
-```
-This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
-
-Forward modelling uses a global PREM Instaseis database. By default the notebook streams it from IRIS Syngine (`syngine://prem_i_2s`) so it works anywhere; if you have a local database, set the environment variable `INSTASEIS_DB=/path/to/db` to use it instead (much faster, especially for the full inversion).
-
-### Command-line scripts
+## Command-line scripts
 
 The tracked scripts under `scripts/` are launchers: each parses a few flags, builds the
 configuration and calls one library entry point. Run any of them with `--help` for every flag.
@@ -262,7 +268,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          python-version: "3.8"
+          python-version: "3.11"
           channels: conda-forge,defaults
       - name: Install dependencies
         run: |
