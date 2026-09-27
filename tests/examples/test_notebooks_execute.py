@@ -33,6 +33,11 @@ NOTEBOOKS = {
     "azores_inversion": [INSTASEIS_DB, REPO / "examples" / "data" / "azores"],
     "theory_errors_LV2": [REPO / "examples" / "data", REPO / "examples" / "ml-checkpoints"],
 }
+#: Notebook to about three times its usual running time in seconds; a cell still running after
+#: that long fails the notebook, so a hung worker pool fails fast.
+TIMEOUT_S = {"01_forward_models_and_receivers": 300, "02_noise_covariances_and_likelihood": 600,
+             "03_npe_training_and_evaluation": 2400, "nuisance_parameters_demo": 600,
+             "nuisance_augmentation_demo": 600, "azores_inversion": 2400, "theory_errors_LV2": 5400}
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
 #: they raise is compared.
@@ -80,7 +85,7 @@ def execute(name: str, root: Path):
 
     cwd = mirror_repository(root)
     notebook = nbformat.read(REPO / "examples" / f"{name}.ipynb", as_version=4)
-    NotebookClient(notebook, timeout=7200, kernel_name="python3", allow_errors=True,
+    NotebookClient(notebook, timeout=TIMEOUT_S[name], kernel_name="python3", allow_errors=True,
                    resources={"metadata": {"path": str(cwd)}}).execute()
     return notebook
 
