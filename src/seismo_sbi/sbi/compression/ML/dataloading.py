@@ -93,9 +93,8 @@ class TorchSimulationDataset(Dataset):
     ):
         self.data_loader = data_loader
 
-        # Per-item fixed masks, aligned with the sorted glob order of ``paths``, each entry
-        # ``(keep_indices, zero_channels)``. They replace the random subsampling and dropout for
-        # that item, so a sample reproduces its parent event's station availability exactly.
+        # Per-item ``(keep_indices, zero_channels)`` in the sorted order of ``paths``; they replace
+        # the random subsampling and dropout, reproducing the parent event's station availability.
         self.fixed_item_masks = fixed_item_masks
         # Same alignment: a simulation stores its true source location, but the model must be
         # conditioned on the catalogue location, so their difference is the location error.
@@ -196,8 +195,27 @@ class TorchSimulationDataset(Dataset):
               f"in {_t.perf_counter() - t0:.1f}s — per-sample HDF5 load removed.")
 
     def __getitem__(self, idx):
-        # Load per-sample data — from the in-RAM cache when preloaded, else on demand from HDF5.
         sim_path = self.paths[idx]
+        theta, D = self._load_clean(idx, sim_path)
+        D = self._augment_clean(D)
+
+        if self.data_scaler is not None and theta.size > 0:
+            theta = self.data_scaler.transform(theta[np.newaxis, :]).flatten()
+        theta = torch.as_tensor(theta, dtype=self.torch_dtype)
+        D = torch.as_tensor(D, dtype=self.torch_dtype)
+
+        x, noise_present = self._add_noise(D)
+        x = self._augment_noisy(x)
+
+        if self.return_tensors:
+            x = torch.as_tensor(x, dtype=self.torch_dtype)
+            theta = torch.as_tensor(theta, dtype=self.torch_dtype)
+
+        source_vec = self._source_vector(idx, sim_path)
+        return self._select_stations(idx, theta, x, source_vec, noise_present)
+
+    def _load_clean(self, idx, sim_path):
+        """``(theta (D,), D (N, C, T))`` for one simulation, from the RAM cache when preloaded."""
         # getattr keeps datasets built via __new__ (test stubs) working without this attr.
         cache_D = getattr(self, "_cache_D", None)
         if cache_D is not None:
@@ -207,9 +225,10 @@ class TorchSimulationDataset(Dataset):
                      else np.array([]))
         else:
             theta, D = self._load_sim(sim_path)
+        return theta, D
 
-        # Fold in nuisance augmentation on the CLEAN data, before noise is added
-        # (physical semantics: amplitude/dropout/shift act on signal, then noise).
+    def _augment_clean(self, D):
+        """Apply the nuisance augmentation to the clean data ``(N, C, T)``, before noise is added."""
         if self.augmentation_chain is not None and self.augmentation_chain.effects:
             D = apply_chain_to_array(
                 self.augmentation_chain,
@@ -218,20 +237,12 @@ class TorchSimulationDataset(Dataset):
                 self.data_loader.components,
                 self.augmentation_nuisance_params,
             )
+        return D
 
-        # Apply scaler to parameters if provided (consistent with previous behavior)
-        if self.data_scaler is not None and theta.size > 0:
-            theta = self.data_scaler.transform(theta[np.newaxis, :]).flatten()
-
-        # Ensure types match prior behavior: use torch tensors for computations
-        theta = torch.as_tensor(theta, dtype=self.torch_dtype)
-        D = torch.as_tensor(D, dtype=self.torch_dtype)
-
-        # Keep the sampled noise as numpy through the zero-fill, so the block is built in one
-        # array construction and cast once.
+    def _add_noise(self, D):
+        """``(x, noise_present)``: ``D`` plus one noise draw, and the stations the noise window
+        carried (``None`` unless the sampler allows incomplete windows)."""
         noise = self.synthetic_noise_model_sampler()
-        # An incomplete-window sampler returns ``(vector, present_mask)``, whose mask says which
-        # stations the window carried and gates the station draw below.
         noise_present = None
         if isinstance(noise, tuple):
             noise, second = noise
@@ -243,9 +254,10 @@ class TorchSimulationDataset(Dataset):
         )
         noise_arr = np.asarray(noise_rows)
         x = D + torch.as_tensor(noise_arr, dtype=self.torch_dtype).reshape(*D.shape)
+        return x, noise_present
 
-        # Applied on the full station set before any subsampling, so the array stays aligned
-        # with the receivers the effects expect.
+    def _augment_noisy(self, x):
+        """Apply the post-noise chain (component dropout) on the full station set."""
         post_chain = getattr(self, "post_noise_augmentation_chain", None)
         if post_chain is not None and post_chain.effects:
             x_aug = apply_chain_to_array(
@@ -256,13 +268,10 @@ class TorchSimulationDataset(Dataset):
                 self.post_noise_nuisance_params,
             )
             x = torch.as_tensor(x_aug, dtype=self.torch_dtype).reshape(*x.shape)
+        return x
 
-        if self.return_tensors:
-            # x is already torch; ensure dtype
-            x = torch.as_tensor(x, dtype=self.torch_dtype)
-            theta = torch.as_tensor(theta, dtype=self.torch_dtype)
-
-        # Optional raw source-conditioning vector (shared by both return paths).
+    def _source_vector(self, idx, sim_path):
+        """The perturbed raw source-conditioning vector, or ``None`` without conditioning."""
         source_vec = None
         if self.conditioning_param_map:
             fixed_cond = getattr(self, "fixed_conditioning", None)
@@ -274,8 +283,11 @@ class TorchSimulationDataset(Dataset):
                             else self._load_conditioning(sim_path))
             source_vec = torch.as_tensor(raw_cond, dtype=self.torch_dtype)
             source_vec = self._perturb_conditioning(source_vec)
+        return source_vec
 
-        # --- Fixed per-item masks (MMD psim suite): parent event's QA availability ---
+    def _select_stations(self, idx, theta, x, source_vec, noise_present):
+        """The returned item: ``(theta, (x_sub, coords_sub, source_vec))`` with a fixed mask or a
+        station subsampler, else ``(theta, x)`` with the source vector packed into ``x``."""
         # getattr keeps datasets built via __new__ (test stubs) working without this attr.
         fixed_masks = getattr(self, "fixed_item_masks", None)
         if fixed_masks is not None:
@@ -288,8 +300,6 @@ class TorchSimulationDataset(Dataset):
                 self.station_coords[keep], dtype=self.torch_dtype)
             return theta, (x_sub, coords_sub, source_vec)
 
-        # --- Variable-station path: subsample stations, carry per-sample coords ---
-        # getattr keeps datasets built via __new__ (test stubs) working without this attr.
         station_subsampler = getattr(self, "station_subsampler", None)
         if station_subsampler is not None:
             num_stations = x.shape[0]
@@ -309,8 +319,6 @@ class TorchSimulationDataset(Dataset):
                 "variable-station training."
             )
 
-        # --- Legacy fixed-N path (unchanged) ---
-        # Source-location conditioning: append the RAW conditioning vector → packed context.
         if source_vec is not None:
             from .source_conditioning import pack_context
             x = pack_context(x, source_vec)
