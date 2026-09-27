@@ -2,7 +2,8 @@
 
 Each test builds one covariance on two stations (Z, E, N; the E/N data keyed 1/2), measures its
 loss, per-element loss, C⁻¹r, loss and matmul closures, sampler draws and the ``GaussianCompressor``
-Fisher matrix, and compares them with ``tests/fixtures/covariance_characterisation.npz`` to 1e-12.
+Fisher matrix, and compares them with ``tests/fixtures/covariance_characterisation.npz`` to 1e-9,
+or 1e-12 of an array's largest entry: the fixture holds one numpy/scipy build's roundoff.
 Run this file as a script to re-record the fixture.
 """
 from copy import deepcopy
@@ -207,7 +208,8 @@ def assert_matches_recording(name, values):
         keys = sorted(key for key in recorded.files if key.startswith(name + "/"))
         assert keys == sorted(f"{name}/{key}" for key in values)
         for key in keys:
-            np.testing.assert_allclose(values[key.split("/", 1)[1]], recorded[key], rtol=1e-12, atol=1e-300)
+            scale = np.max(np.abs(recorded[key])) if recorded[key].size else 0.0
+            np.testing.assert_allclose(values[key.split("/", 1)[1]], recorded[key], rtol=1e-9, atol=1e-12 * scale)
 
 
 @pytest.mark.parametrize("name", MEASUREMENTS)
