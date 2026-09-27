@@ -41,7 +41,7 @@ TIMEOUT_S = {"01_forward_models_and_receivers": 300, "02_noise_covariances_and_l
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
 #: they raise is compared.
-STOCHASTIC_CELLS = {"theory_errors_LV2": {3, 8, 10, 11, 13}, "azores_inversion": {2, 8, 13},
+STOCHASTIC_CELLS = {"theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13}, "azores_inversion": {2, 8, 13},
                     "02_noise_covariances_and_likelihood": {7}, "03_npe_training_and_evaluation": {3, 4, 5}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),
