@@ -63,18 +63,14 @@ pip install -e .
 
 An example notebook is provided under [examples/azores_inversion.ipynb](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
 
-Before running the notebook, download the data and build the catalogues:
-```bash
-cd scripts
-python custom_download.py --stations_file configs/indo_pacific/stations.txt \
-    --output_dir /data/azores --starttime 2022-01-13T00:00:00 --endtime 2022-01-14T00:00:00
-python build_catalogue.py --catalogue azores_events.xml \
-    --data_dir /data/azores --stationxml_dir /data/azores/stationxml \
-    --stations_file configs/indo_pacific/stations.txt \
-    --output_dir /data/azores/catalogue --duration 200 --sampling_rate 1.0 \
-    --noise_start 2022-01-13 --noise_end 2022-01-14
+The notebook's first cell downloads and prepares all of the data for you by running:
 ```
-This downloads the nearby IPMA permanent land station data and builds event + noise h5 catalogues.
+cd scripts
+python prepare_azores_example.py --output_dir ../examples/data/azores
+```
+This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
+
+Forward modelling uses a global PREM Instaseis database. By default the notebook streams it from IRIS Syngine (`syngine://prem_i_2s`) so it works anywhere; if you have a local database, set the environment variable `INSTASEIS_DB=/path/to/db` to use it instead (much faster, especially for the full inversion).
 
 ## Data Preparation
 
