@@ -6,6 +6,7 @@
 ```{toctree}
 :maxdepth: 1
 pipeline
+training
 simulators
 configuration
 examples
