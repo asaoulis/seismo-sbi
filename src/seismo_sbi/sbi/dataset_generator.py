@@ -72,7 +72,9 @@ class ParallelSimulationRunner(ABC):
                 raise exc
             finally:
                 from joblib.externals.loky import get_reusable_executor
-                get_reusable_executor().shutdown(wait=True, kill_workers=True)
+                # reuse=True kills the pool Parallel used; with default arguments loky would first
+                # restart that pool gracefully, which can hang on a worker that never exits.
+                get_reusable_executor(reuse=True).shutdown(wait=True, kill_workers=True)
         else:
             results = [self.simulator(*simulation_job_args)
                        for simulation_job_args in simulation_job_args_list]
