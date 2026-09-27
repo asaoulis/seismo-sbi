@@ -8,6 +8,7 @@
 ```{toctree}
 :maxdepth: 1
 simulators
+configuration
 examples
 api/index
 ```

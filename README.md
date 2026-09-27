@@ -32,6 +32,31 @@ SBI builds a dataset of realistic observations, drawing samples from likelihood 
 ![SBI Cartoon](assets/imgs/sbi_diagram.png)
 _Fig. 3 from the `seismo-sbi` paper._
 
+### Library map
+
+`seismo_sbi` is a single-event library: one earthquake, its stations and its forward model in, a
+posterior out. Every package `__init__` holds only a docstring; import a name from the module
+that defines it.
+
+| package | what it holds |
+|---|---|
+| `simulators` | forward models: sources, receivers, the `Simulator` interface and its registry, Green's-function ensembles; backends in `instaseis/`, `cps/`, and `axisem/` (the perturbed 1-D Earth models an Instaseis ensemble is built from). See [docs/simulators.md](docs/simulators.md) |
+| `nuisance_effects` | what a real recording does to a synthetic seismogram: amplitude, time-shift, dropout, scattering coda, anisotropy and dispersion effects, and the `PostProcessingChain` that applies them at simulation or training time |
+| `sbi` | the inference pipeline (`pipeline`, `configuration`, `training_configuration`), dataset generation, scalers and job runners |
+| `sbi.noises` | noise models: the Gaussian-likelihood covariances (diagonal, Toeplitz, theory-block), their estimator and samplers, and real-noise samplers for training |
+| `sbi.compression` | compression to one summary per parameter: derivative stencils and score compressors; `ML/` holds the neural compressors and NPE training |
+| `sbi.lsquares` | iterative least-squares source estimates |
+| `sbi.types` | typed records passed between pipeline stages |
+| `data_handling` | observed data ahead of inference; `preprocessing/` finds raw data, removes the response, filters, resamples, windows and writes the HDF5 the pipeline reads |
+| `data_quality` | comparison of a reference synthetic with observed waveforms: per-trace metrics and the quality policy built on them |
+| `priors` | catalogue-driven statistical priors for dataset generation |
+| `evaluation` | pipeline build for evaluation, held-out validation, posterior metrics and moment-tensor comparison |
+| `plotting` | figures for simulations, posteriors and evaluation runs |
+| `utils` | shared helpers: parallel execution, moment-tensor conventions and decompositions, environment set-up |
+
+The YAML configuration every pipeline is driven by is described in
+[docs/configuration.md](docs/configuration.md).
+
 ## Getting Started
 
 ### Prerequisites
@@ -61,6 +86,13 @@ pip install -e .
 
 ## Usage
 
+The notebooks under `examples/` walk through the library on small inputs:
+`01_forward_models_and_receivers`, `02_noise_covariances_and_likelihood` and
+`03_npe_training_and_evaluation` run on synthetic data;
+`nuisance_parameters_demo` and `nuisance_augmentation_demo` show the nuisance effects on
+Instaseis synthetics; `theory_errors_LV2` inverts the LV2 Long Valley event; `azores_inversion`
+downloads its own data, as below. The documentation site renders all but the Azores notebook with their outputs.
+
 An example notebook is provided under [examples/azores_inversion.ipynb](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb). This notebook uses SBI to perform a (i) fixed location MT inversion and (ii) full 10-parameter MT and time-location for the 13/01/2022 Azores event in [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238). For (i), a comparison between SBI and the Gaussian likelihood approach is provided as it is computationally cheap.
 
 The notebook's first cell downloads and prepares all of the data for you by running:
@@ -71,6 +103,21 @@ python prepare_azores_example.py --output_dir ../examples/data/azores
 This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
 
 Forward modelling uses a global PREM Instaseis database. By default the notebook streams it from IRIS Syngine (`syngine://prem_i_2s`) so it works anywhere; if you have a local database, set the environment variable `INSTASEIS_DB=/path/to/db` to use it instead (much faster, especially for the full inversion).
+
+### Command-line scripts
+
+The tracked scripts under `scripts/` are launchers: each parses a few flags, builds the
+configuration and calls one library entry point. Run any of them with `--help` for every flag.
+
+| script | what it does | main flags |
+|---|---|---|
+| `train_NPE.py` | generates the training set and trains an NPE compressor and flow | `--config`, `--run-name`, `--stage {generate,meta,train}`, `--epochs`, `--devices`, `--architecture`, `--train-batch-size`, `--num-simulations` |
+| `event_inversion.py` | runs a complete pipeline (Gaussian likelihood and/or SBI) on the synthetic and real events of a configuration | `--config` |
+| `custom_download.py` | downloads waveforms and StationXML from FDSN providers | `--stations_file`, `--output_dir`, `--providers`, `--starttime`, `--endtime` |
+| `build_catalogue.py` | builds event and noise HDF5 catalogues from downloaded data | see step 2 below |
+| `custom_preprocess.py` | prepares one event and its noise without a full catalogue | `--data_dir`, `--output_dir`, `--event_name`, `--event_starttime`, `--event_endtime` |
+| `prepare_azores_example.py` | downloads and prepares the data of the Azores example notebook | `--output_dir`, `--force` |
+| `build_axisem_ensemble.py` | stages an AxiSEM ensemble of perturbed 1-D Earth models from one configuration | `--config`, `--dry-run`, `--from-bm-dir`, `--name` |
 
 ## Data Preparation
 
@@ -144,7 +191,7 @@ python custom_preprocess.py \
 
 ### 3. Run the SBI inversion
 
-Point `jobs.real_event_path` and `inference.noise_model_path` in your YAML config at the event and noise directories, then:
+Point `jobs.real_event_path` and `inference.noise_model_path` in your YAML config at the event and noise directories. Set `seismic_context.processing.filter_sampling_rate` to the raw rate the recordings were filtered at, so the synthetics are filtered at the same rate (required; see [docs/configuration.md](docs/configuration.md)). Then:
 
 ```bash
 python event_inversion.py --config configs/long_valley/lv2.yaml
@@ -203,7 +250,7 @@ The `slow` end-to-end tests exercise the full stencil→compression→inference 
 
 ### GitHub Actions
 
-A minimal CI workflow runs the fast suite on every push.  Add `.github/workflows/tests.yml`:
+The repository's only workflow, `.github/workflows/docs.yml`, builds the documentation site. No workflow runs the test suite yet; a minimal one for the fast suite would be `.github/workflows/tests.yml`:
 
 ```yaml
 name: tests
@@ -229,9 +276,4 @@ jobs:
           files: coverage.xml
 ```
 
-Add `[test]` extras to `pyproject.toml` if not already present:
-
-```toml
-[project.optional-dependencies]
-test = ["pytest", "pytest-cov"]
-```
+The `[test]` extras (`pytest`, `pytest-cov`) are declared in `pyproject.toml`.
