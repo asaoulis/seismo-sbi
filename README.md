@@ -1,37 +1,33 @@
-## Full-waveform seismic source inversion using simulation-based inference
+# seismo-sbi
 
-Improving moment tensor solutions by accounting for non-Gaussian data and theory errors in full waveform data using machine learning. 
+[![Documentation](https://img.shields.io/badge/docs-asaoulis.github.io%2Fseismo--sbi-blue)](https://asaoulis.github.io/seismo-sbi/)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
+![Version 0.2.0](https://img.shields.io/badge/version-0.2.0-lightgrey)
 
-This is the official repo used to produce the results in [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112) and Saoulis et al. 2026 (in prep.).
+Full-waveform seismic source inversion using simulation-based inference: improving moment tensor
+solutions by accounting for non-Gaussian data and theory errors in full waveform data using
+machine learning.
 
+**Documentation:** <https://asaoulis.github.io/seismo-sbi/>. It has the API reference, the
+configuration guide, the forward-model guide and the example notebooks rendered with their outputs.
 
-### Data errors paper
+`seismo-sbi` is a Python package for single-event moment-tensor inversion: one earthquake, its
+stations and its forward model go in, and a posterior comes out. Its stages can be used on their
+own or chained into a full workflow:
 
-The data-errors example, [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb)
-([Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112)), runs out of the box on the current
-release (data download, processing and inversion). To reproduce the paper's full set of results
-exactly, use the earlier release:
+- **Forward models:** Instaseis, Computer Programs in Seismology (CPS), Green's-function ensembles
+  of perturbed 1-D Earth models, and a registry for plugging in your own.
+- **Nuisance effects:** what a real recording does to a synthetic seismogram (amplitude, time shift,
+  dropout, scattering coda, anisotropy, dispersion). Each is applied at simulation or training time.
+- **Noise and likelihood:** Gaussian-likelihood covariances (diagonal, Toeplitz, theory-block) with
+  their estimator and samplers, and real-noise samplers built from recorded noise.
+- **Compression and inference:** score compression, neural compressors, and neural posterior
+  estimation (NPE) with [`sbi`](https://github.com/sbi-dev/sbi), plus Gaussian-likelihood MCMC for
+  comparison.
+- **Data preparation and evaluation:** download and preprocessing of real data with ObsPy, data
+  quality checks, validation and calibration (TARP), and posterior plots.
 
-https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
-
-## About
-
-Simulation-based inference (SBI) uses machine learning (ML) to build empirical models of key quantities in Bayesian inference. For example, SBI can train neural density estimators (NDEs) to build probabilistic models of the likelihood (which encodes a model of the data errors) or the posterior distribution explicitly. 
-
-Seismic waveform data contains complicated noise and theory errors that common Gaussian likelihood assumptions fail to adequately model. This package uses the [`sbi`](https://github.com/sbi-dev/sbi) library to build, train, and sample from NDEs, which then serve as empirical surrogates of the likelihood. 
-
-Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic. Every forward model lives in `seismo_sbi.simulators`; [docs/simulators.md](docs/simulators.md) maps the package and shows how to plug in your own.
-
-### `seismo-sbi` workflow
-
-SBI builds a dataset of realistic observations, drawing samples from likelihood directly. It then trains a NDE to model the resulting likelihood (or posterior) distribution. Once trained, new observations can be fed through the NDE to perform inference, completely foregoing the forward model. 
-
-![SBI Cartoon](assets/imgs/sbi_diagram.png)
-_Fig. 3 from the `seismo-sbi` paper._
-
-## Getting started
-
-### Install
+## Installation
 
 `seismo-sbi` needs Python 3.11: the current conda-forge `instaseis` requires it. `instaseis` is the
 most fragile dependency, so start from a fresh environment and install it first, with the rest of
@@ -55,10 +51,11 @@ Some notebooks and tests also need:
   (CPS), with `CPS_PATH` naming the directory holding `hprep96`, `hspec96` and `hpulse96`;
 - `git lfs pull`, for the LV2 compression checkpoint.
 
-### Example notebooks, in order
+## Getting started
 
-The notebooks under `examples/` run headless; the documentation site renders them with their
-outputs.
+The notebooks under `examples/` are the quickest way in. They run headless, and the
+[documentation site](https://asaoulis.github.io/seismo-sbi/) renders them with their outputs.
+Work through them in this order:
 
 1. [`01_forward_models_and_receivers`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/01_forward_models_and_receivers.ipynb): receivers,
    the Instaseis, CPS and kernel forward models, a toy forward model plugged in through the
@@ -88,11 +85,22 @@ python prepare_azores_example.py --output_dir ../examples/data/azores
 ```
 This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
 
+## How it works
+
+Simulation-based inference (SBI) uses machine learning (ML) to build empirical models of key quantities in Bayesian inference. For example, SBI can train neural density estimators (NDEs) to build probabilistic models of the likelihood (which encodes a model of the data errors) or the posterior distribution explicitly. 
+
+Seismic waveform data contains complicated noise and theory errors that common Gaussian likelihood assumptions fail to adequately model. This package uses the [`sbi`](https://github.com/sbi-dev/sbi) library to build, train, and sample from NDEs, which then serve as empirical surrogates of the likelihood. 
+
+SBI builds a dataset of realistic observations, drawing samples from likelihood directly. It then trains a NDE to model the resulting likelihood (or posterior) distribution. Once trained, new observations can be fed through the NDE to perform inference, completely foregoing the forward model. 
+
+![SBI Cartoon](assets/imgs/sbi_diagram.png)
+_Fig. 3 from the `seismo-sbi` paper._
+
+Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic. Every forward model lives in `seismo_sbi.simulators`; [docs/simulators.md](docs/simulators.md) maps the package and shows how to plug in your own.
+
 ## Library map
 
-`seismo_sbi` is a single-event library: one earthquake, its stations and its forward model in, a
-posterior out. Every package `__init__` holds only a docstring; import a name from the module
-that defines it.
+Every package `__init__` holds only a docstring; import a name from the module that defines it.
 
 | package | what it holds |
 |---|---|
@@ -128,7 +136,7 @@ configuration and calls one library entry point. Run any of them with `--help` f
 | `prepare_azores_example.py` | downloads and prepares the data of the Azores example notebook | `--output_dir`, `--force` |
 | `build_axisem_ensemble.py` | stages an AxiSEM ensemble of perturbed 1-D Earth models from one configuration | `--config`, `--dry-run`, `--from-bm-dir`, `--name` |
 
-## Data Preparation
+## Preparing real data
 
 Preparing real seismic data for the SBI pipeline requires three steps: downloading raw waveforms and instrument responses, building event and noise h5 catalogues, and pointing the YAML config at the results.  All intermediate files are standard obspy formats (`.mseed` + StationXML); HDF5 is produced only at the final boundary step.
 
@@ -200,10 +208,21 @@ python custom_preprocess.py \
 
 ### 3. Run the SBI inversion
 
-Point `jobs.real_event_path` and `inference.noise_model_path` in your YAML config at the event and noise directories. Set `seismic_context.processing.filter_sampling_rate` to the raw rate the recordings were filtered at, so the synthetics are filtered at the same rate (required; see [docs/configuration.md](docs/configuration.md)). Then:
+In your YAML config:
+
+- list each event file under `jobs.real_events` (a name mapped to an h5 path);
+- to train on the recorded noise, set `inference.sbi.noise_model` to `type: 'real_noise'` with
+  `noise_catalogue_path` naming the noise directory;
+- to test the synthetic events against the same noise, also add `real_noise: <noise directory>` under
+  `jobs.noise_models`;
+- set `seismic_context.processing.filter_sampling_rate` to the raw rate the recordings were
+  filtered at, so the synthetics are filtered at the same rate. It is required; see
+  [docs/configuration.md](docs/configuration.md).
+
+Then:
 
 ```bash
-python event_inversion.py --config configs/long_valley/lv2.yaml
+python event_inversion.py --config configs/long_valley/LV2_real.yaml
 ```
 
 ### HDF5 schema
@@ -221,15 +240,11 @@ Channel keys are always `Z`, `1`, `2` (never `E` or `N`).
 
 The test suite lives in `tests/` and uses [pytest](https://docs.pytest.org/) with [pytest-cov](https://pytest-cov.readthedocs.io/) for coverage.
 
-### Test markers
-
 | Marker | Description | Default |
 |---|---|---|
 | `unit` | Fast, isolated, no file I/O | Always run |
 | `integration` | Loads data stubs (HDF5 fixtures built in `tmp_path`) | Always run |
 | `slow` | Full end-to-end synthetic inversions — require Instaseis DB or CPS binaries | Skipped |
-
-### Running the tests
 
 ```bash
 # Install test dependencies
@@ -250,39 +265,22 @@ pytest tests/unit tests/integration \
 # then open htmlcov/index.html
 ```
 
-### Slow test requirements
-
 The `slow` end-to-end tests exercise the full stencil→compression→inference pipeline and require at least one forward model:
 
 - **Instaseis**: set `INSTASEIS_DB` to the path of a precomputed Green's function database (e.g. `PREM_10s`), or place it at `/data/shared/ROSA_PREM_10s_disc`.
 - **CPS** (Computer Programs in Seismology): install the CPS suite so that `hprep96`, `hspec96`, and `hpulse96` are on `PATH`, or set `CPS_PATH` to the directory containing these binaries.
 
-### GitHub Actions
+The `[test]` extras (`pytest`, `pytest-cov`) are declared in `pyproject.toml`. The repository's
+workflow, `.github/workflows/docs.yml`, builds and publishes the documentation site on every push
+to `main`; no workflow runs the test suite yet.
 
-The repository's only workflow, `.github/workflows/docs.yml`, builds the documentation site. No workflow runs the test suite yet; a minimal one for the fast suite would be `.github/workflows/tests.yml`:
+## Papers and citation
 
-```yaml
-name: tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          python-version: "3.11"
-          channels: conda-forge,defaults
-      - name: Install dependencies
-        run: |
-          conda install -y -c conda-forge instaseis
-          pip install -e ".[test]"
-      - name: Run fast tests
-        run: pytest tests/unit tests/integration -x -q --cov=src/seismo_sbi --cov-report=xml
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage.xml
-```
+This package was used to produce the results in [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112) and Saoulis et al. 2026 (in prep.). If you use it, please cite the relevant paper.
 
-The `[test]` extras (`pytest`, `pytest-cov`) are declared in `pyproject.toml`.
+The data-errors example, [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb)
+([Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112)), runs out of the box on the current
+release (data download, processing and inversion). To reproduce the paper's full set of results
+exactly, use the earlier release:
+
+https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
