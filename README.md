@@ -100,7 +100,7 @@ Forward modelling is currently performed using [`Instaseis`](https://instaseis.n
 
 ## Library map
 
-Every package `__init__` holds only a docstring; import a name from the module that defines it.
+Import each name from the module that defines it.
 
 | package | what it holds |
 |---|---|

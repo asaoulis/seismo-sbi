@@ -1,9 +1,7 @@
 # Forward models
 
 Everything that turns source parameters into seismograms lives in `seismo_sbi.simulators`.
-The generic parts sit at the root of the package and each backend has its own subdirectory;
-`simulators/__init__.py` holds no imports, so using one backend never pulls in another's
-dependencies.
+The generic parts sit at the root of the package and each backend has its own subdirectory.
 
 | module | what it holds |
 |---|---|
@@ -24,7 +22,7 @@ dependencies.
 ## Nuisance effects
 
 What a real recording does to a synthetic seismogram lives in its own package,
-`seismo_sbi.nuisance_effects`, which imports nothing from the simulators:
+`seismo_sbi.nuisance_effects`:
 
 | module | what it holds |
 |---|---|
@@ -52,12 +50,10 @@ class Specfem3DSimulator(Simulator):
 (latitude, longitude, depth in km below the catalogue datum, time shift in s) and a moment
 tensor whose `.components` are `m_rr, m_tt, m_pp, m_rt, m_rp, m_tp` in N.m. The receivers to
 simulate are the `Receivers` handed to `__init__`, iterated with `self.receivers.iterate()`;
-each trace has `seismogram_duration_in_s * sampling_rate` samples. Unknown keyword arguments
-must be swallowed, because the base class forwards `velocity_model`, `stf_duration` and
-`use_fiducial` whether or not a backend uses them.
+each trace has `seismogram_duration_in_s * sampling_rate` samples. The method must accept the
+keyword arguments `velocity_model`, `stf_duration` and `use_fiducial`, and may ignore them.
 
-The base class does the rest: it builds the source from the parameter dictionary, applies the
-per-station time shifts, runs the post-processing chain, and writes the simulation to HDF5.
+The station time shifts and the nuisance effects are applied to its output for you.
 
 Then make the model selectable from a configuration file:
 

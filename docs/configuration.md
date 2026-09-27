@@ -19,12 +19,8 @@ examples: `examples/configs/LV2.yaml` (Gaussian likelihood and SBI) and
 | `jobs` | `test_job_simulations`, `real_event_jobs` | synthetic test events, noise models to test against, real events, plots |
 | `ml_*` | `TrainingConfiguration` (`training`) | NPE architecture, encoder, conditioning, flow, optimiser, batches, caches, logging, scaler |
 
-`inference.sbi.seed` (an integer) makes the SBI leg of `scripts/event_inversion.py` reproducible.
-numpy and torch are seeded at the start and again before each compressor's inversion, and every
-draw made in a worker process, which starts with fresh random state, gets its own seed: each
-theory-covariance realisation's and each training simulation's ensemble member, each training
-simulation's noise, and each MCMC chain that finds the maximum-likelihood point. The chains of the
-Gaussian-likelihood inversion that follows are not seeded.
+`inference.sbi.seed` (an integer) makes the SBI inversion of `scripts/event_inversion.py`
+reproducible. The Gaussian-likelihood inversion that follows it is not seeded.
 
 The `seismic_context`, `parameters`, `simulations`, `compression`, `inference` and `jobs` blocks
 are required. An `ml_*` block that the training configuration does not know is an error.
@@ -54,18 +50,14 @@ Three rates sit next to each other:
   vector.
 - `processing.sampling_rate` is the rate the Instaseis backend resamples the filtered synthetics
   to, over `seismogram_duration`.
-- `processing.filter_sampling_rate` is the rate the filter is designed at. The Instaseis backend
-  evaluates that filter's response at the synthetics' own frequencies and applies it in the
-  frequency domain, so they see the same filter response as the observed data without being
-  resampled to that rate. Set it to the raw rate of the recordings, the rate the
-  data preparation filtered them at (`build_catalogue.py` filters each channel at its raw rate
-  before resampling). For synthetic-only work, any rate comfortably above twice `freqmax`
-  will do.
+- `processing.filter_sampling_rate` is the rate the filter is designed at, so that the synthetics
+  see the same filter response as the observed data. Set it to the raw rate of the recordings, the
+  rate the data preparation filtered them at (`build_catalogue.py` filters each channel at its raw
+  rate). For synthetic-only work, any rate comfortably above twice `freqmax` will do.
 
-`filter_sampling_rate` is required in every configuration, whatever the backend. A file
-without it fails to parse with `InvalidConfiguration`. The test suite checks that every committed
-configuration sets it above twice `filter.freqmax`. Only the Instaseis backend reads it at
-present; the CPS backend filters at the sampling rate of its Green's functions.
+`filter_sampling_rate` is required in every configuration; a file without it fails to parse with
+`InvalidConfiguration`. Only the Instaseis backend uses it at present; the CPS backend filters at
+the sampling rate of its Green's functions.
 
 The filtered synthetics start 60 s (`SYNTHETICS_PRE_EVENT_PAD_S`) before the origin exactly,
 on the sample grid through that instant, whatever the database's own sample interval.
