@@ -15,12 +15,29 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-dynamic= ["dependencies"]
-
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+# The conda-forge scientific, seismology and geospatial stack (instaseis, obspy, numpy, scipy,
+# h5py, matplotlib, cartopy, basemap, pyproj, pandas, statsmodels, netcdf4) comes from
+# environment.yml, so pip does not re-resolve those binary packages; numpy is pinned here only so
+# that no pip dependency downgrades it below the 2.x instaseis needs.
+dependencies = [
+    "numpy>=2",
+    "scipy",
+    "h5py",
+    "pyyaml",
+    "joblib",
+    "tqdm",
+    "emcee",
+    "scikit-learn",
+    "statsmodels",
+    "pyrocko",
+    "platformdirs",
+    "click",
+]
 
 [project.optional-dependencies]
+ml = ["torch>=2.2", "sbi==0.21.0", "pytorch_lightning", "tarp==0.1.0", "deprecation"]
+plotting = ["ChainConsumer==0.34.0", "scienceplots"]
+notebooks = ["jupyter", "ipykernel"]
 test = ["pytest>=7", "pytest-cov"]
 
 [tool.pytest.ini_options]

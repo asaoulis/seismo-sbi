@@ -37,8 +37,12 @@ does this; `pip` then installs the ML and inference stack:
 ```
 conda env create -f environment.yml      # python 3.11, instaseis, obspy, cartopy, basemap, ...
 conda activate seismo-sbi
-pip install -e .                          # torch, sbi, pytorch_lightning, pyrocko, ...
+pip install -e ".[ml,plotting,notebooks]"   # torch, sbi, pytorch_lightning, ChainConsumer, jupyter, ...
 ```
+
+`pip install -e .` alone installs the forward models, the noise covariances, the Gaussian likelihood
+and the score compression (numpy, scipy, emcee, pyrocko); the `ml` extra adds the neural compression
+and NPE training, `plotting` the posterior figures, `notebooks` Jupyter for the examples.
 
 A modern conda (>= 23.10) solves this in minutes with the `libmamba` solver; on an older conda
 run `conda install -n base conda-libmamba-solver` first, or append `--solver libmamba`.

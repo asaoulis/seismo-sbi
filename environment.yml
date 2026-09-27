@@ -3,13 +3,13 @@
 # This installs instaseis (the historically painful dependency) together with the scientific,
 # seismology and geospatial C-extension libraries from conda-forge, so their binary stacks are
 # resolved consistently up front.  The pure-Python ML/inference stack is then installed with
-#     pip install -e .
-# (see requirements.txt and the README).
+#     pip install -e ".[ml,plotting,notebooks]"
+# (see pyproject.toml and the README).
 #
 # Usage:
 #     conda env create -f environment.yml
 #     conda activate seismo-sbi
-#     pip install -e .
+#     pip install -e ".[ml,plotting,notebooks]"
 #
 # Tip: a modern conda (>= 23.10) uses the fast libmamba solver by default.  On older conda run
 #     conda install -n base conda-libmamba-solver
