@@ -29,11 +29,22 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LambdaLR, 
 
 
 class SeismogramTransformer(nn.Module):
+    """Embedding network: a per-station encoder, an axial transformer over stations and time,
+    and a head mapping the pooled result to a fixed-length summary.
+
+    Input is ``(batch, n_stations, n_components, n_samples)``, or a packed 2-D context when
+    source conditioning or variable stations are configured; output is ``(batch, num_outputs)``.
+    """
 
     def __init__(self, num_seismic_components, transformer_config,
                         feature_length, num_outputs, noise_model,
                         seismogram_locations : torch.Tensor, device,
                         aggregation: str = "mean", input_length: int = 200) -> None:
+        """``transformer_config`` holds ``channels`` and the optional encoder, conditioning, pooling,
+        amplitude, bottleneck and performance entries; ``seismogram_locations`` is
+        ``(n_stations, 2)`` latitude and longitude in degrees; ``input_length`` is the per-trace
+        sample count.
+        """
         super().__init__()
 
         self.feature_length = feature_length
@@ -204,6 +215,9 @@ class SeismogramTransformer(nn.Module):
             )
 
     def _configure_conditioning(self, cond_cfg, d_model):
+        """Build the source conditioner and the injection layers ``cond_cfg['inject']`` names; with
+        no ``cond_cfg`` conditioning stays off.
+        """
         self._n_cond = 0
         self._inject = ()
         self._coord_mode = "geographic"
@@ -236,9 +250,11 @@ class SeismogramTransformer(nn.Module):
             self.concat_proj = nn.Linear(d_model + d_cond, d_model)
 
     def sample_noise_model(self, batch_size):
+        """``batch_size`` draws of the noise model, stacked along a new first axis."""
         return torch.stack([self.noise_model() for _ in range(batch_size)], dim =0)
     
     def forward(self, x : torch.Tensor):
+        """The summary vector, ``(batch, num_outputs)``, of a batch of seismograms or packed contexts."""
         # Scoped to the embedding net, so the flow still receives an fp32 context and its
         # precision-brittle transforms stay in fp32.
         if self._amp and x.is_cuda:
@@ -270,6 +286,11 @@ class SeismogramTransformer(nn.Module):
         return self.source_param_predictor(self.embed(x))
 
     def embed(self, x: torch.Tensor):
+        """Pooled embedding, ``(batch, d_model)``, before the summary head.
+
+        Unpacks a conditioning or variable-station context, encodes each station's traces, adds
+        the configured conditioning and amplitude tokens and runs the axial transformer.
+        """
         # Unpack source conditioning if the context is packed (2-D). With no conditioning
         # configured, x stays 4-D and source_vec is None → original behaviour.
         source_vec = None
@@ -410,8 +431,12 @@ class SeismogramTransformer(nn.Module):
 
 
 class LightningModel(pl.LightningModule):
+    """Regression wrapper: trains the embedding network to predict the source parameters under
+    ``loss_function``, adding a draw of the network's noise model to every batch.
+    """
 
     def __init__(self, loss_function = nn.MSELoss() , lr=0.001, **kwargs):
+        """``kwargs`` are the :class:`SeismogramTransformer` arguments."""
 
         super().__init__()
 
@@ -424,15 +449,18 @@ class LightningModel(pl.LightningModule):
         self.weight_decay = 0
 
     def forward(self, x):
+        """The network's prediction for a batch of seismograms."""
         return self.model.forward(x)
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        """``(prediction, target)`` for one batch."""
         x, y = batch
         y_hat , _= self.shared_step(batch)
 
         return y_hat, y
     
     def shared_step(self, batch, eval_type=""):
+        """Prediction and ``{f"{eval_type}loss": loss}`` for one batch, with noise added to the data."""
 
         x, y = batch
         noise = self.model.sample_noise_model(batch_size=x.shape[0])
@@ -444,6 +472,7 @@ class LightningModel(pl.LightningModule):
         return y_hat, loss_dict
 
     def training_step(self, batch, batch_idx):
+        """Loss of one training batch, logged."""
         
 
         _, loss = self.shared_step(batch)
@@ -454,6 +483,7 @@ class LightningModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """Loss of one validation batch, logged with the ``val_`` prefix."""
 
         _, loss = self.shared_step(batch, "val_")
 
@@ -462,6 +492,7 @@ class LightningModel(pl.LightningModule):
         return loss
 
     def _log_loss(self, loss):
+        """Log every entry of a loss dictionary."""
         
         for l in loss.keys():
             self.log(l, loss[l])
@@ -511,9 +542,17 @@ def fused_adam_supported(params):
 
 
 class NPELightningModule(pl.LightningModule):
+    """Trains a conditional normalising flow, whose embedding net encodes the data, by maximising
+    the log-probability of the true parameters; the MMD auxiliary loss is opt-in.
+    """
     def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine",
                  lr_min_factor=0.1,
                  fused_adam=False, compile_forward=False, compile_flow=False, **kwargs):
+        """``flow`` is an nflows ``Flow`` whose embedding net takes the data. ``lr_second_stage`` is
+        the schedule after the linear warmup (``cosine``, ``constant`` or ``cyclic``) and
+        ``lr_min_factor`` the cosine floor as a fraction of ``lr``; ``fused_adam``,
+        ``compile_forward`` and ``compile_flow`` are speed options.
+        """
         super().__init__()
         self.flow = flow
         self.lr = lr
@@ -583,6 +622,9 @@ class NPELightningModule(pl.LightningModule):
         self._mmd_bandwidth_ema = None
 
     def _next_psim_context(self):
+        """Next batch of contexts from the posterior-simulation loader, restarting it when
+        exhausted, on the module's device and dtype.
+        """
         if self._mmd_psim_iter is None:
             self._mmd_psim_iter = iter(self._mmd_psim_loader)
         try:
@@ -593,6 +635,9 @@ class NPELightningModule(pl.LightningModule):
         return ctx.to(device=self.device, dtype=self.mmd_real_context.dtype)
 
     def _mmd_lambda(self):
+        """Weight of the MMD loss this epoch: zero during warmup, then ramped linearly to
+        ``lambda_mmd``.
+        """
         cfg = self._mmd_cfg
         epoch = int(self.current_epoch)
         if epoch < cfg["warmup_epochs"]:
@@ -635,15 +680,18 @@ class NPELightningModule(pl.LightningModule):
         return rbf_mixture_mmd2_unbiased(z_real, z_psim, bandwidths)
 
     def _log_prob(self, theta, x):
+        """Flow log-probability of ``theta`` given the data ``x``."""
         return self.flow.log_prob(theta, context=x)
 
     def _flow_log_prob_from_embedded(self, theta, embedded):
+        """Flow log-probability of ``theta`` given an already embedded context."""
         # nflows.Flow.log_prob with the embedding hoisted out, so only the launch-bound
         # transform stack + base density are compiled.
         noise, logabsdet = self.flow._transform(theta, context=embedded)
         return self.flow._distribution.log_prob(noise, context=embedded) + logabsdet
 
     def forward(self, x, theta):
+        """Log-probability of ``theta`` given the data ``x``, shape ``(batch,)``."""
         # The flow contains the embedding_net; pass x as context to be embedded internally.
         if self._log_prob_fn is not None:
             return self._log_prob_fn(theta, x)
@@ -653,6 +701,7 @@ class NPELightningModule(pl.LightningModule):
         return self.flow.log_prob(theta, context=x)
 
     def training_step(self, batch, batch_idx):
+        """Negative mean log-probability of a batch, plus the weighted MMD term when it is enabled."""
         theta, x = batch
         log_prob = self.forward(x, theta)
         loss = -log_prob.mean()
@@ -672,6 +721,7 @@ class NPELightningModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """Negative mean log-probability of a validation batch; the MMD term is logged, not added."""
         theta, x = batch
         log_prob = self.forward(x, theta)
         val_loss = -log_prob.mean()
@@ -685,6 +735,7 @@ class NPELightningModule(pl.LightningModule):
         return val_loss
 
     def configure_optimizers(self):
+        """AdamW with a linear warmup over 5 % of the epochs, then the ``lr_second_stage`` schedule."""
         # The fused optimizer's preconditions -- floating-point parameters on an accelerator --
         # are checked here because torch only rejects them inside the first step().
         optimizer = None
