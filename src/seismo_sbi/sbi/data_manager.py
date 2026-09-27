@@ -23,11 +23,11 @@ class DataManager:
 
     def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler = None,
                          seed = None):
-        """Compress every simulation under ``simulations_output_path/train``; ``seed`` fixes each
-        simulation's noise draw.
+        """Compress every simulation under ``simulations_output_path/train``, in file-name order;
+        ``seed`` fixes each simulation's noise draw.
         """
         sim_string = "sim_" # TODO: either remove this glob or make it a constant
-        sims_paths = list((Path(simulations_output_path) / 'train').glob(f"{sim_string}*"))
+        sims_paths = sorted((Path(simulations_output_path) / 'train').glob(f"{sim_string}*"))
         self.dataset_compressor.load_compressor_and_noise_model(compressor, synthetic_noise_model_sampler)
         raw_compressed_dataset = self.dataset_compressor.compress_dataset(sims_paths, param_names, seed=seed)
 
