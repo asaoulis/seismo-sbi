@@ -1,0 +1,124 @@
+# LV2_continuity_train.yaml
+# ============================================================
+# Training config for the LV2 Long Valley NPE (ML compressor).
+# Scales up num_simulations to >=10,000 for a robust NPE;
+# targeting ~1-2 day training budget.
+#
+# Run (cwd = examples/):
+#   python ../scripts/train_NPE.py \
+#       --config configs/LV2_continuity_train.yaml \
+#       --run_name continuity_<YYYYMMDD>
+#
+# Checkpoint lands at:
+#   <output_directory>/<run_name>/<job_name>/<run_name>/checkpoints/best_model-*.ckpt
+#
+# Stage it with:
+#   python scripts/continuity/stage_npe_checkpoint.py \
+#       --output_dir examples/data/pipeline_outputs/continuity_train \
+#       --run_name continuity_<YYYYMMDD> \
+#       --model_name continuity_<YYYYMMDD> \
+#       --examples_dir examples/
+#
+# NEVER re-download or re-preprocess LV2 data.
+# ============================================================
+
+run_name: continuity_train
+output_directory: '/data/alex/long_valley/continuity/continuity_train'
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps_precomputed'
+  components: 'ZEN'
+  stations_path: './configs/stations.txt'
+  station_components_path: './configs/components.json'
+  station_time_shifts_path: './configs/LV2_station_shifts.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc"
+  cps_path: "/home/alex/work/cps/PROGRAMS.330/bin"
+  cps_GFs_path: './data/models/LV2_perturbations/kappa_5.0'
+  cps_GFs_fiducial_path: './data/models/LV2_perturbations/kappa_5.0_fiducial'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16],
+              [4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16]]
+  nuisance:
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 5, 0]
+      bounds: [37.636, -118.936, 5, 0]
+    velocity_model:
+      fiducial: '../examples/configs/SoCal.plain.txt'
+      bounds: ['../examples/configs/SoCal.plain.txt', 5]
+
+  # ---- Phase 6 deferred stub: extended nuisance parameters ----
+  # See LV2_continuity.yaml for the full commented scaffold.
+  # TODO(Phase 6): Enable when nuisance marginalisation is validated.
+
+simulations:
+  # Scaled up from 2000 (notebook demo) to 10,000 for production fidelity.
+  # Empirically: 2000 sims -> ~30 min; 10000 sims -> ~2-4 hrs;
+  # full 50000 sims -> ~1-2 days. Adjust for your training-time budget.
+  num_simulations: 10000
+  sampling_method:
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: 10
+  iterative_least_squares:
+    max_iterations: 8
+    damping_factor: 0.1
+    dynamic_damping: False
+    mcmc_chain_for_mle: 1
+
+compression:
+  theory_optimal_score:
+    noise_level: 1.e-8
+    diag_regularisation_magnitude: 0.005
+    data_covariance: kolb
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian_filtered'
+      noise_level: null
+
+  likelihood:
+    run: False
+    ensemble: False
+    covariance: empirical
+    num_samples: 20000
+    walker_burn_in: 500
+    move_size: [0.0001, 0.0001]
+
+jobs:
+  real_events:
+    LV2: ./data/preprocessed/LV2/events/LV2_noise_filt_20_50_1hz.h5
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

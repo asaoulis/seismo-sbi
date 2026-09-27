@@ -1,0 +1,205 @@
+run_name: LV2_shallow_explosion
+output_directory: '/data/alex/cps/alex'
+job_name: synthetics_iso
+generate_dataset: True
+num_jobs: 20
+
+seismic_context:
+  simulation_type: 'cps_precomputed' # 'instaseis' or 'cps'
+  components: 'ZEN'
+  stations_path: './configs/long_valley/stations.txt'
+  station_components_path: './configs/long_valley/components.json'
+  station_time_shifts_path: './configs/long_valley/LV2_station_shifts.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  cps_GFs_path: '/data/alex/cps/cps_long_valley/tham_5pc_shallow_explosion/kappa_5'
+  cps_GFs_fiducial_path: '/data/alex/cps/cps_long_valley/tham_5pc_shallow_explosion/kappa_5_fiducial'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16],
+              [4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16]]
+  nuisance: 
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 0.5, 0]
+      bounds: [37.636, -118.936, 0.5, 0]
+    velocity_model:
+      fiducial: '/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt'
+      bounds: ['/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt', 5]
+
+simulations:
+  num_simulations: 8000
+  sampling_method: 
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: 10
+  iterative_least_squares:
+    max_iterations: 8
+    damping_factor: 0.0
+    dynamic_damping: False
+    mcmc_chain_for_mle: False
+
+compression: 
+  theory_optimal_score:
+    noise_level:  2.e-8
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model: 
+      type: 'gaussian_filtered'
+      noise_level: null
+
+  likelihood: 
+    run: True
+    ensemble: False
+    covariance: empirical
+    num_samples: 40000
+    walker_burn_in: 1000
+    move_size: [0.0001, 0.0001]
+
+
+jobs:
+  real_events: {}
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: 
+      # iso_clvd_dc005_00:
+      #   moment_tensor: [ 1.60000000e+16,  1.60000000e+16,  1.60000000e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_01:
+      #   moment_tensor: [ 1.04285714e+16,  1.88571429e+16,  1.87142857e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_02:
+      #   moment_tensor: [ 4.85714286e+15,  2.17142857e+16,  2.14285714e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_03:
+      #   moment_tensor: [-7.14285714e+14,  2.45714286e+16,  2.41428571e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_04:
+      #   moment_tensor: [-6.28571429e+15,  2.74285714e+16,  2.68571429e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_05:
+      #   moment_tensor: [-1.18571429e+16,  3.02857143e+16,  2.95714286e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_06:
+      #   moment_tensor: [-1.74285714e+16,  3.31428571e+16,  3.22857143e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc005_07:
+      #   moment_tensor: [-2.30000000e+16,  3.60000000e+16,  3.50000000e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+
+      # iso_clvd_dc02_00:
+      #   moment_tensor: [ 1.60000000e+16,  1.60000000e+16,  1.60000000e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_01:
+      #   moment_tensor: [ 1.08571429e+16,  1.88571429e+16,  1.82857143e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_02:
+      #   moment_tensor: [ 5.71428571e+15,  2.17142857e+16,  2.05714286e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_03:
+      #   moment_tensor: [ 5.71428571e+14,  2.45714286e+16,  2.28571429e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_04:
+      #   moment_tensor: [-4.57142857e+15,  2.74285714e+16,  2.51428571e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_05:
+      #   moment_tensor: [-9.71428571e+15,  3.02857143e+16,  2.74285714e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_06:
+      #   moment_tensor: [-1.48571429e+16,  3.31428571e+16,  2.97142857e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      # iso_clvd_dc02_07:
+      #   moment_tensor: [-2.00000000e+16,  3.60000000e+16,  3.20000000e+16,0,0,0]
+      #   source_location: [37.636, -118.936, 0.5, 0]
+      #   use_fiducial: False
+      random_iso_00:
+        moment_tensor: [ 2.77184744e+16,  2.90470302e+16,  2.32344954e+16,  5.73835976e+14, -2.03269505e+15, -1.30907937e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_01:
+        moment_tensor: [ 2.48565807e+16,  2.49940067e+16,  3.01494126e+16, -1.09108830e+14, -2.55788221e+15, -1.68199376e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_02:
+        moment_tensor: [ 2.18908791e+16,  2.31872552e+16,  3.49218658e+16, -9.37850635e+15, -4.20399033e+15,  6.76178402e+14]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_03:
+        moment_tensor: [ 2.57592242e+16,  2.70058502e+16,  2.72349256e+16,  5.09819341e+14,  6.25102187e+14,  1.84208872e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_04:
+        moment_tensor: [ 3.16314686e+16,  2.20773459e+16,  2.62911855e+16, -1.37177768e+15,  3.88358544e+15,  3.76786187e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_05:
+        moment_tensor: [ 3.18972760e+16,  2.43895313e+16,  2.37131927e+16, -6.14431928e+14,  1.24188446e+13,  6.52790433e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_06:
+        moment_tensor: [ 2.77132899e+16,  2.62289020e+16,  2.60578081e+16,  8.91994567e+14,  5.19420709e+14,  7.47520567e+14]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_07:
+        moment_tensor: [ 2.60528932e+16,  2.59448876e+16,  2.80022192e+16,  9.48497755e+13,  2.86963229e+14,  7.79597820e+14]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_08:
+        moment_tensor: [ 2.42919429e+16,  2.39066279e+16,  3.18014292e+16,  2.78694223e+14,  2.05025289e+15,  3.67681584e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_09:
+        moment_tensor: [ 2.85021408e+16,  3.07658653e+16,  2.07319939e+16,  1.19043384e+16,  1.00182907e+16,  1.00168390e+16]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_10:
+        moment_tensor: [ 2.61915463e+16,  2.60207502e+16,  2.77877035e+16, -1.09459715e+15, -8.73017545e+14, -8.63842710e+13]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+      random_iso_11:
+        moment_tensor: [ 2.54133791e+16,  3.49359496e+16,  1.96506713e+16,  5.48187799e+15, -7.38092434e+14, -4.25987004e+15]
+        source_location: [37.636, -118.936, 0.5, 0]
+        use_fiducial: False
+  noise_models:
+    # real_noise: './data/noise/azores_event_samples'
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors: 
+      chain_consumer: 
+        - [['theory_optimal_score', 'gaussian_filtered'], ['gaussian_likelihood', 'gaussian_filtered']]
+    disable_plotting: False

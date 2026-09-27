@@ -1,0 +1,136 @@
+# LV2_continuity.yaml
+# ============================================================
+# Continuity-check config for the LV2 Long Valley earthquake.
+# Runs BOTH the Gaussian-likelihood MCMC AND the SBI
+# score-compression (theory_optimal_score, Kolb covariance)
+# inversions in a single event_inversion.py call, writing one
+# inversion_results.pkl under:
+#   <output_directory>/jobs/<run_name>/<job_name>/inversion_results.pkl
+#
+# Run (cwd = examples/):
+#   python ../scripts/event_inversion.py -c configs/LV2_continuity.yaml
+#
+# NEVER re-download or re-preprocess LV2 data.
+# ============================================================
+
+run_name: continuity
+output_directory: '/data/alex/long_valley/continuity/continuity'
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps_precomputed'
+  components: 'ZEN'
+  stations_path: './configs/stations.txt'
+  station_components_path: './configs/components.json'
+  station_time_shifts_path: './configs/LV2_station_shifts.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc"
+  cps_path: "/home/alex/work/cps/PROGRAMS.330/bin"
+  cps_GFs_path: './data/models/LV2_perturbations/kappa_5.0'
+  cps_GFs_fiducial_path: './data/models/LV2_perturbations/kappa_5.0_fiducial'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16],
+              [4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16]]
+  nuisance:
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 5, 0]
+      bounds: [37.636, -118.936, 5, 0]
+    velocity_model:
+      fiducial: '../examples/configs/SoCal.plain.txt'
+      bounds: ['../examples/configs/SoCal.plain.txt', 5]
+
+  # ---- Phase 6 deferred stub: extended nuisance parameters ----
+  # Uncomment to enable nuisance parameter marginalisation.
+  # See src/seismo_sbi/simulators/post_processing.py for
+  # Category 2 nuisance effects and wrapper.py for Category 1.
+  #
+  # nuisance_extended:
+  #   # Category 1 (simulator-level — forwarded to generic_point_source_simulation):
+  #   stf_duration:           # GCMT half-duration STF; value in seconds
+  #     fiducial: 3.0
+  #     bounds: [1.0, 6.0]
+  #
+  #   # Category 2 (post-processing — applied via PostProcessingChain):
+  #   amplitude_error:        # station-level amplitude scale error
+  #     fiducial: 1.0
+  #     bounds: [0.8, 1.2]
+  #   instrument_dropout:     # random station drop probability
+  #     fiducial: 0.0
+  #     bounds: [0.0, 0.1]
+  #   time_shift_error:       # timing jitter per station (seconds)
+  #     fiducial: 0.0
+  #     bounds: [-2.0, 2.0]
+  #   scattering_coda:        # coda scattering amplitude
+  #     fiducial: 0.0
+  #     bounds: [0.0, 0.05]
+  # TODO(Phase 6): Wire these into train config + ML inversion and validate
+  # end-to-end with test_train_npe_one_epoch.py before enabling.
+
+simulations:
+  num_simulations: 2000
+  sampling_method:
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+  use_fisher_to_constrain_bounds: 10
+  iterative_least_squares:
+    max_iterations: 8
+    damping_factor: 0.1
+    dynamic_damping: False
+    mcmc_chain_for_mle: 1
+
+compression:
+  theory_optimal_score:
+    noise_level: 1.e-8
+    diag_regularisation_magnitude: 0.005
+    data_covariance: kolb
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian_filtered'
+      noise_level: null
+
+  likelihood:
+    run: True
+    ensemble: False
+    covariance: empirical
+    num_samples: 20000
+    walker_burn_in: 500
+    move_size: [0.0001, 0.0001]
+
+jobs:
+  real_events:
+    LV2: ./data/preprocessed/LV2/events/LV2_noise_filt_20_50_1hz.h5
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer:
+        - [['theory_optimal_score', 'gaussian_filtered'], ['gaussian_likelihood', 'gaussian_filtered']]
+    disable_plotting: False

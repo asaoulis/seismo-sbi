@@ -1,0 +1,166 @@
+# croatia_train_tcn_variable.yaml
+# ============================================================
+# Station-configuration-VARIABLE CNN-encoder NPE training for the Croatia event,
+# full 10-station / 4-model CPS geometry (multi_model_5pc.json, kappa=5).
+#
+# New functionality exercised here:
+#   * ml_architecture: cnn                 -> SeismicTraceCNN per-station encoder
+#   * ml_variable_stations                 -> each sample uses a random station subset
+#                                             (pad+mask batching, per-sample coords)
+#   * instrument_dropout (training_augmentation)            -> rare whole-station dropout
+#   * component_dropout  (training_augmentation_post_noise) -> rare per-channel dropout
+#   * standard Category-2 nuisance augmentation (amplitude / time-shift / coda)
+#
+# Paths are ABSOLUTE so the config runs from any cwd. Validated: the ML-architecture
+# e2e gate (tests/end_to_end/test_train_npe_one_epoch.py) and a 1-epoch headless smoke
+# (300 cps_multi sims, all augmentations active) both pass.
+#
+# Full run (from repo root or scripts/):
+#   python scripts/train_NPE.py --config examples/configs/croatia_train_tcn_variable.yaml \
+#       --architecture cnn --run_name croatia_cnn_variable --epochs 200
+# ============================================================
+
+run_name: croatia_cnn_variable
+output_directory: '/data/alex/cps/croatia/continuity/croatia_cnn_variable'
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+# Per-station encoder for the ML compressor (cnn | pno | tcn). Read by train_NPE.py.
+ml_architecture: cnn
+
+# Variable-station training: each sample draws a random subset of the 10-station master
+# set; the model is built in variable-station mode (pad+mask, per-sample station coords).
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]      # uniform range of stations kept per sample
+  min_stations: 1
+  station_coords_mode: absolute  # de-risked default; 'relative' needs ml_conditioning
+
+# Optional source-location conditioning (FiLM / token-add). Left disabled for the first
+# variable-station run; enable once the absolute-coords baseline trains cleanly. If you set
+# station_coords_mode: relative above, this block is REQUIRED.
+# ml_conditioning:
+#   param_map: {source_location: [latitude, longitude, depth]}
+#   d_cond: 256
+#   coord_mode: geographic
+#   inject: [token_add, film]
+#   n_fourier: 0
+
+seismic_context:
+  simulation_type: 'cps_multi'
+  components: 'ZEN'
+  stations_path: '/home/alex/work/seismo-sbi/scripts/configs/croatia/event1_stations.txt'
+  station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/croatia/components.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc"
+  cps_path: "/home/alex/work/cps/PROGRAMS.330/bin"
+  cps_GFs_path: '/data/alex/cps/cps_croatia/multi_models_5pc/model1/kappa_5'
+  cps_GFs_fiducial_path: '/data/alex/cps/cps_croatia/multi_models_5pc/model1/kappa_5_fiducial'
+  cps_multi_models_path: '/home/alex/work/seismo-sbi/scripts/configs/croatia/multi_model_5pc.json'
+  processing:
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 1.0
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.0e+17, -1.0e+17, 1.0e+17, 1.0e+17, 1.0e+17, 1.0e+17]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-1.2e+17, -1.2e+17, -1.2e+17, -1.2e+17, -1.2e+17, -1.2e+17],
+              [1.2e+17, 1.2e+17, 1.2e+17, 1.2e+17, 1.2e+17, 1.2e+17]]
+  nuisance:
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [45.879, 16.028, 5, 0]
+      bounds: [45.879, 16.028, 5, 0]
+    velocity_model:
+      fiducial: '/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt'
+      bounds: ['/home/alex/work/seismo-sbi/scripts/data/SoCal.plain.txt', 5]
+
+    # ---- standard Category-2 nuisances, applied as TRAINING-TIME AUGMENTATION ----
+    amplitude_error:
+      fiducial: [0.2]              # 20% of stations mis-scaled per realisation
+      bounds: [0.0, 1.0]
+      scale_range: [0.7, 1.4]
+      stage: training_augmentation
+    time_shift_error:
+      fiducial: [1.0]              # on/off switch (>0 => active)
+      bounds: [0.0, 1.0]
+      uniform_offset: 4.0          # array-wide common shift U(-4,4) s
+      gaussian_sigma: 4.0          # per-station shift N(0,4) s
+      lanczos_order: 5
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]              # 40% of stations get a coda tail
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: training_augmentation
+
+    # ---- rare instrument / component dropout (~5%) ----
+    instrument_dropout:
+      fiducial: [0.05]             # per-station prob. a whole station is zeroed
+      bounds: [0.0, 1.0]
+      stage: training_augmentation
+    component_dropout:
+      fiducial: [0.05]             # per-channel prob. a present component is zeroed
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise   # MUST be post-noise
+
+simulations:
+  num_simulations: 1000           # score-compression dataset only
+  sampling_method:
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+    amplitude_error: "constant"
+    time_shift_error: "constant"
+    scattering_coda: "constant"
+    instrument_dropout: "constant"
+    component_dropout: "constant"
+  use_fisher_to_constrain_bounds: 15
+  iterative_least_squares:
+    max_iterations: 8
+    damping_factor: 0.01
+    dynamic_damping: False
+    mcmc_chain_for_mle: 1
+
+compression:
+  theory_optimal_score:
+    noise_level: null
+    diag_regularisation_magnitude: 0.05
+    data_covariance: filtered_block
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian_filtered'
+      noise_level: 2.e-8
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    event1: /home/alex/work/seismo-sbi/scripts/data/events/croatia_event1_filt_20_50_1hz.h5
+  simulations:
+    random_events: 100000          # NPE training-set size (generated by simulate_test_jobs)
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True
