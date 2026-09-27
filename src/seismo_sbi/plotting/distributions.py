@@ -50,19 +50,6 @@ def warning_logging_disabled(highest_level=logging.WARNING):
         logging.disable(previous_level)
 
 
-def transfer_labels_and_ticks(src_ax, dest_ax):
-    # Transfer x-axis labels and ticks
-    dest_ax.set_xlabel(src_ax.get_xlabel())
-    dest_ax.set_xticks(src_ax.get_xticks())
-    dest_ax.set_xticklabels(src_ax.get_xticklabels())
-    dest_ax.xaxis.set_ticks_position(src_ax.xaxis.get_ticks_position())
-    
-    # Transfer y-axis labels and ticks
-    dest_ax.set_ylabel(src_ax.get_ylabel())
-    dest_ax.set_yticks(src_ax.get_yticks())
-    dest_ax.set_yticklabels(src_ax.get_yticklabels())
-    dest_ax.yaxis.set_ticks_position(src_ax.yaxis.get_ticks_position())
-
 class DummyDataScaler:
 
     def __init__(self, n_features_in_):
