@@ -71,6 +71,20 @@ class SyntheticsPreprocessing:
         return seismograms
 
 
+def keep_inverse_mapping_out_of_the_numba_disk_cache():
+    """Compile instaseis' ``_inv_mapping_iterative`` in each process instead of caching it on disk.
+
+    Its arguments are other jitted functions, and numba cannot re-save that cache index from a
+    second process ("underlying object has vanished"). Builds of instaseis without numba lack it.
+    """
+    try:
+        from instaseis import finite_elem_mapping
+        from numba.core.caching import NullCache
+    except ImportError:
+        return
+    finite_elem_mapping._inv_mapping_iterative._cache = NullCache()
+
+
 class InstaseisDBQuerier:
 
     def __init__(self, instaseis_model_loc, processing_config, seismogram_duration_in_s = None,
@@ -82,6 +96,7 @@ class InstaseisDBQuerier:
         offset is applied only at the handoff to Instaseis, so everything upstream stays in the
         catalogue's own datum. It defaults to zero, the two being the same.
         """
+        keep_inverse_mapping_out_of_the_numba_disk_cache()
         self.instaseis_database = instaseis.open_db(instaseis_model_loc)
         self.preprocessing = SyntheticsPreprocessing(processing_config)
         self._seismogram_duration_in_s = seismogram_duration_in_s
