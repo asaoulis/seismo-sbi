@@ -5,6 +5,7 @@
 
 ```{toctree}
 :maxdepth: 1
+pipeline
 simulators
 configuration
 examples

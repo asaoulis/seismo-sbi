@@ -96,7 +96,7 @@ SBI builds a dataset of realistic observations, drawing samples from likelihood 
 ![SBI Cartoon](assets/imgs/sbi_diagram.png)
 _Fig. 3 from the `seismo-sbi` paper._
 
-Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic. Every forward model lives in `seismo_sbi.simulators`; [docs/simulators.md](docs/simulators.md) maps the package and shows how to plug in your own.
+Forward modelling is currently performed using [`Instaseis`](https://instaseis.net/) and Computer Programmes for Seismology, though `seismo-sbi` is designed to be forward model agnostic. Every forward model lives in `seismo_sbi.simulators`; [docs/simulators.md](docs/simulators.md) maps the package and shows how to plug in your own. [docs/pipeline.md](docs/pipeline.md) describes a full inversion: the SBI pipeline, score compression and the Gaussian-likelihood inversion.
 
 ## Library map
 
