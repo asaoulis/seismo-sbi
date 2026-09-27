@@ -6,6 +6,8 @@ sliprate, and returns ``{component: waveform}`` per receiver. :class:`Synthetics
 is the taper-filter-trim chain applied to every raw synthetic.
 """
 
+import math
+
 import numpy as np
 
 from datetime import timedelta
@@ -23,6 +25,12 @@ import instaseis
 SYNTHETICS_PRE_EVENT_PAD_S = 60.0
 
 class SyntheticsPreprocessing:
+    """Taper, filter and trim raw synthetics that start at the origin.
+
+    The result starts ``SYNTHETICS_PRE_EVENT_PAD_S`` before the origin exactly, whatever the
+    database's sample interval, so the 1 Hz grid the querier interpolates to lines up with the
+    observed windows.
+    """
 
     def __init__(self, processing_config):
         self.processing_config = processing_config
@@ -34,13 +42,23 @@ class SyntheticsPreprocessing:
         length = (end - start)*self.sampling_rate
         seismograms = seismograms.trim(starttime=start - length * 0.3, endtime=end + length * 0.3, pad = True, fill_value=0)
         seismograms = seismograms.taper(max_percentage=0.05, type='cosine')
+        pad = SYNTHETICS_PRE_EVENT_PAD_S
+        seismograms = self._resample_onto_anchored_grid(seismograms, start - pad)
         seismograms = seismograms.filter(**self.processing_config['filter'])
 
-        pad = SYNTHETICS_PRE_EVENT_PAD_S
         seismograms = seismograms.trim(starttime=start - pad, endtime=end - length * 0.1)
         seismograms = seismograms.trim(starttime=start - pad, endtime=end - pad, pad=True, fill_value=0)
 
         return seismograms
+
+    def _resample_onto_anchored_grid(self, seismograms, anchor):
+        """The traces Lanczos-interpolated, at their own rate, onto the sample grid through ``anchor``."""
+        dt = seismograms[0].stats.delta
+        first_sample = anchor + math.ceil((seismograms[0].stats.starttime - anchor) / dt - 1e-9) * dt
+        return seismograms.interpolate(seismograms[0].stats.sampling_rate, method='lanczos', a=20,
+                                       starttime=first_sample)
+
+
 class InstaseisDBQuerier:
 
     def __init__(self, instaseis_model_loc, processing_config, seismogram_duration_in_s = None,
