@@ -97,9 +97,8 @@ class SeismogramTransformer(nn.Module):
         # The axial transformer is built at the end of __init__ so the positional encoder can be
         # told whether station coordinates are source-relative or absolute.
 
-        # The head becomes d_model -> d_model -> bottleneck -> num_outputs, narrowing the space
-        # the MMD kernel lives in, whose sample complexity grows with dimension, while leaving
-        # both the encoder width and the flow's context width untouched.
+        # Head d_model -> d_model -> bottleneck -> num_outputs: a narrower space for the MMD kernel,
+        # with the encoder and flow context widths unchanged.
         _bneck_cfg = (transformer_config or {}).get("summary_bottleneck") or {}
         bneck = _bneck_cfg.get("dim") if isinstance(_bneck_cfg, dict) else _bneck_cfg
         self.summary_bottleneck_dim = int(bneck) if bneck else None

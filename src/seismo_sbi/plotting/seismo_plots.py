@@ -719,7 +719,6 @@ class MisfitsPlotting:
         # Ticks: keep y labels only on first, x labels on 2nd and 3rd
         for i, ax in enumerate(axes):
             if i == 0:
-                # ax.tick_params(labelbottom=False)
                 pass
             else:
                 ax.tick_params(labelleft=False)

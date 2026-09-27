@@ -35,9 +35,7 @@ from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+# --- Public API ---
 
 def build_event_catalogue(
     events,
@@ -333,9 +331,7 @@ def build_noise_catalogue(
     return [p for p, ok, _ in results if ok]
 
 
-# ---------------------------------------------------------------------------
-# Shared internal helpers
-# ---------------------------------------------------------------------------
+# --- Shared internal helpers ---
 
 def _setup_data_source(
     events,

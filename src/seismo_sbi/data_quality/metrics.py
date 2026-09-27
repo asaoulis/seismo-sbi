@@ -218,10 +218,8 @@ def traces_from_receivers(receivers) -> List[TraceDescriptor]:
             for rec in receivers.iterate() for comp in rec.components]
 
 
-# ------------------------------------------------- PPC-derived per-station fidelity
-# These mirror the maths in plotting.posterior_predictive_checks so the QA module and
-# the PPC diagnostics agree. They operate on a single station's stacked traces
-# (shape ``(n_components, trace_length)``) and reduce to one scalar per station.
+# --- PPC-derived per-station fidelity ---
+# Same maths as plotting.posterior_predictive_checks, on one station's (n_components, trace_length).
 def correlation_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
     """Mean over the station's components of ``1 - Pearson(obs, syn)`` at zero lag.
 

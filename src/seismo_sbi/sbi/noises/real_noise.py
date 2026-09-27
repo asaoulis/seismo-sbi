@@ -23,7 +23,7 @@ class RealNoiseSampler:
             When False (default, unchanged behaviour) a noise window missing ANY model
             station is skipped entirely, so the usable pool is
             ``n_windows * P(all stations present)`` -- which collapses as the station count
-            grows (measured: 77.9% at 29 Iceland stations, far worse at 49).
+            grows (about 78% of windows at 29 stations, far fewer at 49).
 
             When True the window is used for the stations it DOES have: absent stations are
             zero-filled and ``__call__`` returns ``(noise_vector, present_mask)``. The
@@ -225,7 +225,6 @@ class RealNoiseSampler:
         if self._expected_length is not None and noise_realisations.size != self._expected_length:
             return self.__call__(noise_path = None, no_rescale = no_rescale,
                                  noise_index=next_index, _attempts=_attempts + 1)
-        # self.noise_index_counter += 1
 
         if no_rescale:
             misc_data = self.data_loader.load_misc_data(noise_path)

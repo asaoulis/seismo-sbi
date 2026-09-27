@@ -17,9 +17,8 @@ import torch.nn as nn
 
 from .fourier_features import ScalarFourierEmbedding
 
-# Keys accepted in the ``positional_encoding`` config block. ``mode`` (fourier|sinusoidal) and
-# ``inject_every_layer`` are consumed by the transformer, not this module, but are listed here so
-# the single validator covers the whole block.
+# Keys of the ``positional_encoding`` block read here; ``mode`` and ``inject_every_layer`` are
+# read by the transformer but validated with the rest.
 _MODULE_KEYS = {"include_depth", "num_freqs", "sigma", "learnable_freqs", "standardize"}
 _CONFIG_KEYS = _MODULE_KEYS | {"mode", "inject_every_layer"}
 

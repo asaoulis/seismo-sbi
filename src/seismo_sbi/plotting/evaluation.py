@@ -198,7 +198,7 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
     ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional published
     reference solutions, overlaid as distinct scatter markers (e.g. extra catalogues).
     ``reference_name`` (optional) is the legend label for the primary (gold diamond) reference
-    — e.g. "Zahradník"; ``reference_label`` still selects which ensemble's theta0 feeds the
+    — e.g. a catalogue's name; ``reference_label`` still selects which ensemble's theta0 feeds the
     decomposition beachballs.
     """
     import matplotlib.pyplot as plt

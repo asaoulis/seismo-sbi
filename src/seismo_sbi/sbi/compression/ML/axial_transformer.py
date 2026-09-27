@@ -475,11 +475,6 @@ class SeismogramAxialTransformer(nn.Module):
             so padded stations don't corrupt its running stats.
         """
         B, N, L, D = x.shape
-        # if D != self.d_model:
-        #     raise ValueError(f"Expected input dim {self.d_model}, got {D}")
-
-        # Time embeddings
-        # t_ids = torch.arange(L, device=x.device).unsqueeze(0).expand(B, -1)  # (B, L)
         t_e = self.time_embed[:L, :]
 
         x = x + t_e.unsqueeze(0).unsqueeze(1)  # (B, N, L, D)

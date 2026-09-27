@@ -14,10 +14,8 @@ from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
 
 
 def compute_mw(moment_tensor_matrix):
-    """
-    Compute moment magnitude Mw from full tensor (in N·m).
-    Formula: Mw = (2/3) * log10(M0) - 6.0
-    """
+    """Mw of a ``(3, 3)`` moment tensor in N m: ``(log10 M0 - 9.1) / 1.5`` with
+    ``M0 = sqrt(sum(M_ij^2) / 2)``, the same as ``utils.mt_decomposition.get_MW_and_epsilon``."""
     M0 = np.sqrt(0.5 * np.sum(moment_tensor_matrix**2))
     Mw = (2.0 / 3.0) * (np.log10(M0) - 9.1)
     return Mw

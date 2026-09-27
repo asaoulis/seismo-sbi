@@ -38,35 +38,20 @@ class SimulationParameters(NamedTuple):
     cps_GFs_fiducial_path : str = None
     cps_multi_models_path: Optional[str] = None
     syngine_fiducial_address: Optional[str] = None
-    # Inline list of per-region Instaseis-DB ensembles for the
-    # 'instaseis_multi_ensemble' simulation_type.  Each entry:
-    #   {ensemble_dir, fiducial_dir, receivers: [station_name, ...]}
+    #: Instaseis ensembles for 'instaseis_multi_ensemble', each
+    #: ``{ensemble_dir, fiducial_dir, receivers: [station_name, ...]}``.
     instaseis_multi_models: Optional[list] = None
-    # Intra-ensemble (per-station) theory-error sampling: when True, each station draws an
-    # INDEPENDENT 1-D ensemble member per event instead of one member shared across all stations.
-    # Applies to 'instaseis_ensemble' and (per region) 'instaseis_multi_ensemble'.
-    # Datum offset (km, positive downward) added to a source's depth at the Green's-function
-    # boundary only. Instaseis measures depth from the MODEL's free surface, which is not
-    # always the sea-level datum catalogues use: an AxiSEM model built with its surface at mean
-    # ground elevation sits above it. With this set, catalogues, prior boxes, conditioning
-    # vectors and posteriors all stay in the catalogue's datum and only the Instaseis call is
-    # corrected. 0.0 (default) == model surface is the catalogue datum, i.e. legacy behaviour.
+    #: Depth offset (km, positive down) added only at the Green's-function call, for a model
+    #: whose free surface is not the catalogue's datum; 0.0 means they coincide.
     source_depth_offset_km: float = 0.0
+    #: Each station draws its own 1-D ensemble member per event, instead of one shared member.
     resample_member_per_station: bool = False
-    # Member-sampling scheme for 'instaseis_ensemble' / 'instaseis_multi_ensemble':
-    #   None / 'per_event'  one member shared by all stations (legacy default);
-    #   'per_station'       independent member per station (== resample_member_per_station: true);
-    #   'sector'            K ~ Poisson(sector_lambda) azimuthal boundaries per event, with one
-    #                       member per sector; calibrate sector_lambda, it has no default.
+    #: Ensemble member sampling: None or 'per_event' (one member for all stations), 'per_station',
+    #: or 'sector' (Poisson(sector_lambda) azimuthal sectors, one member each).
     member_sampling: Optional[str] = None
     sector_lambda: Optional[float] = None
-    # Hard cap on open Instaseis DB handles cached PER WORKER PROCESS (ensemble._QUERIER_CACHE).
-    # None => the module default, which auto-grows to the ensemble size (fastest, unbounded memory).
-    # An open handle costs ~55 MB resident, so dataset generation costs
-    # n_workers * min(cap, n_members) * 55 MB: a 62-member Mode-A/B ensemble at 60 joblib workers
-    # is ~206 GB and OOM-killed a 500k gen at 47%. Setting this is a pure memory/wall-clock trade —
-    # a miss costs one instaseis.open_db (~168 ms vs ~7 ms cached) and never changes the output.
-    # Applied by exporting SEISMO_QUERIER_CACHE_MAXSIZE before workers are spawned (see train_NPE).
+    #: Cap on open Instaseis handles cached per worker (about 55 MB each); None grows to the
+    #: ensemble size. A miss costs one open_db, never a different output.
     querier_cache_maxsize: Optional[int] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
@@ -80,10 +65,7 @@ class IterativeLeastSquaresParameters(NamedTuple):
 class DatasetGenerationParameters(NamedTuple):
 
     num_simulations : int
-    # Per-parameter sampler selection. Each value is either a string naming a
-    # built-in sampler (DatasetGenerator.sampler_lookup_map) or, for catalogue-
-    # driven priors, a pre-built (args, num_samples) closure resolved at config
-    # parse time from a dict-form YAML entry (see SBI_Configuration).
+    #: Per-parameter sampler: a built-in sampler name, or a catalogue-prior closure built at parse time.
     sampling_method : dict
     use_fisher_to_constrain_bounds : int = 5
     iterative_least_squares : IterativeLeastSquaresParameters = IterativeLeastSquaresParameters(10, 0.01)
@@ -105,10 +87,8 @@ class ModelParameters:
 
         self.nuisance_effect_config: dict = {}
 
-        # Maps nuisance key -> injection stage: "simulation" (baked into sims, the
-        # default / current behaviour) or "training_augmentation" (folded in per-batch
-        # in the ML dataloader). Deliberately NOT a `_parameter_names` entry: it is not
-        # part of the theta/fiducial vector and must not affect MOPED semantics.
+        # Nuisance key -> "simulation" or "training_augmentation"; not part of the theta vector,
+        # so not in ``_parameter_names``.
         self.nuisance_stage: dict = {}
 
         self._parameter_names = [
@@ -138,9 +118,8 @@ class ModelParameters:
             try:
                 flattened_parameters = np.array(flattened_parameters)
             except ValueError:
-                # numpy >= 2 rejects ragged sequences that numpy 1 silently stored as object
-                # arrays; preserve that behaviour for heterogeneous parameter dimensions
-                # (e.g. a 6-component moment tensor alongside a 4-component source location).
+                # Parameters of different lengths (a 6-component tensor beside a 4-component location) form
+                # a ragged object array.
                 flattened_parameters = np.array(flattened_parameters, dtype=object)
         return flattened_parameters
 

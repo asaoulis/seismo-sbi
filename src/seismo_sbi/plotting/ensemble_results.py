@@ -18,9 +18,7 @@ def plot_ensemble_results(results_dict, labels, colors=None, savefig=None):
       3. Ordered z-score plots vs N(0,1)
     """
 
-    # ---------------------------------------------------------
-    # Setup
-    # ---------------------------------------------------------
+    # --- Setup ---
     names = list(results_dict.keys())
     params = ['gamma','delta','Mw','strike','dip','rake']
     pretty_labels = [
@@ -37,9 +35,7 @@ def plot_ensemble_results(results_dict, labels, colors=None, savefig=None):
     log_ticks = [-40, -20, -10, -6, -3, 0, 3, 6, 10, 20, 40]
     tick_labels = [str(t) for t in log_ticks]
 
-    # ---------------------------------------------------------
-    # Preprocess data
-    # ---------------------------------------------------------
+    # --- Preprocess data ---
     bias_data, z_data = {}, {}
 
     for nm in names:
@@ -54,17 +50,13 @@ def plot_ensemble_results(results_dict, labels, colors=None, savefig=None):
     width = 0.8
     offsets = np.linspace(-width/3, width/3, num=len(names))
 
-    # ==========================================================
-    # Figure + main layout
-    # ==========================================================
+    # --- Figure and layout ---
     fig, axs = plt.subplots(
         3, 1, figsize=(13, 12),
         gridspec_kw=dict(height_ratios=[1, 1, 1.8])
     )
 
-    # ==========================================================
-    # 1. BIAS VIOLINS
-    # ==========================================================
+    # --- 1. Bias violins ---
     ax = axs[0]
 
     for nm, c, off in zip(names, colors, offsets):
@@ -99,9 +91,7 @@ def plot_ensemble_results(results_dict, labels, colors=None, savefig=None):
         loc='upper right', frameon=False
     )
 
-    # ==========================================================
-    # 2. Z-SCORE VIOLINS
-    # ==========================================================
+    # --- 2. Z-score violins ---
     ax = axs[1]
 
     for nm, c, off in zip(names, colors, offsets):
@@ -131,9 +121,7 @@ def plot_ensemble_results(results_dict, labels, colors=None, savefig=None):
     ax.set_yticklabels(tick_labels)
     ax.set_ylim(-10, 10)
 
-    # ==========================================================
-    # 3. ORDERED Z-SCORE PANELS (embedded grid)
-    # ==========================================================
+    # --- 3. Ordered z-score panels ---
     sub_gs = GridSpecFromSubplotSpec(
         2, 3, subplot_spec=axs[2].get_subplotspec(),
         hspace=0.35, wspace=0.25
@@ -194,15 +182,3 @@ def plot_ensemble_results(results_dict, labels, colors=None, savefig=None):
                     dpi=300, transparent=True)
 
     plt.show()
-
-# -----------------------------
-# Example usage
-# -----------------------------
-# Compute each ensemble:
-# bias_A, z_A, u_A = bias_z_from_posteriors_mt6_parallel(samples_A, truth_mt6, n_jobs=20, max_samples_for_sdr=2000)
-# bias_B, z_B, u_B = bias_z_from_posteriors_mt6_parallel(samples_B, truth_mt6, n_jobs=20, max_samples_for_sdr=2000)
-# results = {
-#   'Ensemble A': (bias_A, z_A, u_A),
-#   'Ensemble B': (bias_B, z_B, u_B),
-# }
-# plot_ensemble_results(results, colors=['cornflowerblue', 'red', 'purple'])

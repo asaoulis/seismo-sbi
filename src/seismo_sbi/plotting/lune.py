@@ -242,11 +242,8 @@ def plot_kde_contours_on_lune(ax, bm: Basemap, gamma, delta, colors='C0', grid_r
     XX, YY = bm(GX, GY)
     _, _, Z, _ = kde_on_grid(gamma, delta, gx, gy)
     thr = kde_hpd_contour_levels(Z, levels=levels)
-    # ``ax.contour`` requires STRICTLY-INCREASING levels, but the HPD density
-    # threshold for the tighter mass (e.g. 68%) is HIGHER than for the looser one
-    # (95%), so ``thr`` comes back decreasing.  Pair each threshold with its
-    # style/width, sort ascending, and drop any non-increasing duplicates (a
-    # degenerate cloud) so the contour call never silently fails.
+    # contour needs strictly increasing levels but HPD thresholds come back decreasing: sort them
+    # with their styles and drop duplicates from a degenerate cloud.
     n = min(len(thr), len(linestyles), len(linewidths))
     triples = sorted(zip(thr[:n], linestyles[:n], linewidths[:n]), key=lambda t: t[0])
     lv, ls, lw = [], [], []
@@ -271,9 +268,7 @@ def plot_filled_kde_on_lune(ax, bm: Basemap, gamma, delta, cmap='Purples',
         Z = Z * np.cos(np.radians(Y))
     thr = kde_hpd_contour_levels(Z, levels=levels)
     XX, YY = bm(X, Y)
-    # contourf needs strictly-increasing levels; HPD thresholds come back in
-    # the order of ``levels`` (tighter mass ⇒ higher density), so sort and
-    # drop degenerate duplicates before capping with the density maximum.
+    # contourf needs strictly increasing levels: sort, drop duplicates, cap with the density maximum.
     lv = []
     for t in sorted(thr):
         if not lv or t > lv[-1]:

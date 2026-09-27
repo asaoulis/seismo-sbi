@@ -19,9 +19,7 @@ from tqdm import tqdm
 from seismo_sbi.plotting.lune import mts6_to_gamma_delta, m6_to_matrix
 from seismo_sbi.utils.mt_decomposition import convert_to_pyrocko
 
-# -----------------------------
-# Helpers
-# -----------------------------
+# --- Helpers ---
 
 def _wrap_angle_deg(d, period):
     h = period / 2.0
@@ -103,9 +101,7 @@ def _circ_std_deg(samples, period):
     R = np.clip(R, 0, 1)
     return (period/(2*np.pi)) * np.sqrt(-2*np.log(R))
 
-# -----------------------------
-# Compute API (per-parameter z)
-# -----------------------------
+# --- Per-parameter bias and z ---
 
 def bias_z_from_posteriors_mt6_parallel(
     post_samples_mt6,
@@ -178,9 +174,7 @@ def bias_z_from_posteriors_mt6_parallel(
         out_u['Mw'] = 0.5 * (1.0 + erf(z / np.sqrt(2.0)))
         out_std['Mw'] = np.nanstd(mw_samp[:, e], ddof=1)              # <-- NEW
 
-        # -----------------------------
-        # SDR selection (unchanged)
-        # -----------------------------
+        # --- Strike, dip, rake selection ---
         truth_sdr, _ = _align_sdr_samples_to_truth_plane(truth_mt6[e], post_for_sdr[:, e])
 
         strikes = np.empty(S)
@@ -234,9 +228,7 @@ def bias_z_from_posteriors_mt6_parallel(
     std  = {k: np.array([b[k] for b in std_list]) for k in keys}   # <-- NEW
 
     return bias, z, u, std
-# -----------------------------
-# Plotting multiple ensembles
-# -----------------------------
+# --- Collect results of several ensembles ---
 def extract_experiment_results_by_keys(
     folders: Iterable[str],
     keys: List[str],
@@ -313,7 +305,6 @@ def extract_experiment_results_by_keys(
 
             # Find which keys this inversion_method matches
             matching_keys = [k for k in keys if k in inv_cfg.inversion_method]
-            # print(f"Found matching keys for inversion_method '{inv_cfg.inversion_method}': {matching_keys}")
             # if multiple keys find exact match
             if len(matching_keys) > 1:
                 matching_keys = [k for k in matching_keys if k == inv_cfg.inversion_method]

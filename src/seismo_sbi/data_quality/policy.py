@@ -24,7 +24,7 @@ VERDICT_COLORS = {
     "drop-corr": "#9467bd",   # purple
     "drop-fit": "#8c564b",    # brown (PPC aligned-coherence gate)
     "drop-snr-dead": "#000000",    # black  (dead / flatlined channel)
-    "drop-snr-noise": "#7f7f7f",   # grey   (RETIRED 2026-07: below-noise is a KEEP, kept for legacy plots)
+    "drop-snr-noise": "#7f7f7f",   # grey   (retired verdict: below-noise is a KEEP; old plots use it)
     "drop-snr-excess": "#e377c2",  # pink   (obs energy exceeds signal+noise budget)
     "drop-snr-noisy": "#bcbd22",   # olive  (pre-event noise sigma is a gross network outlier)
 }
@@ -47,7 +47,7 @@ KEPT_VERDICTS = ("keep", "time-shift")
 
 @dataclass(frozen=True)
 class QAThresholds:
-    """Decision thresholds. Defaults replicate the original Santorini constants.
+    """Decision thresholds, with the library's defaults.
 
     The classical gates judge coherence first (an incoherent trace is useless), then
     gross amplitude (a response/units error the MT scale cannot absorb), then timing
@@ -69,12 +69,8 @@ class QAThresholds:
     corr_misfit_drop: Optional[float] = None
     envelope_misfit_drop: Optional[float] = None
 
-    # Signal-to-noise gates against the pre-event window, each with its own switch and all off
-    # by default. Thresholds are in synthetic units and deliberately coarse, since a 1-D forward
-    # model over-predicts amplitude and the noise variance itself carries ~20% error. The rule
-    # is to drop a trace only for a data-quality problem or extreme mismodelling, never for low
-    # absolute signal: a nodal or distant station is uninformative, not bad, and is kept.
-    # ``snr_syn_min`` is retained for constructor compatibility and is no longer read.
+    # SNR gates against the pre-event window, each off by default. A trace is dropped only for a
+    # data problem or extreme mismodelling, never for low signal; ``snr_syn_min`` is no longer read.
     enable_snr_gates: bool = False  # arms the DEAD gate (+ invalid-sigma dead routing)
     snr_syn_min: float = 2.0        # RETIRED (was G2); field kept for API compatibility
     snr_dead_ratio: float = 0.1     # G1: drop if debiased obs signal < this * predicted...
@@ -93,9 +89,8 @@ class QAThresholds:
     conditional_fit_gates: bool = False
     snr_fit_min_syn: float = 5.0
     snr_fit_sig_min: float = 2.0
-    # A channel whose pre-event noise width exceeds this multiple of the network median for the
-    # same component and event is broken; healthy transients reach only tens. A pre-window spike
-    # can inflate it, so a trace that visibly matches the synthetic is kept anyway.
+    # Pre-event noise width above this multiple of the network median (same component) means a
+    # broken channel; a trace that visibly matches the synthetic is kept anyway.
     sigma_rel_max: Optional[float] = None            # calibrated value: 50.0
     sigma_outlier_escape_xcorr: float = 0.4
     sigma_outlier_escape_amp: tuple = (0.1, 10.0)
@@ -257,8 +252,8 @@ def _snr_component_gate(snr: Optional[SNRMetrics], t: QAThresholds,
       transient or glitch the MT cannot explain. Never fires when obs <= syn, and is NOT
       conditioned on ``snr_syn`` (an interloper at an expected-quiet station must fire it).
 
-    The old **G2 below-noise** drop (``snr_syn < snr_syn_min``) was RETIRED (2026-07): an
-    expected-low-signal trace is uninformative, not bad — it is KEPT.
+    There is no below-noise drop (``snr_syn < snr_syn_min``): an expected-low-signal trace
+    is uninformative, not bad, and is KEPT.
     """
     if not t.enable_snr_gates or snr is None:
         return None
@@ -342,8 +337,8 @@ def sigma_outlier_verdicts(
     every trace whose pre-event noise sigma is > ``sigma_rel_max`` x the network MEDIAN
     sigma of the same component (across the stations of this event).
 
-    A channel this far above its peers is broken or garbage-dominated (F-net calibration:
-    YMZ Z ~1400x, KSN Z noisy days ~83x; healthy transients stay ~10-30x) — its own sigma
+    A channel this far above its peers is broken or garbage-dominated (broken channels have
+    been seen at ~80-1400x; healthy transients stay ~10-30x) — its own sigma
     "explains" the garbage, so the SNR gates cannot see it; only the cross-station
     comparison can. No-op ({}) unless ``thresholds.sigma_rel_max`` is set (opt-in).
 
@@ -392,13 +387,13 @@ def event_contamination(
     """EVENT-level contamination diagnostic (a FLAG, never a silent drop).
 
     An overlapping earthquake inside the observation window corrupts many normally-good
-    traces at once (F-net calibration: two windows with catalogue neighbours 98 s / 152 s
-    away, plus two interlopers BELOW the catalogue threshold). Statistic: among the traces
+    traces at once, including interlopers below the catalogue's magnitude threshold.
+    Statistic: among the traces
     where signal is clearly expected (``snr_syn >= snr_expected_min``), excluding the
     ``exclude``-d (station, component) pairs (persistent-bad blocklist), the event is
     flagged when the dropped fraction >= ``frac_hard``, or >= ``frac_soft`` with the median
-    best-lag xcorr < ``med_xcorr_max`` (clean events sit at ~0.4-0.6; the F-net interloper
-    windows at 0.13-0.28). Needs at least ``min_expected`` such traces, else the statistic
+    best-lag xcorr < ``med_xcorr_max`` (clean events sit at ~0.4-0.6, contaminated windows
+    at ~0.1-0.3). Needs at least ``min_expected`` such traces, else the statistic
     is meaningless (flagged=False).
 
     Returns ``{"contaminated": 0/1, "n_expected": n, "frac_expected_dropped": f,
@@ -437,9 +432,8 @@ def snr_station_drop(component_verdicts_for_station: Dict[str, ComponentVerdict]
     when its Z channel fails an SNR gate OR >= 2 of its components do. Returns the most
     severe SNR drop verdict (dead > excess > noise) among the failures.
 
-    NOTE (2026-07 F-net calibration): for per-component NPE inputs prefer NOT collapsing —
-    YMZ's Z was broken for weeks while its horizontals stayed healthy, so Z-primacy throws
-    away good data. Kept unchanged for existing callers; the F-net worker no longer uses it.
+    For per-component NPE inputs prefer not collapsing: a broken Z beside healthy
+    horizontals would throw away good data.
     """
     dropped = {c: v.verdict for c, v in component_verdicts_for_station.items()
                if v.verdict.startswith("drop-snr")}

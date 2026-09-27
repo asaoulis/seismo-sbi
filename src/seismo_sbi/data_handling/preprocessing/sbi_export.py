@@ -18,9 +18,7 @@ from obspy import Stream, UTCDateTime
 from seismo_sbi.simulators.simulation_io import SimulationSaver
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+# --- Internal helpers ---
 
 def _rename_component(channel: str) -> str:
     """Map a full channel code (e.g. 'BHE') to the SBI component key ('1').
@@ -58,9 +56,7 @@ def _exact_end_time(t_start: UTCDateTime, t_end: UTCDateTime, sampling_rate: flo
     return t_start + fixed_seconds
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+# --- Public API ---
 
 def export_to_sbi_h5(
     stream: Stream,

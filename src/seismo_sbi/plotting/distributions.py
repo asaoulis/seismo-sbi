@@ -129,13 +129,9 @@ class MomentTensorReparametrised:
         for name, (theta0, samples, data_scaler, _) in samples_theta0_dict.items():
             if data_scaler is None:
                 data_scaler = self.data_scaler
-            # samples = data_scaler.inverse_transform(samples)
             if theta0 is not None:
                 pass
-                # theta0 = self.data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
             samples, theta0 = self.convert_samples(samples, theta0, custom_processing)
-            # if custom_processing is not None:
-            #     samples, theta0 = custom_processing(samples, theta0)
             converted_chain_dict[name] = (theta0, samples, None)
         return converted_chain_dict
 
@@ -285,7 +281,6 @@ class PosteriorPlotter:
         
         ax.set_title(f"{parameter.name}")
         ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.5)
-        # ax.plot(param_ground_truths, param_ground_truths, label="Ground truth", color="green", linestyle='--')
         ax.set_xlabel(f"Ground truth ({parameter.unit})")
         ax.set_ylabel(f"Compression ({parameter.unit})")
         
@@ -300,7 +295,6 @@ class PosteriorPlotter:
         compressions  = torch.Tensor(np.concatenate([repeated[:,:,:parameter_index], yy, repeated[:,:,parameter_index:]], axis=-1)).flatten(start_dim=0, end_dim=1)
         
         probabilities = likelihood_estimator.log_prob(thetas, compressions)
-        # xx, yy = np.meshgrid(real_units_xs, real_units_xs)
         u_thetas = self.data_scaler.inverse_transform(thetas)
         u_compressions = self.data_scaler.inverse_transform(compressions)
         # print(parameter.scaling_transform(u_thetas[:200, parameter_index]),
@@ -363,7 +357,6 @@ class PosteriorPlotter:
             cust_compressions[:, parameter_index] = torch.Tensor(np.full_like(flat_observations, compression_val))
             cust_compressions_saved = self.data_scaler.inverse_transform(cust_compressions)
             cust_compression_vals.append(cust_compressions_saved)
-            # compressions = torch.Tensor(np.full_like(flat_observations, compression_val))
             with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(cust_thetas))):
                 with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
                     posterior_vals = joblib.Parallel()(
@@ -372,7 +365,6 @@ class PosteriorPlotter:
             posterior_lines.append(torch.stack(posterior_vals).numpy())
         
         probabilities = torch.stack(probabilities)
-        # xx, yy = np.meshgrid(real_units_xs, real_units_xs)
         u_thetas = self.data_scaler.inverse_transform(thetas)
         u_compressions = self.data_scaler.inverse_transform(compressions)
         return u_thetas, u_compressions, probabilities, (cust_compression_vals, cust_theta_saved, posterior_lines)
@@ -396,11 +388,8 @@ class PosteriorPlotter:
         post_ax = axes[1]
         post_ax.set_xticks([])
         post_ax.set_yticks([])
-        # post_ax.set_title("Posterior $ p(\\mathbf{m} \mid \\mathbf{D})$")
         post_ax.set_xlabel("Model Parameters, $\\mathbf{m}$")
 
-        # ax.axis("off")
-        # ax.set_title(f"Empirical Density Modelling")
         ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.7, color='red')
         ax.set_ylim(np.min(parameter.scaling_transform(u_thetas[:,parameter_index])), 
                     np.max(parameter.scaling_transform(u_thetas[:, parameter_index])))
@@ -416,14 +405,12 @@ class PosteriorPlotter:
         posterior /= np.max(posterior) * 0.2
         ys =  parameter.scaling_transform(posterior_lines[0][1][0,parameter_index])* np.ones_like(xs)
         ax.plot(xs, ys, color='blue', label='Posterior', linestyle='--', linewidth=2)
-        # post_ax.plot(xs, posterior, color='black', label='Posterior', linestyle='--')
         post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='cornflowerblue')
         
         posterior = np.exp(0.05*np.array(posterior_lines[2][0]))
         posterior /= np.max(posterior) * 0.2
         ys =parameter.scaling_transform(posterior_lines[0][0][0,parameter_index]) * np.ones_like(xs)
         ax.plot(xs, ys, color='red', label='Posterior', linestyle='--', linewidth=2)
-        # post_ax.plot(xs, posterior, color='black', label='Posterior', linestyle='--')
         post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='red')
         post_ax.set_ylim(0.001, np.max(posterior.flatten()) * 1.2)
 
@@ -479,8 +466,6 @@ class PosteriorPlotter:
             unit_string = f"({parameter.unit})" if parameter.unit != "" else ""
             ax.set_xlabel(f"Ground truth {unit_string}")
             ax.set_ylabel(f"Compression {unit_string}")
-            # if i == 0:
-            #     left_ax.legend()
             
         plt.tight_layout()
 
@@ -766,7 +751,7 @@ class PosteriorPlotter:
 
     def _primary_reference_legend(self, ax, bm, true_theta0, reference_label, primary_reference):
         """Return the legend spec ``[{label,color,marker}]`` for the PRIMARY reference — the gold
-        'truth' diamond (e.g. the Zahradník solution). If the ensembles carried a ``theta0`` truth
+        'truth' diamond (e.g. a published solution). If the ensembles carried a ``theta0`` truth
         it is already drawn by the main loop and we only emit its legend entry; if they did NOT
         (e.g. the station-dropout lune, whose configs have ``theta0=None``) but a
         ``primary_reference`` MT 6-vector is supplied, draw it here as the same peru diamond so it
@@ -855,9 +840,7 @@ class PosteriorPlotter:
 
         if data_scaler is None:
             data_scaler = self.data_scaler
-        # raw_units_samples = data_scaler.inverse_transform(samples)
         if theta0 is not None:
-            # raw_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1))
             pass
         plotting_units_samples = self._transform_to_plotting_units(samples)
         if theta0 is not None:

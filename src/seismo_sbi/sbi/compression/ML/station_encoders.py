@@ -16,9 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Shared amplitude primitives (single-sourced so cnn/pno/tcn don't duplicate)
-# Every encoder max-abs-normalises a trace over (C, T) and appends a broadcast log-amplitude
-# channel; defined once here so the encoders and the token embedding share one definition.
+# --- Shared amplitude primitives: max-abs normalisation over (C, T) and the log-amplitude channel ---
 
 _AMP_EPS = 1e-12
 

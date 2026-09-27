@@ -108,9 +108,8 @@ class AmplitudeTokenEmbedding(nn.Module):
             self.snr_gate_bias = nn.Parameter(torch.full((1,), 3.0))  # ≈ pure-noise peak/floor
 
         if mode == "array_relative":
-            # Token feature is already centred per-event ⇒ fixed standardisation (center 0,
-            # configurable spread). The reference is an absolute scalar with an unknown
-            # offset ⇒ running standardiser.
+            # The token feature is centred per event, so its standardisation is fixed; the reference is
+            # an absolute scalar with unknown offset, so it gets a running standardiser.
             self.token_embed = ScalarFourierEmbedding(
                 self.K, d_model, num_freqs=num_freqs, sigma=sigma,
                 learnable_freqs=learnable_freqs, standardize="fixed",
@@ -157,9 +156,7 @@ class AmplitudeTokenEmbedding(nn.Module):
         B, N, C, T = x.shape
         ax = x.abs().reshape(B, N, C * T)
         peak = ax.amax(dim=-1).clamp_min(self.eps)                                   # (B, N)
-        # torch.quantile requires float/double — under bf16 autocast ax is bf16, so compute
-        # the floor in fp32 (an amplitude statistic; precision here is immaterial) then cast
-        # back. Newer torch rejects bf16 outright; torch 2.0 tolerated it silently.
+        # torch.quantile rejects bf16, so the floor is computed in fp32 and cast back.
         floor = torch.quantile(
             ax.float(), self.snr_floor_quantile, dim=-1
         ).to(ax.dtype).clamp_min(self.eps)

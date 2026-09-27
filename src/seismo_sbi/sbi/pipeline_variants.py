@@ -62,14 +62,6 @@ class MultiEventPipeline(SingleEventPipeline):
                 else:
                     pass
 
-                #     inversion_data = InversionData(theta0_scaled, sample_results, deepcopy(self.ground_truth_scaler), compression_data)
-                #     job_result = JobResult(compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))
-
-                #     compression_data = ScoreCompressionData(x_0, D, compression_data.data_parameter_gradients, None)
-                    
-                # print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
-
-                # inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
                 self.prepare_single_compressor(
                     compressor_name,
                     priors=priors,

@@ -18,9 +18,7 @@ import torch
 import torch.nn as nn
 
 
-# ---------------------------------------------------------------------------
-# Geometry
-# ---------------------------------------------------------------------------
+# --- Geometry ---
 
 def relative_station_geometry(
     source: torch.Tensor,
@@ -89,9 +87,7 @@ def relative_station_geometry(
     return torch.stack([dist, az], dim=-1)                # (B, N, 2)
 
 
-# ---------------------------------------------------------------------------
-# Source embedding
-# ---------------------------------------------------------------------------
+# --- Source embedding ---
 
 class SourceConditioner(nn.Module):
     """Map a raw source-coordinate vector ``(B, n_cond)`` to an embedding ``(B, d_cond)``.
@@ -118,9 +114,7 @@ class SourceConditioner(nn.Module):
         self.coord_mode = coord_mode
         self.n_fourier = int(n_fourier)
 
-        # Per-coordinate normalisation so the MLP sees O(1) inputs. Geographic coords are
-        # roughly lat∈[-90,90], lon∈[-180,180], depth in km; a fixed scale is enough — the
-        # MLP learns the rest. Cartesian: assume already O(1)..O(1e2); scale lightly.
+        # Fixed per-coordinate scales so the MLP sees O(1) inputs (geographic: degrees and km).
         if coord_mode == "geographic":
             base = torch.tensor([90.0, 180.0] + [100.0] * max(0, n_cond - 2))[:n_cond]
         else:
@@ -176,9 +170,7 @@ class FiLM(nn.Module):
         return x * (1 + gamma) + beta
 
 
-# ---------------------------------------------------------------------------
-# Context packing
-# ---------------------------------------------------------------------------
+# --- Context packing ---
 
 def pack_context(seismograms: torch.Tensor, source_vec: torch.Tensor) -> torch.Tensor:
     """Flatten seismograms and append the (raw) source vector along the last dim.
@@ -221,22 +213,8 @@ def unpack_context(
     return seis, source_vec
 
 
-# ---------------------------------------------------------------------------
-# Variable-station context packing
-# ---------------------------------------------------------------------------
-#
-# For variable station configurations the single nflows ``context`` tensor must carry,
-# per sample: the (padded) seismograms, the per-sample station coordinates, a validity
-# mask marking real vs padded stations, and (optionally) the source vector.  Within a
-# batch every sample is padded to a common ``max_N`` (done in the collate), so the batch
-# is rectangular; ``max_N`` may differ across batches.  The model recovers ``max_N`` from
-# the context width because everything else (n_components, trace_length, n_cond) is known:
-#
-#     width  W = max_N * (n_components * trace_length + 2 + 1) + n_cond
-#     max_N    = (W - n_cond) // (n_components * trace_length + 3)
-#
-# Layout per sample (flattened, in order):
-#     [ seismograms (max_N*C*T) | coords (max_N*2) | mask (max_N) | source_vec (n_cond)? ]
+# --- Variable-station context packing: [seismograms | coords | mask | source_vec?] per sample ---
+# Each block is padded to max_N stations; max_N = (width - n_cond) // (C*T + 3) from the width.
 
 def pack_variable_context(
     seismograms: torch.Tensor,

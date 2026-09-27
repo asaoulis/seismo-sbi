@@ -17,8 +17,8 @@ import numpy as np
 def build_eval_pipeline(config_path, *, setup_training_noise=False,
                         regenerate_dataset=False, skip_compression=None):
     """
-    Parse a YAML config and build a fully-loaded SingleEventPipeline, mirroring
-    exactly what the evaluation drivers (LV2 and Santorini) do.
+    Parse a YAML config and build a fully-loaded SingleEventPipeline, exactly as the
+    evaluation drivers do.
 
     Returns ``(config, sbi_pipeline, original_parameters)``.
 
@@ -26,13 +26,9 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     adaptive covariance from the first jobs.real_events entry (needed to draw
     validation examples with the same on-the-fly noise the model trained on).
 
-    By default (``regenerate_dataset=False``) the existing simulation dataset on
-    disk is REUSED rather than regenerated.  ``simulate_test_jobs`` always rewrites
-    the full ``random_events`` set from scratch (run_and_save_simulations does not
-    skip existing files), which for a continuity run means redrawing 40k–75k sims
-    on every evaluation — minutes of pure waste, and it clobbers the very dataset
-    the model trained on.  For evaluation we only need the existing sims (for the
-    held-out validation tail) plus the compressors, so we glob what's there.
+    By default (``regenerate_dataset=False``) the simulation dataset on disk is reused:
+    ``simulate_test_jobs`` would redraw every ``random_events`` simulation and overwrite
+    the dataset the model trained on. The dataset is simulated only when none exists.
     """
     from pathlib import Path as _Path
     from seismo_sbi.sbi.configuration import SBI_Configuration
@@ -45,13 +41,8 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     sbi_pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
     original_parameters = deepcopy(sbi_pipeline.parameters)
 
-    # Snapshot the config-default receiver time shifts NOW, before any compressor
-    # mutates them.  set_time_shifts() *replaces* the shared receivers map, and the
-    # theory-covariance estimator (built in load_compressors below) zeroes it
-    # (EnsembleTheoryCovarianceEstimationSimulator.__init__).  So reading
-    # receiver_time_shifts_map after the build can return {station: 0} instead of
-    # the config defaults — which would silently turn the NPE time-shift undo into
-    # a no-op.  Stash the true defaults so load_real_observation can invert them.
+    # Snapshot the config-default time shifts before load_compressors: the theory-covariance
+    # estimator zeroes the shared map, which would make the NPE time-shift undo a no-op.
     sbi_pipeline._default_receiver_time_shifts = dict(
         sbi_pipeline.simulation_parameters.receivers.receiver_time_shifts_map)
 
@@ -68,13 +59,8 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
               f"{sbi_pipeline.simulations_output_path} (no regeneration).")
         test_jobs_paths = existing_sims
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
-    # For an ML-NPE-only evaluation the score/Fisher compressors are never used (the
-    # trained flow + embedding net are the whole model) and the derivative stencil
-    # forks instaseis across loky workers — which the instaseis_multi_ensemble
-    # simulator does not support (it returns per-member lists, crashing the stencil).
-    # Honour the config's `skip_compression_data` flag (the same intent the sweep /
-    # QA path expresses) so the stencil + compressor load are bypassed.  Default
-    # (flag absent / False) is byte-identical to before.
+    # An NPE-only evaluation never uses the score compressors, and the stencil cannot run on the
+    # multi-ensemble simulator, so ``skip_compression_data`` bypasses both.
     if skip_compression is None:
         skip_compression = bool((getattr(config, "raw_config", None) or {})
                                 .get("skip_compression_data", False))
@@ -166,10 +152,8 @@ def load_real_observation(config, sbi_pipeline, job_name):
             f"Available: {list(config.real_event_jobs.keys())}")
 
     components = sbi_pipeline.data_manager.data_loader.components
-    # Use the config-default shifts snapshotted at pipeline-build time, NOT the live
-    # receivers map (which the theory-covariance estimator zeroes during the build).
-    # Falls back to the live map only if the snapshot is unavailable (e.g. a pipeline
-    # not built via build_eval_pipeline).
+    # The config-default shifts snapshotted at build time; the live map is zeroed by the
+    # theory-covariance estimator.
     forward_shifts = getattr(sbi_pipeline, "_default_receiver_time_shifts", None)
     if forward_shifts is None:
         forward_shifts = sbi_pipeline.simulation_parameters.receivers.receiver_time_shifts_map

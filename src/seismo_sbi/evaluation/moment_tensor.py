@@ -34,28 +34,15 @@ def kagan(m6_a, m6_b):
         return float("nan")
 
 
-# ----------------------------------------------------------------------------
-# Batched (pyrocko-free) eigen-frame primitives.
-#
-# ``kagan()`` above costs ~2.2 ms/call — pyrocko ``MomentTensor`` construction
-# dominates — which makes whole-posterior orientation analysis (222 matched
-# reference pairs x 1000 samples) an 8-minute job.  The two functions below
-# reproduce pyrocko's own algebra in batched numpy off ONE eigen-decomposition:
-# ``kagan_batch`` agrees with ``kagan`` to ~1e-12 deg and runs 1e4 pairs in
-# 0.05 s (~4e4x faster), and ``mt_axes`` reproduces the P/T/N axes that the
-# Lomax suite's ``mt_features`` reads out of pyrocko one tensor at a time.
-# ----------------------------------------------------------------------------
+# --- Batched eigen-frame primitives: pyrocko's algebra in numpy, ~4e4x faster than kagan() ---
 
-# USE (up, south, east) -> NED (north, east, down): north = -south, east = east,
-# down = -up.  pyrocko's own `MomentTensor` stores `m()` in NED, so working in
-# this frame is what makes the results identical rather than merely equivalent.
+# USE -> NED (north = -south, east = east, down = -up); pyrocko stores m() in NED, so the
+# results are identical to pyrocko's rather than merely equivalent.
 _USE_TO_NED = np.array([[0.0, -1.0, 0.0],
                         [0.0, 0.0, 1.0],
                         [-1.0, 0.0, 0.0]])
 
-# `np.linalg.eigh` returns eigenvectors in ASCENDING eigenvalue order, i.e.
-# columns (p, b, t).  pyrocko's rotation frame is rows (t, p, b); this permutes
-# the transposed eigenvector matrix into that order.
+# eigh returns columns (p, b, t) in ascending eigenvalue order; pyrocko's frame is rows (t, p, b).
 _PBT_TO_TPB = np.array([[0.0, 0.0, 1.0],
                         [1.0, 0.0, 0.0],
                         [0.0, 1.0, 0.0]])
@@ -124,8 +111,8 @@ def mt_axes(m6):
     """Batched P/T/N axis azimuth & plunge (degrees, NED lower hemisphere).
 
     Returns a dict of ``(n,)`` arrays ``p_az, p_plunge, t_az, t_plunge,
-    n_az, n_plunge`` — the same quantities the Lomax suite's ``mt_features``
-    reads out of pyrocko per tensor, off the shared batched eigen-decomposition.
+    n_az, n_plunge`` — the quantities pyrocko gives per tensor, off one batched
+    eigen-decomposition.
 
     Axes are sign-ambiguous, so each is forced into the lower hemisphere
     (``plunge >= 0``); a *near-horizontal* axis is therefore azimuth-ambiguous

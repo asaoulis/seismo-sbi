@@ -388,7 +388,6 @@ class CompressionTrainer:
         posterior = DirectPosterior(
                     posterior_estimator=self.model.flow.to(device),
                     prior=prior,
-                    # x_shape=self._x_shape,
                     device=device,
                 )
         return posterior

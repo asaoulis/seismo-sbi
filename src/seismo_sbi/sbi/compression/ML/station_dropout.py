@@ -232,22 +232,8 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     return ensemble, results
 
 
-# --------------------------------------------------------------------------- #
-#  BATCHED variable-station inference
-# --------------------------------------------------------------------------- #
-#
-# ``sample_station_dropout_ensemble`` runs one config at a time: one encoder forward and
-# one flow-sampling call per (event, station-subset) item.  Measured on an RTX A6000 with
-# the Japan F-net model that is ~25 items/s, and ~2/3 of the wall time is GPU launch
-# overhead rather than arithmetic — the encoder alone reaches ~840 items/s at batch 128.
-# Catalogue-scale station experiments (leave-one-out over ~20 stations x ~650 events) need
-# tens of thousands of items, so they get a batched path.
-#
-# Batching is exactly what training already does: ``dataloading.variable_station_collate``
-# pads every sample to the batch's ``max_N`` with zero seismograms/coords and marks the
-# padding False in the validity mask.  ``pack_subset_batch`` below reproduces that collate
-# for inference, so a batched item is bit-comparable to the same item packed alone (up to
-# the encoder's own float non-determinism) — see ``tests/unit/test_batched_station_sampling.py``.
+# --- Batched variable-station inference: pads like variable_station_collate, so an item
+# batched is bit-comparable to the same item packed alone. ---
 
 def pack_subset_batch(items, device=None):
     """Pack many ``(seismograms, coords, source_vec)`` subsets into one ``(B, W)`` context.
@@ -388,9 +374,7 @@ def robust_posterior_sample_batched(posterior, ctx, num_samples, *, oversample=2
     if out is None:                                   # max_rounds == 0
         raise RuntimeError("robust_posterior_sample_batched: no sampling round ran")
     if todo.numel():                                  # leakage fallback: clip
-        # `last` rows are indexed by the PREVIOUS round's todo, not by the current one —
-        # look each deficient row up by its position there, or the tail row if it is
-        # somehow absent (cannot happen: todo only ever shrinks).
+        # ``last`` rows follow the previous round's todo, so look each row up by its position there.
         row_of = {int(v): j for j, v in enumerate(last_todo.tolist())}
         for i in todo.tolist():
             filler = last[row_of.get(int(i), last.shape[0] - 1)]

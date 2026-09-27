@@ -46,7 +46,6 @@ class GaussianLikelihoodEvaluator:
         synthetic_waveform = self.simulation_callable(source_parameters.flatten())
         diff = synthetic_waveform - self.data
         return  self.loss_callable(diff)
-        # return  2*(self.loss_callable(diff) / self.data.size)
 
     def log_probability(self, scaled_source_parameters):
         log_prior_value = self.log_prior(scaled_source_parameters)

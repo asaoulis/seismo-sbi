@@ -25,8 +25,7 @@ _MISC_KEY = {"Z": "Z", "E": "1", "N": "2", "1": "1", "2": "2"}
 
 
 def data_qa_thresholds(level: str = "minimal", **overrides) -> QAThresholds:
-    """CALIBRATED QA presets (2026-07, 62-event pe60 catalogue vs F-net reference-MT
-    forward models).
+    """Calibrated QA presets, checked against reference-MT forward models.
 
     Every gate encodes *misfit conditional on expected signal* — an expected-low-signal
     trace (nodal / distant / small event) is always KEPT. Levels:
@@ -157,7 +156,7 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
                          obs=None, blocklist=(),
                          min_stations: int = 5, min_fraction: float = 0.25,
                          contaminated_action: str = "warn"):
-    """The calibrated 2026-07 per-component QA composition (pure, backend-free).
+    """The calibrated per-component QA composition (pure, backend-free).
 
     Layers, in order: per-trace gate verdicts (``component_verdicts``, SNR gates first),
     the cross-station sigma-outlier health check, the persistent-bad-channel

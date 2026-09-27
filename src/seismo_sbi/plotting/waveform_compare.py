@@ -95,11 +95,7 @@ def _finish(fig, figname):
     return fig
 
 
-# ---------------------------------------------------------------------------------
-# Moveout record section — the legible successor to `record_section` / the stacked-trace
-# PPC figures. Handles many stations x 3 components, deterministic overlays (best-fit MT,
-# reference-catalogue MTs) AND posterior ensembles (band / spaghetti) in one renderer.
-# ---------------------------------------------------------------------------------
+# --- Moveout record section: many stations x 3 components, deterministic overlays and ensembles ---
 
 #: Overlay colours, in assignment order. Deliberately distinct in hue AND lightness so the
 #: figure survives greyscale printing; the first is the "our solution" colour.

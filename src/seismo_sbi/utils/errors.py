@@ -27,9 +27,7 @@ def error_handling_wrapper(num_attempts=3):
                     print(''.join(traceback.format_exception(None, exc, exc.__traceback__)))
                     print(f"Retrying {func_name}...")
 
-            # Re-raise the ORIGINAL failure. Python deletes the `except ... as exc` name when the
-            # block exits, so a bare `raise exc` here hit an UnboundLocalError that masked the real
-            # error; keep the last exception in `last_exc` and re-raise that instead.
+            # Re-raise the last failure itself; the ``except ... as`` name is gone once the block exits.
             print(f"{simulation_callable.__name__} failed after multiple attempts. Exiting.")
             raise last_exc
         

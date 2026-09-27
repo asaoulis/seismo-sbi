@@ -110,19 +110,14 @@ class PosteriorPredictiveChecks:
         self.add_metric(r"$\\chi^2$", self._metric_reduced_chi2)
         self.add_metric("Correlation misfit", self._metric_corr_misfit)
         self.add_metric("Power misfit", self._metric_power_misfit)
-        # add seismo-oriented metrics
-        # self.add_metric("band_power_ratio", self._metric_band_power_ratio)
         self.add_metric("Envelope misfit", self._metric_envelope_misfit)
         self.add_metric("MSE", self._metric_mse)
-        # Shift-tolerant pair: a zero-lag correlation charges a mechanism for travel-time
-        # error it did not cause (1-D velocity model + hypocentre error move whole traces),
-        # so both of these judge waveform SHAPE with the arrival time free.
+        # Shift-tolerant pair: judge waveform shape with the arrival free, so a mechanism is not
+        # charged for travel-time error from the 1-D model and hypocentre.
         self.add_metric("Shifted corr misfit", self._metric_shifted_corr_misfit)
         self.add_metric("Autocorr misfit", self._metric_autocorr_misfit)
 
-    # -------------------
-    # Public API
-    # -------------------
+    # --- Public API ---
     def add_metric(self, name: str, func: Callable):
         """
         Register a new metric. func(obs, synthetics, meta) -> np.ndarray (len = n_synthetics)
@@ -367,10 +362,7 @@ class PosteriorPredictiveChecks:
 
         return results, ensembles_synthetics_sel
 
-    # -----------------------
-    # Built-in metric impls
-    # Each returns 1D array of length n_synthetics
-    # -----------------------
+    # --- Built-in metrics: each returns an array of length n_synthetics ---
 
     def _chi2_from_cov(self, r: np.ndarray):
         """
@@ -608,9 +600,7 @@ class PosteriorPredictiveChecks:
             vals[i] = float(np.mean(1.0 - np.clip(best, -1.0, 1.0)))
         return vals
 
-    # -----------------------
-    # Helpers for applying time shifts without code duplication
-    # -----------------------
+    # --- Time-shift helpers ---
     def _vec_to_outputs_map(self, vec: np.ndarray) -> Dict[str, Dict[str, np.ndarray]]:
         """Reshape flattened vector into {station: {component: trace}} according to receivers order."""
         if self.receivers is None or self.n_traces is None:
@@ -645,9 +635,7 @@ class PosteriorPredictiveChecks:
                 parts.append(np.asarray(trace))
         return np.concatenate(parts)
 
-    # -----------------------
-    # Helpers for selecting best-matching synthetics
-    # -----------------------
+    # --- Best-synthetic selection ---
     def _select_best_synthetics(
         self,
         obs: np.ndarray,
@@ -751,8 +739,6 @@ def plot_metric_bars(
         else:  # lower is better
             best = np.nanmin(col.values)
             norm_df[m] = col/best if np.all(col != 0) else np.nan
-        # norm_df[m] = norm_df[m].clip(upper=1.0)
-    # norm_df = df
     approaches = list(norm_df.index)
     metrics = list(norm_df.columns)
     n_metrics = len(metrics)

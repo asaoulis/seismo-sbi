@@ -1,7 +1,6 @@
 """Diagnostic figures for data QA (obs-vs-synthetic overlay, station scorecard,
-time-shift before/after). Moved from the Santorini ``qa_forward_check.py`` and adapted
-to the QA dataclasses. Plotting is intentionally not in the test gate — the verdict/shift
-data is the contract; these are diagnostics.
+time-shift before/after), drawn from the QA dataclasses. Plotting is not in the test gate:
+the verdict and shift data are the contract, these are diagnostics.
 """
 from __future__ import annotations
 

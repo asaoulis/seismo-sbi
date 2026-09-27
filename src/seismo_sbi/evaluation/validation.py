@@ -72,8 +72,7 @@ def run_validation(
         (variable-station models). Also forced ``True`` when ``cond_param_map`` is
         set (conditioned models are always variable-station). ``False`` AND
         ``cond_param_map`` is ``None`` → feed the flat ``(N·C·T,)`` data vector
-        directly, correct for fixed-station / unconditioned models (e.g. the LV2
-        CNN/TCN checkpoints).
+        directly, correct for fixed-station / unconditioned models.
     cond_param_map:
         ``ml_conditioning.param_map`` dict (e.g.
         ``{"source_location": ["latitude", "longitude", "depth"]}``).
@@ -110,10 +109,7 @@ def run_validation(
         stage="training_augmentation_post_noise",
     )
 
-    # Plain dataset — no station subsampler, no conditioning — so __getitem__
-    # returns the full (N,C,T) noisy+augmented obs + scaled theta.  Model-correct
-    # packing (variable-station via pack_subset_observation, or the flat fixed-station
-    # vector) happens per-sim in the loop below.
+    # A plain dataset returns the full (N, C, T) observation; the loop below packs it for the model.
     noise_sampler = getattr(sbi_pipeline, "training_noise_sampler", None)
     if noise_sampler is None:
         raise RuntimeError(
@@ -166,16 +162,10 @@ def run_validation(
         theta_s, x = ds[idx]
         theta_s_np = np.asarray(theta_s, dtype=float)
 
-        # Both paths differ ONLY in how the held-out observation is turned into the
-        # model's input tensor; both then keep the RAW scaled posterior draws (for TARP)
-        # and inverse_transform once for physical units (for the recovery scatter). The
-        # packed branch deliberately does NOT round-trip through transform(inverse_transform)
-        # — under the scale_shape MT scaler that clipping is non-invertible and would make
-        # the conditioned-path TARP curve inconsistent with the direct path.
+        # The paths differ only in how the observation becomes the model input. The packed path skips
+        # transform(inverse_transform): the scale_shape clip is not invertible and would bias TARP.
         if use_packed:
-            # Packed path (variable-station, optionally conditioned): the embedding net
-            # expects the 2-D variable-station context. Full master set, no dropout; for a
-            # conditioned model feed the sim's TRUE stored source vector.
+            # Variable-station context over the full master set, conditioned on the sim's true source.
             sv = _sim_source_vec(ds.paths[idx]) if cond_param_map else None
             obs_in = pack_subset_observation(
                 np.asarray(x), coords_all, source_vec=sv

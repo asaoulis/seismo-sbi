@@ -169,10 +169,7 @@ def compute_spectrogram(data, samp_rate, per_lap=0.9, wlen=None, dbscale=False,m
     data = data - data.mean()
     end = npts / samp_rate
 
-    # Here we call not plt.specgram as this already produces a plot
-    # matplotlib.mlab.specgram should be faster as it computes only the
-    # arrays
-    # XXX mlab.specgram uses fft, would be better and faster use rfft
+    # mlab.specgram computes the arrays without plotting.
     specgram, freq, time = mlab.specgram(data, Fs=samp_rate, NFFT=nfft,
                                          pad_to=mult, noverlap=nlap)
     # db scale and remove zero/offset for amplitude

@@ -174,9 +174,8 @@ class SBI_Configuration:
                     self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
                 self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
 
-                # Optional `stage` key selects where the nuisance is injected:
-                # "simulation" (default — baked into the simulation dataset) or
-                # "training_augmentation" (folded in per-batch in the ML dataloader).
+                # ``stage``: "simulation" (default, baked into the dataset) or "training_augmentation"
+                # (applied per batch in the dataloader).
                 stage = parameter_values.get("stage", "simulation")
                 if stage not in SBI_Configuration._NUISANCE_STAGES:
                     allowed = ', '.join(sorted(SBI_Configuration._NUISANCE_STAGES))
@@ -201,19 +200,15 @@ class SBI_Configuration:
                         f"'training_augmentation_post_noise' (only post-noise effects "
                         f"[ {allowed} ] are eligible)."
                     )
-                # component_dropout zeros channels to mimic genuinely-absent components, which
-                # must be EXACTLY zero — a pre-noise/simulation stage would leave `0 + noise`.
-                # So it is only valid post-noise.
+                # Component dropout must leave exact zeros, so it is valid only after noise is added.
                 if parameter_type in POST_NOISE_EFFECT_KEYS and stage != "training_augmentation_post_noise":
                     raise InvalidConfiguration(
                         f"Nuisance {parameter_type} must use stage "
                         f"'training_augmentation_post_noise' (it zeros channels after noise so "
                         f"they are exactly zero); got stage {stage!r}."
                     )
-                # Conditioning-vector augmentations perturb the source-location CONDITIONING input
-                # in the ML dataloader; the simulator can't bake them, so (symmetric with
-                # component_dropout above) they are only valid as training_augmentation — otherwise
-                # the default "simulation" stage would silently no-op the feature.
+                # Conditioning augmentations perturb the dataloader's conditioning vector, which the simulator
+                # cannot bake, so they are valid only as training_augmentation.
                 if parameter_type in CONDITIONING_AUGMENTABLE_KEYS and stage != "training_augmentation":
                     raise InvalidConfiguration(
                         f"Nuisance {parameter_type} must use stage 'training_augmentation' (it "
@@ -408,7 +403,6 @@ class SBI_Configuration:
             moment_tensor_scaler = partial(generic_scaler_callable, scale)
             moment_tensor_components = ["rr", "\\theta \\theta", "\\phi \\phi", "r \\theta", "r \\phi", "\\theta \\phi"]
             self.model_parameters.information[parameter_type] = [
-                    # ParameterInformation(f"$m_{{{mt_component}}}$", f"$\\times 10^{{{scale_string}}} Nm$", moment_tensor_scaler)
                     ParameterInformation(f"$M_{{{mt_component}}}$", "", moment_tensor_scaler)
                         for mt_component in moment_tensor_components
             ]

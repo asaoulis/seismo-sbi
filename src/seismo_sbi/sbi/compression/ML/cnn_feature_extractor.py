@@ -38,11 +38,8 @@ class SeismicTraceCNN(nn.Module):
             conv_channels = [64, 64, 64, 128, 128, final_layer-1]
         if conv_kernels is None:
             conv_kernels = [5] * len(conv_channels)
-        # `downsample` (a single strided front conv, all else stride 1) makes the CNN's temporal
-        # reduction a single uniform knob — matching tcn/pno — and pairs with same_padding so the
-        # output length is exactly ceil(input_length / downsample), which never underflows on a
-        # short input (e.g. after model-entry Nyquist decimation). When set it OVERRIDES the legacy
-        # multi-strided default and forces same_padding=True.
+        # ``downsample``: one strided front conv, all else stride 1 and same-padded, so the output is
+        # ceil(input_length / downsample) long; it overrides the multi-strided default.
         if downsample is not None:
             same_padding = True
             n = len(conv_channels)

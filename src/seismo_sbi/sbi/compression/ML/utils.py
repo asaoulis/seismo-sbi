@@ -14,10 +14,6 @@ from .seismogram_transformer import LightningModel
 import re
 def get_best_epoch(ckpts):
     exp = "(?<=val_loss=)(?:(?:\d+(?:\.\d*)?|\.\d+))"
-    # print(ckpts)
-    # # print([ckpt for ckpt in ckpts])
-    # temp = next(ckpt)
-    # print("test", temp)
     losses = [float(re.findall(exp, ckpt.name)[0]) for ckpt in ckpts]
     if len(losses) == 0:
         raise ValueError("No checkpoints found")

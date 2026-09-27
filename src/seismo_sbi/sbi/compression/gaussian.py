@@ -40,9 +40,8 @@ class MachineLearningCompressor(Compressor):
         self.seismogram_preprocessor = seismogram_preprocessor
 
         self.scaler = scaler
-        # Optional known/assumed source location for conditioned models. When set, it is
-        # packed into the context exactly as the training dataloader does (raw, unscaled),
-        # so the embedding net's unpack path recovers it. None ⇒ unconditioned 4-D context.
+        # Source location for a conditioned model, packed raw into the context as in training;
+        # None gives the unconditioned context.
         self.source_location = (
             None if source_location is None
             else torch.as_tensor(np.asarray(source_location, dtype=float), dtype=torch.float32)
@@ -169,13 +168,11 @@ class GaussianCompressor(Compressor):
             for b in range(0, self.num_params):
                 F[a, b] += 0.5*(np.dot(self.dD_Dtheta_gradients[a,:], self.C.matmul_inverse_covariance(self.dD_Dtheta_gradients[b,:])) \
                                 + np.dot(self.dD_Dtheta_gradients[b,:], self.C.matmul_inverse_covariance(self.dD_Dtheta_gradients[a,:])))
-                # print("Fisher matrix element", a, b, F[a, b])
                 if self.C.C_derivative is not None:
                     F[a, b] += 0.5 * self.C.compute_trace(self.C.matrix_matrix_product(
                         self.C.matrix_matrix_product(self.C.C_inverse, self.C.C_derivative[a]),
                         self.C.matrix_matrix_product(self.C.C_inverse, self.C.C_derivative[b])
                     ))
-                    # print("Fisher matrix element with derivative", a, b, F[a, b])
 
         
         if self.prior_covariance is not None:
@@ -229,8 +226,7 @@ class GaussianCompressor(Compressor):
             dL_dtheta[:, :] = (self.dD_Dtheta_gradients * covariance_residual_product).T
         if self.prior_mean is not None:
             theta_diff = self.prior_mean - self.theta_fiducial
-            # np.dot(np.linalg.inv(np.diag(self.prior_covariance)), theta_diff)
-            # or maybe theta_diff should be negative ?
+            # The sign of theta_diff here is unverified.
             dL_dtheta += np.dot(np.linalg.inv(np.diag(self.prior_covariance)), theta_diff)
         return dL_dtheta
 
@@ -301,24 +297,6 @@ class SecondOrderCompressor(GaussianCompressor):
     def compute_observed_information(self, data_vector):
         return np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector - self.D_fiducial))
     
-    # def compress_data_vector(self, data_vector):
-
-    #     F_hat  = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-    #     S_hat  = np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-    #     U = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse,self.dD_Dtheta_gradients.T))
-    #     U_inverse = np.linalg.inv(U)
-
-    #     p1 = U_inverse @ (F_hat - self.F)
-    #     # return self.theta_fiducial + p1# would be first order
-    #     delta_S = S_hat - self.S
-
-    #     G_step = self.efficient_dot_prod(self.C_inverse, self.hessian)
-    #     G = np.einsum('ij, jkl -> ikl', self.dD_Dtheta_gradients, G_step)
-
-    #     p2 = U_inverse @ ( np.dot(delta_S, p1) - 1/2 * np.einsum('kmn,m,n->k', G, p1, p1) - np.einsum('mkn,m,n->k', G, p1, p1))
-    #     return self.theta_fiducial + (p1 + p2)
 
     
     def check_compression(self, data_vector, p):

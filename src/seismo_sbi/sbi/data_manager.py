@@ -68,10 +68,8 @@ class DataManager:
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
                 priors = tuple(real_event_data['priors'])
-            # self.data_loader.data_length = self.data_length
             D = self.load_simulation_vector(real_event_path)
             covariance_data = self.load_noise_parametrisation_data(real_event_path)
-            # self.data_loader.data_length = None
             for test_noise_name in test_noises.keys():
                 real_jobs.append(
                     JobData(real_event_name,

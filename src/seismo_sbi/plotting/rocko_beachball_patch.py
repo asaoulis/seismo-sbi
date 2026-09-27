@@ -12,10 +12,8 @@ from pyrocko.plot.beachball import BeachballError, choose_transform, deco_part, 
 
 def plot_beachball_mpl(
         mt, axes,
-        # 'full', NOT pyrocko's 'deviatoric' default: 'deviatoric' silently strips the
-        # isotropic part, so the fill is set by gamma (CLVD) instead of delta (ISO) and
-        # -ISO sources render as majority-compressional.  Every caller here passes this
-        # explicitly already; the default is 'full' so that forgetting it fails safe.
+        # 'full', not pyrocko's 'deviatoric', which strips the isotropic part and draws -ISO
+        # sources as mostly compressional.
         beachball_type='full',
         position=(0., 0.),
         size=None,
@@ -128,9 +126,7 @@ def plot_beachball_on_axes(
     collection : PatchCollection
     """
 
-    # ------------------------------------------------------------------
-    # 1) Create collection in UNIT beachball space (no scaling/position)
-    # ------------------------------------------------------------------
+    # 1) Collection in unit beachball space
     collection, base_transform, pos_meta, size_meta, raw_data = plot_beachball_mpl(
         mt, ax,
         beachball_type=beachball_type,
@@ -149,26 +145,17 @@ def plot_beachball_on_axes(
         view=view
     )
 
-    # ------------------------------------------------------------------
-    # 2) Convert target point (tx,ty) from DATA → AXES FRACTION coords
-    # ------------------------------------------------------------------
+    # 2) Target point (tx, ty) from data to axes-fraction coordinates
     disp_x, disp_y = ax.transData.transform((tx, ty))
     ax_fx, ax_fy = ax.transAxes.inverted().transform((disp_x, disp_y))
 
-    # ------------------------------------------------------------------
-    # 3) Compute axis distortion: width vs height in pixels
-    # ------------------------------------------------------------------
+    # 3) Axes aspect in pixels
     ax.figure.canvas.draw()   # ensures bbox values are correct
     bbox = ax.get_window_extent()
     axes_w_px, axes_h_px = bbox.width, bbox.height
     scale_x = axes_h_px / axes_w_px   # <1 if axes wider than tall
 
-    # ------------------------------------------------------------------
-    # 4) Build scaling transform for unit beachball → desired diameter
-    #
-    #    diameter is fraction of axes height.
-    #    For unit polygons, we multiply by (diameter / 2) in both axes.
-    # ------------------------------------------------------------------
+    # 4) Scale the unit beachball to ``diameter``, a fraction of the axes height
     r = diameter / 2.0
 
     scale_unit = (
@@ -178,9 +165,7 @@ def plot_beachball_on_axes(
         .translate(ax_fx, ax_fy)
     )
 
-    # ------------------------------------------------------------------
-    # 5) Distortion correction so circle stays circular
-    # ------------------------------------------------------------------
+    # 5) Keep the circle circular
     distortion_fix = (
         Affine2D()
         .translate(-ax_fx, -ax_fy)
@@ -188,9 +173,7 @@ def plot_beachball_on_axes(
         .translate(ax_fx, ax_fy)
     )
 
-    # ------------------------------------------------------------------
-    # 6) Compose final transform (then map to ax.transAxes)
-    # ------------------------------------------------------------------
+    # 6) Compose with ax.transAxes
     final_transform = (scale_unit + distortion_fix) + ax.transAxes
 
     collection.set_transform(final_transform)

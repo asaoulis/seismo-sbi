@@ -78,11 +78,7 @@ class SBIPipelinePlotter:
     def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True, **kwargs):
         """Corner plots (and lunes, for a tensor) of one job's inversions, under ``base_figure_path``."""
         lune_kwargs, reparam_kwargs = kwargs.get("lune_kwargs", {}), kwargs.get("reparam_kwargs", {})
-        # base_figure_path is either a relative subfolder (nested under base_output_path) or an
-        # absolute directory (used as-is). Join it directly: pathlib appends a relative path and
-        # replaces with an absolute one. A leading "./" (the previous f"./{...}") would force the
-        # absolute case to be treated as relative and *append* it, doubling the directory
-        # (e.g. .../ml_eval/home/alex/.../ml_eval/...).
+        # A relative base_figure_path nests under base_output_path; an absolute one is used as is.
         figure_dir = self.base_output_path / base_figure_path
         plot_path = figure_dir / f"{test_name}.svg" if savefig else None
         if savefig:

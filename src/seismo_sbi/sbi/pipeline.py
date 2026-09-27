@@ -342,10 +342,8 @@ class SBIPipeline:
             # rescale=false freezes the sampler so it draws noise windows verbatim, never
             # rescaled to one event's pre-event variance.
             rescale = sbi_noise_model.get('rescale', True)
-            # allow_incomplete: use noise windows that are missing some model stations
-            # (zero-filled + a presence mask) instead of skipping them. Only meaningful
-            # with variable-station training, which masks the absent stations out; the
-            # dataloader raises if an incomplete window reaches the fixed-N path.
+            # allow_incomplete zero-fills stations a window lacks; valid only with variable-station
+            # training, which masks them out.
             allow_incomplete = sbi_noise_model.get('allow_incomplete', False)
             self.training_noise_sampler = RealNoiseSampler(self.simulation_parameters,
                                                            noise_catalogue_path,

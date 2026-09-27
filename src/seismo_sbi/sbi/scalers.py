@@ -208,11 +208,8 @@ def scaler_provenance(scaler) -> dict:
     out = {"moment_tensor": "linear"}
     mt = getattr(scaler, "mt_scaler", None) or getattr(scaler, "_mt_scaler", None)
     if mt is None:
-        # A real FlexibleScaler keeps its per-block sub-scalers in the LIST `self.scalers`,
-        # so scanning vars() alone never matches (the list is not a MomentTensorScaler) and
-        # every checkpoint would record "linear" — the exact silent failure this function
-        # exists to prevent. Search the list first, then fall back to plain attributes for
-        # any other scaler shape.
+        # A FlexibleScaler keeps its sub-scalers in the list ``scalers``; search it first, or every
+        # checkpoint would record "linear".
         for candidate in list(getattr(scaler, "scalers", None) or []) + list(vars(scaler).values()):
             if isinstance(candidate, MomentTensorScaler):
                 mt = candidate
@@ -302,9 +299,8 @@ def _mt_log10_m0_range_from_prior(raw_config: dict):
 
     smpl = (((raw_config.get("simulations") or {}).get("sampling_method") or {})
             .get("moment_tensor"))
-    # In the live pipeline, SBI_Configuration resolves this sampling_method entry from
-    # its dict form into a built sampler CALLABLE whose ``.info`` carries the derived
-    # log10(M0) window; a pristine (un-parsed) YAML config still holds the dict form.
+    # A parsed config holds the built sampler, whose ``.info`` carries the log10 M0 window; a raw
+    # YAML config still holds the dict form.
     if callable(smpl):
         rng = (getattr(smpl, "info", {}) or {}).get("log10_m0_range")
         if rng is None:
@@ -337,8 +333,3 @@ def _mt_log10_m0_range_from_prior(raw_config: dict):
     return (lo, hi)
 
 
-    # def inverse_transform(self, X):
-    #     # pad X to length 35
-    #     X = np.concatenate([X, np.zeros((X.shape[0], self.num_statistics))], axis=1)
-    #     first_transform = self.scaler.inverse_transform(X)
-    #     return self.log_scaler.inverse_transform(first_transform)[:, :self.n_features_in_]
