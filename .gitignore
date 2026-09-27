@@ -1,33 +1,93 @@
-axisem-1.3/
-.vscode/
+# Secrets: never addable, whatever else changes below.
+.env
+*.env
+*credentials*
+*.pem
+id_*
+
+# Python, editors and tooling
 __pycache__/
+*.egg-info/
 .ipynb_checkpoints/
+.pytest_cache/
+.vscode/
+.DS_store
 .Trash-0/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Data and run products: waveforms, arrays, checkpoints, logs, figures
 *.h5
 *.npy
-instaseis-SBI/notebooks/data
-instaseis-SBI/scripts/data
-instaseis-SBI/scripts/paper/data
-.DS_store
-*tfevents*
 *.pkl
 *.ckpt
-lightning_logs/
-noise_catalogue/
-noise_catalogue_2/
-paper/
+*.mseed
+*.dat
 *.xml
-*.pkl
 *.log
 *.png
-*.ipynb
-*.yaml
-*.dat
-data/
-final_plots/
-*.egg-info/
-dfile
-*.mseed
-*.mod
 *.svg
+*tfevents*
+lightning_logs/
 wandb/
+ml-checkpoints/
+/data/
+examples/data/
+examples/inversions/
+examples/plots/
+examples/sbi-logs/
+scripts/data/
+scripts/plots/
+noise_catalogue/
+noise_catalogue_2/
+final_plots/
+paper/
+dfile
+# F-net download intermediates and the win32 tools tarball
+*.cnt
+*.ch
+*.euc.ch
+scripts/win32tools.tar.gz
+
+# Documentation build products
+docs/_build/
+docs/_generated/
+docs/api/
+
+# Local agent framework and cluster control plane (backed up privately)
+.claude/
+cluster/
+
+# Local-only material, kept on disk and not part of the library: the Santorini, Japan, Iceland
+# and Indo-Pacific study material (mt-sbi holds the studies), AxiSEM staging, the superseded
+# continuity scripts, and the legacy analysis notebooks.
+/axisem/
+/axisem-1.3/
+scripts/axisem/
+scripts/continuity/
+scripts/santorini_pathbreaker/
+scripts/japan_fnet/
+scripts/wandb/
+scripts/configs/santorini/
+scripts/configs/japan/
+scripts/configs/iceland/
+scripts/configs/indo_pacific/
+examples/configs/santorini_brustle_lomax.yaml
+scripts/*.ipynb
+examples/explore_indonesia.ipynb
+tests/unit/test_polarity_events.py
+tests/unit/test_subset_suite.py
+examples/ridgecrest_aftershocks.ipynb
+examples/ridgecrest_aftershocks_inversions.ipynb
+scripts/configs/long_valley/LV2/noise.yaml
+scripts/configs/long_valley/short_period/LV2_synthetic_inversion copy.yaml
+scripts/station_locations.txt
+scripts/stations.txt
+scripts/test.txt
+.cleanup_probe.txt
+
+# Maintainer and agent instructions stay local
+AGENTS.md
+CLAUDE.md

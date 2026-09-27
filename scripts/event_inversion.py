@@ -10,9 +10,14 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
+
+import numpy as np
+import torch
+
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
-from seismo_sbi.sbi import utils as utils
+from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi import job_runners
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
@@ -40,6 +45,10 @@ def main():
     Pipeline = VaryDatasetSizeEventPipeline if config.pipeline_type == 'vary_dataset_size' else Pipeline
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
     sbi_pipeline.compression_methods = config.compression_methods
+    sbi_pipeline.seed = config.sbi_seed
+    if config.sbi_seed is not None:
+        np.random.seed(config.sbi_seed)
+        torch.manual_seed(config.sbi_seed)
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
 
     test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
@@ -62,11 +71,11 @@ def main():
     output_path.mkdir(parents=True, exist_ok=True)
 
     if config.plotting_options['disable_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_results_saving(job_data, results_generator, output_path)
+        job_results, inversion_results = job_runners.run_asynchronous_results_saving(job_data, results_generator, output_path)
     elif config.plotting_options['async_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_plotting(sbi_pipeline, results_generator)
+        job_results, inversion_results = job_runners.run_asynchronous_plotting(sbi_pipeline, results_generator)
     else:
-        job_results, inversion_results = utils.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
+        job_results, inversion_results = job_runners.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
 
     with open(output_path / "inversion_results.pkl", 'wb') as f:
         pickle.dump((job_data, job_results, inversion_results), f)

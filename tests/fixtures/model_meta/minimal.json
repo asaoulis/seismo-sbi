@@ -1,0 +1,45 @@
+{
+  "architecture": "seismogram_transformer",
+  "model_config": {
+    "layers": 4,
+    "nheads": 4,
+    "timeemb": 64,
+    "posemb": 64,
+    "channels": 256,
+    "station_encoder": "cnn",
+    "theta_scaler": {
+      "moment_tensor": "scale_shape",
+      "log10_m0_min": 15.5,
+      "log10_m0_max": 19.5
+    }
+  },
+  "flow_config": {
+    "num_transforms": 5,
+    "num_blocks": 2,
+    "dropout_probability": 0.0,
+    "use_batch_norm": true
+  },
+  "trace_length": 200,
+  "num_seismic_components": 3,
+  "num_dims": 6,
+  "latent_dim": 256,
+  "feature_length": 128,
+  "station_locations_shape": [
+    3,
+    2
+  ],
+  "station_locations": [
+    [
+      36.4,
+      25.5
+    ],
+    [
+      37.0,
+      26.0
+    ],
+    [
+      36.0,
+      25.0
+    ]
+  ]
+}

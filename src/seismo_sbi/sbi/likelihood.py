@@ -1,14 +1,19 @@
+"""Gaussian-likelihood sampling with emcee.
+
+:class:`GaussianLikelihoodEvaluator` scores scaled source parameters against the data under a
+Gaussian noise covariance and a prior; :func:`generate_samples` runs the ensemble sampler and
+:func:`split_rhat` checks the chains' convergence.
+"""
+
 import numpy as np
 import emcee
 from emcee.moves import GaussianMove
-from multiprocessing import Pool
-# from multiprocess import Pool
-# from concurrent.futures import ProcessPoolExecutor as Pool
+import multiprocessing
 import os
 from tqdm import tqdm
 from functools import partial
 import joblib
-from ..instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
 
 class GaussianLikelihoodEvaluator:
 
@@ -41,7 +46,6 @@ class GaussianLikelihoodEvaluator:
         synthetic_waveform = self.simulation_callable(source_parameters.flatten())
         diff = synthetic_waveform - self.data
         return  self.loss_callable(diff)
-        # return  2*(self.loss_callable(diff) / self.data.size)
 
     def log_probability(self, scaled_source_parameters):
         log_prior_value = self.log_prior(scaled_source_parameters)
@@ -49,10 +53,55 @@ class GaussianLikelihoodEvaluator:
             return -np.inf
         return self.log_likelihood(scaled_source_parameters) + log_prior_value
 
+def split_rhat(chains):
+    """Gelman--Rubin split-R-hat per parameter across MCMC chains.
+
+    ``chains`` is a sequence of ``(nsteps, ndim)`` arrays (one per independent
+    chain).  Each chain is split in half so the diagnostic is informative even
+    with only a few chains.  Returns an ``ndim`` array: ~1.0 means the chains
+    agree (converged); ``> 1.1`` flags chains stuck in separate modes.
+    """
+    chains = [np.asarray(c) for c in chains]
+    nsteps = min(c.shape[0] for c in chains)
+    half = nsteps // 2
+    ndim = chains[0].shape[1]
+    if half < 2:
+        return np.full(ndim, np.nan)
+    subs = []
+    for c in chains:
+        subs.append(c[:half])
+        subs.append(c[half:2 * half])
+    subs = np.stack(subs)                       # (m, n, ndim)
+    m, n, _ = subs.shape
+    chain_means = subs.mean(axis=1)
+    chain_vars = subs.var(axis=1, ddof=1)
+    B = n * chain_means.var(axis=0, ddof=1)
+    W = chain_vars.mean(axis=0)
+    var_hat = (n - 1) / n * W + B / n
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.sqrt(var_hat / W)
+
+
+def _report_convergence(chains):
+    """Print split-R-hat across MCMC chains (a convergence sanity check)."""
+    try:
+        rhat = np.asarray(split_rhat(chains))
+        print(
+            f"MCMC convergence: split-R-hat per param = "
+            f"{np.array2string(rhat, precision=3)} "
+            f"(max {np.nanmax(rhat):.3f}; >1.1 ⇒ chains not mixed)",
+            flush=True,
+        )
+    except Exception as exc:  # diagnostics must never break the inversion
+        print(f"MCMC convergence: R-hat unavailable ({exc})", flush=True)
+
+
 def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
                                             burn_in, nsamples_per_walker,
                                             initial_state, move_size,
-                                            thin=5, return_sampler=False, return_log_prob=False):
+                                            thin=5, return_sampler=False, return_log_prob=False, seed=None):
+    if seed is not None:
+        np.random.seed(seed)
 
     if isinstance(move_size, list):
          first_size, second_size = tuple(move_size)
@@ -82,15 +131,38 @@ def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
     return chain
 
 
-def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None, return_log_prob=False):
+_ensemble_log_probability = None
+
+
+def _evaluate_ensemble_log_probability(scaled_theta):
+    return _ensemble_log_probability(scaled_theta)
+
+
+def _ensemble_pool(log_probability, num_processes):
+    """Process pool and the function emcee maps over it.
+
+    Where fork exists the workers inherit ``log_probability`` through a module global, so it and
+    the arrays it holds are never pickled; elsewhere it is pickled to spawned workers.
+    """
+    global _ensemble_log_probability
+    if "fork" in multiprocessing.get_all_start_methods():
+        _ensemble_log_probability = log_probability
+        return multiprocessing.get_context("fork").Pool(processes=num_processes), _evaluate_ensemble_log_probability
+    return multiprocessing.get_context("spawn").Pool(processes=num_processes), log_probability
+
+
+def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_walker, nwalkers, burn_in=1000, num_processes=1, theta0=None, move_size=None, mle_start = None, return_log_prob=False, seed=None):
+    if seed is not None:
+        np.random.seed(seed)
 
     if mle_start is not None:
          initial_samples = np.tile(mle_start, (nwalkers,1))
     else:
         initial_samples = np.random.rand(nwalkers, num_parameters)
     if ensemble:
-        with Pool(processes=num_processes) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, num_parameters, log_probability, pool=pool)
+        pool, pooled_log_probability = _ensemble_pool(log_probability, num_processes)
+        with pool:
+            sampler = emcee.EnsembleSampler(nwalkers, num_parameters, pooled_log_probability, pool=pool)
 
             # burn in
             print("Starting burn in...", flush=True)
@@ -106,7 +178,8 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
         else:
             samples = sampler.get_chain(flat=True)
     else:
-        with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)) as progress_bar:
+        chain_seeds = worker_seeds(seed, num_processes, "mcmc chains")
+        with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)):
             with joblib.parallel_backend('loky', n_jobs=num_processes):
                 results = joblib.Parallel()(
                     joblib.delayed(run_embarrassingly_parallel_simulations)(
@@ -114,15 +187,18 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
                         nsamples_per_walker,
                         initial_samples[i],   # <-- pass the correct initial state
                         move_size,
-                        return_log_prob=return_log_prob
+                        return_log_prob=return_log_prob,
+                        seed=chain_seeds[i]
                     ) 
                     for i in range(num_processes)
                 )
         if return_log_prob:
             chains, logps = zip(*results)
+            _report_convergence(chains)
             samples = np.stack(chains).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
             logp = np.stack(logps).reshape(num_processes, -1).T.reshape(-1)
             return samples, logp
         else:
+            _report_convergence(results)
             samples = np.stack(results).reshape(num_processes, -1, num_parameters).transpose(1,0,2).reshape(-1, num_parameters)
     return samples

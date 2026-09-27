@@ -1,21 +1,23 @@
-# Minimal, reusable lune utilities: conversion to Tape & Tape gamma/delta and Basemap-projected plotting
+"""Source-type lune: conversions and Basemap plotting.
+
+:func:`lam2lune` and :func:`mts6_to_gamma_delta` map moment tensors to the lune angles
+``(gamma_deg, delta_deg)``; :func:`plot_lune_frame` draws the Tape and Tape lune in a Hammer
+projection, and the ``plot_*_on_lune`` helpers add scatter points and KDE contours to it.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 from scipy.stats import gaussian_kde
 from pyproj import Geod
-import matplotlib.pyplot as plt
 
-# basemap is only needed for the lune (Tape gamma/delta) source-type plots; it is an awkward
-# dependency to co-install, so import it lazily.  The conversion utilities below (used by
-# distributions.py / results_analysis.py and the example notebooks) work without it.
-try:
+if TYPE_CHECKING:
     from mpl_toolkits.basemap import Basemap
-except ImportError:
-    Basemap = None
 
 
-# -----------------------------
 # Core math: eigenvalue handling and lam2lune
-# -----------------------------
 
 def sort_eigvals_desc(lam: np.ndarray) -> np.ndarray:
     idx = np.argsort(lam, axis=-1)[..., ::-1]
@@ -106,9 +108,7 @@ def mts6_to_gamma_delta(m6: np.ndarray):
     return gamma, delta
 
 
-# -----------------------------
 # KDE utilities
-# -----------------------------
 
 def kde_on_grid(x, y, xgrid, ygrid, bw_method='scott'):
     xy = np.vstack([x, y])
@@ -133,17 +133,17 @@ def kde_hpd_contour_levels(Z, levels=(0.6827, 0.9545)):
     return tuple(thr)
 
 
-# -----------------------------
 # Basemap Hammer-projected Lune
-# -----------------------------
 
 def plot_lune_frame(ax, frame_color='k', grid_color='lightgray', fontweight='bold',
                     clvd_left=True, clvd_right=True, lon_0=0):
     """Draw the standard Tape & Tape lune frame using a Hammer projection and
     remove any outer frame/spines/ticks. Returns the Basemap instance."""
-    if Basemap is None:
-        raise ImportError("basemap is required for lune plots — install it with "
-                          "`conda install -c conda-forge basemap` or `pip install basemap`.")
+    try:
+        from mpl_toolkits.basemap import Basemap
+    except ImportError as error:
+        raise ImportError("basemap is required for lune plots: install it with "
+                          "`conda install -c conda-forge basemap` or `pip install basemap`.") from error
     g = Geod(ellps='sphere')
     bm = Basemap(projection='hammer', lon_0=lon_0, ax=ax)
     ax.set_aspect('equal')
@@ -246,11 +246,45 @@ def plot_kde_contours_on_lune(ax, bm: Basemap, gamma, delta, colors='C0', grid_r
     XX, YY = bm(GX, GY)
     _, _, Z, _ = kde_on_grid(gamma, delta, gx, gy)
     thr = kde_hpd_contour_levels(Z, levels=levels)
-    ax.contour(XX, YY, Z, levels=list(thr), colors=colors, linestyles=list(linestyles), linewidths=list(linewidths))
+    # contour needs strictly increasing levels but HPD thresholds come back decreasing: sort them
+    # with their styles and drop duplicates from a degenerate cloud.
+    n = min(len(thr), len(linestyles), len(linewidths))
+    triples = sorted(zip(thr[:n], linestyles[:n], linewidths[:n]), key=lambda t: t[0])
+    lv, ls, lw = [], [], []
+    for level, style, width in triples:
+        if not lv or level > lv[-1]:
+            lv.append(level); ls.append(style); lw.append(width)
+    if lv:
+        ax.contour(XX, YY, Z, levels=lv, colors=colors, linestyles=ls, linewidths=lw)
+
+
+def plot_filled_kde_on_lune(ax, bm: Basemap, gamma, delta, cmap='Purples',
+                            grid_res=(200, 300), levels=(0.6827, 0.9545),
+                            alpha=0.85, area_weighted=False):
+    """Filled HPD density of a (γ, δ) cloud on the lune (for pooled catalogue
+    samples).  ``area_weighted`` multiplies the KDE by the lune area element
+    ``cos δ`` so the HPD regions are in posterior mass, not raw density.
+    Returns the ``contourf`` set (usable for a colourbar)."""
+    gx = np.linspace(-30, 30, grid_res[0])
+    gy = np.linspace(-90, 90, grid_res[1])
+    X, Y, Z, _ = kde_on_grid(gamma, delta, gx, gy)
+    if area_weighted:
+        Z = Z * np.cos(np.radians(Y))
+    thr = kde_hpd_contour_levels(Z, levels=levels)
+    XX, YY = bm(X, Y)
+    # contourf needs strictly increasing levels: sort, drop duplicates, cap with the density maximum.
+    lv = []
+    for t in sorted(thr):
+        if not lv or t > lv[-1]:
+            lv.append(t)
+    zmax = float(Z.max())
+    if not lv or lv[-1] >= zmax:
+        return None
+    return ax.contourf(XX, YY, Z, levels=lv + [zmax], cmap=cmap, alpha=alpha)
 
 
 __all__ = [
     'lam2lune', 'm6_to_matrix', 'mts6_to_gamma_delta', 'plot_lune_frame',
     'project_points_to_lune', 'plot_scatter_on_lune', 'plot_kde_contours_on_lune',
-    'kde_on_grid', 'kde_hpd_contour_levels'
+    'plot_filled_kde_on_lune', 'kde_on_grid', 'kde_hpd_contour_levels'
 ]

@@ -14,7 +14,7 @@ reads (``SimulationSaver`` -> ``outputs/{station}/{Z,1,2}`` + ``misc/{station}/{
     <output_dir>/noise/<YYYY.MM.DD.HH.MM>.h5                  # a few hundred noise windows
 
 ``misc`` holds the autocovariance of the ``--cov_window`` seconds immediately preceding each
-window, computed with the same estimator the legacy ``ProcessedDataSlicer`` uses, so the
+window, computed with the same estimator as ``export_to_sbi_h5``, so the
 empirical/score covariances are consistent.
 
 Example
@@ -35,8 +35,8 @@ from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
 # SimulationSaver guarantees the on-disk schema the pipeline reads.
-from seismo_sbi.instaseis_simulator.simulation_saver import SimulationSaver
-from seismo_sbi.instaseis_simulator.utils import compute_data_vector_length
+from seismo_sbi.simulators.simulation_io import SimulationSaver
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 # Channel renaming on disk: vertical -> Z, east -> 1, north -> 2.
 _COMPONENT_OF_CHANNEL = {"Z": "Z", "E": "1", "N": "2", "1": "1", "2": "2"}
@@ -91,7 +91,7 @@ def load_stations(path):
 
 
 def process_stream(st, inv, args):
-    """Response-removal -> taper -> band-pass -> resample, mirroring NoiseCollector.process_seismograms."""
+    """Response-removal -> taper -> band-pass -> resample."""
     st = st.merge(method=0, fill_value="latest")
     pre_filt = [args.freqmin / 4, args.freqmin / 2, args.freqmax * 2.5, args.freqmax * 5]
     st.remove_response(inventory=inv, output="DISP", pre_filt=pre_filt,
@@ -103,7 +103,7 @@ def process_stream(st, inv, args):
 
 
 def autocovariance(data, n):
-    """Length-normalised autocovariance (lags 0..n-1), matching ProcessedDataSlicer."""
+    """Length-normalised autocovariance (lags 0..n-1), as in ``export_to_sbi_h5``."""
     ac = np.correlate(data, data, mode="full")
     full = ac[: data.shape[0]][::-1] / np.arange(data.shape[0], 0, -1)
     out = np.zeros(n)

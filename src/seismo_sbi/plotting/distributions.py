@@ -1,3 +1,11 @@
+"""Posterior figures: corner plots, lunes, beachballs and compression diagnostics.
+
+:class:`PosteriorPlotter` takes posterior samples in the scaled space and draws them in physical
+units: ChainConsumer corner plots, source-type lunes (scatter and KDE contours), fuzzy and
+projected beachballs, and the compressed-statistic likelihood panels.
+:class:`MomentTensorReparametrised` re-expresses moment-tensor samples as Mw and lune angles.
+"""
+
 from typing import List
 
 import numpy as np
@@ -5,24 +13,19 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import joblib
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from matplotlib.transforms import Affine2D
 
-plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
-
-from .parameters import ParameterInformation
+from .parameter_labels import ParameterInformation
 import torch
 from .patched_chainconsumer import CustomChainConsumer as ChainConsumer
 from obspy.imaging.beachball import beach
-from obspy.imaging import beachball
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
-from ..instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib
+from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
+from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon, get_nodal_planes
 from .rocko_beachball_patch import plot_beachball_on_axes
-from tqdm import tqdm
 from contextlib import contextmanager
 import logging
-from pyrocko import moment_tensor as pmt
-# New: reusable lune plotting utilities
 from seismo_sbi.plotting.lune import (
     mts6_to_gamma_delta,
     plot_lune_frame,
@@ -30,45 +33,18 @@ from seismo_sbi.plotting.lune import (
     kde_hpd_contour_levels,
 )
 
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import Polygon
 
-def make_beachball_collection(mt, facecolor, edgecolor, alpha=1.0, linewidth=1.3):
-    # Get raw, unit beachball polygons
-    data = rocko_beachball.mt2beachball(
-        mt,
-        beachball_type='full',
-        position=(0., 0.),
-        size=.06
-    )
-
-    patches = []
-    for (path, fc, ec, lw) in data:
-        patches.append(
-            Polygon(
-                xy=path,
-                facecolor=facecolor if fc != 'none' else 'none',
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                alpha=alpha
-            )
-        )
-
-    return PatchCollection(patches, match_original=True)
-
-
-
-# disable chain consumer warnings for reparametrised moment tensor
-# as the angle distributions cover periodic sample space
-# solution from https://gist.github.com/simon-weber/7853144
+# The angle distributions of a reparametrised moment tensor cover a periodic sample space,
+# which the corner-plot library warns about on every call.
 @contextmanager
 def warning_logging_disabled(highest_level=logging.WARNING):
     """
     A context manager that will prevent any logging messages
     triggered during the body from being processed.
+
     :param highest_level: the maximum logging level in use.
-      This would only need to be changed if a custom level greater than WARNING
-      is defined.
+        This would only need to be changed if a custom level greater than WARNING
+        is defined.
     """
 
     previous_level = logging.root.manager.disable
@@ -81,52 +57,6 @@ def warning_logging_disabled(highest_level=logging.WARNING):
         logging.disable(previous_level)
 
 
-def transfer_labels_and_ticks(src_ax, dest_ax):
-    # Transfer x-axis labels and ticks
-    dest_ax.set_xlabel(src_ax.get_xlabel())
-    dest_ax.set_xticks(src_ax.get_xticks())
-    dest_ax.set_xticklabels(src_ax.get_xticklabels())
-    dest_ax.xaxis.set_ticks_position(src_ax.xaxis.get_ticks_position())
-    
-    # Transfer y-axis labels and ticks
-    dest_ax.set_ylabel(src_ax.get_ylabel())
-    dest_ax.set_yticks(src_ax.get_yticks())
-    dest_ax.set_yticklabels(src_ax.get_yticklabels())
-    dest_ax.yaxis.set_ticks_position(src_ax.yaxis.get_ticks_position())
-
-def flip_subplots(fig, axes):
-    n = len(axes)
-    
-    # Store the original positions of the subplots that need to be moved
-    positions = {}
-    for i in range(n):
-        for j in range(n):
-            if i > j:
-                positions[(i, j)] = axes[i, j].get_position()
-    for i in range(n):
-        transfer_labels_and_ticks(axes[0, i], axes[i, 0]) # Temporarily set the original axis to the new position
-        transfer_labels_and_ticks(axes[i, 0], axes[0, i])
-
-    # Move the subplots to the new positions
-    for (i, j), pos in positions.items():
-        new_i, new_j = j, i
-        axes[i, j].set_position(axes[new_i, new_j].get_position())  # Temporarily set the original axis to the new position
-        axes[new_i, new_j].set_position(pos)  # Move the target axis to the original position
-
-    for i in range(n):
-        transfer_labels_and_ticks(axes[0, i], axes[i, 0]) # Temporarily set the original axis to the new position
-        transfer_labels_and_ticks(axes[i, 0], axes[0, i])
-
-
-        
-    # Clean up the moved axes
-    for i in range(n):
-        for j in range(n):
-            if i < j:
-                axes[i, j].remove()
-
-    return fig, axes
-
 class DummyDataScaler:
 
     def __init__(self, n_features_in_):
@@ -137,76 +67,6 @@ class DummyDataScaler:
     
     def transform(self, data):
         return data
-
-def get_MW_and_epsilon(moment_tensor_sol):
-
-    moment_tensor_matrix, M_0 = compute_scalar_moment(moment_tensor_sol)
-
-    MW = (np.log10(M_0) - 9.1)/1.5
-
-    M_isotropic = 1/3 * np.trace(moment_tensor_matrix) * np.eye(3)
-    M_deviatoric = moment_tensor_matrix - M_isotropic
-
-    eigenvalues = list(sorted(np.linalg.eigvals(M_deviatoric), reverse=True))
-    epsilon = eigenvalues[1]/ max(abs(eigenvalues[0]), abs(eigenvalues[2]))
-    
-    return (MW, epsilon)
-
-# New: compute delta (Tape & Tape lune coordinate) from full tensor eigenvalues
-# delta is the angle from the deviatoric plane to the lune point (-90 <= delta <= 90)
-# Following TT2012 Eq. 21a and the reference lam2lune.m
-
-def get_delta(moment_tensor_sol: np.ndarray) -> float:
-    """
-    Compute Tape & Tape lune delta (in degrees) for a 6-component moment tensor.
-    Input ordering matches create_matrix: [Mxx, Myy, Mzz, Mxy, Mxz, Myz] in up-south-east.
-    """
-    M = create_matrix(moment_tensor_sol)
-    # For symmetric tensors, eigvalsh is faster and yields ordered real vals (ascending)
-    lam = np.linalg.eigvalsh(M)[::-1]  # descending: lam1 >= lam2 >= lam3
-    rho = float(np.sqrt(np.sum(lam**2)))
-    if rho == 0.0:
-        return 0.0
-    trM = float(np.sum(lam))
-    # numerical safety: if trace(M) == 0 => delta = 0
-    if np.isclose(trM, 0.0, atol=1e-12, rtol=0.0):
-        return 0.0
-    bdot = trM / (np.sqrt(3.0) * rho)
-    bdot = float(np.clip(bdot, -1.0, 1.0))
-    delta = 90.0 - np.degrees(np.arccos(bdot))
-    return float(delta)
-
-def compute_scalar_moment(moment_tensor_sol):
-    moment_tensor_matrix = create_matrix(moment_tensor_sol)
-    
-    M_0 = (1/np.sqrt(2)) * np.sum(moment_tensor_matrix**2)**(1/2)
-    return moment_tensor_matrix, M_0
-
-
-def create_matrix(moment_tensor_sol):
-    moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
-                                        [moment_tensor_sol[3], moment_tensor_sol[1], moment_tensor_sol[5]],
-                                        [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
-                                        
-    return moment_tensor_matrix
-from pyrocko import moment_tensor as pmt
-
-def convert_to_pyrocko(mt):
-    #up, south, east to north east down
-    m = pmt.MomentTensor(
-        mnn=-mt[1],
-        mee=-mt[2],
-        mdd=-mt[0],
-        mne=-mt[4],
-        mnd=-mt[5],
-        med=-mt[3]
-    )
-    return m
-
-def get_nodal_planes(theta):
-    m = convert_to_pyrocko(theta)
-    nodal_planes = m.both_strike_dip_rake()
-    return nodal_planes
 
 class MomentTensorReparametrised:
 
@@ -268,15 +128,130 @@ class MomentTensorReparametrised:
         for name, (theta0, samples, data_scaler, _) in samples_theta0_dict.items():
             if data_scaler is None:
                 data_scaler = self.data_scaler
-            # samples = data_scaler.inverse_transform(samples)
             if theta0 is not None:
                 pass
-                # theta0 = self.data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
             samples, theta0 = self.convert_samples(samples, theta0, custom_processing)
-            # if custom_processing is not None:
-            #     samples, theta0 = custom_processing(samples, theta0)
             converted_chain_dict[name] = (theta0, samples, None)
         return converted_chain_dict
+
+
+#: One colour per overlaid ensemble, in dict order, shared by the lune contours and the corner
+#: plot. Hex codes, because the corner-plot library accepts only those or its own mapped names.
+LUNE_ENSEMBLE_COLORS = ['#6495ED', '#FF0000', '#800080', '#008000', '#A52A2A',
+                        '#FFA500', '#008080', '#FF00FF', '#808000', '#FFD700', '#00FFFF']
+
+#: Scatter styles for reference solutions overlaid alongside the primary one, cycled in the
+#: order the ``extra_references`` mapping gives them.
+LUNE_REFERENCE_STYLES = [
+    {"marker": "*", "color": "gold",        "s": 380},
+    {"marker": "s", "color": "dodgerblue",  "s": 200},
+    {"marker": "^", "color": "magenta",     "s": 230},
+    {"marker": "P", "color": "darkorange",  "s": 230},
+]
+
+
+def _relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1.3):
+    """Draw each collected beachball in a gutter just outside the lune rather than on top
+    of the scatter/KDE it annotates.
+
+    Beachballs belonging to the same posterior (``spec['group']``) stay together on one side,
+    stacked in their original vertical order with a minimal order-preserving nudge so they
+    don't overlap each other. Each *group* is then assigned to a (side, column) slot: the
+    lighter side of the inner column is preferred, the opposite side is the first fallback,
+    and only if a group still collides in y does it move to a further-out column (larger |x|).
+    A thin leader line connects each relocated beachball back to its true location (kept marked
+    by the caller). ``specs`` is a list of dicts with keys ``mt, x, y, color, edge`` and
+    optional ``group`` (defaults to ``color``) / ``linewidth``.
+    """
+    if not specs:
+        return
+
+    # A beachball is circular in display, so its diameter is a fraction of the axes height;
+    # offset the gutters by about one radius so the balls clear the frame at any delta.
+    ax.figure.canvas.draw()
+    bbox = ax.get_window_extent()
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+    half_w = 0.5 * diameter * bbox.height / bbox.width * (xmax - xmin)
+    x_l, _ = bm(-30, 0)
+    x_r, _ = bm(30, 0)
+    min_gap = 1.05 * diameter * (ymax - ymin)   # beachball vertical extent + small margin
+
+    # group beachballs by posterior so each ensemble's balls stay together as a unit
+    groups, order = {}, []
+    for s in specs:
+        key = s.get('group', s['color'])
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(s)
+
+    # within each group: stack in y-order, push apart to min_gap, recentre on its own midpoint
+    g_specs, g_ys, g_interval = {}, {}, {}
+    for key in order:
+        col = sorted(groups[key], key=lambda s: s['y'])
+        ys = [s['y'] for s in col]
+        for k in range(1, len(ys)):
+            ys[k] = max(ys[k], ys[k - 1] + min_gap)
+        shift = 0.5 * (col[0]['y'] + col[-1]['y']) - 0.5 * (ys[0] + ys[-1])
+        ys = [y + shift for y in ys]
+        g_specs[key], g_ys[key] = col, ys
+        g_interval[key] = (ys[0] - 0.5 * min_gap, ys[-1] + 0.5 * min_gap)
+
+    # assign each group to a (side, column) slot, never overlapping another group's y-interval
+    slots = {}                                   # (side, col) -> occupied y-intervals
+    load = {'L': 0, 'R': 0}                       # balls per side, for balancing the inner column
+    placement = {}
+    for key in sorted(order, key=lambda k: -0.5 * (g_interval[k][0] + g_interval[k][1])):
+        lo, hi = g_interval[key]
+        chosen, col_idx = None, 0
+        while chosen is None:
+            for side in sorted(('L', 'R'), key=lambda sd: load[sd]):
+                if all(hi < a or lo > b for a, b in slots.get((side, col_idx), [])):
+                    chosen = (side, col_idx)
+                    break
+            col_idx += 1
+        slots.setdefault(chosen, []).append((lo, hi))
+        load[chosen[0]] += len(g_specs[key])
+        placement[key] = chosen
+
+    # draw each group at its slot's x; column index pushes outer columns further from the lune
+    col_step = 2.3 * half_w
+    for key in order:
+        side, col_idx = placement[key]
+        if side == 'L':
+            gx = x_l - gutter_pad * half_w - col_idx * col_step
+        else:
+            gx = x_r + gutter_pad * half_w + col_idx * col_step
+        for s, yb in zip(g_specs[key], g_ys[key]):
+            ax.plot([s['x'], gx], [s['y'], yb], color='gray', lw=0.6, alpha=0.7, zorder=9)
+            plot_beachball_on_axes(ax, s['mt'], gx, yb, diameter=diameter,
+                                   color_t=s['color'], edgecolor=s['edge'],
+                                   zorder=10, linewidth=s.get('linewidth', 1))
+
+
+def _add_lune_legend(ax, labels, colors, title=None, loc='upper left', fontsize=13,
+                     extra_markers=None):
+    """Add a per-ensemble colour legend to a lune plot (single source of truth for the
+    colour->label mapping shared by plot_lunes / plot_lunes_kde and the evaluation wrappers).
+
+    ``extra_markers`` (optional) is a list of ``{label, color, marker}`` dicts for additional
+    reference-MT scatter overlays; each is appended as a marker handle below the line handles."""
+    from matplotlib.lines import Line2D
+    extra_markers = list(extra_markers or [])
+    if plt.rcParams.get('text.usetex', False):
+        # '%' is a LaTeX comment char; ChainConsumer can leave text.usetex on before we run.
+        esc = lambda t: t.replace('%', r'\%') if isinstance(t, str) else t
+        title = esc(title)
+        labels = [esc(lab) for lab in labels]
+        extra_markers = [{**em, "label": esc(em["label"])} for em in extra_markers]
+    handles = [Line2D([0], [0], lw=2.2, color=colors[i % len(colors)], label=lab)
+               for i, lab in enumerate(labels)]
+    handles += [Line2D([0], [0], lw=0, marker=em["marker"], color=em["color"],
+                       markeredgecolor='black', markersize=12, label=em["label"])
+                for em in extra_markers]
+    if handles:
+        ax.legend(handles=handles, loc=loc, fontsize=fontsize, title=title, framealpha=0.9)
 
 
 class PosteriorPlotter:
@@ -305,7 +280,6 @@ class PosteriorPlotter:
         
         ax.set_title(f"{parameter.name}")
         ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.5)
-        # ax.plot(param_ground_truths, param_ground_truths, label="Ground truth", color="green", linestyle='--')
         ax.set_xlabel(f"Ground truth ({parameter.unit})")
         ax.set_ylabel(f"Compression ({parameter.unit})")
         
@@ -320,12 +294,11 @@ class PosteriorPlotter:
         compressions  = torch.Tensor(np.concatenate([repeated[:,:,:parameter_index], yy, repeated[:,:,parameter_index:]], axis=-1)).flatten(start_dim=0, end_dim=1)
         
         probabilities = likelihood_estimator.log_prob(thetas, compressions)
-        # xx, yy = np.meshgrid(real_units_xs, real_units_xs)
         u_thetas = self.data_scaler.inverse_transform(thetas)
         u_compressions = self.data_scaler.inverse_transform(compressions)
         # print(parameter.scaling_transform(u_thetas[:200, parameter_index]),
         #         parameter.scaling_transform(u_compressions[:10, parameter_index]))
-        contours = ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
+        ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
                     parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), probabilities.reshape(20,20).detach().numpy().T
                     # ,alpha=0.3, levels=[-5000,-2000,-1000,-500,-200,-100,0, 1000])
                     ,alpha=0.3, levels=[-200,-100,-50, -25, -10,0, 200])
@@ -365,7 +338,7 @@ class PosteriorPlotter:
                 probability = likelihood_estimator.log_prob(theta, compression)
                 probabilities.append(probability)
         else:
-             with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(thetas))) as progress_bar:
+             with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(thetas))):
                 with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
                     probabilities = joblib.Parallel()(
                         joblib.delayed(likelihood_estimator.log_prob)(theta, compression) for theta, compression in zip(thetas, compressions)
@@ -383,8 +356,7 @@ class PosteriorPlotter:
             cust_compressions[:, parameter_index] = torch.Tensor(np.full_like(flat_observations, compression_val))
             cust_compressions_saved = self.data_scaler.inverse_transform(cust_compressions)
             cust_compression_vals.append(cust_compressions_saved)
-            # compressions = torch.Tensor(np.full_like(flat_observations, compression_val))
-            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(cust_thetas))) as progress_bar:
+            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(cust_thetas))):
                 with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
                     posterior_vals = joblib.Parallel()(
                         joblib.delayed(likelihood_estimator.log_prob)(theta, compression) for theta, compression in zip(cust_thetas, cust_compressions)
@@ -392,7 +364,6 @@ class PosteriorPlotter:
             posterior_lines.append(torch.stack(posterior_vals).numpy())
         
         probabilities = torch.stack(probabilities)
-        # xx, yy = np.meshgrid(real_units_xs, real_units_xs)
         u_thetas = self.data_scaler.inverse_transform(thetas)
         u_compressions = self.data_scaler.inverse_transform(compressions)
         return u_thetas, u_compressions, probabilities, (cust_compression_vals, cust_theta_saved, posterior_lines)
@@ -410,29 +381,19 @@ class PosteriorPlotter:
         param_ground_truths = ground_truths[:, parameter_index]
         param_compressions = compressions[:, parameter_index]
         
-        transform = lambda x: x - np.min(param_ground_truths)/ (np.max(param_ground_truths) - np.min(param_ground_truths))
         #width aspect 2:1 
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(6,5), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
         ax =axes[0]
         post_ax = axes[1]
         post_ax.set_xticks([])
         post_ax.set_yticks([])
-        # post_ax.set_title("Posterior $ p(\\mathbf{m} \mid \\mathbf{D})$")
         post_ax.set_xlabel("Model Parameters, $\\mathbf{m}$")
 
-        # ax.axis("off")
-        # ax.set_title(f"Empirical Density Modelling")
         ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.7, color='red')
-        # ax.plot(param_ground_truths, param_ground_truths, label="Ground truth", color="green", linestyle='--')
-        # ax.set_xlabel("Model Parameters, $\\mathbf{m}$")
-        # ax.set_ylabel("Observation, $\\mathbf{D}$")
         ax.set_ylim(np.min(parameter.scaling_transform(u_thetas[:,parameter_index])), 
                     np.max(parameter.scaling_transform(u_thetas[:, parameter_index])))
-        # print(param_ground_truths)
-        # print(parameter.scaling_transform(u_thetas[:200, parameter_index]),
-        #         parameter.scaling_transform(u_compressions[:10, parameter_index]))
         shaped_probs = probabilities.reshape(20,20).detach().numpy().T
-        contours = ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
+        ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
                     parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), np.clip(shaped_probs,-700,10000),
                     alpha=0.4, levels=[ -750,-500, -350, -200, -100, -50, -25,0,50])
                     # levels=[  -200, -150, -125, -100, -75,-50,-35, -20, -10, 0,20])
@@ -442,15 +403,13 @@ class PosteriorPlotter:
         posterior = np.exp(0.05*np.array(posterior_lines[2][1]))
         posterior /= np.max(posterior) * 0.2
         ys =  parameter.scaling_transform(posterior_lines[0][1][0,parameter_index])* np.ones_like(xs)
-        posterior_line = ax.plot(xs, ys, color='blue', label='Posterior', linestyle='--', linewidth=2)
-        # post_ax.plot(xs, posterior, color='black', label='Posterior', linestyle='--')
+        ax.plot(xs, ys, color='blue', label='Posterior', linestyle='--', linewidth=2)
         post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='cornflowerblue')
         
         posterior = np.exp(0.05*np.array(posterior_lines[2][0]))
         posterior /= np.max(posterior) * 0.2
         ys =parameter.scaling_transform(posterior_lines[0][0][0,parameter_index]) * np.ones_like(xs)
-        posterior_line = ax.plot(xs, ys, color='red', label='Posterior', linestyle='--', linewidth=2)
-        # post_ax.plot(xs, posterior, color='black', label='Posterior', linestyle='--')
+        ax.plot(xs, ys, color='red', label='Posterior', linestyle='--', linewidth=2)
         post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='red')
         post_ax.set_ylim(0.001, np.max(posterior.flatten()) * 1.2)
 
@@ -506,8 +465,6 @@ class PosteriorPlotter:
             unit_string = f"({parameter.unit})" if parameter.unit != "" else ""
             ax.set_xlabel(f"Ground truth {unit_string}")
             ax.set_ylabel(f"Compression {unit_string}")
-            # if i == 0:
-            #     left_ax.legend()
             
         plt.tight_layout()
 
@@ -519,8 +476,8 @@ class PosteriorPlotter:
         plt.close()
 
     def plot_chain_consumer(self, inversion_data, kde=True, extents=None, inverse=False, figsave= None, tick_font_size=30, *args, **kwargs):
-
-        colors = ['blue', 'red', 'purple', 'green', 'brown']
+        plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
+        colors = LUNE_ENSEMBLE_COLORS
 
         scaled_data_dict = {name: self._prepare_data_for_plotting(*data) 
                                 for name, data in inversion_data.items()}
@@ -542,7 +499,7 @@ class PosteriorPlotter:
                 shade = shade_first
             else:
                 shade = False
-            c_plot.add_chain(samples, parameters=parameters_label, color=colors[i], name=name, shade=shade, linewidth=2.5)
+            c_plot.add_chain(samples, parameters=parameters_label, color=colors[i % len(colors)], name=name, shade=shade, linewidth=2.5)
             i+=1
         c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=False, usetex=True, bar_shade=True)
         c_plot.configure_truth(lw=2)
@@ -557,16 +514,15 @@ class PosteriorPlotter:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
         plt.close()
     
-    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None):
+    def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None, legend=True, extra_references=None, reference_label=None, primary_reference=None):
 
-        # New implementation: project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
+        # Project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
         fig, ax = plt.subplots(figsize=(14, 14))
         bm = plot_lune_frame(ax)
 
-        colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+        colors = LUNE_ENSEMBLE_COLORS
         true_theta0 = None
-
-
+        beachball_specs = []
 
         for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
             np.random.shuffle(samples)
@@ -579,7 +535,7 @@ class PosteriorPlotter:
             x, y = bm(gamma, delta)
             ax.scatter(x, y, color=colors[i % len(colors)], alpha=0.3, s=6, marker='o')
             if i ==0 and plot_beachballs:
-                # if plot beachballs for true, plot 3 beachballs and truth
+                # beachballs for the true MT + delta percentiles of the first ensemble
                 true_mt = true_theta0
                 percentile_mts = []
                 for q in [5, 50, 95]:
@@ -588,7 +544,6 @@ class PosteriorPlotter:
                     idx = np.argmin(np.abs(delta - d_q))
                     percentile_mts.append(samples_MT[idx])
 
-                # add true beachball in gold
                 for idx, mt in enumerate([true_mt] + percentile_mts):
                     if mt is None:
                         continue
@@ -597,10 +552,32 @@ class PosteriorPlotter:
                     tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
                     tx, ty = bm(tg, td)
                     mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
-                    plot_beachball_on_axes(ax, mt, tx[0], ty[0], diameter=0.08, color_t=facecolor, edgecolor='black', zorder=10, linewidth=0.5)
+                    # mark the true location; the beachball itself is relocated outside the lune
                     ax.scatter(tx, ty, color=facecolor, alpha=1.0, marker='o', s=20, zorder=11)
+                    beachball_specs.append({'mt': mt, 'x': tx[0], 'y': ty[0],
+                                            'color': facecolor, 'edge': 'black', 'linewidth': 0.5,
+                                            'group': 'truth' if idx == 0 else i})
 
-
+        _relocate_beachballs_outside_lune(ax, bm, beachball_specs)
+        extra_specs = self._scatter_extra_references(ax, bm, extra_references or {})
+        # Primary 'truth' here is the black dot (drawn in the i==0 block when plot_beachballs);
+        # if absent but a primary_reference is supplied, draw it so it is shown consistently.
+        ref_specs = []
+        if reference_label:
+            if not (true_theta0 is not None and plot_beachballs) and primary_reference is not None:
+                _, pr = self.get_moment_tensors(np.empty((0, 6)),
+                                                np.asarray(primary_reference, dtype=float))
+                pr = np.array(self.convert_mt_convention(pr))
+                pg, pd = mts6_to_gamma_delta(pr.reshape(1, -1))
+                px, py = bm(pg, pd)
+                ax.scatter(px, py, color='black', marker='o', s=60,
+                           edgecolors='black', zorder=12)
+                ref_specs = [{"label": reference_label, "color": "black", "marker": "o"}]
+            elif true_theta0 is not None and plot_beachballs:
+                ref_specs = [{"label": reference_label, "color": "black", "marker": "o"}]
+        if legend:
+            _add_lune_legend(ax, list(inversion_data.keys()), colors,
+                             extra_markers=ref_specs + extra_specs)
 
         if figsave is None:
             plt.show()
@@ -609,8 +586,15 @@ class PosteriorPlotter:
         plt.close()
 
 
-    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True):
-        """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°."""
+    def plot_lunes_kde(self, inversion_data, num_samples=2500, plot_beachballs=True, plot_inset=False, figsave=None, ax=None, show=True, legend=True, legend_title='solid 68%, dashed 95% HPD', extra_references=None, reference_label=None, primary_reference=None):
+        """Plot 68%/95% HPD KDE contours for each ensemble on the projected lune, with a zoomed inset around truth ±8°.
+
+        ``extra_references`` (optional) maps ``label -> MT 6-vector`` (canonical
+        ``[Mrr,Mtt,Mpp,Mrt,Mrp,Mtp]``) for additional published reference solutions, drawn as
+        distinct scatter markers (see ``LUNE_REFERENCE_STYLES``) with their own legend entries.
+        ``reference_label`` (optional) gives the primary 'truth' (gold diamond) its own legend
+        entry. ``primary_reference`` (optional) is a primary-reference MT 6-vector drawn as that
+        gold diamond when the ensembles carry no ``theta0`` truth (e.g. the dropout lune)."""
         if ax is None:
             fig, ax = plt.subplots(figsize=(14, 14))
         else:
@@ -618,7 +602,7 @@ class PosteriorPlotter:
         
         bm = plot_lune_frame(ax)
 
-        colors = ['cornflowerblue', 'red', 'purple', 'green', 'brown']
+        colors = LUNE_ENSEMBLE_COLORS
         qs = [[5,50,95], [50], [5,50,95]]
         gx = np.linspace(-30, 30, 200)
         gy = np.linspace(-90, 90, 300)
@@ -628,7 +612,9 @@ class PosteriorPlotter:
         # Cache per-ensemble gamma/delta for reuse in inset and store truth from first ensemble
         gd_list = []
         true_theta0 = None
+        beachball_specs = []
 
+        fig.canvas.draw()
         for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
             np.random.shuffle(samples)
             samples = samples[:num_samples]
@@ -641,23 +627,21 @@ class PosteriorPlotter:
             thr68, thr95 = kde_hpd_contour_levels(Z, levels=(0.6827, 0.9545))
             ax.contour(XX, YY, Z, levels=[thr95, thr68], colors=colors[i % len(colors)],
                        linestyles=['--', '-'], linewidths=[1.5, 1.8])
-                # if plot beachballs for true, plot 3 beachballs and truth
-            true_mt = true_theta0
+
+            # delta percentiles for this ensemble; qs cycles so >3 overlaid ensembles
+            # (e.g. station-dropout comparisons) don't IndexError.
             percentile_mts = []
-            for q in qs[i]:
+            for q in qs[i % len(qs)]:
                 d_q = np.percentile(d, q)
                 # find closest sample to this delta
                 idx = np.argmin(np.abs(d - d_q))
                 percentile_mts.append(samples_MT[idx])
 
-            # add true beachball in gold
-            fig.canvas.draw()
-
-            for idx, mt in enumerate([true_mt] + percentile_mts):
+            # truth drawn once (first ensemble, identical across ensembles); percentiles per ensemble
+            mts_to_draw = ([(true_theta0, True)] if i == 0 else []) + [(m, False) for m in percentile_mts]
+            for mt, is_true_mt in mts_to_draw:
                 if mt is None:
                     continue
-
-                is_true_mt = (idx == 0)
 
                 # If beachballs are OFF, only plot the true MT (scatter only)
                 if not plot_beachballs and not is_true_mt:
@@ -672,20 +656,7 @@ class PosteriorPlotter:
                 tx, ty = bm(tg, td)
                 mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
 
-                # Plot beachball only if enabled
-                if plot_beachballs:
-                    plot_beachball_on_axes(
-                        ax,
-                        mt,
-                        tx[0],
-                        ty[0],
-                        diameter=0.08,
-                        color_t=facecolor,
-                        edgecolor='black',
-                        zorder=10,
-                        linewidth=1
-                    )
-
+                # mark the true location; the beachball itself is relocated outside the lune
                 ax.scatter(
                     tx,
                     ty,
@@ -695,6 +666,19 @@ class PosteriorPlotter:
                     s=320 if is_true_mt else 40,
                     zorder=11
                 )
+                if plot_beachballs:
+                    beachball_specs.append({'mt': mt, 'x': tx[0], 'y': ty[0],
+                                            'color': facecolor, 'edge': 'black', 'linewidth': 1,
+                                            'group': 'truth' if is_true_mt else i})
+
+        _relocate_beachballs_outside_lune(ax, bm, beachball_specs)
+        extra_specs = self._scatter_extra_references(ax, bm, extra_references or {})
+        ref_specs = self._primary_reference_legend(
+            ax, bm, true_theta0, reference_label, primary_reference)
+        if legend:
+            _add_lune_legend(ax, list(inversion_data.keys()), colors, title=legend_title,
+                             extra_markers=ref_specs + extra_specs)
+
         iax = None
         if plot_inset:
             # Add zoomed inset centered on truth ±8 degrees
@@ -764,6 +748,49 @@ class PosteriorPlotter:
         if show:
             plt.close()
 
+    def _primary_reference_legend(self, ax, bm, true_theta0, reference_label, primary_reference):
+        """Return the legend spec ``[{label,color,marker}]`` for the PRIMARY reference — the gold
+        'truth' diamond (e.g. a published solution). If the ensembles carried a ``theta0`` truth
+        it is already drawn by the main loop and we only emit its legend entry; if they did NOT
+        (e.g. the station-dropout lune, whose configs have ``theta0=None``) but a
+        ``primary_reference`` MT 6-vector is supplied, draw it here as the same peru diamond so it
+        appears consistently. Returns ``[]`` when there is nothing to label."""
+        truth_drawn = true_theta0 is not None
+        if not truth_drawn and primary_reference is not None:
+            _, pr_mt = self.get_moment_tensors(np.empty((0, 6)),
+                                               np.asarray(primary_reference, dtype=float))
+            pr_mt = np.array(self.convert_mt_convention(pr_mt))
+            pg, pd = mts6_to_gamma_delta(pr_mt.reshape(1, -1))
+            px, py = bm(pg, pd)
+            ax.scatter(px, py, color='peru', marker='d', s=320,
+                       edgecolors='black', linewidths=1.0, zorder=12)
+            truth_drawn = True
+        if truth_drawn and reference_label:
+            return [{"label": reference_label, "color": "peru", "marker": "d"}]
+        return []
+
+    def _scatter_extra_references(self, ax, bm, extra_references):
+        """Overlay additional published reference MTs as distinct scatter markers on the
+        projected lune. ``extra_references`` maps ``label -> MT 6-vector`` in the canonical
+        ``[Mrr,Mtt,Mpp,Mrt,Mrp,Mtp]`` (USE/RTP) convention; each is routed through the SAME
+        conversion path as the primary truth (``get_moment_tensors`` + ``convert_mt_convention``)
+        so its lune position is consistent with the gold 'truth' marker. The lune (γ,δ) is
+        scale- and basis-invariant, so absolute units / deviatoric-vs-full do not matter here.
+        Returns a list of ``{label, color, marker}`` legend specs."""
+        specs = []
+        for j, (label, rmt) in enumerate(extra_references.items()):
+            if rmt is None:
+                continue
+            style = LUNE_REFERENCE_STYLES[j % len(LUNE_REFERENCE_STYLES)]
+            _, ref_mt = self.get_moment_tensors(np.empty((0, 6)), np.asarray(rmt, dtype=float))
+            ref_mt = np.array(self.convert_mt_convention(ref_mt))
+            rg, rd = mts6_to_gamma_delta(ref_mt.reshape(1, -1))
+            rx, ry = bm(rg, rd)
+            ax.scatter(rx, ry, color=style["color"], marker=style["marker"], s=style["s"],
+                       edgecolors="black", linewidths=1.0, zorder=12)
+            specs.append({"label": label, "color": style["color"], "marker": style["marker"]})
+        return specs
+
     def get_moment_tensors(self, samples, theta0):
         sample_mts = []
         for sample in samples:
@@ -812,9 +839,7 @@ class PosteriorPlotter:
 
         if data_scaler is None:
             data_scaler = self.data_scaler
-        # raw_units_samples = data_scaler.inverse_transform(samples)
         if theta0 is not None:
-            # raw_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1))
             pass
         plotting_units_samples = self._transform_to_plotting_units(samples)
         if theta0 is not None:
@@ -859,11 +884,6 @@ class PosteriorPlotter:
         theta0, samples, data_scaler, _ = inversion_data
         if data_scaler is None:
             data_scaler = self.data_scaler
-        # plotting_units_samples = data_scaler.inverse_transform(samples)
-        # if theta0 is not None:
-        #     plotting_units_theta_0 = data_scaler.inverse_transform(theta0.reshape(1, -1)).flatten()
-        # else:
-        #     plotting_units_theta_0 = None
 
         np.random.shuffle(samples)
         if plot_path is not None:
@@ -982,11 +1002,7 @@ class PosteriorPlotter:
             fig.savefig(figsave)
         plt.close()
     
-    @staticmethod
-    def convert_mt_convention(mt_rr_phi_theta):
-        """(mnn, mee, mdd, mne, mnd, med)"""
-
-        return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
+    convert_mt_convention = staticmethod(convert_mt_convention)
 
 
     def add_beachball_plot(self, ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):
@@ -1003,19 +1019,23 @@ class PosteriorPlotter:
         ax.set_ylim((-0.1, 0.1))
 
 
-# -----------------------------
-# Standalone plotting: histories (trajectories) on the lune
-# -----------------------------
+# Standalone plotting: trajectories on the lune.
 
 def plot_lune_histories(histories, figsave=None, linewidth=2.0, mark_endpoints=True):
     """
     Plot trajectories of MT histories on the Tape & Tape lune (Hammer projection).
 
-    histories: dict mapping name -> sequence of MTs in 6-component form [Mxx, Myy, Mzz, Mxy, Mxz, Myz].
-               Each value can be an array of shape (T, 6) or an iterable of length T with 6-vectors.
-    figsave: optional path to save the figure; if None, shows the plot.
-    linewidth: line width for the trajectory.
-    mark_endpoints: if True, mark start (circle) and end (cross) points of each trajectory.
+    Parameters
+    ----------
+    histories : dict
+        Name -> sequence of MTs in 6-component form [Mxx, Myy, Mzz, Mxy, Mxz, Myz]. Each
+        value can be an array of shape (T, 6) or an iterable of length T with 6-vectors.
+    figsave : str, optional
+        Path to save the figure; if None, shows the plot.
+    linewidth : float
+        Line width for the trajectory.
+    mark_endpoints : bool
+        If True, mark start (circle) and end (cross) points of each trajectory.
     """
     fig, ax = plt.subplots(figsize=(14, 14))
     bm = plot_lune_frame(ax)

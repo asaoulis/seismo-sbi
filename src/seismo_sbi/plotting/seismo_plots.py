@@ -1,6 +1,14 @@
-import matplotlib.pyplot as plt   
+"""Waveform and misfit figures.
+
+:class:`MisfitsPlotting` draws observed against synthetic traces: raw, aligned on arrivals,
+by moveout, as a record section, and with posterior-predictive quantile bands.
+:func:`plot_stacked_waveforms` stacks every trace of one data vector.
+"""
+
+import matplotlib.pyplot as plt
 import numpy as np
-import math as m
+
+from collections import OrderedDict
 
 from obspy.taup import tau
 from obspy.geodetics import locations2degrees
@@ -183,7 +191,6 @@ class MisfitsPlotting:
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
 
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
@@ -244,7 +251,6 @@ class MisfitsPlotting:
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
 
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
@@ -310,7 +316,6 @@ class MisfitsPlotting:
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
 
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
@@ -403,8 +408,6 @@ class MisfitsPlotting:
             comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
             for comp in components
         }
-        n_per_comp = {comp: len(ordered_by_comp[comp]) for comp in components}
-        n_max = max(n_per_comp.values()) if n_per_comp else 0
 
         # Time axis
         t = np.arange(time_series_length) / float(self.sampling_rate)
@@ -483,6 +486,79 @@ class MisfitsPlotting:
         
         return arrivals
 
+    # ---------------------------------------------------------------- record section
+    def _reshape_to_cube(self, flat):
+        """``(n_traces * T,)`` flat vector -> ``(N_stations, C, T)`` cube.
+
+        Uses the receivers' own (receiver-major, then component) order — the same layout
+        the simulator flattens into, so this inverts it exactly. Requires a uniform
+        component set across the (restricted) receivers, which is what the dataloader's
+        ``load_event_subset(..., stacked=True)`` produces.
+        """
+        flat = np.asarray(flat, float)
+        comps = [list(r.components) for r in self.receivers.iterate()]
+        n_sta = len(comps)
+        if n_sta == 0:
+            raise ValueError("no receivers to reshape against")
+        if len({tuple(c) for c in comps}) != 1:
+            raise ValueError(f"record section needs a uniform component set, got {set(map(tuple, comps))}")
+        n_comp = len(comps[0])
+        time_length = int(flat.shape[-1] // (n_sta * n_comp))
+        return flat.reshape(-1, n_sta, n_comp, time_length), comps[0]
+
+    def plot_record_section(self, observation, event_location, *, deterministic=None,
+                            ensembles=None, channel_mask=None, max_samples=40,
+                            use_arrivals=False, title=None, figname=None, **kwargs):
+        """Moveout record section of the observation vs any number of overlays.
+
+        Adapter between this class's flat-vector / ``Receivers`` world and the pure-array
+        :func:`seismo_sbi.plotting.waveform_compare.moveout_record_section`.
+
+        Parameters
+        ----------
+        observation : flat 1-D vector
+        deterministic : dict, optional
+            ``label -> flat vector`` — single synthetics (best-fit MT, reference MTs).
+        ensembles : dict, optional
+            ``label -> (n_samples, data_len)`` — posterior predictive clouds. Subsampled to
+            ``max_samples`` before rendering.
+        channel_mask : ``(N, C)`` bool, optional
+            ``False`` = QA-dropped channel (greyed and excluded from the annotations).
+        use_arrivals : bool
+            Compute taup P-arrivals so ``order_by='arrival'`` / ``window=('arrival', ...)``
+            can be used. Costs a taup call per station.
+        **kwargs
+            Passed straight to ``moveout_record_section`` (``order_by``, ``y_scale``,
+            ``normalise``, ``layout``, ``window``, ``ensemble_style``, ...).
+        """
+        from seismo_sbi.plotting.waveform_compare import moveout_record_section
+
+        obs_cube, components = self._reshape_to_cube(observation)
+        obs_cube = obs_cube[0]
+        overlays = OrderedDict()
+        for label, vec in (deterministic or {}).items():
+            overlays[label] = self._reshape_to_cube(vec)[0][0]
+        rng = np.random.default_rng(kwargs.get("seed", 0))
+        for label, arr in (ensembles or {}).items():
+            arr = np.asarray(arr, float)
+            arr = arr.reshape(1, -1) if arr.ndim == 1 else arr
+            if arr.shape[0] > max_samples:
+                # keep member 0 FIRST: `select_best_synthetics` returns the ensemble
+                # ordered best-first, and the 'band+best' style draws member 0.
+                rest = rng.choice(np.arange(1, arr.shape[0]), max_samples - 1, replace=False)
+                arr = arr[np.concatenate(([0], rest))]
+            overlays[label] = self._reshape_to_cube(arr)[0]
+
+        station_names = [r.station_name for r in self.receivers.iterate()]
+        coords = np.array([[r.latitude, r.longitude] for r in self.receivers.iterate()])
+        arrivals = self._get_arrivals_dict(event_location) if use_arrivals else None
+
+        return moveout_record_section(
+            obs_cube, overlays, station_names, coords, event_location,
+            components=components, sampling_rate=self.sampling_rate,
+            arrivals=arrivals, channel_mask=channel_mask, title=title,
+            figname=figname, **{k: v for k, v in kwargs.items() if k != "seed"})
+
     def plot_posterior_predictive_stacked_traces(
         self,
         observation,
@@ -493,12 +569,19 @@ class MisfitsPlotting:
         alpha=0.08,
         seed=None,
         figname=None,
+        per_trace=False,
     ):
         """
         Posterior predictive check plot akin to plot_ordered_stacked_traces:
         - Columns per component (Z, E, N), stations ordered by earliest P-arrival.
         - Plots the observation (black) and random samples from multiple ensembles.
         - Adds provided metrics per ensemble as a small textbox.
+
+        per_trace : bool
+            If False (default) every trace is normalised by the SINGLE global observation
+            peak (amplitudes are comparable across stations). If True each trace is scaled by
+            its OWN observation peak, so the waveform SHAPE fit is visible on quiet/distant
+            stations that a global scale would flatten.
 
         Parameters
         ----------
@@ -545,10 +628,16 @@ class MisfitsPlotting:
             for name, arr in ensembles.items()
         }
 
-        # Global normalization based on observation
-        max_abs = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
-        if max_abs == 0:
-            max_abs = 1.0
+        # Normalisation: single global peak, or per-trace peak (see per_trace docstring).
+        global_max = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
+        if global_max == 0:
+            global_max = 1.0
+
+        def _norm(flat_idx):
+            if not per_trace:
+                return global_max
+            m = float(np.max(np.abs(obs_matrix[flat_idx])))
+            return m if m > 0 else 1.0
 
         # Component-specific ordered lists
         components = ['Z', 'E', 'N']
@@ -593,7 +682,7 @@ class MisfitsPlotting:
             # Draw observation (black)
             for k, (st, c) in enumerate(pairs):
                 flat_idx = trace_index_map[(st, c)]
-                d = obs_matrix[flat_idx] / max_abs
+                d = obs_matrix[flat_idx] / _norm(flat_idx)
                 y0 = offsets[k]
                 ax.plot(t, y0 + d, color='black', linewidth=1.2, zorder=3, label='Observation')
 
@@ -610,7 +699,7 @@ class MisfitsPlotting:
                     flat_idx = trace_index_map[(st, c)]
                     y0 = offsets[k]
                     # samples: [take, time]
-                    samples = sample_cube[sel, flat_idx, :] / max_abs
+                    samples = sample_cube[sel, flat_idx, :] / _norm(flat_idx)
                     # plot lines (vectorized loop)
                     for row in samples:
                         ax.plot(t, y0 + row, color=color, alpha=alpha, linewidth=0.6, zorder=2)
@@ -630,7 +719,6 @@ class MisfitsPlotting:
         # Ticks: keep y labels only on first, x labels on 2nd and 3rd
         for i, ax in enumerate(axes):
             if i == 0:
-                # ax.tick_params(labelbottom=False)
                 pass
             else:
                 ax.tick_params(labelleft=False)
@@ -973,225 +1061,3 @@ class MisfitsPlotting:
         else:
             plt.show()
         plt.close()
-
-# ...existing code...
-
-# ...existing code...
-def plot_stacked_spectrograms(receivers, flattened_seismogram_array, reference_noise_array=None, sampling_rate = 1, figname = None):
-    num_receivers = len(receivers)
-    station_names = [receiver.station_name for receiver in receivers]
-    time_series_length = int(flattened_seismogram_array.shape[0]//num_receivers)
-    seismograms = np.reshape(flattened_seismogram_array, (num_receivers,time_series_length))
-    if reference_noise_array is not None:
-        reference_noise_array = np.reshape(reference_noise_array, (num_receivers,time_series_length))
-
-
-    fig, axes = plt.subplots(m.ceil(num_receivers/6), 6, figsize=(15, num_receivers//2))
-    
-    colors = []
-    for index, (ax, seismogram, station_name) in enumerate(zip(axes.ravel(), seismograms, station_names)):
-        # ax.specgram(seismogram, Fs=sampling_rate, NFFT=64, noverlap=32, cmap="jet")
-        if reference_noise_array is None:
-            norm = spectrogram(seismogram, sampling_rate, 
-                        per_lap=0.9, wlen=20, log=True, dbscale=True, 
-                        cmap="jet", show=False, axes=ax)
-        else:
-            specgram,freq,time, end = compute_spectrogram(seismogram, sampling_rate, per_lap=0.9, wlen=20, dbscale=False)
-            specgram_noise, _, _, _ = compute_spectrogram(reference_noise_array[index], sampling_rate, per_lap=0.9, wlen=20, dbscale=False)
-            norm = generate_spectrogram_plot(10 * np.log10(specgram / specgram_noise), freq, time, end, log=True, axes=ax, cmap="jet")
-        
-        ax.set_title(f"{station_name} - Peak: {int(norm.vmax)} dB/Hz")
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("Frequency [Hz]")
-
-
-    for i in range(num_receivers, len(axes.ravel())):
-        axes.ravel()[i].axis("off")
-    plt.tight_layout()
-    if figname is not None:
-        fig.savefig(figname)
-        fig.clear()
-    else:
-        plt.show()
-    plt.close()
-    return colors
-
-import math
-
-import numpy as np
-from matplotlib import mlab
-from matplotlib.colors import Normalize
-
-from obspy.imaging.cm import obspy_sequential
-
-
-def _nearest_pow_2(x):
-    """
-    Find power of two nearest to x
-
-    >>> _nearest_pow_2(3)
-    2.0
-    >>> _nearest_pow_2(15)
-    16.0
-
-    :type x: float
-    :param x: Number
-    :rtype: Int
-    :return: Nearest power of 2 to x
-    """
-    a = math.pow(2, math.ceil(np.log2(x)))
-    b = math.pow(2, math.floor(np.log2(x)))
-    if abs(a - x) < abs(b - x):
-        return a
-    else:
-        return b
-
-
-def spectrogram(data, samp_rate, per_lap=0.9, wlen=None, log=False,
-                outfile=None, fmt=None, axes=None, dbscale=False,
-                mult=8.0, cmap=obspy_sequential, zorder=None, title=None,
-                show=True, sphinx=False, clip=[0.0, 1.0]):
-    """
-    Computes and plots spectrogram of the input data.
-
-    :param data: Input data
-    :type samp_rate: float
-    :param samp_rate: Samplerate in Hz
-    :type per_lap: float
-    :param per_lap: Percentage of overlap of sliding window, ranging from 0
-        to 1. High overlaps take a long time to compute.
-    :type wlen: int or float
-    :param wlen: Window length for fft in seconds. If this parameter is too
-        small, the calculation will take forever. If None, it defaults to
-        (samp_rate/100.0).
-    :type log: bool
-    :param log: Logarithmic frequency axis if True, linear frequency axis
-        otherwise.
-    :type outfile: str
-    :param outfile: String for the filename of output file, if None
-        interactive plotting is activated.
-    :type fmt: str
-    :param fmt: Format of image to save
-    :type axes: :class:`matplotlib.axes.Axes`
-    :param axes: Plot into given axes, this deactivates the fmt and
-        outfile option.
-    :type dbscale: bool
-    :param dbscale: If True 10 * log10 of color values is taken, if False the
-        sqrt is taken.
-    :type mult: float
-    :param mult: Pad zeros to length mult * wlen. This will make the
-        spectrogram smoother.
-    :type cmap: :class:`matplotlib.colors.Colormap`
-    :param cmap: Specify a custom colormap instance. If not specified, then the
-        default ObsPy sequential colormap is used.
-    :type zorder: float
-    :param zorder: Specify the zorder of the plot. Only of importance if other
-        plots in the same axes are executed.
-    :type title: str
-    :param title: Set the plot title
-    :type show: bool
-    :param show: Do not call `plt.show()` at end of routine. That way, further
-        modifications can be done to the figure before showing it.
-    :type sphinx: bool
-    :param sphinx: Internal flag used for API doc generation, default False
-    :type clip: [float, float]
-    :param clip: adjust colormap to clip at lower and/or upper end. The given
-        percentages of the amplitude range (linear or logarithmic depending
-        on option `dbscale`) are clipped.
-    """
-
-    # enforce float for samp_rate
-    specgram, freq, time, end = compute_spectrogram(data, samp_rate, per_lap, wlen, dbscale, mult)
-
-    norm = generate_spectrogram_plot(specgram, freq, time, end, log, axes,  cmap, zorder, clip)
-
-    return norm
-
-def generate_spectrogram_plot(specgram, freq, time, end, log=False, axes=None,  cmap=obspy_sequential, zorder=None, clip=[0.0, 1.0]):
-    import matplotlib.pyplot as plt
-    vmin, vmax = clip
-    if vmin < 0 or vmax > 1 or vmin >= vmax:
-        msg = "Invalid parameters for clip option."
-        raise ValueError(msg)
-    _range = float(specgram.max() - specgram.min())
-    vmin = specgram.min() + vmin * _range
-    vmax = specgram.min() + vmax * _range
-    norm = Normalize(vmin, vmax, clip=True)
-
-    if not axes:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-    else:
-        ax = axes
-
-    # calculate half bin width
-    halfbin_time = (time[1] - time[0]) / 2.0
-    halfbin_freq = (freq[1] - freq[0]) / 2.0
-
-    # argument None is not allowed for kwargs on matplotlib python 3.3
-    kwargs = {k: v for k, v in (('cmap', cmap), ('zorder', zorder))
-              if v is not None}
-
-    if log:
-        # pcolor expects one bin more at the right end
-        freq = np.concatenate((freq, [freq[-1] + 2 * halfbin_freq]))
-        time = np.concatenate((time, [time[-1] + 2 * halfbin_time]))
-        # center bin
-        time -= halfbin_time
-        freq -= halfbin_freq
-        # Log scaling for frequency values (y-axis)
-        ax.set_yscale('log')
-        # Plot times
-        ax.pcolormesh(time, freq, specgram, norm=norm, **kwargs)
-    else:
-        # this method is much much faster!
-        specgram = np.flipud(specgram)
-        # center bin
-        extent = (time[0] - halfbin_time, time[-1] + halfbin_time,
-                  freq[0] - halfbin_freq, freq[-1] + halfbin_freq)
-        ax.imshow(specgram, interpolation="nearest", extent=extent, **kwargs)
-
-    # set correct way of axis, whitespace before and after with window
-    # length
-    ax.axis('tight')
-    ax.set_xlim(0, end)
-    ax.grid(False)
-    return norm
-
-def compute_spectrogram(data, samp_rate, per_lap=0.9, wlen=None, dbscale=False,mult=8.0,):
-    samp_rate = float(samp_rate)
-
-    # set wlen from samp_rate if not specified otherwise
-    if not wlen:
-        wlen = samp_rate / 100.
-
-    npts = len(data)
-    # nfft needs to be an integer, otherwise a deprecation will be raised
-    # XXX add condition for too many windows => calculation takes for ever
-    nfft = int(_nearest_pow_2(wlen * samp_rate))
-    if nfft > npts:
-        nfft = int(_nearest_pow_2(npts / 8.0))
-
-    if mult is not None:
-        mult = int(_nearest_pow_2(mult))
-        mult = mult * nfft
-    nlap = int(nfft * float(per_lap))
-
-    data = data - data.mean()
-    end = npts / samp_rate
-
-    # Here we call not plt.specgram as this already produces a plot
-    # matplotlib.mlab.specgram should be faster as it computes only the
-    # arrays
-    # XXX mlab.specgram uses fft, would be better and faster use rfft
-    specgram, freq, time = mlab.specgram(data, Fs=samp_rate, NFFT=nfft,
-                                         pad_to=mult, noverlap=nlap)
-    # db scale and remove zero/offset for amplitude
-    if dbscale:
-        specgram = 10 * np.log10(specgram[1:, :])
-    else:
-        specgram = np.sqrt(specgram[1:, :])
-    freq = freq[1:]
-    return specgram,freq,time, end
-
-

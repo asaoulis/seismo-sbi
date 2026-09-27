@@ -12,9 +12,10 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
-from seismo_sbi.sbi import utils as utils
-from seismo_sbi.cps_simulator.compatibility import load_velocity_model
+from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi import job_runners
+from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 
 import shutil
 

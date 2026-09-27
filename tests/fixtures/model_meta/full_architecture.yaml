@@ -1,0 +1,95 @@
+# Every ml_* block the training configuration understands, so the sidecar it produces pins
+# the whole architecture. Paths are placeholders; nothing here is read from disk.
+skip_compression_data: true
+
+ml_architecture: tcn
+
+ml_encoder:
+  input_decimate: 3
+  downsample: 2
+
+ml_conditioning:
+  param_map:
+    source_location: [latitude, longitude, depth]
+  d_cond: 256
+  coord_mode: geographic
+  inject: [token_add, film]
+
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.5, 1.0]
+  min_stations: 3
+  station_coords_mode: relative
+
+ml_amplitude_embedding:
+  enabled: true
+  mode: array_relative
+  per_component: false
+  reference: mean
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  scale: 1.0
+  distance_correction: true
+  snr_weighting: true
+  snr_floor_quantile: 0.2
+
+ml_positional_encoding:
+  enabled: true
+  mode: fourier
+  num_freqs: 16
+  sigma: 1.0
+  learnable_freqs: false
+  include_depth: true
+  inject_every_layer: true
+  standardize: running
+
+ml_pooling:
+  enabled: true
+  pool_over: tokens
+  num_seeds: 4
+  combine: linear
+  ffn: true
+  seed_self_attention: false
+
+ml_summary_bottleneck:
+  dim: 32
+
+ml_flow:
+  num_transforms: 8
+
+ml_perf:
+  sdpa: true
+  amp: true
+  fused_adam: true
+
+ml_optimizer:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_schedule: cosine
+  lr_min_factor: 0.2
+
+ml_cache:
+  sims: true
+  noise: true
+  dtype: float16
+
+ml_batch:
+  train: 128
+  val: 256
+
+ml_logging:
+  wandb: false
+  csv: true
+
+ml_mmd:
+  enabled: true
+  real_events_manifest: mmd_manifest.json
+  events_h5_dir: events
+  psim_data_folder: psim_suite
+  lambda_mmd: 0.5
+  warmup_epochs: 5
+  ramp_epochs: 5
+  every_n_steps: 4
+  batch_size: 64
+  clean_only: true

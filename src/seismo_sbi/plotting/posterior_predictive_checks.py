@@ -1,5 +1,12 @@
+"""Posterior predictive checks: re-simulate posterior draws and score them against the data.
+
+:class:`PosteriorPredictiveChecks` simulates an ensemble per method, selects the best synthetics,
+and evaluates registered misfit metrics against the observation; :func:`plot_metric_bars`
+compares the metrics across methods.
+"""
+
 import numpy as np
-import contextlib
+import warnings
 import joblib
 from tqdm import tqdm
 from typing import Callable, Dict, List, Optional
@@ -12,40 +19,9 @@ except Exception:
     hilbert = None
     welch = None
 
-from seismo_sbi.instaseis_simulator.utils import apply_station_time_shifts
-
-
-@contextlib.contextmanager
-def tqdm_joblib(tqdm_object):
-    """
-    Context manager to patch joblib to report into tqdm progress bar.
-    Robust to exceptions and restores original method on exit.
-    """
-    original = joblib.parallel.Parallel.print_progress
-
-    def print_progress(self):
-        try:
-            # self.n_completed_tasks exists on joblib >=0.14
-            completed = getattr(self, "n_completed_tasks", None)
-            if completed is None:
-                return original(self)
-            # update by difference
-            delta = int(completed - getattr(tqdm_object, "n", 0))
-            if delta > 0:
-                tqdm_object.update(n=delta)
-        except Exception:
-            # fallback to original if anything goes wrong
-            try:
-                original(self)
-            except Exception:
-                pass
-
-    joblib.parallel.Parallel.print_progress = print_progress
-    try:
-        yield tqdm_object
-    finally:
-        joblib.parallel.Parallel.print_progress = original
-        tqdm_object.close()
+from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
+from seismo_sbi.simulators.simulation_io import component_alias
+from seismo_sbi.utils.parallel import tqdm_joblib
 
 
 class PosteriorPredictiveChecks:
@@ -59,12 +35,12 @@ class PosteriorPredictiveChecks:
     covariance_matrix : optional object
         Optional covariance wrapper used to compute Mahalanobis distance.
         Supported (attempted) interfaces (in order):
-          - obj.solve(rhs) -> C^{-1} rhs  OR obj.apply_inverse(vec)
-            then chi2 = r^T (C^{-1} r)
-          - obj.compute_loss(residual, reduce=True) returning either
-              * -0.5 * chi2   (common in some codebases), or
-              * 0.5 * chi2
-            we try to infer sign/scale, but fallback to dot(r, r).
+
+        - obj.solve(rhs) -> C^{-1} rhs  OR obj.apply_inverse(vec)
+          then chi2 = r^T (C^{-1} r)
+        - obj.compute_loss(residual, reduce=True) returning either
+          -0.5 * chi2 (common in some codebases) or 0.5 * chi2;
+          we try to infer sign/scale, but fallback to dot(r, r).
     receivers : optional
         Object with .iterate() yielding receivers where each receiver has .components,
         used to infer per-trace shapes.
@@ -76,11 +52,16 @@ class PosteriorPredictiveChecks:
         Number of parallel jobs for simulation.
     dof_override : optional int
         If provided, use as degree-of-freedom for reduced chi^2 calculation.
-    random_shift_distributions : optional dict
-        If provided, enables per-ensemble station time shifts using the same
-        convention as TorchSimulationDataset: a global integer shift drawn
-        from N(mean, std=mean) rounded, plus a per-station uniform integer
-        jitter in [-half_range, half_range].
+    augmentation_chains : optional dict
+        Maps ``ensemble_name -> PostProcessingChain`` of Category-2 nuisance
+        effects (the SAME effects used in training-time augmentation) to fold
+        into each synthetic of that ensemble.  Replaces the legacy
+        ``random_shift_distributions`` integer-shift mechanism; time shifts are
+        now expressed via a ``TimeShiftErrorEffect`` in the chain.
+    augmentation_nuisance_params : optional dict
+        Maps ``ensemble_name -> {nuisance_key: value}`` activating the effects
+        in that ensemble's chain (e.g. ``{"time_shift_error": 1.0}``).  Missing
+        entries default to ``{}`` (effects inactive / identity).
     """
 
     def __init__(
@@ -92,7 +73,10 @@ class PosteriorPredictiveChecks:
         sample_rate: Optional[float] = 1.0,
         n_jobs: int = 20,
         dof_override: Optional[int] = None,
-        random_shift_distributions: Optional[Dict[str, tuple]] = None,
+        augmentation_chains: Optional[Dict[str, PostProcessingChain]] = None,
+        augmentation_nuisance_params: Optional[Dict[str, dict]] = None,
+        max_shift_samples: Optional[int] = None,
+        autocorr_maxlag: int = 50,
     ):
         self.simulator = simulator
         self.covariance_matrix = covariance_matrix
@@ -100,6 +84,11 @@ class PosteriorPredictiveChecks:
         self.n_jobs = int(n_jobs)
         self.sample_rate = sample_rate
         self.dof_override = dof_override
+        #: Lag budget (samples, each direction) for "Shifted corr misfit".  ``None`` ->
+        #: 10 % of the trace length, i.e. scaled to whatever window the traces span.
+        self.max_shift_samples = max_shift_samples
+        #: Max lag (samples) for the autocorrelation-shape metric.
+        self.autocorr_maxlag = int(autocorr_maxlag)
 
         # infer n_traces
         if n_traces is not None:
@@ -110,9 +99,10 @@ class PosteriorPredictiveChecks:
         else:
             self.n_traces = None
 
-        # store per-ensemble random shift distributions dict
-        # mapping ensemble_name -> (mean, half_range)
-        self.random_shift_distributions = random_shift_distributions or {}
+        # store per-ensemble nuisance augmentation chains + their activation params
+        # mapping ensemble_name -> PostProcessingChain / {nuisance_key: value}
+        self.augmentation_chains = augmentation_chains or {}
+        self.augmentation_nuisance_params = augmentation_nuisance_params or {}
 
         # metric registry: name -> callable(obs, synthetics, meta) -> per-sample np.array
         self.metrics = OrderedDict()
@@ -120,15 +110,14 @@ class PosteriorPredictiveChecks:
         self.add_metric(r"$\\chi^2$", self._metric_reduced_chi2)
         self.add_metric("Correlation misfit", self._metric_corr_misfit)
         self.add_metric("Power misfit", self._metric_power_misfit)
-        # add seismo-oriented metrics
-        # self.add_metric("band_power_ratio", self._metric_band_power_ratio)
         self.add_metric("Envelope misfit", self._metric_envelope_misfit)
         self.add_metric("MSE", self._metric_mse)
-        # self.add_metric("autocorr_misfit", self._metric_autocorr_misfit)
+        # Shift-tolerant pair: judge waveform shape with the arrival free, so a mechanism is not
+        # charged for travel-time error from the 1-D model and hypocentre.
+        self.add_metric("Shifted corr misfit", self._metric_shifted_corr_misfit)
+        self.add_metric("Autocorr misfit", self._metric_autocorr_misfit)
 
-    # -------------------
-    # Public API
-    # -------------------
+    # --- Public API ---
     def add_metric(self, name: str, func: Callable):
         """
         Register a new metric. func(obs, synthetics, meta) -> np.ndarray (len = n_synthetics)
@@ -150,43 +139,42 @@ class PosteriorPredictiveChecks:
         samples = inversion_data.samples 
         np.random.shuffle(samples) 
         samples = samples[:num_samples] 
-        with tqdm_joblib(tqdm(desc="Simulating synthetics for PPCs", total=len(samples))) as progress_bar:
+        with tqdm_joblib(tqdm(desc="Simulating synthetics for PPCs", total=len(samples))):
              with joblib.parallel_backend('loky', n_jobs=self.n_jobs):
                 results = joblib.Parallel()( 
                      joblib.delayed(self.simulator)(param_dict) for param_dict in samples 
                 )
-                # Apply per-sample random time shifts if receivers are known
-                if self.receivers is not None:
-                    # derive distribution for this ensemble
-                    if ensemble_name is not None and ensemble_name in self.random_shift_distributions:
-                        print("Using random shift distribution for ensemble:", ensemble_name)
-                        shifts = self.random_shift_distributions[ensemble_name]
-                    receiver_names = [rec.station_name for rec in self.receivers.iterate()]
-                    shifted = []
-                    for vec in results:
-                        try:
-                            # Build per-station shift dict
-                            if isinstance(shifts, tuple) and len(shifts) == 2:
-                                random_shift_distribution= shifts
-                                shift = round(np.random.normal(0, random_shift_distribution[0]))
-                                shift_dict = {name: shift + int(np.random.uniform(-random_shift_distribution[1], random_shift_distribution[1])) for name in receiver_names}
-                            # IMPORTANT: set shifts on receivers prior to applying
-                            elif isinstance(shifts, dict):
-                                shift_dict = shifts
-                            else:
-                                shift_dict = {name: 0 for name in receiver_names}
-                            self.receivers.set_time_shifts(shift_dict)
-                            # reshape vector -> outputs map, apply shifts, flatten back
-                            outputs_map = self._vec_to_outputs_map(vec)
-                            shifted_outputs = apply_station_time_shifts(self.receivers, outputs_map)
-                            shifted_vec = self._outputs_map_to_vec(shifted_outputs)
-                            shifted.append(shifted_vec)
-                        except Exception:
-                            shifted.append(vec)
-                    synthetics.extend(shifted)
-                else:
-                    synthetics.extend(results) 
+                # Fold in per-ensemble nuisance augmentation (same effects as training).
+                synthetics.extend(self._apply_augmentation(results, ensemble_name))
         return np.vstack(synthetics)
+
+    def _apply_augmentation(self, results, ensemble_name):
+        """Apply the per-ensemble nuisance augmentation chain to a list of flat synthetics.
+
+        Returns the (possibly augmented) list of 1-D vectors. A no-op when no chain is
+        configured for ``ensemble_name`` (or no receivers). If a chain raises on a given
+        vector the original (un-augmented) vector is kept, but the failure is surfaced via
+        a warning rather than silently swallowed.
+        """
+        chain = self.augmentation_chains.get(ensemble_name) if ensemble_name is not None else None
+        if self.receivers is None or chain is None or not chain.effects:
+            return list(results)
+
+        print("Applying nuisance augmentation chain for ensemble:", ensemble_name)
+        nuisance_params = self.augmentation_nuisance_params.get(ensemble_name, {})
+        augmented = []
+        for vec in results:
+            try:
+                outputs_map = self._vec_to_outputs_map(vec)
+                processed = chain(outputs_map, self.receivers, nuisance_params)
+                augmented.append(self._outputs_map_to_vec(processed))
+            except Exception as exc:
+                warnings.warn(
+                    f"PPC nuisance augmentation failed for ensemble {ensemble_name!r}; "
+                    f"using the un-augmented synthetic instead: {exc!r}"
+                )
+                augmented.append(vec)
+        return augmented
 
     def simulate_ensembles(
         self,
@@ -374,10 +362,7 @@ class PosteriorPredictiveChecks:
 
         return results, ensembles_synthetics_sel
 
-    # -----------------------
-    # Built-in metric impls
-    # Each returns 1D array of length n_synthetics
-    # -----------------------
+    # --- Built-in metrics: each returns an array of length n_synthetics ---
 
     def _chi2_from_cov(self, r: np.ndarray):
         """
@@ -517,29 +502,105 @@ class PosteriorPredictiveChecks:
             vals[i] = float(np.mean(np.abs(env_obs - env_s) / denom))
         return vals
 
-    def _metric_autocorr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict, maxlag=50):
+    @staticmethod
+    def _acf_matrix(mat: np.ndarray, maxlag: int) -> np.ndarray:
+        """Normalised autocorrelation at lags 1..maxlag for each row of ``mat``.
+
+        FFT-based and vectorised over rows: the per-lag dot products are one transform
+        pair regardless of ``maxlag``.
         """
-        Compare short-lag autocorrelation structure:
-        statistic = mean_{lag=1..maxlag} |acf_obs(lag) - acf_syn(lag)|
+        n = mat.shape[1]
+        x = mat - mat.mean(axis=1, keepdims=True)
+        nfft = int(2 ** np.ceil(np.log2(2 * n)))
+        F = np.fft.rfft(x, n=nfft, axis=1)
+        ac = np.fft.irfft(F * np.conj(F), n=nfft, axis=1)[:, : maxlag + 1]
+        return ac[:, 1:] / (ac[:, :1] + 1e-12)
+
+    def _metric_autocorr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict,
+                                maxlag: Optional[int] = None):
+        """Difference in short-lag autocorrelation SHAPE, per trace.
+
+        ``mean_{lag=1..maxlag} |acf_obs(lag) - acf_syn(lag)|``, averaged over traces.
+
+        The autocorrelation of a trace is invariant to a time shift of that trace, so this
+        scores pulse shape/duration/frequency content while ignoring arrival time entirely —
+        the complement to the zero-lag correlation, which cannot separate the two.
+
+        Computed PER TRACE (falling back to the whole vector only when the trace layout is
+        unknown): run over concatenated traces the lag products would straddle trace
+        boundaries and measure the packing order rather than the waveforms.
+
+        .. warning::
+           **Blind to polarity by construction** — ``ACF(-x) == ACF(x)``, so an inverted
+           waveform scores exactly 0.  Never use this metric alone to argue about the sign
+           of the isotropic component; pair it with ``Shifted corr misfit`` (which keeps
+           polarity as long as the lag budget stays under half a dominant period), the
+           zero-lag correlation, or the first-motion polarity analysis.
         """
-        obs = np.asarray(obs).ravel()
-        n = len(obs)
-        maxlag = min(maxlag, n - 1)
-        # compute obs acf
-        x = obs - obs.mean()
-        denom = np.dot(x, x) + 1e-12
-        acf_obs = np.array([np.dot(x[: n - lag], x[lag:]) / denom for lag in range(1, maxlag + 1)])
-        vals = np.empty((synthetics.shape[0],), dtype=float)
-        for i, s in enumerate(synthetics):
-            y = s - s.mean()
-            denom_y = np.dot(y, y) + 1e-12
-            acf_s = np.array([np.dot(y[: n - lag], y[lag:]) / denom_y for lag in range(1, maxlag + 1)])
-            vals[i] = float(np.mean(np.abs(acf_obs - acf_s)))
+        maxlag = int(self.autocorr_maxlag if maxlag is None else maxlag)
+        n_samples = synthetics.shape[0]
+        n_traces = meta.get("n_traces", self.n_traces)
+        obs_mat = self._reshape_to_traces(np.asarray(obs).ravel(), n_traces)
+        if obs_mat is None:
+            obs_mat = np.asarray(obs).ravel()[None, :]
+            syn_mat = np.asarray(synthetics).reshape(n_samples, 1, -1)
+        else:
+            try:
+                syn_mat = synthetics.reshape((n_samples,) + obs_mat.shape)
+            except Exception:  # noqa: BLE001
+                obs_mat = np.asarray(obs).ravel()[None, :]
+                syn_mat = np.asarray(synthetics).reshape(n_samples, 1, -1)
+        maxlag = max(1, min(maxlag, obs_mat.shape[1] - 1))
+        acf_obs = self._acf_matrix(obs_mat, maxlag)
+        vals = np.empty((n_samples,), dtype=float)
+        for i in range(n_samples):
+            vals[i] = float(np.mean(np.abs(acf_obs - self._acf_matrix(syn_mat[i], maxlag))))
         return vals
 
-    # -----------------------
-    # Helpers for applying time shifts without code duplication
-    # -----------------------
+    def _metric_shifted_corr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
+        """``1 - max_{|lag| <= L} corr(obs, syn)``, per trace, averaged over traces.
+
+        The zero-lag correlation misfit charges a mechanism for travel-time error it did not
+        cause: a 1-D velocity model and a catalogue hypocentre both translate whole traces,
+        which decorrelates them without saying anything about the source. Maximising over a
+        bounded lag lets the arrival time float and scores waveform shape and polarity alone.
+
+        ``L`` = ``max_shift_samples`` (constructor) or 10 % of the trace length. The lag band
+        is bounded on purpose — an unbounded search would happily align a P arrival onto an S.
+
+        Normalised cross-correlation via FFT, vectorised over traces.
+        """
+        n_samples = synthetics.shape[0]
+        n_traces = meta.get("n_traces", self.n_traces)
+        obs_mat = self._reshape_to_traces(np.asarray(obs).ravel(), n_traces)
+        if obs_mat is None:
+            return self._metric_corr_misfit(obs, synthetics, meta)
+        try:
+            syn_mat = synthetics.reshape((n_samples,) + obs_mat.shape)
+        except Exception:  # noqa: BLE001
+            return self._metric_corr_misfit(obs, synthetics, meta)
+
+        tlen = obs_mat.shape[1]
+        L = meta.get("max_shift_samples", self.max_shift_samples)
+        L = int(L) if L else max(1, int(round(0.10 * tlen)))
+        L = max(1, min(L, tlen - 1))
+
+        nfft = int(2 ** np.ceil(np.log2(2 * tlen)))
+        x = obs_mat - obs_mat.mean(axis=1, keepdims=True)
+        xn = np.linalg.norm(x, axis=1) + 1e-12
+        FX = np.conj(np.fft.rfft(x, n=nfft, axis=1))
+        vals = np.empty((n_samples,), dtype=float)
+        for i in range(n_samples):
+            y = syn_mat[i] - syn_mat[i].mean(axis=1, keepdims=True)
+            yn = np.linalg.norm(y, axis=1) + 1e-12
+            cc = np.fft.irfft(FX * np.fft.rfft(y, n=nfft, axis=1), n=nfft, axis=1)
+            # lag k lives at index k for k >= 0 and at nfft+k for k < 0
+            band = np.concatenate([cc[:, : L + 1], cc[:, nfft - L:]], axis=1)
+            best = band.max(axis=1) / (xn * yn)
+            vals[i] = float(np.mean(1.0 - np.clip(best, -1.0, 1.0)))
+        return vals
+
+    # --- Time-shift helpers ---
     def _vec_to_outputs_map(self, vec: np.ndarray) -> Dict[str, Dict[str, np.ndarray]]:
         """Reshape flattened vector into {station: {component: trace}} according to receivers order."""
         if self.receivers is None or self.n_traces is None:
@@ -568,17 +629,13 @@ class PosteriorPredictiveChecks:
             for comp in rec.components:
                 trace = outputs[station].get(comp)
                 if trace is None:
-                    # support alt component names if needed
-                    alt = comp.replace('E', '1').replace('N', '2')
-                    trace = outputs[station].get(alt)
+                    trace = outputs[station].get(component_alias(comp))
                 if trace is None:
                     raise KeyError(f"Missing trace for {station}:{comp}")
                 parts.append(np.asarray(trace))
         return np.concatenate(parts)
 
-    # -----------------------
-    # Helpers for selecting best-matching synthetics
-    # -----------------------
+    # --- Best-synthetic selection ---
     def _select_best_synthetics(
         self,
         obs: np.ndarray,
@@ -682,8 +739,6 @@ def plot_metric_bars(
         else:  # lower is better
             best = np.nanmin(col.values)
             norm_df[m] = col/best if np.all(col != 0) else np.nan
-        # norm_df[m] = norm_df[m].clip(upper=1.0)
-    # norm_df = df
     approaches = list(norm_df.index)
     metrics = list(norm_df.columns)
     n_metrics = len(metrics)

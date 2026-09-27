@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seismo-sbi"
-version = "0.0.1"
+version = "0.2.0"
 authors = [{ name="Alex Saoulis", email="a.saoulis@ucl.ac.uk" }]
 description = "Simulation-based inference for seismic source inversion"
 readme = "README.md"
@@ -19,3 +19,16 @@ dynamic= ["dependencies"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
+
+[project.optional-dependencies]
+test = ["pytest>=7", "pytest-cov"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "unit: fast, isolated, no I/O",
+    "integration: loads data stubs or runs short pipelines",
+    "slow: end-to-end tests including network downloads (skipped by default; use -m slow to run)",
+    "requires_data: needs local data or a local forward-model database; skipped when absent",
+]

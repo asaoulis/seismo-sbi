@@ -16,6 +16,10 @@
 #     conda config --set solver libmamba
 # or append `--solver libmamba` to the create command, otherwise the solve can take many minutes.
 
+# Tested with (the seismo-sbi-py311 environment): python 3.11.15, instaseis 1.5.0, obspy 1.5.0,
+# numpy 2.2.6, scipy 1.17.1, numba 0.61.2, matplotlib 3.9.4, h5py 3.16.0, cartopy 0.25.0, basemap 1.4.1,
+# pyproj 3.6.1, pandas 3.0.3, statsmodels 0.14.6, netcdf4 1.7.4.
+
 name: seismo-sbi
 channels:
   - conda-forge
@@ -32,4 +36,7 @@ dependencies:
   - cartopy
   - pyproj
   - basemap
+  - netcdf4            # AxiSEM database repacking
+  - pandas
+  - statsmodels
   # pyrocko is not on conda-forge; it is installed from PyPI by `pip install -e .` (manylinux wheel).

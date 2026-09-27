@@ -21,9 +21,16 @@ joblib
 tqdm
 pyyaml
 pyrocko          # not on conda-forge; PyPI ships manylinux wheels
+tarp==0.1.0      # TARP calibration in seismo_sbi.evaluation
+deprecation      # imported by tarp but not declared by it
+platformdirs
+click
 
 # --- notebooks / packaging tooling ---
 jupyter
 ipykernel
 setuptools
 wheel
+
+# Tested with torch 2.12.0, sbi 0.21.0, pytorch-lightning 2.6.5, pyrocko 2026.6.2, emcee 3.1.6,
+# scikit-learn 1.9.0, ChainConsumer 0.34.0, tarp 0.1.0.

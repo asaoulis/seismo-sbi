@@ -1,0 +1,147 @@
+# LV2_continuity_train_cnn_nuisance.yaml
+# ============================================================
+# CNN NPE training WITH all CPS-applicable nuisance parameters enabled.
+# Same architecture/dataset/epochs as the no-nuisance run, so the two are
+# directly comparable (compare against the no-nuisance ML gold standard).
+#
+# Architecture: default CNN (CompressionTrainer station_encoder="cnn").
+# Dataset size: num_simulations = 75000.  Epochs: pass --epochs 200.
+#
+# Run (cwd = examples/):
+#   python ../scripts/train_NPE.py \
+#       --config configs/LV2_continuity_train_cnn_nuisance.yaml \
+#       --run_name cnn_nuisance --epochs 200
+#
+# Checkpoint lands at:
+#   ./data/pipeline_outputs/continuity_cnn_nuisance/cnn_nuisance/results/cnn_nuisance/checkpoints/best_model-*.ckpt
+#
+# NUISANCE NOTE: the nuisance VALUE for each post-proc effect is a per-station
+# *probability* in [0,1]; the effect magnitude lives in the extra effect-config
+# keys (scale_range / gaussian_sigma / alpha,mode,coda_fraction). All four apply
+# to the CPS path via the inherited Simulator.run_simulation post-processing chain.
+# stf_duration (GCMT STF) is intentionally OMITTED — it is a no-op on the
+# cps_precomputed path (no STF convolution support; it is dropped in the CPS
+# simulator). Enable it only on an Instaseis-backed run.
+#
+# NEVER re-download or re-preprocess LV2 data.
+# ============================================================
+
+run_name: continuity_tcn_nuisance
+output_directory: '/data/alex/long_valley/continuity/continuity_tcn_nuisance'
+
+# Per-station encoder for the ML compressor (cnn | pno | tcn). Read by train_NPE.py.
+ml_architecture: tcn
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'cps_precomputed'
+  components: 'ZEN'
+  stations_path: './configs/stations.txt'
+  station_components_path: './configs/components.json'
+  station_time_shifts_path: './configs/LV2_station_shifts.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc"
+  cps_path: "/home/alex/work/cps/PROGRAMS.330/bin"
+  cps_GFs_path: './data/models/LV2_perturbations/kappa_5.0'
+  cps_GFs_fiducial_path: './data/models/LV2_perturbations/kappa_5.0_fiducial'
+  processing:
+    filter_sampling_rate: 20.0
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16],
+              [4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16]]
+  nuisance:
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 5, 0]
+      bounds: [37.636, -118.936, 5, 0]
+    velocity_model:
+      fiducial: '../examples/configs/SoCal.plain.txt'
+      bounds: ['../examples/configs/SoCal.plain.txt', 5]
+
+    # ---- CPS-applicable post-processing nuisances (value = per-station prob) ----
+    amplitude_error:
+      fiducial: [0.0]            # clean at the compression fiducial point
+      bounds: [0.0, 0.2]         # up to ~20% of stations mis-scaled per realisation
+      scale_range: [0.7, 1.4]    # multiplicative amplitude error applied to affected stations
+    time_shift_error:
+      fiducial: [0.0]
+      bounds: [0.0, 0.5]         # up to ~50% of stations time-shifted
+      gaussian_sigma: 1.0        # shift std in seconds
+      lanczos_order: 5
+    scattering_coda:
+      fiducial: [0.0]
+      bounds: [0.0, 0.2]         # up to ~20% of stations get a coda tail
+      alpha: 0.6                 # coda strength
+      mode: "stahler"
+      coda_fraction: 0.25
+
+simulations:
+  # NPE training-set size is set by jobs.simulations.random_events (75000) below.
+  # num_simulations drives the (smaller) score-compression dataset only.
+  num_simulations: 1000
+  sampling_method:
+    moment_tensor: "uniform"
+    source_location: "constant"
+    velocity_model: "velocity model"
+    amplitude_error: "uniform"
+    instrument_dropout: "uniform"
+    time_shift_error: "uniform"
+    scattering_coda: "uniform"
+  use_fisher_to_constrain_bounds: 10
+  iterative_least_squares:
+    max_iterations: 8
+    damping_factor: 0.1
+    dynamic_damping: False
+    mcmc_chain_for_mle: 1
+
+compression:
+  theory_optimal_score:
+    noise_level: 1.e-8
+    diag_regularisation_magnitude: 0.005
+    data_covariance: kolb
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian_filtered'
+      noise_level: null
+  likelihood:
+    run: False
+    ensemble: False
+    covariance: empirical
+    num_samples: 20000
+    walker_burn_in: 500
+    move_size: [0.0001, 0.0001]
+
+jobs:
+  real_events:
+    LV2: ./data/preprocessed/LV2/events/LV2_noise_filt_20_50_1hz.h5
+  simulations:
+    random_events: 75000   # NPE training-set size (generated by simulate_test_jobs)
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_filtered: null
+  plots:
+    async_plotting: True
+    test_posteriors:
+      chain_consumer: []
+    disable_plotting: True

@@ -1,98 +1,80 @@
-import os
-import argparse
-import pickle
-# prevent processes from using multiple threads
-# this is necessary because otherwise the multiprocessing
-# in emcee may use more threads than requested
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+"""Train an NPE neural compressor and flow from an SBI configuration file.
 
-from pathlib import Path
+Every knob lives in the configuration file; the flags below are only what a scheduler must set.
+``--stage generate`` stops once the simulations are on disk (the CPU half of a two-stage cluster
+workflow), ``--stage meta`` rebuilds a run's ``model_meta.json`` sidecar without training, and
+``--stage train`` runs the whole thing.
+"""
+
+import argparse
+
+from seismo_sbi.utils.environment import (cap_blas_threads, configure_numba_cache, cap_querier_cache,
+                                          stamp_arviz_daily_warning)
+
+# All read by their libraries at import time, so they run before the science imports.
+cap_blas_threads()
+configure_numba_cache()
+stamp_arviz_daily_warning()
+
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
-from seismo_sbi.sbi import utils as utils
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
-from seismo_sbi.sbi.scalers import ZeroOneScaler, FlexibleScaler
+from seismo_sbi.sbi.training_data import (build_pipeline, generate_training_dataset,
+                                          prepare_training_data, preload_noise_cache)
+from seismo_sbi.sbi.compression.ML.train import (CompressionTrainer, apply_warm_start,
+                                                 attach_loggers, enable_mmd_loss)
+from seismo_sbi.sbi.scalers import scaler_provenance
+
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
-    parser.add_argument('--config', '-c', type=str, help='Filepath of sbi_pipeline configuration file.', required = True)
-    # run name argument
-    parser.add_argument('--run_name', '-n', type=str, help='Name of the run. Used to create a subfolder in the output directory.', default = 'default_run')
-    args = parser.parse_args()
-    return args
+    parser = argparse.ArgumentParser(description="Train an NPE model from a configuration file.")
+    parser.add_argument('--config', '-c', required=True, help="SBI configuration file.")
+    parser.add_argument('--run-name', '-n', dest='run_name', default='default_run',
+                        help="Names this run's subfolder under the output directory.")
+    parser.add_argument('--stage', choices=['generate', 'meta', 'train'], default='train',
+                        help="How far to go: simulate only, write the sidecar only, or train.")
+    parser.add_argument('--epochs', '-e', type=int, help="Overrides the configured epoch count.")
+    parser.add_argument('--devices', type=int,
+                        help="Number of GPUs; above one trains with one rank per GPU.")
+    parser.add_argument('--architecture', '-a', help="Overrides ml_architecture.")
+    parser.add_argument('--train-batch-size', dest='train_batch_size', type=int,
+                        help="Per-GPU training batch size; overrides ml_batch.train.")
+    parser.add_argument('--num-simulations', dest='num_simulations', type=int,
+                        help="Overrides simulations.num_simulations.")
+    return parser.parse_args()
+
 
 def main():
-
-    # Parse arguments and prepare configuration data
-
     args = parse_arguments()
-    config_path = args.config
+    config = SBI_Configuration.from_file(args.config)
+    training = config.training.apply_overrides(station_encoder=args.architecture,
+                                               epochs=args.epochs, devices=args.devices,
+                                               train_batch_size=args.train_batch_size)
+    cap_querier_cache(training.querier_cache_maxsize)
 
-    print("Parsing config file...")
-    config = SBI_Configuration()
-    config.parse_config_file(config_path)
-    print("Successfully parsed config file.")
+    pipeline = build_pipeline(config, args.config, num_simulations=args.num_simulations)
+    simulation_paths = generate_training_dataset(pipeline, config,
+                                                 training.skip_compression_stencil)
+    if args.stage == 'generate':
+        return
 
-    ### Start SBI Pipeline
+    data = prepare_training_data(pipeline, config, simulation_paths, training)
+    trainer = CompressionTrainer.from_configuration(
+        training, data.components, data.station_locations, data.trace_length,
+        scaler_provenance(data.data_scaler))
+    enable_mmd_loss(trainer, training, pipeline, data)
 
-    Pipeline = SingleEventPipeline if config.pipeline_type == 'single_event' else MultiEventPipeline
-    Pipeline = VaryDatasetSizeEventPipeline if config.pipeline_type == 'vary_dataset_size' else Pipeline
-    sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
-    sbi_pipeline.compression_methods = config.compression_methods
-    sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
+    if args.stage == 'meta':
+        print(f"Wrote {trainer.write_model_meta(pipeline.models_output_path / args.run_name)}")
+        return
 
-    if config.pipeline_parameters.generate_dataset:
-        test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)
-    else:
-        path = sbi_pipeline.simulations_output_path
-        test_jobs_paths = list(Path(path).glob('*.h5'))
+    apply_warm_start(trainer, training, pipeline.models_output_path)
+    preload_noise_cache(pipeline, training.cache)
+    trainer.train(args.run_name, epochs=training.epochs,
+                  output_path=pipeline.models_output_path,
+                  dataloader_args=training.dataloader_args(pipeline, data),
+                  logger=attach_loggers(training.logging,
+                                        pipeline.models_output_path / args.run_name),
+                  devices=training.devices)
 
-    # test_jobs_paths = [Path('/data/alex/cps/alex/sims/tham_filtered_shifts/synthetic_tests/random_event_0.h5'),]
-
-    sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
-    score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(config.compression_methods,
-                                                                            config.model_parameters,  
-                                                                            rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
-
-    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
-    
-    sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
-
-    # get real noise
-    real_noise_path = "./data/events/croatia_event1_filt_20_50_1hz.h5"
-    # real_noise_path = "./data/events/LV2_event_filt_20_50_1hz.h5"
-    covariance_data = sbi_pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
-    sbi_pipeline.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance_data)
-
-    components = sbi_pipeline.data_manager.data_loader.components
-    station_locations = sbi_pipeline.simulation_parameters.receivers.get_station_locations_array()
-    data_scaler = FlexibleScaler(sbi_pipeline.parameters)
-    model_dim = 256
-    
-
-    trainer = CompressionTrainer(components, station_locations, channels=model_dim, latent_dim=model_dim)
-    num_sims = len(test_jobs_paths)
-    train_max_index = int(0.90 * num_sims)
-    dataloader_args = {
-        'data_loader': sbi_pipeline.data_manager.data_loader,
-        'data_folder': sbi_pipeline.simulations_output_path,
-        'parameter_name_map': sbi_pipeline.parameters.names,
-        'synthetic_noise_model_sampler': sbi_pipeline.training_noise_sampler,
-        'random_shift_distribution': (2,3),
-        'data_scaler': data_scaler,
-        'train_max_index': train_max_index,
-        'train_batch_size': 128,
-        'val_batch_size': 256,
-        'train_shuffle': True,
-        'val_shuffle': False,
-        'num_workers': 20,
-    }
-    run_name = args.run_name
-    data_path = Path(config.pipeline_parameters.output_directory)/ config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
-    trainer.train(run_name, epochs=300, output_path=data_path, dataloader_args=dataloader_args)
 
 if __name__ == '__main__':
     main()

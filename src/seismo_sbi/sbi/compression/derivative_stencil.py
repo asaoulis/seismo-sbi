@@ -1,12 +1,19 @@
+"""Finite-difference stencils for the score compression.
+
+:class:`DerivativeStencil` simulates the five-point stencil around the fiducial source for each
+parameter and returns the gradients of the data with respect to the parameters;
+:class:`HessianDerivativeStencil` does the same for the mixed second derivatives.
+"""
+
 import numpy as np
 import joblib
 from copy import deepcopy
 
 from pathlib import Path
-from itertools import product
 from functools import partial
 
 from .gaussian import ScoreCompressionData
+from seismo_sbi.utils.parallel import gc_paused_in_notebooks
 from ..configuration import ModelParameters
 
 
@@ -89,7 +96,7 @@ class DerivativeStencil:
     def run_parallel_simulations(self, simulator, simulation_job_args_list, num_parallel_jobs):
 
         if num_parallel_jobs > 1:
-            with joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
+            with gc_paused_in_notebooks(), joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
                 joblib.Parallel()(
                     joblib.delayed(simulator)(*simulation_job_args) for simulation_job_args in simulation_job_args_list
                 )
@@ -193,7 +200,7 @@ class HessianDerivativeStencil:
     def run_parallel_simulations(self, simulator, simulation_job_args_list, num_parallel_jobs):
 
         if num_parallel_jobs > 1:
-            with joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
+            with gc_paused_in_notebooks(), joblib.parallel_backend('loky', n_jobs=num_parallel_jobs):
                 joblib.Parallel()(
                     joblib.delayed(simulator)(*simulation_job_args) for simulation_job_args in simulation_job_args_list
                 )

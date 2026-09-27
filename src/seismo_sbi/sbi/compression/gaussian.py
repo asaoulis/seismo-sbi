@@ -1,5 +1,12 @@
+"""Compressors: score compression under a Gaussian likelihood, and a trained network.
+
+:class:`GaussianCompressor` turns a data vector into the score (or the quasi-maximum-likelihood
+estimate) from the fiducial data, its parameter gradients and a noise covariance.
+:class:`MachineLearningCompressor` wraps a trained network behind the same
+``compress_data_vector`` interface.
+"""
+
 import numpy as np
-import time
 from abc import ABC, abstractclassmethod
 from typing import List
 
@@ -7,9 +14,7 @@ from typing import NamedTuple, Callable
 
 import torch
 
-# from .ML.seismogram_transformer import LightningModel
-# from .ML.utils import get_best_model
-from ..noises.covariance_estimation import EmpiricalCovariance, DiagonalEmpiricalCovariance
+from ..noises.covariance_base import EmpiricalCovariance
 
 class ScoreCompressionData(NamedTuple):
 
@@ -27,21 +32,90 @@ class Compressor(ABC):
 
 class MachineLearningCompressor(Compressor):
 
-    def __init__(self, model_type, model_name, seismogram_preprocessor : Callable, scaler, **model_kwargs):
+    def __init__(self, model_type, model_name, seismogram_preprocessor : Callable, scaler,
+                 source_location=None, **model_kwargs):
+        from .ML.utils import get_best_model
 
         self.trained_ml_compressor = get_best_model(model_type, model_name, checkpoint_path="ml_models", **model_kwargs)
         self.seismogram_preprocessor = seismogram_preprocessor
 
         self.scaler = scaler
+        # Source location for a conditioned model, packed raw into the context as in training;
+        # None gives the unconditioned context.
+        self.source_location = (
+            None if source_location is None
+            else torch.as_tensor(np.asarray(source_location, dtype=float), dtype=torch.float32)
+        )
 
     def compress_data_vector(self, D):
         with torch.no_grad():
             processed_seismogram = self.seismogram_preprocessor(D)
-            parameters_prediction = self.trained_ml_compressor.forward(processed_seismogram.unsqueeze(0)).detach()
+            model_input = processed_seismogram.unsqueeze(0)
+            if self.source_location is not None:
+                from seismo_sbi.sbi.compression.ML.source_conditioning import pack_context
+                source_vec = self.source_location.reshape(1, -1).to(model_input.device)
+                model_input = pack_context(model_input, source_vec)
+            parameters_prediction = self.trained_ml_compressor.forward(model_input).detach()
+            parameters_prediction = self.scaler.inverse_transform(parameters_prediction).squeeze(0)
+            return parameters_prediction
+
+    def _embedding_net(self):
+        """The SeismogramTransformer carrying the variable-station flags, unwrapping the
+        LightningModel wrapper (``.model``) when present."""
+        m = self.trained_ml_compressor
+        if getattr(m, "_variable_stations", None) is None and hasattr(m, "model"):
+            m = m.model
+        return m
+
+    def compress_variable_station_data(self, stacked_data, station_coords, present_mask=None):
+        """Compress an arbitrary station SUBSET with a variable-station model.
+
+        Unlike :meth:`compress_data_vector` (which assumes the fixed master geometry the
+        model was constructed with), this packs an explicit per-station coordinate set and
+        validity mask, so any subset of the trained master stations can be inverted. The
+        model must have been trained with ``variable_stations=True``
+        (``ml_variable_stations.enabled`` in the training config).
+
+        Parameters
+        ----------
+        stacked_data : array-like ``(N, C, T)`` — seismograms for the N selected stations.
+        station_coords : array-like ``(N, 2)`` — ``(lat, lon)`` in the same order.
+        present_mask : array-like ``(N,)`` bool, optional — ``False`` marks an absent station.
+
+        Returns
+        -------
+        np.ndarray — the inverse-scaled compressed parameter vector.
+        """
+        from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
+
+        net = self._embedding_net()
+        if not getattr(net, "_variable_stations", False):
+            raise ValueError(
+                "compress_variable_station_data requires a model trained with "
+                "variable_stations=True (set ml_variable_stations.enabled in the training "
+                "config). Use compress_data_vector for fixed-geometry models."
+            )
+
+        with torch.no_grad():
+            try:
+                device = next(self.trained_ml_compressor.parameters()).device
+            except (StopIteration, AttributeError):
+                device = torch.device("cpu")
+            source_vec = None if self.source_location is None else self.source_location
+            model_input = pack_subset_observation(
+                stacked_data, station_coords, present_mask=present_mask, source_vec=source_vec
+            ).to(device)
+            parameters_prediction = self.trained_ml_compressor.forward(model_input).detach()
             parameters_prediction = self.scaler.inverse_transform(parameters_prediction).squeeze(0)
             return parameters_prediction
 
 class GaussianCompressor(Compressor):
+    """Score compression under a Gaussian likelihood.
+
+    Built from the fiducial data, its parameter gradients (``ScoreCompressionData``) and a noise
+    covariance; compresses a data vector to the quasi-maximum-likelihood estimate
+    ``theta_fiducial + F^-1 score``, with :meth:`compute_score` giving the score itself.
+    """
 
     def __init__(self, score_compression_data : ScoreCompressionData, covariance_matrix : EmpiricalCovariance, prior = (None, None)):
 
@@ -94,13 +168,11 @@ class GaussianCompressor(Compressor):
             for b in range(0, self.num_params):
                 F[a, b] += 0.5*(np.dot(self.dD_Dtheta_gradients[a,:], self.C.matmul_inverse_covariance(self.dD_Dtheta_gradients[b,:])) \
                                 + np.dot(self.dD_Dtheta_gradients[b,:], self.C.matmul_inverse_covariance(self.dD_Dtheta_gradients[a,:])))
-                # print("Fisher matrix element", a, b, F[a, b])
                 if self.C.C_derivative is not None:
                     F[a, b] += 0.5 * self.C.compute_trace(self.C.matrix_matrix_product(
                         self.C.matrix_matrix_product(self.C.C_inverse, self.C.C_derivative[a]),
                         self.C.matrix_matrix_product(self.C.C_inverse, self.C.C_derivative[b])
                     ))
-                    # print("Fisher matrix element with derivative", a, b, F[a, b])
 
         
         if self.prior_covariance is not None:
@@ -154,8 +226,7 @@ class GaussianCompressor(Compressor):
             dL_dtheta[:, :] = (self.dD_Dtheta_gradients * covariance_residual_product).T
         if self.prior_mean is not None:
             theta_diff = self.prior_mean - self.theta_fiducial
-            # np.dot(np.linalg.inv(np.diag(self.prior_covariance)), theta_diff)
-            # or maybe theta_diff should be negative ?
+            # The sign of theta_diff here is unverified.
             dL_dtheta += np.dot(np.linalg.inv(np.diag(self.prior_covariance)), theta_diff)
         return dL_dtheta
 
@@ -226,24 +297,6 @@ class SecondOrderCompressor(GaussianCompressor):
     def compute_observed_information(self, data_vector):
         return np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector - self.D_fiducial))
     
-    # def compress_data_vector(self, data_vector):
-
-    #     F_hat  = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-    #     S_hat  = np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-    #     U = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse,self.dD_Dtheta_gradients.T))
-    #     U_inverse = np.linalg.inv(U)
-
-    #     p1 = U_inverse @ (F_hat - self.F)
-    #     # return self.theta_fiducial + p1# would be first order
-    #     delta_S = S_hat - self.S
-
-    #     G_step = self.efficient_dot_prod(self.C_inverse, self.hessian)
-    #     G = np.einsum('ij, jkl -> ikl', self.dD_Dtheta_gradients, G_step)
-
-    #     p2 = U_inverse @ ( np.dot(delta_S, p1) - 1/2 * np.einsum('kmn,m,n->k', G, p1, p1) - np.einsum('mkn,m,n->k', G, p1, p1))
-    #     return self.theta_fiducial + (p1 + p2)
 
     
     def check_compression(self, data_vector, p):

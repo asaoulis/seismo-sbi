@@ -1,133 +1,399 @@
-import torch
-from torch import nn
-import os
-from pathlib import Path
+"""Training of the neural compressor: an embedding net plus a conditional normalising flow.
+
+:class:`CompressionTrainer` builds the pair, trains it with Lightning, and writes a
+``model_meta.json`` sidecar so a checkpoint can be rebuilt without re-supplying its
+architecture. The free functions below wire in the optional extras a configuration may ask
+for — the auxiliary MMD loss, a warm start from an earlier run, and the metric loggers.
+"""
+
+import json
 import re
-from glob import glob
+from pathlib import Path
+
 import numpy as np
+import torch
 
 from .seismogram_transformer import SeismogramTransformer, NPELightningModule
-from .maf import build_nsf, build_maf
-from .dataloading import make_torch_dataloader, make_torch_dataloaders
+from .maf import build_nsf
+from .dataloading import make_torch_dataloaders
+from .utils import unpickling_torch_load
 
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import LearningRateMonitor
-  # added
-# from lightning.pytorch.profiler import AdvancedProfiler, SimpleProfiler, PyTorchProfiler
+from pytorch_lightning.loggers import WandbLogger, CSVLogger
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.strategies import DDPStrategy
+
+def _build_seismogram_transformer(*, num_seismic_components, model_config,
+                                  feature_length, latent_dim, station_locations, device,
+                                  trace_length, **_unused):
+    """Default embedding net (context extractor). Output width must equal latent_dim.
+
+    ``trace_length`` is the per-trace sample count of the data; it sizes the CNN's
+    conv stack so the model matches the data instead of assuming a fixed length.
+    """
+    return SeismogramTransformer(
+        num_seismic_components,
+        model_config,
+        feature_length,
+        num_outputs=latent_dim,          # not used for embedding, but required by ctor
+        noise_model=None,                # not used in NPE; pass None
+        seismogram_locations=station_locations,
+        device=device,
+        input_length=trace_length,
+    )
+
+
+#: Embedding-net builders, selectable by name from a configuration. Each returns an nn.Module
+#: emitting a context of width ``latent_dim``; take ``**_unused`` so the kwargs bundle can grow.
+EMBEDDING_NET_REGISTRY = {
+    "seismogram_transformer": _build_seismogram_transformer,
+}
+
+# Default hyperparameters, grouped so callers can override piecemeal instead of editing code.
+DEFAULT_MODEL_CONFIG = {"layers": 4, "nheads": 4, "timeemb": 64, "posemb": 64}
+DEFAULT_FLOW_CONFIG = {
+    "num_transforms": 5,
+    "num_blocks": 2,
+    "dropout_probability": 0.0,
+    "use_batch_norm": True,
+}
+
 
 class CompressionTrainer:
 
-    def __init__(self, components, station_locations, channels=128, latent_dim=128):
+    def __init__(self, components, station_locations, channels=128, latent_dim=128,
+                 architecture="seismogram_transformer", trace_length=200,
+                 num_dims=6, feature_length=128, lr=1e-4, weight_decay=1e-4,
+                 model_config=None, flow_config=None, lr_second_stage="cosine",
+                 lr_min_factor=0.1):
+        """Build the embedding net + conditional normalising flow.
+
+        trace_length: per-trace sample count of the data (CNN input length). Defaults to
+            200 for backward compatibility; pass the pipeline's real ``trace_length``.
+        model_config / flow_config: optional overrides merged over DEFAULT_MODEL_CONFIG /
+            DEFAULT_FLOW_CONFIG.
+        lr_second_stage: LR schedule after warmup — "cosine" (default; decay to
+            lr*lr_min_factor), "constant" (held flat at lr), or "cyclic". Forwarded to the
+            Lightning module.
+        lr_min_factor: cosine floor as a fraction of the base LR (eta_min = lr*factor).
+            0.1 = legacy (lr/10); 0.2 = lr/5. Ignored by the constant/cyclic schedules.
+        """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         num_seismic_components = len(components)
-        feature_length = 128  # context dimension for the flow
 
-        model_config = {"layers": 4,
-            "channels": channels,
-            "nheads": 4,
-            "timeemb": 64,
-            "posemb": 64}
+        model_config = {**DEFAULT_MODEL_CONFIG, "channels": channels, **(model_config or {})}
+        flow_config = {**DEFAULT_FLOW_CONFIG, **(flow_config or {})}
 
-        self.num_dims = 6  # dimensionality of theta
+        self.num_dims = num_dims
         self.latent_dim = latent_dim
-        # Embedding network (context extractor)
-        seismogram_transformer_model = SeismogramTransformer(
-            num_seismic_components,
-            model_config,
-            feature_length,
-            num_outputs=latent_dim,          # not used for embedding, but required by ctor
-            noise_model=None,              # not used in NPE; pass None
-            seismogram_locations=station_locations,
-            device=self.device
+        self.trace_length = trace_length
+        self.architecture = architecture
+        self.num_seismic_components = num_seismic_components
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.lr_second_stage = lr_second_stage
+        self.lr_min_factor = float(lr_min_factor)
+        # The MERGED dict built above, a NEW object: entries the caller adds to its own dict
+        # afterwards never reach the sidecar — use :meth:`record_model_config` for those.
+        self._model_config = model_config
+        self._flow_config = flow_config
+        self._feature_length = feature_length
+        self._station_locations = station_locations
+        self._station_locations_shape = (
+            list(station_locations.shape)
+            if hasattr(station_locations, "shape")
+            else None
         )
 
-
-        # Conditional MAF over theta | x with embedding integrated in the flow
-        self.flow = build_nsf(
-            dim=self.num_dims,
-            conditional_dim=latent_dim,
-            hidden_features=channels,#256,
-            num_transforms=5,
-            num_blocks=2,
-            dropout_probability=0.0,
-            use_batch_norm=True,
-            embedding_net=seismogram_transformer_model
+        # Conditional MAF over theta | x with embedding integrated in the flow.
+        self.flow = self._assemble_flow(
+            architecture=architecture,
+            num_seismic_components=num_seismic_components,
+            model_config=model_config,
+            flow_config=flow_config,
+            feature_length=feature_length,
+            latent_dim=latent_dim,
+            num_dims=num_dims,
+            station_locations=station_locations,
+            trace_length=trace_length,
+            device=self.device,
         )
 
-        # Lightning module that maximizes log p_phi(theta | x)
+        # Module-level speed toggles (fused optimizer, torch.compile) ride in
+        # model_config['perf'] alongside the embedding-net ones; absent means all off.
+        _perf = model_config.get("perf", {}) or {}
         self.model = NPELightningModule(
             flow=self.flow,
-            lr=1e-4,
-            weight_decay=1e-4,
-                    )
+            lr=lr,
+            weight_decay=weight_decay,
+            lr_second_stage=lr_second_stage,
+            lr_min_factor=lr_min_factor,
+            fused_adam=bool(_perf.get("fused_adam", False)),
+            compile_forward=bool(_perf.get("compile", False)),
+            compile_flow=bool(_perf.get("compile_flow", False)),
+        )
 
-    def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None):
+    @staticmethod
+    def _assemble_flow(*, architecture, num_seismic_components, model_config, flow_config,
+                       feature_length, latent_dim, num_dims, station_locations, trace_length,
+                       device):
+        """Build the embedding net (by registry name) + conditional NSF flow.
+
+        Shared by ``__init__`` and ``load_best`` so a checkpoint can be rebuilt from its
+        sidecar metadata (architecture / model_config / flow_config) rather than whatever
+        configuration the loading trainer happened to be constructed with.
+        """
+        if architecture not in EMBEDDING_NET_REGISTRY:
+            raise KeyError(
+                f"unknown architecture '{architecture}'; "
+                f"registered: {sorted(EMBEDDING_NET_REGISTRY)}"
+            )
+        embedding_net = EMBEDDING_NET_REGISTRY[architecture](
+            num_seismic_components=num_seismic_components,
+            model_config=model_config,
+            feature_length=feature_length,
+            latent_dim=latent_dim,
+            station_locations=station_locations,
+            device=device,
+            trace_length=trace_length,
+        )
+        # The flow's hidden width follows the embedding channels unless flow_config overrides
+        # it; popped so it is not also passed below as a duplicate keyword.
+        flow_kwargs = dict(flow_config)
+        flow_hidden_features = flow_kwargs.pop("hidden_features", None) or model_config["channels"]
+        return build_nsf(
+            dim=num_dims,
+            conditional_dim=latent_dim,
+            hidden_features=flow_hidden_features,
+            embedding_net=embedding_net,
+            **flow_kwargs,
+        )
+
+    @classmethod
+    def from_configuration(cls, training, components, station_locations, trace_length,
+                           theta_scaler_provenance):
+        """Build the trainer described by a :class:`TrainingConfiguration`.
+
+        ``theta_scaler_provenance`` is recorded in the checkpoint's sidecar so the parameter
+        scaling used at inference cannot silently differ from the one trained under.
+        """
+        return cls(
+            components, station_locations,
+            channels=training.model_dim, latent_dim=training.model_dim,
+            trace_length=trace_length,
+            model_config=training.to_model_config(theta_scaler_provenance),
+            flow_config=training.flow,
+            lr=training.optimizer.lr,
+            weight_decay=training.optimizer.weight_decay,
+            lr_second_stage=training.optimizer.lr_schedule,
+            lr_min_factor=training.optimizer.lr_min_factor,
+        )
+
+    def record_model_config(self, **entries):
+        """Merge extra entries into the ``model_config`` recorded in ``model_meta.json``.
+
+        ``__init__`` MERGES the caller's ``model_config`` into a new dict, so mutating the
+        caller's own dict after construction does not reach the sidecar. Settings that can
+        only be resolved once the trainer exists (e.g. the MMD auxiliary-loss block, which
+        needs ``trainer.model.enable_mmd``) must be registered through here instead, or the
+        checkpoint silently loses them: an MMD-trained checkpoint then looks identical to a
+        non-MMD one in its metadata, and a lambda sweep becomes unattributable after the fact.
+        """
+        self._model_config.update(entries)
+        return self._model_config
+
+    def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
+              logger="wandb", enable_checkpointing=True, enable_progress_bar=True,
+              extra_callbacks=None, devices=1, strategy=None):
+        """Train the flow.
+
+        Defaults preserve production behaviour (W&B logging + checkpointing). For headless
+        runs (tests/CI) pass ``logger=None`` (or ``False``) to disable logging entirely,
+        ``enable_checkpointing=False`` to skip writing .ckpt files, and
+        ``enable_progress_bar=False`` for clean output. ``extra_callbacks`` (list) are
+        appended to the Trainer callbacks (e.g. epoch timers in the bench harnesses).
+        Returns the trained model so callers that disabled checkpointing can use it
+        without reading a checkpoint from disk.
+
+        ``devices`` selects how many accelerators to train on: ``1`` (default) is the
+        single-device path and is byte-identical to the previous behaviour. ``devices > 1``
+        engages multi-GPU DistributedDataParallel (one rank per GPU, launched via ``srun``
+        under SLURM); each rank receives its OWN batch of ``train_batch_size`` samples, so
+        the caller must size ``train_batch_size`` for a single GPU. Pass an explicit
+        ``strategy`` (a Lightning strategy object or string) to override the auto-selected
+        one; by default ``devices > 1`` uses ``DDPStrategy(find_unused_parameters=True)``.
+        """
         if dataloader_args is None or "train_max_index" not in dataloader_args:
             raise ValueError("dataloader_args must include: data_loader, data_folder, parameter_name_map, synthetic_noise_model_sampler, and train_max_index.")
 
         # Build train/val dataloaders from a single split index
         train_dataloader, val_dataloader = make_torch_dataloaders(**dataloader_args)
 
-        checkpoint_cb = create_best_checkpoint_callback(output_path / run_name)
         output_path = Path(output_path) / run_name
-        wandb_logger = WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)  # added
-        lr_monitor = LearningRateMonitor(logging_interval='epoch') 
+
+        # "wandb" builds a WandbLogger, None/False disables logging, a list logs to all of its
+        # elements, and anything else is taken to be a constructed Lightning logger.
+        def _resolve_logger(spec):
+            if spec == "wandb":
+                return WandbLogger(project="seismo-sbi", name=output_path.parent.name + '/' + run_name)
+            if spec in (None, False):
+                return None
+            return spec
+
+        if isinstance(logger, (list, tuple)):
+            resolved = [r for r in (_resolve_logger(x) for x in logger) if r is not None]
+            pl_logger = resolved if resolved else False
+        else:
+            pl_logger = _resolve_logger(logger)
+            if pl_logger is None:
+                pl_logger = False
+
+        callbacks = []
+        if enable_checkpointing:
+            callbacks.append(create_best_checkpoint_callback(output_path))
+        # LearningRateMonitor requires a logger to write to; only add it when logging is on.
+        if pl_logger is not False:
+            callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+        if extra_callbacks:
+            callbacks.extend(extra_callbacks)
+
+        # find_unused_parameters is the safe default for this many-branch model: variable
+        # stations, conditioning, amplitude and positional embeddings and the pooling head.
+        if strategy is None:
+            strategy = (DDPStrategy(find_unused_parameters=True) if devices and devices > 1 else "auto")
+
         trainer = pl.Trainer(
             max_epochs=epochs,
             accelerator="auto",
-            devices=1,
-            callbacks=[checkpoint_cb, lr_monitor],
+            devices=devices,
+            num_nodes=1,
+            strategy=strategy,
+            callbacks=callbacks,
             precision=32,
-            logger=wandb_logger,  # added
+            logger=pl_logger,
+            enable_checkpointing=enable_checkpointing,
+            enable_progress_bar=enable_progress_bar,
         )
 
         trainer.fit(self.model, train_dataloader, val_dataloader)
+
+        # Rank 0 only, so multi-GPU ranks do not race-write the same sidecar; on the
+        # single-device path is_global_zero is always true.
+        if enable_checkpointing and trainer.is_global_zero:
+            self.write_model_meta(output_path)
+
+        return self.model
+
+    def write_model_meta(self, output_path: Path) -> Path:
+        """Write the ``model_meta.json`` sidecar describing this trainer's architecture.
+
+        :meth:`train` calls this once ``trainer.fit`` returns, but it is exposed separately
+        so the sidecar can be written for a checkpoint whose run never got that far: a SLURM
+        wall-clock kill leaves perfectly good best-val .ckpt files with NO sidecar, and
+        :meth:`load_best` then silently falls back to whatever architecture THIS object was
+        constructed with instead of the one that was trained. Recover by building the trainer
+        from the SAME config the run used and calling this (``train_NPE.py --stage meta`` does
+        exactly that), never by hand-editing a sidecar copied from another run.
+        """
+        output_path = Path(output_path)
+        meta = {
+            "architecture": self.architecture,
+            "model_config": self._model_config,
+            "flow_config": self._flow_config,
+            "trace_length": self.trace_length,
+            "num_seismic_components": self.num_seismic_components,
+            "num_dims": self.num_dims,
+            "latent_dim": self.latent_dim,
+            "feature_length": self._feature_length,
+            "station_locations_shape": self._station_locations_shape,
+            # Store the actual coordinates so the sidecar is self-describing and
+            # load_best can rebuild the embedding net without re-supplying them.
+            "station_locations": np.asarray(self._station_locations).tolist(),
+        }
+        meta_path = output_path / "model_meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(meta_path, "w") as f:
+            # default=str guards against a non-JSON value sneaking into a config dict
+            # aborting the dump after a (possibly long) successful training run.
+            json.dump(meta, f, indent=2, default=str)
+        return meta_path
 
     def load_best(self, output_path: Path) -> Path:
         """
         Locate and load the best-performing checkpoint into self.model.
         Returns the path to the checkpoint that was loaded.
+
+        If a ``model_meta.json`` sidecar exists alongside the checkpoint directory,
+        it is loaded and its ``architecture`` / ``model_config`` / ``flow_config``
+        values are used to rebuild the flow before loading weights.  Old checkpoints
+        that lack the sidecar fall back silently to the current object's flow.
         """
+        output_path = Path(output_path)
         ckpt_path = find_best_checkpoint_path(output_path)
         print(ckpt_path)
-        # torch >= 2.6 defaults torch.load to weights_only=True, which rejects Lightning
-        # checkpoints (they pickle hyperparameters).  Force weights_only=False for this trusted,
-        # locally-produced checkpoint.
-        import torch
-        _orig_torch_load = torch.load
-        torch.load = lambda *a, **k: _orig_torch_load(*a, **{**k, "weights_only": False})
-        try:
+
+        # Rebuild from the sidecar so a checkpoint loads into a structurally matching flow
+        # whatever this trainer was constructed with; without one, keep the flow from __init__.
+        meta_path = output_path / "model_meta.json"
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+            station_locations = (
+                np.asarray(meta["station_locations"])
+                if meta.get("station_locations") is not None
+                else self._station_locations
+            )
+            self.architecture = meta.get("architecture", self.architecture)
+            self.num_dims = meta.get("num_dims", self.num_dims)
+            self.latent_dim = meta.get("latent_dim", self.latent_dim)
+            self.trace_length = meta.get("trace_length", self.trace_length)
+            self.num_seismic_components = meta.get("num_seismic_components", self.num_seismic_components)
+            self._model_config = meta.get("model_config", self._model_config)
+            self._flow_config = meta.get("flow_config", self._flow_config)
+            self._feature_length = meta.get("feature_length", self._feature_length)
+            self.flow = self._assemble_flow(
+                architecture=self.architecture,
+                num_seismic_components=self.num_seismic_components,
+                model_config=self._model_config,
+                flow_config=self._flow_config,
+                feature_length=self._feature_length,
+                latent_dim=self.latent_dim,
+                num_dims=self.num_dims,
+                station_locations=station_locations,
+                trace_length=self.trace_length,
+                device=self.device,
+            )
+
+        with unpickling_torch_load():
             self.model = NPELightningModule.load_from_checkpoint(
                 ckpt_path,
                 flow=self.flow,
-                lr=1e-4,
-                weight_decay=1e-4,
+                lr=self.lr,
+                weight_decay=self.weight_decay,
             )
-        finally:
-            torch.load = _orig_torch_load
         self.model.eval()
         self.model.freeze()
         return ckpt_path
         
     
     def build_posterior(self):
+        """An ``sbi`` ``DirectPosterior`` over the trained flow, on the flow's device."""
         # use sbi to build a direct posterior from the trained flow
         from sbi.inference.posteriors import DirectPosterior
         from sbi import utils as utils
 
-        prior = utils.BoxUniform(low=np.zeros((self.num_dims)), high=np.ones((self.num_dims)), device='cuda')
+        device = str(self.device)
+        prior = utils.BoxUniform(low=np.zeros((self.num_dims)), high=np.ones((self.num_dims)), device=device)
 
         posterior = DirectPosterior(
-                    posterior_estimator=self.model.flow.to('cuda'),
+                    posterior_estimator=self.model.flow.to(device),
                     prior=prior,
-                    # x_shape=self._x_shape,
-                    device='cuda',
+                    device=device,
                 )
         return posterior
-from pytorch_lightning.callbacks import ModelCheckpoint
+
 
 def create_best_checkpoint_callback(output_path):
     best_checkpoint_callback = ModelCheckpoint(
@@ -154,3 +420,101 @@ def find_best_checkpoint_path(output_path: Path) -> Path:
         return float(m.group(1)) if m else float("inf")
     best = min(candidates, key=score_from_name)
     return best
+
+def load_warm_start_weights(model, source_path: Path) -> Path:
+    """Load the best checkpoint under ``<source_path>/checkpoints`` into ``model``'s weights.
+
+    This is a WARM START, not a Lightning resume: only the ``state_dict`` is transferred, so
+    the optimizer moments, the LR-schedule position and the epoch counter all start fresh.
+    That is deliberate — a continuation run re-declares its own ``--epochs`` budget, and
+    ``seismogram_transformer.configure_optimizers`` derives BOTH the warmup length and the
+    cosine ``T_max`` from it, so a restored scheduler would fight the new budget.
+
+    ``strict=True``: a warm start whose architecture does not match the source checkpoint is a
+    silently different experiment, so a key/shape mismatch must raise rather than load a
+    partially-initialised flow. Keep every architecture block (``ml_architecture``,
+    ``ml_conditioning``, ``ml_variable_stations``, ``ml_amplitude_embedding``,
+    ``ml_positional_encoding``, ``ml_pooling``, ``ml_flow``, ``ml_encoder``) identical to the
+    source run; only optimizer/batch/epoch settings may differ.
+
+    Returns the checkpoint path that was loaded (log it — provenance for the new run).
+    """
+    ckpt_path = find_best_checkpoint_path(source_path)
+    # weights_only=False: a Lightning .ckpt carries non-tensor entries (hyper_parameters,
+    # callback state) beside the weights, which the weights_only unpickler rejects.
+    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    if "state_dict" not in state:
+        raise KeyError(f"{ckpt_path} has no 'state_dict' — not a Lightning checkpoint")
+    model.load_state_dict(state["state_dict"], strict=True)
+    return ckpt_path
+
+
+def apply_warm_start(trainer, training, models_output_path):
+    """Load an earlier run's best weights into the fresh flow, if ``ml_warm_start`` asks for it.
+
+    The source run is named relative to ``models_output_path`` so the same configuration works
+    on any machine. The checkpoint that was loaded is recorded in the sidecar.
+    """
+    if not training.warm_start_run_name:
+        return
+    checkpoint_path = load_warm_start_weights(
+        trainer.model, Path(models_output_path) / training.warm_start_run_name)
+    trainer.record_model_config(warm_start_checkpoint=str(checkpoint_path))
+    print(f"Warm start from {checkpoint_path}; the optimizer and LR schedule start fresh at "
+          f"lr={training.optimizer.lr} over {training.epochs} epochs")
+
+
+def enable_mmd_loss(trainer, training, pipeline, data):
+    """Switch on the misspecification-robust MMD auxiliary loss, if ``ml_mmd`` asks for it.
+
+    It aligns the summaries of QA-cleaned real events with those of a posterior-matched
+    simulation suite in embedding space. Absent or disabled leaves the plain likelihood loss.
+    """
+    mmd = training.mmd
+    if not mmd.get("enabled", False):
+        return
+    from .mmd_data import build_real_context, build_psim_loader
+
+    clean_only = bool(mmd.get("clean_only", True))
+    real_context = build_real_context(
+        mmd["real_events_manifest"], pipeline.data_manager.data_loader,
+        clean_only=clean_only,
+        # The manifest holds absolute paths from the machine that wrote it; this relocates the
+        # event files without rewriting it.
+        events_h5_dir=mmd.get("events_h5_dir"))
+    psim_loader = build_psim_loader(
+        mmd["psim_data_folder"], mmd["real_events_manifest"],
+        data_loader=pipeline.data_manager.data_loader,
+        synthetic_noise_model_sampler=pipeline.training_noise_sampler,
+        augmentation_chain=data.augmentation_chain,
+        augmentation_nuisance_params=data.augmentation_nuisance_params,
+        conditioning_param_map=training.conditioning.param_map,
+        batch_size=int(mmd.get("batch_size", 64)),
+        clean_only=clean_only)
+    trainer.model.enable_mmd(mmd, real_context, psim_loader)
+    # Through the recorder, not the caller's dict: __init__ merged model_config into a new
+    # object, so a checkpoint would otherwise be indistinguishable from a non-MMD one.
+    trainer.record_model_config(mmd={key: value for key, value in mmd.items()
+                                     if key != "enabled"})
+    print(f"MMD auxiliary loss enabled: N_real={real_context.shape[0]}, "
+          f"N_psim={len(psim_loader.dataset)}, lambda={mmd.get('lambda_mmd', 0.05)}, "
+          f"warmup={mmd.get('warmup_epochs', 5)}+ramp={mmd.get('ramp_epochs', 5)} epochs")
+
+
+def attach_loggers(logging, run_directory):
+    """The Lightning logger specification for the configured metric sinks.
+
+    ``csv`` writes a ``metrics.csv`` beside the checkpoints, readable without network access;
+    ``wandb`` streams the run to Weights & Biases as well.
+    """
+    loggers = []
+    if logging.wandb:
+        loggers.append("wandb")
+    if logging.csv:
+        run_directory = Path(run_directory)
+        loggers.append(CSVLogger(save_dir=str(run_directory.parent),
+                                 name=run_directory.name, version=""))
+        print(f"CSV metrics logging to {run_directory / 'metrics.csv'}")
+    if len(loggers) > 1:
+        return loggers
+    return loggers[0] if loggers else False

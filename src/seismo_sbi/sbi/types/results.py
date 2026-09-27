@@ -1,3 +1,9 @@
+"""Records for jobs and inversion results.
+
+:class:`JobData` holds one job's data vector and truth; :class:`InversionConfig`,
+:class:`InversionData` and :class:`InversionResult` hold what an inversion used and returned.
+"""
+
 from typing import NamedTuple, Callable, Dict, Tuple
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 import numpy as np

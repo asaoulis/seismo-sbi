@@ -1,13 +1,18 @@
+"""Compress a folder of simulations into a training set.
+
+:class:`DatasetCompressor` adds a noise draw to each simulation, compresses it with the loaded
+compressor, and runs the stencil simulations the score compression needs.
+"""
+
 import numpy as np
 import joblib
-import os
 
 from .compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
 from .compression.gaussian import Compressor, ScoreCompressionData
-from seismo_sbi.instaseis_simulator.dataset_generator import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
 from tqdm import tqdm
 
-from ..instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
 class DatasetCompressor:
 
@@ -65,34 +70,42 @@ class DatasetCompressor:
 
         return hessian_gradients
     
-    def compress_dataset(self, simulation_data_paths, param_names):
+    def compress_dataset(self, simulation_data_paths, param_names, seed=None):
+        """One row ``[theta, compressed(D + noise)]`` per simulation; a ``seed`` gives each
+        simulation its own reproducible noise draw, in any worker.
+        """
+        sim_seeds = worker_seeds(seed, len(simulation_data_paths), "training noise")
         cov = self.compressor.C
         matmul_callable = cov.create_matmul_inverse_covariance(cov.inverse_metadata, cov.data_vector_length)
         if self.num_parallel_jobs not in [0,1]:
             try:
-                with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))) as progress_bar:
+                with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))):
 
                     with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
                         results = joblib.Parallel()(
-                            joblib.delayed(self._load_and_compress_sim)(sim_path, param_names, matmul_callable)
-                                    for sim_path in simulation_data_paths
+                            joblib.delayed(self._load_and_compress_sim)(sim_path, param_names, matmul_callable, sim_seed)
+                                    for sim_path, sim_seed in zip(simulation_data_paths, sim_seeds)
                         )
             except Exception as e:
                 print("Error during parallel compression:", e)
                 raise e
             finally:
                 from joblib.externals.loky import get_reusable_executor
-                get_reusable_executor().shutdown(wait=True, kill_workers=True)
+                # reuse=True kills the pool Parallel used; with default arguments loky would first
+                # restart that pool gracefully, which can hang on a worker that never exits.
+                get_reusable_executor(reuse=True).shutdown(wait=True, kill_workers=True)
             
         else:
             results = []
-            for sim_path in simulation_data_paths:
-                    results.append(self._load_and_compress_sim(sim_path, param_names, matmul_callable))
+            for sim_path, sim_seed in zip(simulation_data_paths, sim_seeds):
+                    results.append(self._load_and_compress_sim(sim_path, param_names, matmul_callable, sim_seed))
 
         return np.stack(results)
 
-    def _load_and_compress_sim(self, sim_path, param_names, matmul_callable):
+    def _load_and_compress_sim(self, sim_path, param_names, matmul_callable, sim_seed=None):
         inputs, D = self.load_sim(sim_path, param_names)
+        if sim_seed is not None:
+            np.random.seed(sim_seed)
         noise = self.synthetic_noise_model_sampler()
         if isinstance(noise, tuple):
             noise, _ = noise

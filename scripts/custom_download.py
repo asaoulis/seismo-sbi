@@ -141,7 +141,6 @@ def main():
         except Exception as e:
             print(f"Error downloading {network}.{station}: {e}", flush=True)
             continue
-    
-    unpack_stationxml(output_dir)
+
 if __name__ == "__main__":
     main()

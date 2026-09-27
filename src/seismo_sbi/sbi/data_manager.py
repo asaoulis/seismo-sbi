@@ -1,9 +1,13 @@
+"""Job data and compression data for the pipeline.
+
+:class:`DataManager` builds the per-job data vectors (synthetic tests and real events), runs the
+derivative stencils for the compression data, and compresses a simulated dataset.
+"""
+
 from pathlib import Path
 import tempfile
-from sbi import utils as utils
-from sbi import analysis as analysis
 
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
 from seismo_sbi.sbi.configuration import  ModelParameters
 from seismo_sbi.sbi.types.results import  JobData
@@ -17,11 +21,15 @@ class DataManager:
         self.dataset_compressor = dataset_compressor
         self.data_length = data_length
 
-    def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler = None):
+    def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler = None,
+                         seed = None):
+        """Compress every simulation under ``simulations_output_path/train``, in file-name order;
+        ``seed`` fixes each simulation's noise draw.
+        """
         sim_string = "sim_" # TODO: either remove this glob or make it a constant
-        sims_paths = list((Path(simulations_output_path) / 'train').glob(f"{sim_string}*"))
+        sims_paths = sorted((Path(simulations_output_path) / 'train').glob(f"{sim_string}*"))
         self.dataset_compressor.load_compressor_and_noise_model(compressor, synthetic_noise_model_sampler)
-        raw_compressed_dataset = self.dataset_compressor.compress_dataset(sims_paths, param_names)
+        raw_compressed_dataset = self.dataset_compressor.compress_dataset(sims_paths, param_names, seed=seed)
 
         return raw_compressed_dataset
 
@@ -64,10 +72,8 @@ class DataManager:
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
                 priors = tuple(real_event_data['priors'])
-            # self.data_loader.data_length = self.data_length
             D = self.load_simulation_vector(real_event_path)
             covariance_data = self.load_noise_parametrisation_data(real_event_path)
-            # self.data_loader.data_length = None
             for test_noise_name in test_noises.keys():
                 real_jobs.append(
                     JobData(real_event_name,
@@ -99,6 +105,7 @@ class DataManager:
         simulator_wrapper,
         simulation_parameters,
         skip_cov_gradients=True,
+        seed=None,
     ):
         from copy import deepcopy
         compression_method_details = [cm[0] for cm in compression_methods]
@@ -113,6 +120,7 @@ class DataManager:
             covariance_simulator = simulator_wrapper.select_and_initialise_simulator(
                 simulator_config, simulation_parameters
             )
+            covariance_simulator.seed = seed
 
             dummy_datamanager = deepcopy(self)
             dummy_datamanager.dataset_compressor.simulator = (

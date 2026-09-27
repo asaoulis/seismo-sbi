@@ -1,0 +1,22 @@
+[
+    {
+      "cps_GFs_path": "/data/alex/cps/cps_croatia/multi_models_hu/model1/kappa_3",
+      "cps_GFs_fiducial_path": "/data/alex/cps/cps_croatia/multi_models_hu/model1/kappa_3_fiducial",
+      "receivers": ["KALN", "MOSL", "BLY"]
+    },
+    {
+      "cps_GFs_path": "/data/alex/cps/cps_croatia/multi_models_hu/model2/kappa_3",
+      "cps_GFs_fiducial_path": "/data/alex/cps/cps_croatia/multi_models_hu/model2/kappa_3_fiducial",
+      "receivers": ["KRJB", "RABC", "PLIT"]
+    },
+    {
+      "cps_GFs_path": "/data/alex/cps/cps_croatia/multi_models_hu/model3/kappa_3",
+      "cps_GFs_fiducial_path": "/data/alex/cps/cps_croatia/multi_models_hu/model3/kappa_3_fiducial",
+      "receivers": ["CACV"]
+    },
+    {
+      "cps_GFs_path": "/data/alex/cps/cps_croatia/multi_models_hu/model4_simple/kappa_3",
+      "cps_GFs_fiducial_path": "/data/alex/cps/cps_croatia/multi_models_hu/model4_simple/kappa_3_fiducial",
+      "receivers": ["CEY", "MOZS", "PERS"]
+    }
+  ]

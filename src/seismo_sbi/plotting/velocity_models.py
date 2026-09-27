@@ -1,46 +1,21 @@
+"""Event maps and 1-D velocity-model perturbation figures.
 
-import sys
-import os
-import argparse
-import shutil
-import pickle
-from pathlib import Path
-import multiprocessing as mp
-from functools import partial
-import yaml
-
-
+:func:`add_event_to_map` places an event's beachball, labelled with Mw from :func:`compute_mw`, on a
+cartopy map; :func:`plot_perturbations` draws perturbed layered models around the fiducial one.
+"""
 
 from cartopy import crs as ccrs
 
 import numpy as np
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import numpy as np
 from pyrocko import moment_tensor as mtm
 from pyrocko.plot.beachball import plot_beachball_mpl
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-def convert_mt_convention(mt_rr_phi_theta):
-    """(mnn, mee, mdd, mne, mnd, med)"""
 
-    return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
-
-
-
-def create_matrix(moment_tensor_sol):
-    moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
-                                        [moment_tensor_sol[3], moment_tensor_sol[1], moment_tensor_sol[5]],
-                                        [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
-                                        
-    return moment_tensor_matrix
+from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
 
 
 def compute_mw(moment_tensor_matrix):
-    """
-    Compute moment magnitude Mw from full tensor (in N·m).
-    Formula: Mw = (2/3) * log10(M0) - 6.0
-    """
+    """Mw of a ``(3, 3)`` moment tensor in N m: ``(log10 M0 - 9.1) / 1.5`` with
+    ``M0 = sqrt(sum(M_ij^2) / 2)``, the same as ``utils.mt_decomposition.get_MW_and_epsilon``."""
     M0 = np.sqrt(0.5 * np.sum(moment_tensor_matrix**2))
     Mw = (2.0 / 3.0) * (np.log10(M0) - 9.1)
     return Mw

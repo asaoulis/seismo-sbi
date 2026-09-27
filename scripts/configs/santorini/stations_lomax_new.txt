@@ -1,0 +1,4 @@
+# Santorini lomax: the ONLY broadband-new station to download (the rest reuse v2).
+# (The other 6 auth_ml-new stations are EH/HN, dropped per the 0.03-0.08 Hz HH pipeline.)
+# STATION NETWORK LAT LON
+AKRO HT 36.35840 25.39670

@@ -1,6 +1,18 @@
+"""Calibration figures for posterior coverage.
+
+:func:`plot_coverage` draws empirical against nominal credibility levels for several methods;
+:func:`plot_credibility_levels_histograms_dictionary` histograms the credibility level at which
+each truth falls.
+"""
+
+import importlib
 
 import matplotlib.pyplot as plt
-import scienceplots
+import numpy as np
+
+importlib.import_module("scienceplots")  # registers the 'science' style used below
+
+
 def plot_coverage(coverage_dict, colors, savefig=None, title='Inference calibration',ks = [1,2]):
 
     with plt.style.context('science'):
@@ -28,7 +40,6 @@ def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig
 
     with plt.style.context('science'):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-        num_plots = len(coverage_dict)
         ax.hlines(1, 0, 1, color='k', linestyle='--', label='Calibrated', linewidth=2)
 
         for i, (exp_name, coverage) in enumerate(coverage_dict.items()):
@@ -40,10 +51,6 @@ def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig
             errors = np.quantile(np.diff(ecp_bootstrap, axis=0), [0.025, 0.975], axis=0)/ np.mean(rank_hist)
             credibility_levels = alpha_bootstrap[1:]
 
-            bar_width = np.diff(credibility_levels)[0]/num_plots # Define the bar width
-            if i == 0:
-                offsets = np.linspace(-bar_width, bar_width, num_plots) * num_plots
-            # ax.bar(credibility_levels + offset, rank_hist, width=bar_width, color=color, alpha=0.7, label=exp_name)
             ax.plot(credibility_levels, rank_hist, color=color,  label=exp_name, linewidth=2)
             ax.fill_between(credibility_levels, rank_hist + errors[0,:-1], rank_hist + errors[1, :-1], alpha = 0.2, color=color)
 
@@ -54,8 +61,6 @@ def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig
         ax.set_title('Theory Errors Inversion Credibility Level Distribution')
         ax.set_ylabel("Normalised Frequency")
         ax.set_xlabel("Credibility Level")
-        # ax.set_yticks([])
-        # Add legend
         ax.legend()
 
         # Adjust layout and show the plot

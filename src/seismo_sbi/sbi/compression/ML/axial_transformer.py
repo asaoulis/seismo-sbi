@@ -1,7 +1,19 @@
+"""Axial station-by-time transformer that encodes a set of station traces.
+
+:class:`SeismogramAxialTransformer` takes per-station feature sequences ``(B, N, L, D)`` and the
+station coordinates, adds time and station-position embeddings, and stacks
+:class:`AxialOrFullBlock` layers that attend along time within a station and across stations.
+The result is pooled by query tokens, a CLS token or a PMA head into one summary per event.
+"""
+
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
+from typing import Optional
 import math
+
+from .positional_encoding import FourierStationPositionalEncoding
+from .pma_pooling import SetTransformerPMAHead
+from .fused_attention import build_mha
 
 def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     """
@@ -15,9 +27,29 @@ def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     pe[:, 1::2] = torch.cos(position * div_term)
     return pe  # (L, d_model)
 
-# ----------------------------
+def _time_key_padding_mask(key_padding_mask: Optional[torch.Tensor], rows: int, L: int):
+    """Build the per-station time-attention key-padding mask, guarding fully-masked rows.
+
+    Reshapes the ``(B, N, L)`` station mask to the time-attention ``(rows=B*N, L)`` layout and
+    unmasks any fully-padded station. ``nn.MultiheadAttention`` returns ``NaN`` for a query
+    whose entire key set is masked (all-True), which is exactly a fully-padded station's time
+    row. Such stations are discarded by the masked pooling / station-level mask downstream, so
+    unmasking their rows (set all-False) is safe and purely keeps attention finite. Returns
+    ``None`` for a ``None`` input (fixed-N path) and leaves the mask unchanged when no row is
+    fully masked (no copy on the fixed-N path).
+    """
+    if key_padding_mask is None:
+        return None
+    mask = key_padding_mask.reshape(rows, L)
+    fully_padded = mask.all(dim=-1)  # (rows,)
+    if not bool(fully_padded.any()):
+        return mask
+    mask = mask.clone()
+    mask[fully_padded] = False
+    return mask
+
+
 # Utility: simple position-wise FFN
-# ----------------------------
 class FeedForward(nn.Module):
     def __init__(self, d_model: int, dim_feedforward: int = 2 * 128, dropout: float = 0.1):
         super().__init__()
@@ -32,23 +64,18 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-# ----------------------------
-# One axial block:
-#   1) station-wise self-attn (per time slice)
-#   2) time-wise self-attn (per station)
-#   3) query tokens cross-attend to content (global)
-#   4) position-wise FFN
-# All pre-norm + residual
-# ----------------------------
-# ...existing code...
+# One axial block: station-wise self-attention per time slice, time-wise self-attention per
+# station, query tokens cross-attending to the content, then a position-wise FFN, all pre-norm.
 class AxialOrFullBlock(nn.Module):
     def __init__(self, d_model, nheads, dim_feedforward=512, dropout=0.1,
                  use_query_xattn=True, mode="axial", input_dim=None,
-                 temporal_pool_tokens: int = 4):
+                 temporal_pool_tokens: int = 4, use_sdpa: bool = False):
         """
         mode: "axial" (station × time attention) or "full" (station-level only)
         input_dim: only needed if mode="full" (will project L*D → d_model)
         temporal_pool_tokens: if >0, use PMA-style temporal summarization per station before station-wise attention
+        use_sdpa: route every attention through the fused scaled_dot_product_attention drop-in
+            (numerically equivalent; opt-in perf path). Absent ⇒ stock nn.MultiheadAttention.
         """
         super().__init__()
         self.mode = mode
@@ -60,32 +87,32 @@ class AxialOrFullBlock(nn.Module):
             print(f"Using full attention with input dim {input_dim}, projecting to {d_model}")
             self.proj = nn.Linear(input_dim, d_model)
             self.ln_sta = nn.LayerNorm(d_model)
-            self.attn_sta = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.attn_sta = build_mha(d_model, nheads, dropout, use_sdpa)
 
         elif mode == "axial":
             # Always keep these for the baseline/time path
             self.ln_sta = nn.LayerNorm(d_model)
-            self.attn_sta = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.attn_sta = build_mha(d_model, nheads, dropout, use_sdpa)
 
             self.ln_tim = nn.LayerNorm(d_model)
-            self.attn_tim = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.attn_tim = build_mha(d_model, nheads, dropout, use_sdpa)
 
             # Optional PMA-style temporal summarization and time←station cross-attn
             if self.temporal_pool_tokens > 0:
                 # Per-station temporal pooling by multihead attention (PMA)
                 self.pma_queries = nn.Parameter(torch.randn(1, self.temporal_pool_tokens, d_model))
                 self.ln_pma_in = nn.LayerNorm(d_model)
-                self.attn_pma = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+                self.attn_pma = build_mha(d_model, nheads, dropout, use_sdpa)
 
                 # Used to provide station summaries as context to time tokens
                 self.ln_z = nn.LayerNorm(d_model)
-                self.tim_from_sta = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+                self.tim_from_sta = build_mha(d_model, nheads, dropout, use_sdpa)
 
         # Query cross-attention
         if use_query_xattn:
             self.ln_q = nn.LayerNorm(d_model)
             self.ln_ctx = nn.LayerNorm(d_model)
-            self.q_xattn = nn.MultiheadAttention(d_model, nheads, dropout=dropout, batch_first=True)
+            self.q_xattn = build_mha(d_model, nheads, dropout, use_sdpa)
 
         # FFN
         self.ln_ff = nn.LayerNorm(d_model)
@@ -114,7 +141,7 @@ class AxialOrFullBlock(nn.Module):
                 # -------- temporal PMA per station --------
                 # shape inputs as (B*N, L, D)
                 xt = x.reshape(B * N, L, D)
-                tim_mask = key_padding_mask.reshape(B * N, L) if key_padding_mask is not None else None
+                tim_mask = _time_key_padding_mask(key_padding_mask, B * N, L)
 
                 # learned queries attend to time tokens (Set Transformer PMA / Perceiver-style)
                 q_lat = self.pma_queries.expand(B * N, -1, -1)              # (B*N, K, D)
@@ -166,9 +193,7 @@ class AxialOrFullBlock(nn.Module):
                 # time-wise across L for each station
                 xt = x.reshape(B * N, L, D)
                 xt_in = self.ln_tim(xt)
-                tim_mask = None
-                if key_padding_mask is not None:
-                    tim_mask = key_padding_mask.reshape(B * N, L)
+                tim_mask = _time_key_padding_mask(key_padding_mask, B * N, L)
                 xt_out, _ = self.attn_tim(xt_in, xt_in, xt_in, key_padding_mask=tim_mask, need_weights=False)
                 xt = xt + xt_out
                 x = xt.reshape(B, N, L, D)
@@ -204,10 +229,16 @@ class SeismogramAxialTransformer(nn.Module):
         mode: str = "axial",   # "axial" or "full"
         device=None,
         time_embedding_mode: str = "add",   # "add" or "concat"
-        use_cls_token: bool = False,         # New: CLS-style global token instead of query tokens
-        temporal_pool_tokens: int = 0,    # New: number of PMA temporal pool tokens per station (0=disable)
+        use_cls_token: bool = False,         # a CLS-style global token instead of query tokens
+        temporal_pool_tokens: int = 0,    # PMA temporal pool tokens per station (0 = off)
+        posemb_config: Optional[dict] = None,   # opt-in RFF station positional encoding
+        posemb_coords_kind: str = "absolute",   # "relative" (distance, azimuth) or "absolute" (lat, lon)
+        inject_every_layer: bool = True,        # re-inject the RFF posenc before every block
+        pma_pooling_config: Optional[dict] = None,  # opt-in Set-Transformer PMA pooling head
+        use_sdpa: bool = False,                  # fused SDPA attention everywhere (opt-in)
     ):
         super().__init__()
+        self.use_sdpa = bool(use_sdpa)
         self.register_buffer(
             "station_coords",
             torch.as_tensor(station_coords, dtype=torch.float32)
@@ -222,12 +253,15 @@ class SeismogramAxialTransformer(nn.Module):
         self.conv_length = conv_length
         self.mode = mode
         self.use_cls_token = use_cls_token
+        # With a pooling head the seeds live there and pool the final token set once, so the
+        # in-block query cross-attention is redundant. Query tokens only ever read from x.
+        pma_enabled = bool(pma_pooling_config)
 
         # Sinusoidal time embedding (like transformer positional encoding)
         self.register_buffer("time_embed", sinusoidal_time_embedding(max_time_steps, conv_length))
 
-        # Persistent query tokens (used only if CLS is not enabled)
-        if (num_query_tokens > 0) and (not self.use_cls_token):
+        # Persistent query tokens (used only if CLS is not enabled and the PMA head is off)
+        if (num_query_tokens > 0) and (not self.use_cls_token) and (not pma_enabled):
             self.query_tokens = nn.Parameter(torch.randn(1, num_query_tokens, d_model))
         else:
             self.query_tokens = None
@@ -248,10 +282,11 @@ class SeismogramAxialTransformer(nn.Module):
                 nheads=nheads,
                 dim_feedforward=dim_feedforward,
                 dropout=dropout,
-                use_query_xattn=((num_query_tokens > 0) and (not self.use_cls_token)),
+                use_query_xattn=((num_query_tokens > 0) and (not self.use_cls_token) and (not pma_enabled)),
                 mode=self.mode,
                 input_dim=self.conv_length * self.timesteps if self.mode == "full" else None,
                 temporal_pool_tokens=temporal_pool_tokens,   # pass through
+                use_sdpa=self.use_sdpa,
             )
             for _ in range(num_layers)
         ])
@@ -261,6 +296,48 @@ class SeismogramAxialTransformer(nn.Module):
         self.gem_p = nn.Parameter(torch.ones(1) * 3.0)
 
         self.final_ln = nn.LayerNorm(d_model)
+
+        # Without a configuration, or with mode='sinusoidal', forward() uses the plain additive
+        # sinusoidal station embedding instead.
+        self.inject_every_layer = bool(inject_every_layer)
+        self.station_posenc = None
+        if posemb_config:
+            pe_mode = posemb_config.get("mode", "fourier")
+            if pe_mode not in ("fourier", "sinusoidal"):
+                raise ValueError(
+                    f"positional_encoding.mode must be 'fourier' or 'sinusoidal', got '{pe_mode}'."
+                )
+            if pe_mode == "fourier":
+                if self.mode != "axial":
+                    raise ValueError(
+                        "RFF positional encoding currently supports mode='axial' only "
+                        f"(got mode='{self.mode}')."
+                    )
+                if self.use_cls_token:
+                    raise ValueError(
+                        "RFF positional encoding does not yet support use_cls_token=True; "
+                        "use query-token pooling (the default)."
+                    )
+                self.station_posenc = FourierStationPositionalEncoding.from_config(
+                    d_model, posemb_coords_kind, posemb_config
+                )
+
+        # Without one, forward() pools with its own CLS or query-mean read-out. Axial mode only,
+        # since CLS has a pooling path of its own.
+        self.pma_head = None
+        if pma_enabled:
+            if self.mode != "axial":
+                raise ValueError(
+                    "PMA pooling head currently supports mode='axial' only "
+                    f"(got mode='{self.mode}')."
+                )
+            if self.use_cls_token:
+                raise ValueError(
+                    "PMA pooling head is incompatible with use_cls_token=True "
+                    "(CLS provides its own pooling); disable one of them."
+                )
+            self.pma_head = SetTransformerPMAHead.from_config(
+                d_model, nheads, pma_pooling_config, use_sdpa=self.use_sdpa)
 
     def station_position_embedding(self, pos: torch.Tensor, d_model: int = 128, batch_size: int = None):
         """
@@ -288,6 +365,36 @@ class SeismogramAxialTransformer(nn.Module):
             out = out.unsqueeze(0).expand(batch_size, -1, -1)  # (B, N, d_model)
 
         return out
+
+    def _station_position_embedding_batched(self, pos: torch.Tensor, d_model: int = 128):
+        """Per-batch variant of :meth:`station_position_embedding`.
+
+        pos: ``(B, N, 2)`` per-sample station coordinates (e.g. source-relative
+        ``(distance, azimuth)``). Returns ``(B, N, d_model)``. Uses the identical
+        sinusoidal scheme so it is consistent with the shared-coords path.
+        """
+        B, N, _ = pos.shape
+        device = pos.device
+        div_term = 1 / torch.pow(
+            10000.0, torch.arange(0, d_model // 2, 2, device=device) / (d_model // 2)
+        )  # (d_model//4,)
+        pes = []
+        for coord_index in range(2):
+            position = pos[:, :, coord_index].unsqueeze(-1)            # (B, N, 1)
+            pe = torch.zeros(B, N, d_model // 2, device=device, dtype=pos.dtype)
+            ang = position * div_term                                  # (B, N, d_model//4)
+            pe[..., 0::2] = torch.sin(ang)
+            pe[..., 1::2] = torch.cos(ang)
+            pes.append(pe)
+        return torch.cat(pes, dim=-1)                                  # (B, N, d_model)
+
+    def _station_embedding(self, d_model: int, B: int, override):
+        """Station embedding from either the shared coords or a per-batch override."""
+        if override is not None:
+            return self._station_position_embedding_batched(
+                override.to(self.station_coords.dtype), d_model
+            )
+        return self.station_position_embedding(self.station_coords, d_model=d_model, batch_size=B)
 
     def _masked_mean(self, x: torch.Tensor, mask: Optional[torch.Tensor]):
         # x: (B, T, D); mask: (B, T) True means keep/valid
@@ -346,32 +453,54 @@ class SeismogramAxialTransformer(nn.Module):
             # fallback to mean
             return self._masked_mean(seq, mask)
 
-    def forward(self, x: torch.Tensor, key_padding_mask=None):
-        """
-        x: (B, N, L, D)
-        station_coords: (B, N, 2) or (1, N, 2) fixed coordinates
-        key_padding_mask: axial mode -> (B, N, L) booleans (True=pad), full mode -> same input is accepted
+    def forward(self, x: torch.Tensor, key_padding_mask=None, station_coords_override=None,
+                source_depth=None, station_mask=None):
+        """Encode a batch of station traces.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            ``(B, N, L, D)``; the fixed station coordinates are ``(B, N, 2)`` or ``(1, N, 2)``.
+        key_padding_mask : optional
+            Axial mode: ``(B, N, L)`` booleans (True=pad); full mode accepts the same input.
+        station_coords_override : optional
+            ``(B, N, 2)`` per-sample coordinates (e.g. source-relative distance/azimuth)
+            used instead of the shared station coords. ``None`` reproduces the original
+            shared-coords behaviour.
+        source_depth : optional
+            ``(B, 1)`` source depth, RFF-encoded by the positional encoder when
+            ``include_depth`` is set. Ignored on the legacy sinusoid path.
+        station_mask : optional
+            ``(B, N)`` station validity (True=real) passed to the RFF positional encoder
+            so padded stations don't corrupt its running stats.
         """
         B, N, L, D = x.shape
-        # if D != self.d_model:
-        #     raise ValueError(f"Expected input dim {self.d_model}, got {D}")
-
-        # Station embeddings from coords
-        sta_e = self.station_position_embedding(self.station_coords, d_model=self.conv_length, batch_size=B)
-        # sta_e: (B, N, D)
-
-        # Time embeddings
-        # t_ids = torch.arange(L, device=x.device).unsqueeze(0).expand(B, -1)  # (B, L)
         t_e = self.time_embed[:L, :]
 
         x = x + t_e.unsqueeze(0).unsqueeze(1)  # (B, N, L, D)
 
-        if self.mode == "axial":
-            sta_e = self.station_position_embedding(self.station_coords, d_model=self.conv_length, batch_size=B)
+        # ``posenc_to_inject`` holds a ``(B, N, d_model)`` embedding the block loop re-adds
+        # before every block; it stays None when the encoding is added once, just below.
+        posenc_to_inject = None
+        if self.station_posenc is not None:
+            # RFF path (axial only; CLS disabled at construction so N is preserved).
+            if station_coords_override is not None:
+                coords = station_coords_override
+            else:
+                coords = self.station_coords.to(x.dtype)
+                if coords.dim() == 2:
+                    coords = coords.unsqueeze(0).expand(B, coords.shape[0], 2)
+            sta_e = self.station_posenc(coords, depth=source_depth, mask=station_mask)  # (B,N,d_model)
+            if self.inject_every_layer:
+                posenc_to_inject = sta_e            # re-added before every block
+            else:
+                x = x + sta_e.unsqueeze(2)          # single injection at input
+        elif self.mode == "axial":
+            sta_e = self._station_embedding(self.conv_length, B, station_coords_override)
             x = x + sta_e.unsqueeze(2)
         elif self.mode == "full":
             x = x.reshape(B, N, L * D)
-            sta_e = self.station_position_embedding(self.station_coords, d_model=L*D, batch_size=B)
+            sta_e = self._station_embedding(L * D, B, station_coords_override)
             x = x + sta_e
 
         # Optionally add CLS token (as extra station)
@@ -403,11 +532,20 @@ class SeismogramAxialTransformer(nn.Module):
         if (self.query_tokens is not None) and (not self.use_cls_token):
             q = self.query_tokens.expand(B, -1, -1)
 
-        # Axial/full blocks
+        # Re-adding the station embedding before each block lets the geometry condition every
+        # layer's attention, since each block's pre-norm renormalises the accumulated stream.
         for blk in self.blocks:
+            if posenc_to_inject is not None:
+                x = x + posenc_to_inject.unsqueeze(2)
             x, q = blk(x, q, key_padding_mask=mask_to_pass)
 
         x = self.final_ln(x)
+
+        # The pooling head pools the final token field once. Built only for axial mode without
+        # CLS, so ``x`` is ``(B, N, L, D)`` and ``q`` is None here.
+        if self.pma_head is not None:
+            pooled = self.pma_head(x, key_padding_mask=mask_to_pass)
+            return x, q, pooled
 
         pooled = None
         # Pooling: prefer CLS if enabled, else pool queries (backward compatible)
@@ -417,8 +555,9 @@ class SeismogramAxialTransformer(nn.Module):
                 cls_seq = x[:, 0, :, :]  # (B, L, D)
                 time_keep = None
                 if key_padding_mask is not None:
-                    # valid if any station has valid at that time -> we pool over valid times
-                    time_keep = ~key_padding_mask.any(dim=1)  # (B, L)
+                    # A time step is padded only when every station is padded there; a padded
+                    # station alone must not invalidate the time step for the others.
+                    time_keep = ~key_padding_mask.all(dim=1)  # (B, L)
                 pooled = self._apply_pool(cls_seq, time_keep)
             elif self.mode == "full":
                 # single CLS token after station-level attention

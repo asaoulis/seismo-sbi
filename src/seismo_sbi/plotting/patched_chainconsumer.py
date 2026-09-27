@@ -7,8 +7,6 @@ import numpy as np
 from scipy.interpolate import interp1d
 import re
 import matplotlib.pyplot as plt
-import logging
-import matplotlib
 from matplotlib.ticker import MaxNLocator, ScalarFormatter, LogLocator
 
 # ChainConsumer 0.34 imports scipy.integrate.simps, which was renamed to `simpson` and removed in
@@ -353,7 +351,6 @@ class CustomPlotter(Plotter):
         smooth = chain.config["smooth"]
         kde = chain.config["kde"]
         zorder = chain.config["zorder"]
-        title_size = self.parent.config["label_font_size"]
         chain_row = chain.get_data(parameter)
         weights = chain.weights
         if smooth or kde:

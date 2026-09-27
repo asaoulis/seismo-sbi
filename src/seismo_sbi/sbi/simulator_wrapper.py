@@ -1,22 +1,24 @@
-from functools import partial
-from sbi import utils as utils
-from sbi import analysis as analysis
-from copy import deepcopy
-import json
-from pathlib import Path
+"""Wire a configured forward model into the inference pipeline.
 
-from seismo_sbi.instaseis_simulator.simulator import InstaseisSourceSimulator, FixedLocationKernelSimulator
-from seismo_sbi.cps_simulator.simulator import CPSVariableKernelSimulator, CPSPrecomputedSimulator, MultiModelCPSSimulator
-from seismo_sbi.sbi.compression.theory_covariance import CPSTheoryCovarianceEstimationSimulator
-from seismo_sbi.instaseis_simulator.dataloader import SimulationDataLoader
-from seismo_sbi.sbi.configuration import  ModelParameters, SimulationParameters
-from seismo_sbi.instaseis_simulator.receivers import Receivers
+:class:`GeneralSimulatorWrapper` builds the simulator the configuration asks for, folds in the
+nuisance effects staged at simulation time, and exposes the two callables the pipeline uses: one
+that returns a flat data vector for a parameter vector, and one that writes a simulation to disk.
+"""
+
+from functools import partial
+from copy import deepcopy
+
+from seismo_sbi.sbi.dataset_generator import flatten_sample
+from seismo_sbi.nuisance_effects.post_processing import build_post_processing_chain
+from seismo_sbi.simulators.registry import build_simulator
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.sbi.configuration import ModelParameters, SimulationParameters
+
 
 class GeneralSimulatorWrapper:
 
     def __init__(self, simulation_parameters: SimulationParameters,  parameters, data_loader, samplers):
 
-        # in future, this can be extended for aribitrary forward models
         default_config = (simulation_parameters.simulation_type, None)
         self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, samplers)
         self.data_loader_callable = data_loader.convert_sim_data_to_array
@@ -26,127 +28,42 @@ class GeneralSimulatorWrapper:
 
     def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, samplers):
 
-        self.simulator = self.select_and_initialise_simulator(simulator_config, simulation_parameters)
+        # Copied so the parsed configuration is not mutated.
+        effect_configs = dict(getattr(parameters, 'nuisance_effect_config', {}))
+
+        # Nuisances staged "training_augmentation" are folded in per batch by the dataloader.
+        nuisance_stage = getattr(parameters, 'nuisance_stage', {})
+        sim_staged_keys = [
+            key for key in parameters.nuisance.keys()
+            if nuisance_stage.get(key, "simulation") == "simulation"
+        ]
+
+        # Shift-based effects need the sampling rate to turn seconds into samples.
+        for _shift_key in ('time_shift_error', 'azimuthal_anisotropy',
+                           'shear_wave_splitting', 'dispersion_spread'):
+            if _shift_key in sim_staged_keys:
+                effect_configs[_shift_key] = dict(
+                    effect_configs.get(_shift_key, {})
+                )
+                effect_configs[_shift_key]['sampling_rate'] = (
+                    simulation_parameters.sampling_rate
+                )
+
+        post_processing_effects = list(
+            build_post_processing_chain(sim_staged_keys, effect_configs).effects
+        )
+        self.simulator = self.select_and_initialise_simulator(
+            simulator_config, simulation_parameters, post_processing_effects=post_processing_effects
+        )
 
         self.simulation_save_callable = self.simulator.execute_sim_and_save_outputs
 
         self.simulation_callable = partial(self.input_output_simulation, parameters, data_loader, samplers, self.simulator)
 
-    def _build_cps_multi_models_from_path(self, simulation_parameters: SimulationParameters):
-        """Read a single JSON config file and build list of sub-model dicts.
+    def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
+        return build_simulator(simulator_config, simulation_parameters, post_processing_effects,
+                               data_flattening=getattr(self, "data_loader_callable", None))
 
-        The JSON file must contain a list of objects, each with at least:
-
-        - "cps_GFs_path": str
-        - "cps_GFs_fiducial_path": str
-        - "receivers": [station_name, ...]
-        """
-        cfg_path_str = simulation_parameters.cps_multi_models_path
-        if not cfg_path_str:
-            return None
-
-        cfg_path = Path(cfg_path_str)
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg_list = json.load(f)
-
-        if not isinstance(cfg_list, list):
-            raise ValueError(
-                f"cps_multi_models_path JSON must contain a list of model configs, got {type(cfg_list)}"
-            )
-
-        global_receivers = simulation_parameters.receivers
-        station_to_receiver = {rec.station_name: rec for rec in global_receivers.iterate()}
-
-        models = []
-        for idx, cfg in enumerate(cfg_list):
-            if not isinstance(cfg, dict):
-                raise ValueError(
-                    f"Entry {idx} in {cfg_path} must be an object/dict, got {type(cfg)}"
-                )
-
-            station_names = cfg.get("receivers", [])
-            sub_receivers_list = []
-            for sta in station_names:
-                try:
-                    sub_receivers_list.append(station_to_receiver[sta])
-                except KeyError:
-                    raise KeyError(
-                        f"Station '{sta}' in {cfg_path} (entry {idx}) not found in global receivers list"
-                    )
-
-            sub_receivers = Receivers(receivers=sub_receivers_list)
-            model_cfg = {
-                "receivers": sub_receivers,
-                "cps_GFs_path": cfg["cps_GFs_path"],
-                "cps_GFs_fiducial_path": cfg["cps_GFs_fiducial_path"],
-            }
-            models.append(model_cfg)
-        return models
-
-    def select_and_initialise_simulator(self, simulator_config, simulation_parameters):
-        if simulator_config[0] == 'instaseis':
-            simulator = InstaseisSourceSimulator(simulation_parameters.syngine_address, 
-                                        components= simulation_parameters.components, 
-                                        receivers = simulation_parameters.receivers,
-                                        seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                                        synthetics_processing = simulation_parameters.processing)
-        elif simulator_config[0] == 'kernel':
-            score_compression_data = simulator_config[1]
-            simulator = FixedLocationKernelSimulator(score_compression_data,
-                            components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing)
-        elif simulator_config[0] == 'cps':
-            simulator = CPSVariableKernelSimulator(
-                            components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
-                            gf_storage_root=simulation_parameters.cps_GFs_path,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None),)
-        elif simulator_config[0] == 'cps_precomputed':
-            simulator = CPSPrecomputedSimulator(
-                            fiducial_model_path=simulation_parameters.cps_GFs_fiducial_path,
-                            components= simulation_parameters.components, 
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
-                            gf_storage_root=simulation_parameters.cps_GFs_path,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None))
-        elif simulator_config[0] == 'cps_multi':
-            # simulator_config[1] can override and directly provide model dicts.
-            if simulator_config[1] is not None:
-                models = simulator_config[1]
-            else:
-                models = self._build_cps_multi_models_from_path(simulation_parameters)
-            if not models:
-                raise ValueError(
-                    "simulation_type 'cps_multi' requires either explicit models "
-                    "or a non-empty cps_multi_models_path in SimulationParameters."
-                )
-            simulator = MultiModelCPSSimulator(
-                            models=models,
-                            components= simulation_parameters.components,
-                            receivers = simulation_parameters.receivers,
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
-                            cps_path=getattr(simulation_parameters, 'cps_path', None),
-                        )
-        elif simulator_config[0] == 'cps_covariance':
-            cps_simulator = simulator_config[1]
-            simulator = CPSTheoryCovarianceEstimationSimulator(
-                            simulator=cps_simulator,
-                            data_flattening = self.data_loader_callable,
-                            components= simulation_parameters.components, 
-                            receivers = deepcopy(simulation_parameters.receivers),
-                            seismogram_duration_in_s = simulation_parameters.seismogram_duration,
-                            synthetics_processing = simulation_parameters.processing,
-                            )
-        else:
-            raise NotImplementedError(f"Simulator {simulator_config[0]} not implemented")
-        return simulator
-    
     def create_input_output_simulation_callable(self, parameters, data_loader, samplers):
         return partial(self.input_output_simulation, parameters, data_loader, samplers)
 
@@ -154,7 +71,8 @@ class GeneralSimulatorWrapper:
         if len(theta.shape) == 1:
             theta = theta.reshape(1,-1)
         theta_fiducial_map = parameters.vector_to_parameters(theta[0], 'theta_fiducial')
-        sampled_nuisance = {key: next(samplers[key](1)) for key in parameters.nuisance.keys()}
+        nuisance_draws = [next(samplers[key](1)) for key in parameters.nuisance.keys()]
+        sampled_nuisance = parameters.vector_to_nuisance_inputs(flatten_sample(nuisance_draws))
         inputs_map = {**theta_fiducial_map, **sampled_nuisance, **kwargs}
         return data_loader.convert_sim_data_to_array(
                     {"outputs": simulator.run_simulation(inputs_map)[1]}

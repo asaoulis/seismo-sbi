@@ -1,0 +1,110 @@
+{
+  "architecture": "seismogram_transformer",
+  "model_config": {
+    "layers": 4,
+    "nheads": 4,
+    "timeemb": 64,
+    "posemb": 64,
+    "channels": 256,
+    "station_encoder": "tcn",
+    "theta_scaler": {
+      "moment_tensor": "scale_shape",
+      "log10_m0_min": 15.5,
+      "log10_m0_max": 19.5
+    },
+    "input_decimate": {
+      "factor": 3
+    },
+    "encoder_config": {
+      "downsample": 2
+    },
+    "conditioning": {
+      "n_cond": 3,
+      "d_cond": 256,
+      "coord_mode": "geographic",
+      "inject": [
+        "token_add",
+        "film"
+      ],
+      "n_fourier": 0
+    },
+    "variable_stations": true,
+    "station_coords_mode": "relative",
+    "amplitude_embedding": {
+      "mode": "array_relative",
+      "per_component": false,
+      "reference": "mean",
+      "num_freqs": 16,
+      "sigma": 1.0,
+      "learnable_freqs": false,
+      "scale": 1.0,
+      "distance_correction": true,
+      "snr_weighting": true,
+      "snr_floor_quantile": 0.2
+    },
+    "positional_encoding": {
+      "mode": "fourier",
+      "num_freqs": 16,
+      "sigma": 1.0,
+      "learnable_freqs": false,
+      "include_depth": true,
+      "inject_every_layer": true,
+      "standardize": "running"
+    },
+    "pma_pooling": {
+      "pool_over": "tokens",
+      "num_seeds": 4,
+      "combine": "linear",
+      "ffn": true,
+      "seed_self_attention": false
+    },
+    "summary_bottleneck": {
+      "dim": 32
+    },
+    "perf": {
+      "sdpa": true,
+      "amp": true,
+      "fused_adam": true
+    },
+    "mmd": {
+      "real_events_manifest": "mmd_manifest.json",
+      "events_h5_dir": "events",
+      "psim_data_folder": "psim_suite",
+      "lambda_mmd": 0.5,
+      "warmup_epochs": 5,
+      "ramp_epochs": 5,
+      "every_n_steps": 4,
+      "batch_size": 64,
+      "clean_only": true
+    }
+  },
+  "flow_config": {
+    "num_transforms": 8,
+    "num_blocks": 2,
+    "dropout_probability": 0.0,
+    "use_batch_norm": true
+  },
+  "trace_length": 200,
+  "num_seismic_components": 3,
+  "num_dims": 6,
+  "latent_dim": 256,
+  "feature_length": 128,
+  "station_locations_shape": [
+    3,
+    2
+  ],
+  "station_locations": [
+    [
+      36.4,
+      25.5
+    ],
+    [
+      37.0,
+      26.0
+    ],
+    [
+      36.0,
+      25.0
+    ]
+  ]
+}
