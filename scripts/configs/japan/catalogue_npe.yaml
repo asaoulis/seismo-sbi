@@ -34,7 +34,7 @@ ml_scaler:
 
 seismic_context:
   simulation_type: 'instaseis'
-  components: 'ZNE'
+  components: 'ZEN'
   stations_path: './configs/japan/fnet_demo_stations.txt'
   station_components_path: './configs/japan/components.json'   # <PLACEHOLDER>
   seismogram_duration: 200

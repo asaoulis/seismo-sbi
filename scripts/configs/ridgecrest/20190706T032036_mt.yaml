@@ -5,7 +5,7 @@ generate_dataset: true
 num_jobs: 20
 seismic_context:
   simulation_type: cps_precomputed
-  components: ZEN
+  components: 'ENZ'
   stations_path: /home/alex/work/seismo-sbi/scripts/configs/ridgecrest/stations_20190706T032036.txt
   station_components_path: /home/alex/work/seismo-sbi/scripts/configs/ridgecrest/components_20190706T032036.json
   seismogram_duration: 251

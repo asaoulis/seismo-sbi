@@ -160,7 +160,7 @@ ml_encoder:
 seismic_context:
   simulation_type: 'instaseis_ensemble'                  # japan10s theory-error ensemble
   resample_member_per_station: true                      # per-station independent 1-D member draw
-  components: 'ZNE'
+  components: 'ZEN'
   stations_path: '/home/alex/work/seismo-sbi/scripts/configs/japan/fnet_demo_stations.txt'
   station_components_path: '/home/alex/work/seismo-sbi/scripts/configs/japan/components.json'
   seismogram_duration: 800          # DESIGN decision (scoping doc): covers Japan SW arrivals;

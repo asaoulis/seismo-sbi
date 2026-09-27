@@ -48,6 +48,18 @@ from .simulator_wrapper import GeneralSimulatorWrapper
 from .job_runners import convert_lists_to_arrays
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
+from seismo_sbi.utils.errors import InvalidConfiguration
+
+
+def likelihood_covariance(option, compressor_covariance, data_vector_length):
+    """The noise covariance the Gaussian likelihood samples with: ``'empirical'`` copies the
+    compressor's, a number is a white-noise standard deviation in the data units."""
+    if option == 'empirical':
+        return deepcopy(compressor_covariance)
+    if isinstance(option, (int, float)):
+        return ScalarEmpiricalCovariance(float(option), data_vector_length)
+    raise InvalidConfiguration(
+        f"inference.likelihood.covariance must be 'empirical' or a noise standard deviation, not {option!r}.")
 
 
 class SBIPipeline:
@@ -804,10 +816,7 @@ class SingleEventPipeline(SBIPipeline):
         ensemble = likelihood_config.get('ensemble', True)
         covariance = likelihood_config['covariance']
 
-        if isinstance(covariance, float):
-            covariance = covariance **2
-        elif covariance == 'empirical':
-            covariance = deepcopy(self.compressors[compressor_name].C)
+        covariance = likelihood_covariance(covariance, self.compressors[compressor_name].C, self.data_vector_length)
         walker_burn_in = likelihood_config['walker_burn_in']
         num_samples = likelihood_config['num_samples']
         move_size = likelihood_config.get('move_size')
