@@ -1,3 +1,9 @@
+"""Calibration figures for posterior coverage.
+
+:func:`plot_coverage` draws empirical against nominal credibility levels for several methods;
+:func:`plot_credibility_levels_histograms_dictionary` histograms the credibility level at which
+each truth falls.
+"""
 
 import importlib
 

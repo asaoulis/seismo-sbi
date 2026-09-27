@@ -1,3 +1,10 @@
+"""Bias and z-score statistics over an ensemble of inversions.
+
+:func:`bias_z_from_posteriors_mt6_parallel` compares posterior samples ``(n_samples, n_events,
+6)`` with the true tensors ``(n_events, 6)`` in Mw, lune angles and strike, dip and rake;
+:func:`extract_experiment_results_by_keys` collects the results the comparison reads.
+"""
+
 from typing import Iterable, List
 import numpy as np
 import os

@@ -1,4 +1,9 @@
-# rocko_beachball_patch.py
+"""Beachball drawing on matplotlib axes, patched from pyrocko.
+
+:func:`plot_beachball_mpl` fills a full (isotropic-including) moment tensor on any axes, and
+:func:`plot_beachball_on_axes` places one at a data position, for use on maps and lunes.
+"""
+
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
 from matplotlib.transforms import IdentityTransform

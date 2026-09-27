@@ -1,3 +1,11 @@
+"""Posterior figures: corner plots, lunes, beachballs and compression diagnostics.
+
+:class:`PosteriorPlotter` takes posterior samples in the scaled space and draws them in physical
+units: ChainConsumer corner plots, source-type lunes (scatter and KDE contours), fuzzy and
+projected beachballs, and the compressed-statistic likelihood panels.
+:class:`MomentTensorReparametrised` re-expresses moment-tensor samples as Mw and lune angles.
+"""
+
 from typing import List
 
 import numpy as np

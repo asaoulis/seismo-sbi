@@ -1,3 +1,9 @@
+"""Checkpoint lookup for the regression compressor.
+
+:func:`get_best_epoch` picks the checkpoint with the lowest ``val_loss`` in its filename;
+:func:`get_best_model` loads it into a ``LightningModel``.
+"""
+
 from pathlib import Path
 
 import numpy as np

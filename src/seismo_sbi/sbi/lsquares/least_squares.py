@@ -1,3 +1,9 @@
+"""Iterative least-squares estimate of the source.
+
+:class:`IterativeLeastSquaresSolver` recomputes the score compression around the current
+estimate, steps to the new maximum-likelihood point, and repeats.
+"""
+
 from pathlib import Path
 from copy import deepcopy
 import tempfile

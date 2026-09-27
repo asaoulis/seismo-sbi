@@ -1,3 +1,9 @@
+"""Compress a folder of simulations into a training set.
+
+:class:`DatasetCompressor` adds a noise draw to each simulation, compresses it with the loaded
+compressor, and runs the stencil simulations the score compression needs.
+"""
+
 import numpy as np
 import joblib
 

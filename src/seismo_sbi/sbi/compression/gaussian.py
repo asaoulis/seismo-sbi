@@ -1,3 +1,11 @@
+"""Compressors: score compression under a Gaussian likelihood, and a trained network.
+
+:class:`GaussianCompressor` turns a data vector into the score (or the quasi-maximum-likelihood
+estimate) from the fiducial data, its parameter gradients and a noise covariance.
+:class:`MachineLearningCompressor` wraps a trained network behind the same
+``compress_data_vector`` interface.
+"""
+
 import numpy as np
 from abc import ABC, abstractclassmethod
 from typing import List

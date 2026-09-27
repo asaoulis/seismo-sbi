@@ -1,3 +1,10 @@
+"""Gaussian-likelihood sampling with emcee.
+
+:class:`GaussianLikelihoodEvaluator` scores scaled source parameters against the data under a
+Gaussian noise covariance and a prior; :func:`generate_samples` runs the ensemble sampler and
+:func:`split_rhat` checks the chains' convergence.
+"""
+
 import numpy as np
 import emcee
 from emcee.moves import GaussianMove

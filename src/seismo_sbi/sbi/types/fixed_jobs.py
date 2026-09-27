@@ -1,3 +1,9 @@
+"""Synthetic test jobs at standard mechanisms.
+
+:class:`FixedEventJobs` builds the simulation inputs for normal, strike-slip, thrust, isotropic,
+double-couple and CLVD sources at one scalar moment.
+"""
+
 import numpy as np
 from copy import deepcopy
 

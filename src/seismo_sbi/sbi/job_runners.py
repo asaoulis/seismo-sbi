@@ -1,3 +1,8 @@
+"""Run a pipeline's inversions with plotting and saving off the main process.
+
+The ``run_*`` functions consume the pipeline's results generator and hand each result to a
+plotting or saving worker through a queue, or run every inversion before plotting.
+"""
 
 import os
 import pickle

@@ -1,4 +1,10 @@
-# Minimal, reusable lune utilities: conversion to Tape & Tape gamma/delta and Basemap-projected plotting
+"""Source-type lune: conversions and Basemap plotting.
+
+:func:`lam2lune` and :func:`mts6_to_gamma_delta` map moment tensors to the lune angles
+``(gamma_deg, delta_deg)``; :func:`plot_lune_frame` draws the Tape and Tape lune in a Hammer
+projection, and the ``plot_*_on_lune`` helpers add scatter points and KDE contours to it.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -1,3 +1,10 @@
+"""Posterior predictive checks: re-simulate posterior draws and score them against the data.
+
+:class:`PosteriorPredictiveChecks` simulates an ensemble per method, selects the best synthetics,
+and evaluates registered misfit metrics against the observation; :func:`plot_metric_bars`
+compares the metrics across methods.
+"""
+
 import numpy as np
 import warnings
 import joblib

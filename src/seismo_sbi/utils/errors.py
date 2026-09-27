@@ -1,4 +1,7 @@
-"""Shared error types and the retry wrapper used around flaky forward-model calls."""
+"""Shared error types and the retry wrapper.
+
+:func:`error_handling_wrapper` retries a flaky forward-model call a fixed number of times.
+"""
 
 import traceback
 from functools import wraps

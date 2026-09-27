@@ -1,3 +1,10 @@
+"""Waveform and misfit figures.
+
+:class:`MisfitsPlotting` draws observed against synthetic traces: raw, aligned on arrivals,
+by moveout, as a record section, and with posterior-predictive quantile bands.
+:func:`plot_stacked_waveforms` stacks every trace of one data vector.
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 

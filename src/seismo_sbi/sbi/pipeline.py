@@ -1,3 +1,11 @@
+"""The inference pipeline: simulate, compress, and invert one event.
+
+:class:`SBIPipeline` loads the parameters and the simulator, builds the compressors and
+covariances, generates the training simulations and the test jobs, and runs the Gaussian
+likelihood and SBI inversions; :class:`SingleEventPipeline` specialises it to one event with a
+fixed receiver set.
+"""
+
 from pathlib import Path
 import shutil
 import numpy as np

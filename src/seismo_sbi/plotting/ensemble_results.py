@@ -1,4 +1,8 @@
+"""Bias and z-score summary of an ensemble of synthetic inversions.
 
+:func:`plot_ensemble_results` draws, per parameter and method, violins of the posterior bias and
+of the z-score of the truth, and the ordered z-scores against a standard normal.
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt

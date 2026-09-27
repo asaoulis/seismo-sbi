@@ -1,4 +1,8 @@
-""" Configuration parser for sbi_pipeline.
+"""Parse a pipeline YAML file into typed parameter records.
+
+:class:`SBI_Configuration` reads the main options, the parameters with their priors and fiducial
+values, the simulation and sampling options, the compression and SBI settings, and the test
+jobs, into the records of :mod:`seismo_sbi.sbi.types.parameters`.
 """
 
 import yaml

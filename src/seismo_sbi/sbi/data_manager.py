@@ -1,3 +1,9 @@
+"""Job data and compression data for the pipeline.
+
+:class:`DataManager` builds the per-job data vectors (synthetic tests and real events), runs the
+derivative stencils for the compression data, and compresses a simulated dataset.
+"""
+
 from pathlib import Path
 import tempfile
 

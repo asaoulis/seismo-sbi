@@ -1,3 +1,8 @@
+"""Display names, units and unit conversions for posterior parameters.
+
+:class:`ParameterInformation` pairs a parameter with its label, unit and a scaling transform;
+:class:`DegreeKMConverter` turns latitude and longitude offsets into kilometres.
+"""
 
 from typing import NamedTuple, Callable
 from enum import Enum

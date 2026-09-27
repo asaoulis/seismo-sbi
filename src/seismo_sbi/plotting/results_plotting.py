@@ -1,3 +1,9 @@
+"""Per-job figures produced by the inference pipeline.
+
+:class:`SBIPipelinePlotter` writes the stacked waveforms, synthetic misfits, corner plots and
+compression diagnostics for one job under the pipeline's output directory.
+"""
+
 from pathlib import Path
 import numpy as np
 

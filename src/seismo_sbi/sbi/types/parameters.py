@@ -1,4 +1,8 @@
-""" This module contains the parameters for the sbi - pipeline.
+"""Parameter records for the pipeline.
+
+The ``NamedTuple`` records hold the pipeline, simulation, dataset and least-squares options;
+:class:`ModelParameters` holds the inferred and nuisance parameters with their fiducial values,
+bounds and priors, and converts between parameter dictionaries and vectors.
 """
 
 import numpy as np

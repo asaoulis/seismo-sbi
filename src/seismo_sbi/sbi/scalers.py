@@ -1,3 +1,10 @@
+"""Parameter scalers between physical and network space.
+
+:class:`ZeroOneScaler`, :class:`SymmetricLogScaler` and :class:`MomentTensorScaler` (log M0
+plus a unit tensor) are combined per parameter block by :class:`FlexibleScaler`;
+:func:`scaler_provenance` and :func:`check_scaler_provenance` record and verify the scaler a
+checkpoint was trained with.
+"""
 
 import numpy as np
 

@@ -1,3 +1,9 @@
+"""Neural posterior estimation with the ``sbi`` library.
+
+:class:`SBI_Inference` trains an amortised SNPE-C estimator on ``(theta, compressed data)`` pairs
+and samples its posterior at an observation.
+"""
+
 import numpy as np
 
 from sbi.inference import SNLE, SNPE

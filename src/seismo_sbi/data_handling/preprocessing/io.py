@@ -1,4 +1,8 @@
-"""File I/O helpers: read waveforms, read inventory, write mseed windows."""
+"""File I/O for observed waveforms.
+
+:func:`find_mseed_files` and :func:`load_waveforms` read miniSEED, :func:`load_inventory` reads
+the station responses, and :func:`write_window` writes a cut window back to miniSEED.
+"""
 
 from pathlib import Path
 from typing import Iterable, List

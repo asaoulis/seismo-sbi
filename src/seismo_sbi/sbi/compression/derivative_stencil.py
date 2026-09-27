@@ -1,3 +1,10 @@
+"""Finite-difference stencils for the score compression.
+
+:class:`DerivativeStencil` simulates the five-point stencil around the fiducial source for each
+parameter and returns the gradients of the data with respect to the parameters;
+:class:`HessianDerivativeStencil` does the same for the mixed second derivatives.
+"""
+
 import numpy as np
 import joblib
 from copy import deepcopy
