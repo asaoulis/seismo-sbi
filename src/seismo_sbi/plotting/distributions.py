@@ -14,7 +14,7 @@ from pathlib import Path
 import joblib
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from .parameter_labels import ParameterInformation
+from seismo_sbi.sbi.types.parameter_labels import ParameterInformation
 import torch
 from .patched_chainconsumer import CustomChainConsumer as ChainConsumer
 from obspy.imaging.beachball import beach

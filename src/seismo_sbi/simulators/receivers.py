@@ -10,7 +10,6 @@ from typing import NamedTuple, List
 import numpy as np
 import json
 
-import matplotlib.pyplot as plt
 from pyproj import Geod
 
 class Receiver(NamedTuple):
@@ -132,6 +131,7 @@ class Receivers:
 
     def plot(self, ax=None, projection=None, add_labels=True, add_scalebar=True, add_north=False, add_receiver_icons=True):
         """Plot the receiver network on a map, on ``ax`` or on a new figure."""
+        import matplotlib.pyplot as plt
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
         from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER

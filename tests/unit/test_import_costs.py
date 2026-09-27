@@ -18,6 +18,13 @@ def modules_loaded_by(module: str) -> set:
     ("seismo_sbi.sbi.configuration", "cartopy"),
     ("seismo_sbi.sbi.pipeline", "seismo_sbi.plotting.results_plotting"),
     ("seismo_sbi.plotting.lune", "mpl_toolkits.basemap"),
+    ("seismo_sbi.simulators.receivers", "matplotlib"),
+    ("seismo_sbi.simulators.cps.simulator", "torch"),
+    ("seismo_sbi.sbi.configuration", "matplotlib"),
+    ("seismo_sbi.sbi.configuration", "torch"),
+    ("seismo_sbi.sbi.noises.toeplitz_covariances", "torch"),
+    ("seismo_sbi.sbi.likelihood", "torch"),
+    ("seismo_sbi.sbi.compression.gaussian", "torch"),
 ])
 def test_importing_a_module_does_not_load_what_only_its_plots_need(module, heavy):
     assert heavy not in modules_loaded_by(module)

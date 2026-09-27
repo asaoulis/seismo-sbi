@@ -9,7 +9,7 @@ import yaml
 from functools import partial
 from copy import copy
 
-from seismo_sbi.plotting.parameter_labels import ParameterInformation, DegreeKMConverter, DegreeType
+from seismo_sbi.sbi.types.parameter_labels import ParameterInformation, DegreeKMConverter, DegreeType
 from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters

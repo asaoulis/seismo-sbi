@@ -34,33 +34,6 @@ def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
     Med = -Mxz
     return [Mnn, Mee, Mdd, Mne, Mnd, Med]
 
-import torch
-
-def compute_stft(x, fs=1.0, win_length=20, hop_length=10, n_fft=256, fmin=0.025, fmax=0.1, real_and_imag = False):
-    """Short-time Fourier transform of ``x``, shaped ``(batch, n_samples)``, at ``fs`` Hz."""
-    x = torch.tensor(x, dtype=torch.float32)
-    window = torch.hann_window(win_length)
-
-    stft = torch.stft(
-        x,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        win_length=win_length,
-        window=window,
-        return_complex=True
-    )
-    freqs = torch.fft.rfftfreq(n_fft, d=1/fs)
-    band_mask = (freqs >= fmin) & (freqs <= fmax)
-    stft_band = stft[:, band_mask, :]
-    if real_and_imag:
-        stft_band = torch.view_as_real(stft_band)
-    else:
-        magnitudes = torch.abs(stft_band)
-        phases = torch.angle(stft_band)
-        stft_band = torch.stack((magnitudes, phases), dim=-1)
-    return stft_band.numpy()
-
-
 class CPSSimulator(Simulator):
     
     def __init__(self, gf_storage_root=None, cps_path=None, *args, **kwargs):
@@ -71,11 +44,6 @@ class CPSSimulator(Simulator):
         self.cps_path = cps_path
         self.synthetics_summary = lambda x: x
     
-    def compute_spectrograms(self, seismograms):
-        seismograms = seismograms.reshape(self.num_traces, -1)
-        torch_batch_stfts = compute_stft(seismograms)
-        return torch_batch_stfts
-        
     def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
         
         all_seismograms_map = {}
