@@ -11,7 +11,7 @@ from collections import OrderedDict
 from pathlib import Path
 import numpy as np
 
-from ..ensemble import GFEnsembleSimulator
+from ..gf_ensemble import GFEnsembleSimulator
 from ..sources import GenericPointSource
 from .querier import InstaseisDBQuerier
 

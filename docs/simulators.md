@@ -11,8 +11,8 @@ dependencies.
 | `sources.py` | `GenericPointSource`, `SourceLocation`, the moment tensors, `build_stf_sliprate` |
 | `receivers.py` | `Receiver`, `Receivers` |
 | `kernel.py` | seismograms from precomputed moment-tensor sensitivity kernels |
-| `ensemble.py` | `GFEnsembleSimulator`: draw one Earth model per simulation |
-| `multi_model.py` | `MultiModelSimulator`: a different Earth model per receiver region |
+| `gf_ensemble.py` | `GFEnsembleSimulator`: draw one Earth model per simulation |
+| `multi_region.py` | `MultiModelSimulator`: a different Earth model per receiver region |
 | `post_processing.py` | `PostProcessingChain`, `EFFECT_REGISTRY` and the chain builders |
 | `seismogram_effect.py` | `SeismogramEffect`, the base class of every nuisance effect |
 | `amplitude_effect.py`, `dropout_effects.py`, `time_shift_effect.py`, `scattering_coda_effect.py`, `anisotropy_effects.py`, `dispersion_effect.py` | the nuisance effects, one family per module |

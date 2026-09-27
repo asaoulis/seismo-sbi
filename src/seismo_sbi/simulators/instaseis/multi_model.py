@@ -1,10 +1,10 @@
 """Multi-model Instaseis simulator: one Instaseis database ensemble per receiver region.
 
 Each sub-model dict carries ``receivers``, ``ensemble_dir`` and ``fiducial_dir``; the merge over
-regions lives in :class:`~seismo_sbi.simulators.multi_model.MultiModelSimulator`.
+regions lives in :class:`~seismo_sbi.simulators.multi_region.MultiModelSimulator`.
 """
 
-from ..multi_model import MultiModelSimulator
+from ..multi_region import MultiModelSimulator
 from .ensemble import InstaseisEnsembleSimulator
 
 

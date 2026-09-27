@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.simulators.base import Simulator
-from seismo_sbi.simulators.multi_model import MultiModelSimulator
+from seismo_sbi.simulators.multi_region import MultiModelSimulator
 from seismo_sbi.simulators.instaseis.multi_model import InstaseisMultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTensor, SourceLocation
 from seismo_sbi.simulators.receivers import Receiver, Receivers

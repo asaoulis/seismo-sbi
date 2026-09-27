@@ -18,8 +18,8 @@ from seismo_sbi.simulators.cps.compatibility import build_objstats
 from seismo_sbi.simulators.cps.CPS import update_with_Gtensor
 
 from seismo_sbi.simulators.base import Simulator
-from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
-from seismo_sbi.simulators.multi_model import MultiModelSimulator
+from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.multi_region import MultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
 from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
 

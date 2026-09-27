@@ -22,7 +22,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
-from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTensor, SourceLocation

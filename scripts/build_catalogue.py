@@ -41,7 +41,7 @@ from pathlib import Path
 
 import obspy
 
-from seismo_sbi.data_handling.preprocessing.catalogue import (
+from seismo_sbi.data_handling.preprocessing.catalogue_builder import (
     build_event_catalogue,
     build_noise_catalogue,
     read_stations_file,

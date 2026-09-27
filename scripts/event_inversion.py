@@ -12,7 +12,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
-from seismo_sbi.sbi import utils as utils
+from seismo_sbi.sbi import job_runners
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
@@ -62,11 +62,11 @@ def main():
     output_path.mkdir(parents=True, exist_ok=True)
 
     if config.plotting_options['disable_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_results_saving(job_data, results_generator, output_path)
+        job_results, inversion_results = job_runners.run_asynchronous_results_saving(job_data, results_generator, output_path)
     elif config.plotting_options['async_plotting']:
-        job_results, inversion_results = utils.run_asynchronous_plotting(sbi_pipeline, results_generator)
+        job_results, inversion_results = job_runners.run_asynchronous_plotting(sbi_pipeline, results_generator)
     else:
-        job_results, inversion_results = utils.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
+        job_results, inversion_results = job_runners.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
 
     with open(output_path / "inversion_results.pkl", 'wb') as f:
         pickle.dump((job_data, job_results, inversion_results), f)

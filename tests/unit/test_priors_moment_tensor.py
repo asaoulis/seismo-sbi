@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from seismo_sbi.priors.moment_tensor import uniform_moment_tensor_on_sphere
+from seismo_sbi.priors.moment_tensor_sampling import uniform_moment_tensor_on_sphere
 from seismo_sbi.utils.mt_conventions import scalar_moment
 
 

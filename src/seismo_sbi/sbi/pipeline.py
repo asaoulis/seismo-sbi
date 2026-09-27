@@ -26,7 +26,7 @@ from .noises.toeplitz_covariances import (
 from .noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
 from .noises.covariance_estimator import build_cov_sigma2_dict
 
-from .inference import SBI_Inference
+from .sbi_inference import SBI_Inference
 from . import likelihood as likelihood
 from .lsquares.least_squares import IterativeLeastSquaresSolver
 
@@ -38,7 +38,7 @@ from seismo_sbi.sbi.dataset_generator import DatasetGenerator
 
 from .data_manager import DataManager
 from .simulator_wrapper import GeneralSimulatorWrapper
-from .utils import convert_lists_to_arrays
+from .job_runners import convert_lists_to_arrays
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 

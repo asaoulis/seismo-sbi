@@ -10,7 +10,7 @@ from seismo_sbi.sbi.scalers import (
     build_flexible_scaler,
 )
 from seismo_sbi.sbi.types.parameters import ModelParameters
-from seismo_sbi.priors.moment_tensor import uniform_moment_tensor_on_sphere
+from seismo_sbi.priors.moment_tensor_sampling import uniform_moment_tensor_on_sphere
 from seismo_sbi.utils.mt_conventions import scalar_moment
 from seismo_sbi.priors.gutenberg_richter import magnitude_to_m0
 

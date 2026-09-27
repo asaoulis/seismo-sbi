@@ -593,7 +593,7 @@ class TestNoiseCatalogueQualityGate:
     """
 
     def _build_noise(self, data_dir, station_networks, tmp_path, label, **kwargs):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
         out_dir = tmp_path / label
         # n_jobs=1 is intentional: patch.object() is only visible in the main
         # process, so mock-based tests cannot use loky workers.
@@ -638,7 +638,7 @@ class TestNoiseCatalogueQualityGate:
 
     def test_nan_windows_excluded_via_mock(self, synthetic_data, tmp_path):
         """NaN injected post-processing (via mock) is caught by the quality gate."""
-        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+        from seismo_sbi.data_handling.preprocessing import catalogue_builder as cat_module
 
         original_prepare = cat_module._prepare_stream
 
@@ -660,7 +660,7 @@ class TestNoiseCatalogueQualityGate:
 
     def test_inf_windows_excluded_via_mock(self, synthetic_data, tmp_path):
         """Inf injected post-processing is caught by the quality gate."""
-        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+        from seismo_sbi.data_handling.preprocessing import catalogue_builder as cat_module
 
         original_prepare = cat_module._prepare_stream
 
@@ -682,7 +682,7 @@ class TestNoiseCatalogueQualityGate:
 
     def test_flat_period_excluded_via_mock(self, synthetic_data, tmp_path):
         """Flat period injected post-processing is caught by the quality gate."""
-        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+        from seismo_sbi.data_handling.preprocessing import catalogue_builder as cat_module
 
         original_prepare = cat_module._prepare_stream
 
@@ -707,7 +707,7 @@ class TestNoiseCatalogueQualityGate:
 
     def test_lenient_flat_fraction_allows_borderline_via_mock(self, synthetic_data, tmp_path):
         """Raising max_flat_fraction lets a borderline flat window through."""
-        from seismo_sbi.data_handling.preprocessing import catalogue as cat_module
+        from seismo_sbi.data_handling.preprocessing import catalogue_builder as cat_module
 
         original_prepare = cat_module._prepare_stream
 
@@ -979,7 +979,7 @@ class TestBuildEventCatalogueSynthetic:
 
     def _run(self, synthetic_data, events, tmp_path, n_jobs=4, **kwargs):
         """Helper: call build_event_catalogue and return (output_dir, written)."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
 
         out_dir = tmp_path / "events"
         written = build_event_catalogue(
@@ -1067,7 +1067,7 @@ class TestBuildEventCatalogueSynthetic:
             time=datetime.datetime(2099, 1, 1)
         )
         error_log = tmp_path / "errors.csv"
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
 
         out_dir = tmp_path / "events_fail"
         build_event_catalogue(
@@ -1176,7 +1176,7 @@ class TestBuildEventCatalogueSynthetic:
 class TestBuildNoiseCatalogueSynthetic:
 
     def _run(self, synthetic_data, interfering_events, tmp_path, n_jobs=4, **kwargs):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
 
         out_dir = tmp_path / "noise"
         written = build_noise_catalogue(
@@ -1301,7 +1301,7 @@ class TestBuildNoiseCatalogueSynthetic:
         self, synthetic_data, tmp_path
     ):
         """If both catalogues share a processed_dir, daily files are built once."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import (
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import (
             build_event_catalogue, build_noise_catalogue
         )
         shared_daily = tmp_path / "shared_daily"
@@ -1391,7 +1391,7 @@ class TestPreEventWindow:
     """Tests for the pre_event_window_s parameter of build_event_catalogue."""
 
     def _run(self, synthetic_data, tmp_path, pre_event_window_s=0.0, **kwargs):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
         out_dir = tmp_path / "events"
         written = build_event_catalogue(
             events=[_make_obspy_event(time=EVENT_ORIGIN_TIME)],
@@ -1468,7 +1468,7 @@ class TestNoTaupEventAvoidance:
     """Tests for use_taup=False (default) in build_noise_catalogue."""
 
     def _run(self, synthetic_data, interfering_events, tmp_path, **kwargs):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
         out_dir = tmp_path / "noise"
         written = build_noise_catalogue(
             noise_start=DATA_T0 + timedelta(minutes=5),
@@ -1517,7 +1517,7 @@ class TestNoTaupEventAvoidance:
 
     def test_simple_event_windows_helper(self):
         """_simple_event_windows returns one window per event at the onset time."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import _simple_event_windows
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import _simple_event_windows
         catalog = _make_catalog(n=3)
         windows = _simple_event_windows(catalog, duration_s=120.0)
         assert len(windows) == 3
@@ -1563,7 +1563,7 @@ class TestRollingNoiseWindows:
         self, synthetic_data, tmp_path
     ):
         """Smaller rolling_window_gap_s yields strictly more noise h5 files."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
 
         def _build(gap_s, label):
             out = tmp_path / label
@@ -1589,7 +1589,7 @@ class TestRollingNoiseWindows:
 
     def test_rolling_window_labels_include_seconds(self, synthetic_data, tmp_path):
         """With sub-minute rolling gap, output filenames include seconds."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
 
         out_dir = tmp_path / "rolling"
         written = build_noise_catalogue(
@@ -1615,7 +1615,7 @@ class TestRollingNoiseWindows:
     def test_rolling_windows_all_unique_and_valid(self, synthetic_data, tmp_path):
         """Rolling windows produce distinct, valid h5 files."""
         import h5py
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
 
         out_dir = tmp_path / "rolling_valid"
         written = build_noise_catalogue(
@@ -1647,7 +1647,7 @@ class TestCombinedCataloguePipeline:
 
     def test_events_and_noise_from_same_catalog(self, synthetic_data, tmp_path):
         """Run both catalogue builders on the same synthetic data."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue, build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue, build_noise_catalogue
 
         catalog = _make_catalog(n=2)
 
@@ -1687,7 +1687,7 @@ class TestCombinedCataloguePipeline:
         self, synthetic_data, tmp_path
     ):
         """Event and noise output directories are separate; no cross-contamination."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue, build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue, build_noise_catalogue
 
         catalog = _make_catalog(n=1)
         events_dir = tmp_path / "events"
@@ -1731,9 +1731,9 @@ class TestCombinedCataloguePipeline:
 class TestBuildCatalogueScriptImport:
 
     def test_catalogue_module_importable(self):
-        from seismo_sbi.data_handling.preprocessing import catalogue
-        assert hasattr(catalogue, "build_event_catalogue")
-        assert hasattr(catalogue, "build_noise_catalogue")
+        from seismo_sbi.data_handling.preprocessing import catalogue_builder
+        assert hasattr(catalogue_builder, "build_event_catalogue")
+        assert hasattr(catalogue_builder, "build_noise_catalogue")
 
     def test_script_file_exists(self):
         script = Path(__file__).parents[2] / "scripts" / "build_catalogue.py"
@@ -1741,7 +1741,7 @@ class TestBuildCatalogueScriptImport:
 
     def test_read_stations_file(self, tmp_path):
         """read_stations_file parses the standard stations.txt format."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import read_stations_file
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import read_stations_file
 
         sfile = tmp_path / "stations.txt"
         sfile.write_text(
@@ -1753,7 +1753,7 @@ class TestBuildCatalogueScriptImport:
         assert mapping == {"ANMO": "IU", "BFO": "II"}
 
     def test_event_id_is_filesystem_safe(self):
-        from seismo_sbi.data_handling.preprocessing.catalogue import _event_id
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import _event_id
         ev = _make_obspy_event(time=datetime.datetime(2023, 6, 1, 12, 30, 0))
         eid = _event_id(ev)
         assert "/" not in eid
@@ -1771,7 +1771,7 @@ class TestBuildEventCatalogueReal:
     def test_event_h5_written_from_iris_data(
         self, tmp_path, cached_iris_wide_download, cached_iris_inventory
     ):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
 
         # Write cached streams to disk in the expected layout
         data_dir = tmp_path / "raw"
@@ -1824,7 +1824,7 @@ class TestBuildEventCatalogueReal:
         self, tmp_path, cached_iris_wide_download, cached_iris_inventory
     ):
         """Verify the h5 schema and array lengths from real IRIS data."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
         from tests.end_to_end.conftest import RIDGECREST_EVENT
 
         data_dir = tmp_path / "raw2"
@@ -1896,7 +1896,7 @@ class TestBuildNoiseCatalogueReal:
     def test_noise_windows_written_from_real_data(
         self, tmp_path, cached_iris_wide_download, cached_iris_inventory
     ):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
         from tests.end_to_end.conftest import RIDGECREST_EVENT, _T0_WIDE, _T1_WIDE
 
         data_dir, stationxml_dir, station_networks = self._setup_disk(
@@ -1942,7 +1942,7 @@ class TestBuildNoiseCatalogueReal:
     def test_real_noise_z_component_nonzero(
         self, tmp_path, cached_iris_wide_download, cached_iris_inventory
     ):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
         from tests.end_to_end.conftest import RIDGECREST_EVENT, _T0_WIDE, _T1_WIDE
 
         data_dir, stationxml_dir, station_networks = self._setup_disk(
@@ -2012,7 +2012,7 @@ class TestRealNoiseSamplerWithCatalogueNoise:
     @pytest.fixture(scope="class")
     def noise_dir(self, tmp_path_factory, synthetic_data):
         """Build a small noise catalogue; return the output directory."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_noise_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_noise_catalogue
 
         tmp = tmp_path_factory.mktemp("noise_sampler")
         out_dir = tmp / "noise"
@@ -2091,7 +2091,7 @@ class TestSimulationDataLoaderWithCatalogueEvent:
     @pytest.fixture(scope="class")
     def event_h5_path(self, tmp_path_factory, synthetic_data):
         """Build one event h5; return the path."""
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
 
         tmp = tmp_path_factory.mktemp("event_loader")
         out_dir = tmp / "events"
@@ -2167,7 +2167,7 @@ class TestDataManagerWithCatalogueEvent:
 
     @pytest.fixture(scope="class")
     def event_h5_path(self, tmp_path_factory, synthetic_data):
-        from seismo_sbi.data_handling.preprocessing.catalogue import build_event_catalogue
+        from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
 
         tmp = tmp_path_factory.mktemp("dm_catalogue")
         out_dir = tmp / "events"

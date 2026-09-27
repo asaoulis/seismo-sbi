@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from copy import deepcopy
 
-from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator, _QUERIER_CACHE, PER_STATION_SEED_STRIDE
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.sources import GenericPointSource

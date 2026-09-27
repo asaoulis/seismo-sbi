@@ -8,7 +8,7 @@ travels through the pipeline in the shape of a simulation, one covariance block 
 import numpy as np
 
 from seismo_sbi.simulators.base import Simulator
-from seismo_sbi.simulators.ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.utils.parallel import parallel_execution
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 

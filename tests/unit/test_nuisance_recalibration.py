@@ -18,7 +18,7 @@ from seismo_sbi.simulators.amplitude_effect import AmplitudeErrorEffect
 from seismo_sbi.simulators.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.simulators.dispersion_effect import DispersionSpreadEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
-from seismo_sbi.simulators import ensemble as ens_mod
+from seismo_sbi.simulators import gf_ensemble as ens_mod
 from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
 from seismo_sbi.simulators.sources import GenericPointSource, SourceLocation, GeneralMomentTensor
 

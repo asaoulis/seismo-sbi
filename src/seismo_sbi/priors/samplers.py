@@ -20,7 +20,7 @@ from .gutenberg_richter import (
     fit_b_value_aki,
     magnitude_to_m0,
 )
-from .moment_tensor import uniform_moment_tensor_on_sphere
+from .moment_tensor_sampling import uniform_moment_tensor_on_sphere
 
 CatalogueLike = Union[EventCatalogue, str]
 
