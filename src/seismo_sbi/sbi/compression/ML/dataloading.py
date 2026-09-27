@@ -476,7 +476,6 @@ def make_torch_dataloader(
         **extra,
     )
 
-# Build both train and val DataLoaders using a single split parameter train_max_index
 def make_torch_dataloaders(
     *,
     data_loader: SimulationDataLoader,
@@ -507,6 +506,11 @@ def make_torch_dataloaders(
     cache_preload_workers: int = 16,
     cache_dtype: str = "float32",
 ):
+    """``(train_loader, val_loader)`` over one dataset, split at ``train_max_index``.
+
+    The dataset arguments go to :class:`TorchSimulationDataset`; ``val_batch_size`` defaults to
+    ``train_batch_size``.
+    """
     if val_batch_size is None:
         val_batch_size = train_batch_size
 
@@ -532,43 +536,38 @@ def make_torch_dataloaders(
         cache_preload_workers=cache_preload_workers,
         cache_dtype=cache_dtype,
     )
-    n = len(full_dataset)
-    end = max(0, min(train_max_index, n))
-
-    train_subset = Subset(full_dataset, range(0, end))
-    val_subset = Subset(full_dataset, range(end, n))
-
-    if persistent_workers is None:
-        persistent_workers = num_workers > 0
-
-    # prefetch_factor is only valid with worker processes; a larger value keeps more augmented
-    # batches queued ahead of the accelerator.
-    extra = {"prefetch_factor": prefetch_factor} if num_workers > 0 else {}
-    if num_workers > 0:
-        extra["worker_init_fn"] = _seed_worker
-    # Variable-station samples are ragged ⇒ pad+pack via the custom collate.
-    if station_subsampler is not None:
-        extra["collate_fn"] = variable_station_collate
+    train_subset, val_subset = _split_at_index(full_dataset, train_max_index)
+    loader_options = _loader_options(num_workers, pin_memory, persistent_workers, prefetch_factor,
+                                     station_subsampler)
 
     # drop_last on TRAIN only: a trailing batch of one sample makes the flow's BatchNorm raise,
     # and sharding across ranks can produce one. Validation runs in eval mode, where it is safe.
-    train_loader = DataLoader(
-        train_subset,
-        batch_size=train_batch_size,
-        shuffle=train_shuffle,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        persistent_workers=persistent_workers,
-        drop_last=True,
-        **extra,
-    )
-    val_loader = DataLoader(
-        val_subset,
-        batch_size=val_batch_size,
-        shuffle=val_shuffle,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        persistent_workers=persistent_workers,
-        **extra,
-    )
+    train_loader = DataLoader(train_subset, batch_size=train_batch_size, shuffle=train_shuffle,
+                              drop_last=True, **loader_options)
+    val_loader = DataLoader(val_subset, batch_size=val_batch_size, shuffle=val_shuffle,
+                            **loader_options)
     return train_loader, val_loader
+
+
+def _split_at_index(dataset, train_max_index):
+    """``(train, validation)`` subsets: the samples before ``train_max_index`` and the rest."""
+    n = len(dataset)
+    end = max(0, min(train_max_index, n))
+    return Subset(dataset, range(0, end)), Subset(dataset, range(end, n))
+
+
+def _loader_options(num_workers, pin_memory, persistent_workers, prefetch_factor, station_subsampler):
+    """DataLoader keyword arguments shared by the training and validation loaders."""
+    if persistent_workers is None:
+        persistent_workers = num_workers > 0
+    options = {"num_workers": num_workers, "pin_memory": pin_memory,
+               "persistent_workers": persistent_workers}
+    # prefetch_factor is only valid with worker processes; a larger value keeps more augmented
+    # batches queued ahead of the accelerator.
+    if num_workers > 0:
+        options["prefetch_factor"] = prefetch_factor
+        options["worker_init_fn"] = _seed_worker
+    # Variable-station samples are ragged ⇒ pad+pack via the custom collate.
+    if station_subsampler is not None:
+        options["collate_fn"] = variable_station_collate
+    return options
