@@ -63,7 +63,6 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
         )
         self.set_cholesky_factors(cholesky_factors)
 
-
     def create_covariance_matrix(self, station_component_covariances):
         theory_covs = station_component_covariances.reshape(
             -1, self.data_vector_length, self.data_vector_length
@@ -115,14 +114,6 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
             vals.append(-0.5 * (x @ y))
         return np.repeat(vals, block_size)
 
-    def generic_loss_callable(self, residuals, reduce=True):
-        if reduce:
-            return self.quadratic_form(
-                residuals, self.inverse_metadata, self.data_vector_length
-            )
-        return self.quadratic_form_per_block(
-            residuals, self.inverse_metadata, self.data_vector_length
-        )
     
     @staticmethod
     def loss_callable(residuals, toeplitz_cols, data_vector_length):

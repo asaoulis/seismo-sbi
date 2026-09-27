@@ -65,11 +65,17 @@ class EmpiricalCovarianceEstimator:
     """Estimate per-trace noise autocovariances from a directory of recorded noise windows."""
 
 
-    def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True):
+    def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True,
+                 verbose = True):
+        """``data_directory`` holds one HDF5 noise window per file (``outputs/{station}/{component}``);
+        :meth:`estimate_from_windows` takes the windows as an array instead. ``verbose`` prints
+        progress.
+        """
         self.data_directory = data_directory
         self.receivers = receivers
         self.components = component_alias(components)
         self.covariance_exp_tapering = covariance_exp_tapering
+        self.verbose = verbose
 
         self.track = track
 
@@ -79,22 +85,57 @@ class EmpiricalCovarianceEstimator:
     
     def compute_stationwise_covariances(self, reload = False):
         if self._precomputed_covariance_path.exists() and not reload:
-            print("Loading precomputed covariance matrix...", end=' ')
+            self._say("Loading precomputed covariance matrix...")
             station_component_covariances =  np.load(self._precomputed_covariance_path, allow_pickle=True)[()]
-            print("Done.")
+            self._say("Done.")
         else:
-            print("Computing empirical covariance matrix...", end=' ')
+            self._say("Computing empirical covariance matrix...")
             station_component_deviations = self._compute_standard_deviation_online()
-            station_component_covariances = self.convert_to_covariance(station_component_deviations)
-            if self.covariance_exp_tapering:
-                station_component_covariances = self.taper_covariances(station_component_covariances)
+            station_component_covariances = self._finish(station_component_deviations)
             np.save(self._precomputed_covariance_path, station_component_covariances)
-            print("Done.")
+            self._say("Done.")
 
         return station_component_covariances
 
+    def estimate_from_windows(self, noise_windows):
+        """Per-trace autocovariances ``{station: {component: (n_samples,)}}`` from noise windows
+        held in memory, ``(n_windows, n_traces, n_samples)`` with traces in receiver order and
+        each station's components in the loader's order; tapered like the directory path.
+        """
+        station_component_deviations = self._new_running_deviations()
+        for window in np.asarray(noise_windows):
+            trace = 0
+            for receiver in self.receivers.iterate():
+                for component in self.components:
+                    station_component_deviations[receiver.station_name][component].update(
+                        self._autocovariance_of_window(window[trace]))
+                    trace += 1
+        return self._finish(station_component_deviations)
+
+    def _finish(self, station_component_deviations):
+        station_component_covariances = self.convert_to_covariance(station_component_deviations)
+        if self.covariance_exp_tapering:
+            station_component_covariances = self.taper_covariances(station_component_covariances)
+        return station_component_covariances
+
+    def _new_running_deviations(self):
+        return {receiver.station_name: {component: RunningStandardDeviations(track=self.track) for component in self.components}
+                for receiver in self.receivers.iterate()}
+
+    @staticmethod
+    def _autocovariance_of_window(noise_window_data):
+        """The ``(1, n_samples)`` lag-averaged autocorrelation of one noise window."""
+        data_length = noise_window_data.shape[0]
+        auto_correlate = np.correlate(noise_window_data, noise_window_data, mode='full')
+        averaged_auto_correlations = auto_correlate[:data_length][::-1]/np.arange(data_length, 0, -1)
+        return averaged_auto_correlations.reshape(1,-1)
+
+    def _say(self, message):
+        if self.verbose:
+            print(message, end=' ', flush=True)
+
     def _compute_standard_deviation_online(self):
-        station_component_covariances = {receiver.station_name:{component:RunningStandardDeviations(track=self.track) for component in self.components} for receiver in self.receivers.iterate()}
+        station_component_covariances = self._new_running_deviations()
         for noise_file in self.data_directory.glob('*.h5'):
             with h5py.File(noise_file) as f:
                 for receiver in self.receivers.iterate():
@@ -105,14 +146,8 @@ class EmpiricalCovarianceEstimator:
                             except KeyError:
                                 print(f"Warning: Could not find {receiver_name} {component} in {noise_file}.")
                                 continue
-                            data_length = noise_window_data.shape[0]
-
-                            auto_correlate = np.correlate(noise_window_data, noise_window_data, mode='full')
-                            averaged_auto_correlations = auto_correlate[:data_length][::-1]/np.arange(data_length, 0, -1)
-
-                            auto_cov = averaged_auto_correlations.reshape(1,-1)
-
-                            station_component_covariances[receiver_name][component].update(auto_cov)
+                            station_component_covariances[receiver_name][component].update(
+                                self._autocovariance_of_window(noise_window_data))
         return station_component_covariances
     
 
