@@ -3,7 +3,9 @@
 :class:`SimulationSaver` writes the source parameters under ``inputs`` and the seismograms under
 ``outputs``; :class:`SimulationDataLoader` reads that layout back and flattens it into the
 ``(n_traces * n_samples,)`` data vector the inference pipeline consumes, in receiver order.
-Horizontal components may be stored as 1 and 2 rather than E and N; ``component_alias`` maps them.
+:func:`seismogram_map_to_array` does the same for a simulator's in-memory ``{station: {component:
+waveform}}`` map. Horizontal components may be stored as 1 and 2 rather than E and N;
+``component_alias`` maps them.
 """
 
 import h5py
@@ -14,11 +16,24 @@ from pathlib import Path
 from .receivers import Receivers
 from .sources import GenericPointSource
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
+from seismo_sbi.utils.errors import InvalidConfiguration
 
 
 def component_alias(components: str) -> str:
     """``components`` with E and N renamed 1 and 2; one component or a string of them."""
     return components.replace('E', '1').replace('N', '2')
+
+
+def seismogram_map_to_array(seismogram_map: dict, receivers: Receivers, stacked: bool = False):
+    """The data vector of a ``{station: {component: waveform}}`` map, in receiver order.
+
+    Each receiver contributes its own ``components`` in its own order; ``stacked`` returns
+    ``(n_stations, n_components, n_samples)`` instead of the flat ``(n_traces * n_samples,)``
+    vector. A station or component missing from the map raises ``KeyError``.
+    """
+    components = "".join(receivers.receivers[0].components)
+    loader = SimulationDataLoader(components, receivers)
+    return loader.convert_sim_data_to_array({"outputs": seismogram_map}, stacked=stacked)
 
 
 class SimulationSaver:
@@ -80,7 +95,10 @@ class SimulationDataLoader():
     def __init__(self,components : str,
                         receivers : Receivers,
                         data_length = None,):
-
+        """``components`` (a string such as ``"ZEN"``, or a list) is the full component layout
+        a ``fill_unused`` array is padded to; each receiver's own ``components`` must follow the
+        same relative order. ``data_length`` truncates every trace to that many samples.
+        """
         self.components = components
         self.receivers = receivers
         self.data_length = data_length
@@ -288,7 +306,8 @@ class SimulationDataLoader():
         all_comps = []
         index = 0
         for receiver in self.receivers.iterate():
-            rec_components = receiver.components 
+            rec_components = receiver.components
+            self._check_component_order(receiver)
             receiver_components = []
             for component in self.components:
                 if component in rec_components:
@@ -300,6 +319,17 @@ class SimulationDataLoader():
             all_comps.append(receiver_components)
 
         return all_comps
+
+    def _check_component_order(self, receiver):
+        """Raise unless ``receiver.components`` follow the loader's component order."""
+        layout = [component_alias(component) for component in self.components]
+        positions = [layout.index(component_alias(component)) for component in receiver.components
+                     if component_alias(component) in layout]
+        if positions != sorted(positions):
+            raise InvalidConfiguration(
+                f"Station {receiver.station_name} records {list(receiver.components)}, not in the "
+                f"order of the components {list(self.components)} the data vector is laid out in."
+            )
 
     def load_misc_data(self, sim_name):
         with h5py.File(sim_name, 'r') as simulation_data_map:
