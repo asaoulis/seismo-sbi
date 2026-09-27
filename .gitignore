@@ -87,3 +87,7 @@ scripts/station_locations.txt
 scripts/stations.txt
 scripts/test.txt
 .cleanup_probe.txt
+
+# Maintainer and agent instructions stay local
+AGENTS.md
+CLAUDE.md
