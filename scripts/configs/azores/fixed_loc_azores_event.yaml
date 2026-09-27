@@ -12,7 +12,7 @@ seismic_context:
   sampling_rate: 1
   syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
   processing:
-    filter_sampling_rate: 20.0
+    filter_sampling_rate: 100.0
     filter:
       type: 'bandpass'
       freqmin: 0.02
