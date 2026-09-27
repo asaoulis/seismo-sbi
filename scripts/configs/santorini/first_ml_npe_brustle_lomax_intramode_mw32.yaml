@@ -257,6 +257,7 @@ seismic_context:
   syngine_address: '/data/alex/axisem_dbs/santorini_tomo_brustle/'
   syngine_fiducial_address: '/data/alex/axisem_dbs/santorini_tomo_brustle/fiducial/'
   processing:
+    filter_sampling_rate: 100.0
     filter:
       type: 'bandpass'
       freqmin: 0.03

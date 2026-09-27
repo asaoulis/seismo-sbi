@@ -60,6 +60,7 @@ seismic_context:
   cps_GFs_fiducial_path: '/data/alex/cps/cps_croatia/multi_models_5pc/model1/kappa_5_fiducial'
   cps_multi_models_path: '/home/alex/work/seismo-sbi/scripts/configs/croatia/multi_model_5pc.json'
   processing:
+    filter_sampling_rate: 20.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

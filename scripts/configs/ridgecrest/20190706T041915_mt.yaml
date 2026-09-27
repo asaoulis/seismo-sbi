@@ -15,6 +15,7 @@ seismic_context:
   cps_GFs_fiducial_path: /data/alex/ridgecrest/cps_gfs/20190706T041915_fiducial
   syngine_address: dummy
   processing:
+    filter_sampling_rate: 40.0
     filter:
       type: bandpass
       freqmin: 0.06

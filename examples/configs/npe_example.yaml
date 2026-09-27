@@ -33,6 +33,7 @@ seismic_context:
   sampling_rate: 0.5
   syngine_address: '/data/shared/ROSA_PREM_10s_disc'
   processing:
+    filter_sampling_rate: 5.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

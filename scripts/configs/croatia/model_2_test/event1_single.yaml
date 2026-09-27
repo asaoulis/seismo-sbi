@@ -20,6 +20,7 @@ seismic_context:
   cps_GFs_fiducial_path: '/data/alex/cps/cps_croatia/model_2_test/kappa_0.1_fiducial/'
   # cps_multi_models_path: './configs/croatia/multi_model.json'
   processing:
+    filter_sampling_rate: 20.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

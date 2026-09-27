@@ -36,6 +36,7 @@ seismic_context:
   cps_GFs_path: './data/models/LV2_perturbations/kappa_5.0'
   cps_GFs_fiducial_path: './data/models/LV2_perturbations/kappa_5.0_fiducial'
   processing:
+    filter_sampling_rate: 20.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

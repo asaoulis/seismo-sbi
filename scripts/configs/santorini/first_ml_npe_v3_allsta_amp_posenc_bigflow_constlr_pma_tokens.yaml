@@ -98,6 +98,7 @@ seismic_context:
   sampling_rate: 1.0
   syngine_address: "/data/shared/santorini5sb_fiducial_database/"
   processing:
+    filter_sampling_rate: 100.0
     filter:
       type: 'bandpass'
       freqmin: 0.03

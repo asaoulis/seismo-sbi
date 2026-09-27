@@ -1,4 +1,5 @@
-"""Every committed pipeline configuration parses, with the paths it names resolved from its run directory.
+"""Every committed pipeline configuration parses, with the paths it names resolved from its run directory,
+and names the rate its synthetics are filtered at, above the Nyquist rate of its band.
 
 Configurations under ``scripts/configs/`` are run from ``scripts/`` and those under
 ``examples/configs/`` from ``examples/``, so relative paths are resolved from there. The set is
@@ -29,4 +30,5 @@ def committed_configs():
 @pytest.mark.parametrize("config", committed_configs())
 def test_committed_config_parses(config, monkeypatch):
     monkeypatch.chdir(REPO / Path(config).parts[0])
-    SBI_Configuration().parse_config_file(REPO / config)
+    processing = SBI_Configuration.from_file(REPO / config).sim_parameters.processing
+    assert processing["filter_sampling_rate"] > 2 * processing["filter"]["freqmax"]

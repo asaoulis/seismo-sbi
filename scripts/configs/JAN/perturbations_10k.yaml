@@ -16,6 +16,7 @@ seismic_context:
   cps_GFs_path: '/data/alex/cps/JAN/5pc_shallow_explosion'
   cps_GFs_fiducial_path: '/data/alex/cps/JAN/5pc_shallow_explosion_fiducial'
   processing:
+    filter_sampling_rate: 100.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

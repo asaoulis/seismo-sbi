@@ -71,6 +71,7 @@ seismic_context:
   sampling_rate: {_SAMPLING_RATE}
   syngine_address: null
   processing:
+    filter_sampling_rate: 5.0
     sampling_rate: {_SAMPLING_RATE}
 
 parameters:

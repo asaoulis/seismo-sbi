@@ -27,14 +27,16 @@ SYNTHETICS_PRE_EVENT_PAD_S = 60.0
 class SyntheticsPreprocessing:
     """Taper, filter and trim raw synthetics that start at the origin.
 
-    The result starts ``SYNTHETICS_PRE_EVENT_PAD_S`` before the origin exactly, whatever the
-    database's sample interval, so the 1 Hz grid the querier interpolates to lines up with the
-    observed windows.
+    The filter runs at ``processing['filter_sampling_rate']`` (Hz), the rate the observed data are
+    filtered at, so the two paths see the same filter response. The result starts
+    ``SYNTHETICS_PRE_EVENT_PAD_S`` before the origin exactly, whatever the database's sample
+    interval, so the 1 Hz grid the querier interpolates to lines up with the observed windows.
     """
 
     def __init__(self, processing_config):
         self.processing_config = processing_config
         self.sampling_rate = processing_config['sampling_rate']
+        self.filter_sampling_rate = float(processing_config['filter_sampling_rate'])
 
     def __call__(self, seismograms):
 
@@ -52,10 +54,10 @@ class SyntheticsPreprocessing:
         return seismograms
 
     def _resample_onto_anchored_grid(self, seismograms, anchor):
-        """The traces Lanczos-interpolated, at their own rate, onto the sample grid through ``anchor``."""
-        dt = seismograms[0].stats.delta
+        """The traces Lanczos-interpolated to the filter rate, on the sample grid through ``anchor``."""
+        dt = 1.0 / self.filter_sampling_rate
         first_sample = anchor + math.ceil((seismograms[0].stats.starttime - anchor) / dt - 1e-9) * dt
-        return seismograms.interpolate(seismograms[0].stats.sampling_rate, method='lanczos', a=20,
+        return seismograms.interpolate(self.filter_sampling_rate, method='lanczos', a=20,
                                        starttime=first_sample)
 
 

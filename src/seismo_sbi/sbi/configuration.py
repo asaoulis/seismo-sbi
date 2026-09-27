@@ -292,6 +292,12 @@ class SBI_Configuration:
         receiver_component_details = seismic_context_config.pop("station_components_path")
         receiver_time_shifts_details = seismic_context_config.pop("station_time_shifts_path", None)
         seismic_context_config["receivers"] = Receivers(receivers_details, receiver_component_details, receiver_time_shifts_details)
+        processing = seismic_context_config["processing"]
+        if "filter_sampling_rate" not in processing:
+            raise InvalidConfiguration(
+                "seismic_context.processing.filter_sampling_rate is required: the rate (Hz) the "
+                "observed data are bandpassed at, which the synthetics are filtered at too.")
+        processing["filter_sampling_rate"] = float(processing["filter_sampling_rate"])
 
         self.sim_parameters = SimulationParameters(**seismic_context_config)
 

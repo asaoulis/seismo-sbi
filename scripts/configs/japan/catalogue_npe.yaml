@@ -41,6 +41,7 @@ seismic_context:
   sampling_rate: 1.0
   syngine_address: '<PLACEHOLDER Japan JMA2001+PREM Instaseis DB>'   # from japan-1d-model-ensemble
   processing:
+    filter_sampling_rate: 2.0
     filter:                       # F-net MT band: 15-50 s
       type: 'bandpass'
       freqmin: 0.02

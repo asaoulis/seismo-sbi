@@ -18,6 +18,7 @@ seismic_context:
   cps_GFs_path: '/data/alex/cps/cps_long_valley/LV2_perturbations/kappa_5'
   cps_GFs_fiducial_path: '/data/alex/cps/cps_long_valley/LV2_perturbations/kappa_5_fiducial'
   processing:
+    filter_sampling_rate: 20.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

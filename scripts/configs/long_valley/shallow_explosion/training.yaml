@@ -18,6 +18,7 @@ seismic_context:
   cps_GFs_path: '/data/alex/cps/cps_long_valley/tham_5pc_shallow_explosion/kappa_5'
   cps_GFs_fiducial_path: '/data/alex/cps/cps_long_valley/tham_5pc_shallow_explosion/kappa_5_fiducial'
   processing:
+    filter_sampling_rate: 40.0
     filter:
       type: 'bandpass'
       freqmin: 0.02

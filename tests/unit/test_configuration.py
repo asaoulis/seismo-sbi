@@ -588,6 +588,7 @@ def _minimal_config(tmp_path):
             "sampling_rate": 1,
             "syngine_address": "syngine://prem_i_2s",
             "processing": {
+                "filter_sampling_rate": 5.0,
                 "filter": {
                     "type": "bandpass",
                     "freqmin": 0.01,
@@ -708,3 +709,13 @@ def test_normalise_sampling_method_bad_type_raises():
 def test_normalise_sampling_method_rejects_non_str_non_dict():
     with pytest.raises(InvalidConfiguration):
         SBI_Configuration._normalise_sampling_method({"moment_tensor": 5})
+
+
+def test_a_config_without_the_synthetic_filter_rate_is_rejected(tmp_path):
+    """The synthetics must be filtered at the rate the observed data are, so the rate is required."""
+    config = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration, match="filter_sampling_rate"):
+        config.parse_seismic_context({
+            "stations_path": None, "station_components_path": None, "seismogram_duration": 30,
+            "sampling_rate": 1, "syngine_address": None,
+            "processing": {"filter": {"type": "bandpass", "freqmin": 0.01, "freqmax": 0.1}, "sampling_rate": 1}})
