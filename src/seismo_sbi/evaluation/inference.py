@@ -62,8 +62,7 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     # An NPE-only evaluation never uses the score compressors, and the stencil cannot run on the
     # multi-ensemble simulator, so ``skip_compression_data`` bypasses both.
     if skip_compression is None:
-        skip_compression = bool((getattr(config, "raw_config", None) or {})
-                                .get("skip_compression_data", False))
+        skip_compression = config.training.skip_compression_stencil
     if not skip_compression:
         score_compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(
             config.compression_methods,

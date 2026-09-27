@@ -63,6 +63,11 @@ def test_an_empty_configuration_gives_the_library_defaults():
     assert training.to_model_config({}) == {"station_encoder": "cnn", "theta_scaler": {}}
 
 
+def test_skip_compression_data_sets_the_stencil_skip():
+    assert not TrainingConfiguration.from_yaml_block({}).skip_compression_stencil
+    assert TrainingConfiguration.from_yaml_block({"skip_compression_data": True}).skip_compression_stencil
+
+
 def test_a_mistyped_training_block_raises():
     with pytest.raises(InvalidConfiguration, match="ml_encdoer"):
         TrainingConfiguration.from_yaml_block({"ml_encdoer": {"downsample": 4}})
