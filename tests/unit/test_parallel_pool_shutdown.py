@@ -1,7 +1,11 @@
-"""A parallel simulation run kills the worker pool it ran on instead of starting another."""
+"""Parallel stages kill the worker pool they ran on, and start workers by spawn in a notebook."""
+import sys
+
 from joblib.externals.loky import reusable_executor
+from joblib.externals.loky.backend import context
 
 from seismo_sbi.sbi.dataset_generator import ParallelSimulationRunner
+from seismo_sbi.utils.parallel import spawn_workers_in_notebooks
 
 
 class _Runner(ParallelSimulationRunner):
@@ -19,3 +23,14 @@ def test_parallel_simulations_kill_the_pool_they_ran_on():
     executor = reusable_executor._executor
     assert executor._flags.shutdown
     assert executor._max_workers == 2
+
+
+def test_workers_start_by_spawn_only_inside_a_jupyter_kernel(monkeypatch):
+    monkeypatch.setattr(context, "_DEFAULT_START_METHOD", None)
+    monkeypatch.delitem(sys.modules, "ipykernel", raising=False)
+    spawn_workers_in_notebooks()
+    assert context.get_start_method() is None
+
+    monkeypatch.setitem(sys.modules, "ipykernel", object())
+    spawn_workers_in_notebooks()
+    assert context.get_start_method() == "spawn"
