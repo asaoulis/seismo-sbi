@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seismo-sbi"
-version = "0.0.1"
+version = "0.2.0"
 authors = [{ name="Alex Saoulis", email="a.saoulis@ucl.ac.uk" }]
 description = "Simulation-based inference for seismic source inversion"
 readme = "README.md"
