@@ -17,6 +17,8 @@ from seismo_sbi.utils.parallel import parallel_execution
 
 
 class BlockDiagonalCovariance(EmpiricalCovariance):
+        """Stationary noise: one Toeplitz block per trace, with no correlation between traces."""
+
         inverse_metadata = None
 
         def __init__(self, receivers, data_vector_length, block_exp_tapering = True, covariance_gradients = None, num_jobs = 20):
@@ -211,6 +213,8 @@ class BlockDiagonalKolbCovariance(BlockDiagonalCovariance):
 
 
 class BlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
+        """Toeplitz blocks built from measured autocovariances ``{station: {component: acov}}``."""
+
         
         data_vector_length = None
     

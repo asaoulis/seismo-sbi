@@ -19,6 +19,8 @@ from .types.results import InversionResult, InversionData, JobResult, InversionC
 
 
 class MultiEventPipeline(SingleEventPipeline):
+    """Build the compressor and train once on the first job, then invert every job with it."""
+
     def __init__(self, pipeline_parameters : PipelineParameters, config_path : str = None):
             
         super().__init__(pipeline_parameters, config_path)

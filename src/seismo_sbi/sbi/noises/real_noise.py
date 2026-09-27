@@ -7,6 +7,12 @@ from seismo_sbi.simulators.simulation_io import SimulationDataLoader, component_
 
 
 class RealNoiseSampler:
+    """Draw recorded noise windows as data-vector noise.
+
+    Each call picks one window from ``directory`` covering every model station (or, with
+    ``allow_incomplete``, whichever it covers) and returns it flattened in receiver order,
+    optionally rescaled to the variances set by :meth:`set_adaptive_covariance_with_misc_data`.
+    """
 
     # TODO: add components implementation
 
@@ -254,6 +260,7 @@ class RealNoiseSampler:
         return scales
     
     def set_adaptive_covariance_with_misc_data(self, misc_data):
+        """Rescale later draws to the per-trace variances in ``misc_data``; no-op if ``freeze_scale``."""
         if self.freeze_scale:
             # Generic-event mode: ignore any attempt to rescale noise to one event's variance
             # (train_NPE.py and a few pipeline score-compression spots call this unconditionally).

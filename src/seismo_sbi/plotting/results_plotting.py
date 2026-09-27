@@ -26,6 +26,7 @@ class SBIPipelinePlotter:
         self.reparametrised_plotter = None
 
     def initialise_posterior_plotter(self, data_scaler, parameters_info):
+        """Build the posterior plotters, and the moment-tensor one when the run infers a tensor."""
 
         self.posterior_plotter = PosteriorPlotter(data_scaler, parameters_info, self.parameters)
 
@@ -75,6 +76,7 @@ class SBIPipelinePlotter:
             self.posterior_plotter.plot_beachball_samples(inversion_data, plot_path=plot_path)
 
     def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True, **kwargs):
+        """Corner plots (and lunes, for a tensor) of one job's inversions, under ``base_figure_path``."""
         lune_kwargs, reparam_kwargs = kwargs.get("lune_kwargs", {}), kwargs.get("reparam_kwargs", {})
         # base_figure_path is either a relative subfolder (nested under base_output_path) or an
         # absolute directory (used as-is). Join it directly: pathlib appends a relative path and

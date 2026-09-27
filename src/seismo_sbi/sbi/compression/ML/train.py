@@ -377,6 +377,7 @@ class CompressionTrainer:
         
     
     def build_posterior(self):
+        """An ``sbi`` ``DirectPosterior`` over the trained flow, on the flow's device."""
         # use sbi to build a direct posterior from the trained flow
         from sbi.inference.posteriors import DirectPosterior
         from sbi import utils as utils

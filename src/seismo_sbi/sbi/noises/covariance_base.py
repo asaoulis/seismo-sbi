@@ -11,6 +11,8 @@ from seismo_sbi.simulators.simulation_io import component_alias
 
 
 class EmpiricalCovariance(ABC):
+    """Noise covariance interface: likelihood, inverse products, worker closures, a sampler."""
+
     C_inverse = None
     data_vector_length = None
     C_derivative = None

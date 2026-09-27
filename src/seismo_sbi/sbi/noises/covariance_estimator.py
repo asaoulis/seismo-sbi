@@ -62,6 +62,8 @@ def stable_inverse(C, eps=1e-18):
 
 
 class EmpiricalCovarianceEstimator:
+    """Estimate per-trace noise autocovariances from a directory of recorded noise windows."""
+
 
     def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True):
         self.data_directory = data_directory

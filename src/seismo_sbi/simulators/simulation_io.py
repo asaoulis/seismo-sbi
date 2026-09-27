@@ -71,6 +71,11 @@ def to_numpy(obj):
     
     return obj
 class SimulationDataLoader():
+    """Read simulation HDF5 files for a fixed set of receivers and components.
+
+    Arrays come back as ``(n_stations, n_components, n_samples)`` when ``stacked``, else flattened
+    in receiver order; components a receiver lacks are zero-filled when ``fill_unused`` is set.
+    """
 
     def __init__(self,components : str,
                         receivers : Receivers,
@@ -117,6 +122,7 @@ class SimulationDataLoader():
         return input_data, data
 
     def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *args, **kwargs):
+        """Load a simulation with per-station time shifts ``shift_dict`` applied to its traces."""
         self.receivers.set_time_shifts(shift_dict)
         with h5py.File(sim_name, 'r') as simulation_data_map:
             shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}

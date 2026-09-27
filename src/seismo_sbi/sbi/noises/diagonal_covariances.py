@@ -12,6 +12,8 @@ from seismo_sbi.sbi.noises.noise_samplers import GaussianNoiseSampler
 
 
 class ScalarEmpiricalCovariance(EmpiricalCovariance):
+    """White noise with a single standard deviation ``sigma_noise_level`` for every sample."""
+
 
     inverse_metadata = None
 
@@ -56,6 +58,8 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
 
 
 class DiagonalEmpiricalCovariance(EmpiricalCovariance):
+    """White noise with one variance per station and component, repeated over the trace."""
+
     inverse_metadata = None
 
     def __init__(self,station_component_covariances, receivers, data_vector_length):

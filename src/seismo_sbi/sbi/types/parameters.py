@@ -126,6 +126,7 @@ class ModelParameters:
         return {name: getattr(self, name) for name in self._parameter_names}
 
     def parameter_to_vector(self, parameter_type, only_theta_fiducial=False):
+        """Flatten one register (e.g. ``'theta_fiducial'``) into a vector in parameter order."""
 
         if only_theta_fiducial:
             flattened_parameters = [item for param_name, sublist in self._parameters_register[parameter_type].items() for item in sublist 

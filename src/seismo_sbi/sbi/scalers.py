@@ -45,6 +45,7 @@ class ZeroOneScaler:
         return X_scaled
 
     def inverse_transform(self, X_scaled):
+        """Map ``[0, 1]`` back to the parameter bounds."""
         X = X_scaled * self.range + self.lower_bound
         return X
 
@@ -183,6 +184,7 @@ class FlexibleScaler:
         return X_scaled
     
     def inverse_transform(self, X_scaled):
+        """Undo each block's scaler on its columns of ``X_scaled`` ``(n_samples, n_params)``."""
         X = np.zeros_like(X_scaled)
         for (start, end), scaler in zip(self.indices, self.scalers):
             X[:, start:end] = scaler.inverse_transform(X_scaled[:, start:end])

@@ -36,6 +36,12 @@ SAMPLER_FACTORIES = {
 
 
 class SBI_Configuration:
+    """Every option of a pipeline YAML file, parsed once into typed records.
+
+    Build it with :meth:`from_file`; the parsed blocks are attributes (``pipeline_parameters``,
+    ``model_parameters``, ``sim_parameters``, ``dataset_parameters``, ``compression_methods``,
+    ``sbi_method``, ``test_job_simulations``, ``training`` and the like).
+    """
 
     parameter_types = [
         # Core source parameters
@@ -121,6 +127,7 @@ class SBI_Configuration:
         return configuration
 
     def parse_config_file(self, config_file):
+        """Read ``config_file`` (YAML) and parse every block."""
         # read yaml config file
         with open(config_file, 'r', encoding = 'utf-8') as stream:
             config = yaml.safe_load(stream)

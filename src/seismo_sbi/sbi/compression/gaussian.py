@@ -111,6 +111,12 @@ class MachineLearningCompressor(Compressor):
             return parameters_prediction
 
 class GaussianCompressor(Compressor):
+    """Score compression under a Gaussian likelihood.
+
+    Built from the fiducial data, its parameter gradients (``ScoreCompressionData``) and a noise
+    covariance; compresses a data vector to the quasi-maximum-likelihood estimate
+    ``theta_fiducial + F^-1 score``, with :meth:`compute_score` giving the score itself.
+    """
 
     def __init__(self, score_compression_data : ScoreCompressionData, covariance_matrix : EmpiricalCovariance, prior = (None, None)):
 
