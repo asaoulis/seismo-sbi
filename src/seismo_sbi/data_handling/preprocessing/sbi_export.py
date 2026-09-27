@@ -1,6 +1,7 @@
 """Write preprocessed streams to the HDF5 format the rest of the library reads.
 
-The schema matches what ``SimulationSaver.dump_data_as_hdf5`` produces, so ``RealNoiseSampler``
+:func:`stream_to_seismogram_map` turns an obspy ``Stream`` into the ``{station: {component:
+waveform}}`` map the simulators produce, and :func:`export_to_sbi_h5` writes it. The schema matches what ``SimulationSaver.dump_data_as_hdf5`` produces, so ``RealNoiseSampler``
 and ``SimulationDataLoader`` consume these files unchanged. Channel keys on disk are ``Z``,
 ``1`` and ``2``, never ``E`` or ``N``. Each array is ``compute_data_vector_length(duration, sr)
 + 1`` samples long, the slice being inclusive. The autocorrelation in ``/misc`` is taken over
@@ -15,26 +16,17 @@ from typing import List, Optional
 import numpy as np
 from obspy import Stream, UTCDateTime
 
-from seismo_sbi.simulators.simulation_io import SimulationSaver
+from seismo_sbi.simulators.simulation_io import SimulationSaver, component_alias
 
 
 # --- Internal helpers ---
 
 def _rename_component(channel: str) -> str:
-    """Map a full channel code (e.g. 'BHE') to the SBI component key ('1').
-
-    Rules:
-        Z in channel  → 'Z'
-        1 in channel or channel ends with E → '1'
-        2 in channel or channel ends with N → '2'
-    """
-    if "Z" in channel:
-        return "Z"
-    if "1" in channel or channel[-1] == "E":
-        return "1"
-    if "2" in channel or channel[-1] == "N":
-        return "2"
-    raise ValueError(f"Cannot map channel '{channel}' to Z/1/2")
+    """The component key (``Z``, ``1`` or ``2``) of a SEED channel code such as ``BHE``."""
+    component = component_alias(channel[-1])
+    if component not in ("Z", "1", "2"):
+        raise ValueError(f"Cannot map channel '{channel}' to Z/1/2")
+    return component
 
 
 def _compute_autocorrelation(data: np.ndarray) -> np.ndarray:
@@ -57,6 +49,35 @@ def _exact_end_time(t_start: UTCDateTime, t_end: UTCDateTime, sampling_rate: flo
 
 
 # --- Public API ---
+
+def stream_to_seismogram_map(stream: Stream, station_names: List[str], t_start, t_end) -> dict:
+    """``{station: {component: waveform}}`` for ``station_names`` from the traces of ``stream``
+    between ``t_start`` and ``t_end`` (inclusive), component keys ``Z``, ``1``, ``2``.
+
+    A station absent from the stream is absent from the map; a component absent from the
+    window is absent from its station.
+    """
+    station_channel_map: dict = {}
+    for trace in stream:
+        station = trace.stats.station
+        if station not in station_names:
+            continue
+        station_channel_map.setdefault(station, {})[trace.stats.channel] = _rename_component(
+            trace.stats.channel)
+
+    window = stream.slice(UTCDateTime(t_start), UTCDateTime(t_end))
+    seismogram_map: dict = {}
+    for station in station_names:
+        if station not in station_channel_map:
+            continue
+        station_traces: dict = {}
+        for channel, renamed in station_channel_map[station].items():
+            traces = window.select(station=station, channel=channel)
+            if len(traces) == 0:
+                continue
+            station_traces[renamed] = traces[0].data.copy()
+        seismogram_map[station] = station_traces
+    return seismogram_map
 
 def export_to_sbi_h5(
     stream: Stream,
@@ -88,58 +109,17 @@ def export_to_sbi_h5(
     t_end = UTCDateTime(event_window[1])
     exact_end = _exact_end_time(t_start, t_end, sampling_rate)
 
-    # Build component map from channel codes present in the stream
-    # station → {channel_code → renamed_key}
-    station_channel_map: dict = {}
-    for tr in stream:
-        sta = tr.stats.station
-        if sta not in receivers:
-            continue
-        cha = tr.stats.channel
-        renamed = _rename_component(cha)
-        if sta not in station_channel_map:
-            station_channel_map[sta] = {}
-        station_channel_map[sta][cha] = renamed
+    data_map = {station: traces for station, traces
+                in stream_to_seismogram_map(stream, receivers, t_start, exact_end).items()
+                if len(traces) == 3}
 
-    # Slice event window (inclusive endpoints, legacy behaviour)
-    event_stream = stream.slice(t_start, exact_end)
-
-    # Build output data_map: {station: {renamed_component: np.ndarray}}
-    data_map: dict = {}
-    for sta in receivers:
-        if sta not in station_channel_map:
-            continue
-        ch_map = station_channel_map[sta]
-        sta_data: dict = {}
-        for cha, renamed in ch_map.items():
-            traces = event_stream.select(station=sta, channel=cha)
-            if len(traces) == 0:
-                continue
-            sta_data[renamed] = traces[0].data.copy()
-        if len(sta_data) == 3:
-            data_map[sta] = sta_data
-
-    # Build /misc: autocorrelation from pre-event window
     variance_dict: Optional[dict] = None
     if covariance_window is not None:
         cov_start = t_start - covariance_window.total_seconds()
-        cov_stream = stream.slice(cov_start, t_start)
         variance_dict = {}
-        for sta in receivers:
-            if sta not in station_channel_map:
-                continue
-            ch_map = station_channel_map[sta]
-            sta_misc: dict = {}
-            for cha, renamed in ch_map.items():
-                traces = cov_stream.select(station=sta, channel=cha)
-                if len(traces) == 0:
-                    continue
-                data = traces[0].data
-                if full_auto_correlation:
-                    auto_cov = _compute_autocorrelation(data)
-                else:
-                    auto_cov = np.var(data)
-                sta_misc[renamed] = auto_cov
+        for sta, traces in stream_to_seismogram_map(stream, receivers, cov_start, t_start).items():
+            sta_misc = {renamed: _compute_autocorrelation(data) if full_auto_correlation else np.var(data)
+                        for renamed, data in traces.items()}
             if sta_misc:
                 variance_dict[sta] = sta_misc
 
