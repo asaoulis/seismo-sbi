@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from ..receivers import Receiver
 from ..sources import GenericPointSource, _gcmt_half_duration, build_stf_sliprate
+from ..spectral_filter import filter_and_shift
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 import instaseis
@@ -23,14 +24,18 @@ import instaseis
 #: t = +this in the exported window. Observed windows must use the same lead or they are
 #: misaligned with the synthetics by this much.
 SYNTHETICS_PRE_EVENT_PAD_S = 60.0
+#: Lowest rate (Hz) the filtered synthetics are kept at, so the 20-lobe Lanczos step to the output
+#: rate spans under the 10 s the traces run past the end of the window.
+FILTERED_GRID_MIN_RATE_HZ = 2.0
 
 class SyntheticsPreprocessing:
     """Taper, filter and trim raw synthetics that start at the origin.
 
-    The filter runs at ``processing['filter_sampling_rate']`` (Hz), the rate the observed data are
-    filtered at, so the two paths see the same filter response. The result starts
-    ``SYNTHETICS_PRE_EVENT_PAD_S`` before the origin exactly, whatever the database's sample
-    interval, so the 1 Hz grid the querier interpolates to lines up with the observed windows.
+    The filter is the one designed at ``processing['filter_sampling_rate']`` (Hz), the rate the
+    observed data are filtered at, so the two paths see the same filter response; it is applied at
+    the database's own sample interval. The result starts ``SYNTHETICS_PRE_EVENT_PAD_S`` before the
+    origin exactly, whatever that interval, so the 1 Hz grid the querier interpolates to lines up
+    with the observed windows.
     """
 
     def __init__(self, processing_config):
@@ -45,20 +50,25 @@ class SyntheticsPreprocessing:
         seismograms = seismograms.trim(starttime=start - length * 0.3, endtime=end + length * 0.3, pad = True, fill_value=0)
         seismograms = seismograms.taper(max_percentage=0.05, type='cosine')
         pad = SYNTHETICS_PRE_EVENT_PAD_S
-        seismograms = self._resample_onto_anchored_grid(seismograms, start - pad)
-        seismograms = seismograms.filter(**self.processing_config['filter'])
+        seismograms = self._filter_onto_anchored_grid(seismograms, start - pad)
 
         seismograms = seismograms.trim(starttime=start - pad, endtime=end - length * 0.1)
         seismograms = seismograms.trim(starttime=start - pad, endtime=end - pad, pad=True, fill_value=0)
 
         return seismograms
 
-    def _resample_onto_anchored_grid(self, seismograms, anchor):
-        """The traces Lanczos-interpolated to the filter rate, on the sample grid through ``anchor``."""
-        dt = 1.0 / self.filter_sampling_rate
+    def _filter_onto_anchored_grid(self, seismograms, anchor):
+        """The traces filtered, on the grid through ``anchor`` at a whole multiple of their own rate."""
+        dt = seismograms[0].stats.delta
+        upsampling = math.ceil(dt * FILTERED_GRID_MIN_RATE_HZ)
         first_sample = anchor + math.ceil((seismograms[0].stats.starttime - anchor) / dt - 1e-9) * dt
-        return seismograms.interpolate(self.filter_sampling_rate, method='lanczos', a=20,
-                                       starttime=first_sample)
+        shift_s = first_sample - seismograms[0].stats.starttime
+        for trace in seismograms:
+            trace.data = filter_and_shift(trace.data, dt, self.processing_config['filter'],
+                                          self.filter_sampling_rate, shift_s, upsampling)
+            trace.stats.delta = dt / upsampling
+            trace.stats.starttime = first_sample
+        return seismograms
 
 
 class InstaseisDBQuerier:

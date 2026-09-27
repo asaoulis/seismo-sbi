@@ -13,6 +13,7 @@ dependencies.
 | `kernel.py` | seismograms from precomputed moment-tensor sensitivity kernels |
 | `gf_ensemble.py` | `GFEnsembleSimulator`: draw one Earth model per simulation |
 | `multi_region.py` | `MultiModelSimulator`: a different Earth model per receiver region |
+| `spectral_filter.py` | a Butterworth filter designed at the observed data's rate, applied to synthetics at their own rate in the frequency domain |
 | `simulation_io.py` | the HDF5 layout one simulation is written to and read back from |
 | `theory_covariance.py` | per-trace theory-error covariance estimated from an ensemble |
 | `registry.py` | `simulation_type` → builder |

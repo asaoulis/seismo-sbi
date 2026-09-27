@@ -47,9 +47,10 @@ Three rates sit next to each other:
   vector.
 - `processing.sampling_rate` is the rate the Instaseis backend resamples the filtered synthetics
   to, over `seismogram_duration`.
-- `processing.filter_sampling_rate` is the rate the filter runs at. The Instaseis backend
-  Lanczos-interpolates the raw synthetics to this rate before filtering, so they see the same
-  filter response as the observed data. Set it to the raw rate of the recordings, the rate the
+- `processing.filter_sampling_rate` is the rate the filter is designed at. The Instaseis backend
+  evaluates that filter's response at the synthetics' own frequencies and applies it in the
+  frequency domain, so they see the same filter response as the observed data without being
+  resampled to that rate. Set it to the raw rate of the recordings, the rate the
   data preparation filtered them at (`build_catalogue.py` filters each channel at its raw rate
   before resampling). For synthetic-only work, any rate comfortably above twice `freqmax`
   will do.
