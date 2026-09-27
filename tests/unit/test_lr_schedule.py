@@ -116,8 +116,7 @@ def test_compression_trainer_lr_second_stage_defaults_cosine():
 
 
 # ---------------------------------------------------------------------------
-# lr_min_factor — configurable cosine floor (santorini mw-fix campaign, 2026-08-11).
-# Every run before this annealed to a HARD-CODED lr*0.1; the campaign asked for lr/5.
+# lr_min_factor: the cosine floor as a fraction of the base rate (default 0.1).
 # ---------------------------------------------------------------------------
 
 def test_cosine_floor_follows_lr_min_factor():

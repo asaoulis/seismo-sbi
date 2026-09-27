@@ -41,8 +41,8 @@ We therefore test:
    ``evaluation_metrics.json`` without crashing (plotting may be skipped if
    deps unavailable; the JSON write is always executed).
 
-Full ``run_validation`` end-to-end equivalence is deferred to the B7 Santorini
-eval smoke (``mt-sbi-evaluate --smoke --events No14_id3250 --validation``).
+Full ``run_validation`` end-to-end equivalence is left to the catalogue evaluation smoke
+run (``mt-sbi-evaluate --smoke --validation``).
 """
 from __future__ import annotations
 

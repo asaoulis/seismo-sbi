@@ -125,7 +125,7 @@ def test_distance_mode_requires_source():
         _dist_effect()(m, recs, scattering_coda=1.0)
 
 
-def test_distance_mode_source_from_nuisance_wins_and_ctor_fallback_works():
+def test_distance_mode_takes_the_source_from_the_call_or_else_the_constructor():
     recs = _recs(); m = _white_map(recs)
     eff_ctor = _dist_effect(source_latitude=SRC[0], source_longitude=SRC[1])
     np.random.seed(5); a = eff_ctor(m, recs, scattering_coda=1.0)

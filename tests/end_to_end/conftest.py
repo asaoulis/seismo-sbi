@@ -82,7 +82,7 @@ def cached_iris_inventory():
 
     Returns dict: {(network, station): Inventory}.
     Skips if nothing is available.  The inventory is required for response
-    removal tests in test_new_api_real.py.
+    removal tests in test_preprocessing_api_real.py.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 

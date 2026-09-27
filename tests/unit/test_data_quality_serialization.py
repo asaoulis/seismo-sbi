@@ -2,8 +2,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from seismo_sbi.data_quality.policy import StationSummary, StationVerdict
 from seismo_sbi.data_quality.serialization import (
     QAArtifacts, components_from_verdicts, load_qa_artifacts, verdict_to_json,
@@ -71,12 +69,10 @@ def test_load_qa_artifacts_missing_files_are_empty():
 
 
 def test_golden_verdicts_schema_parity():
-    """The committed Santorini verdicts must carry exactly the original nine fields,
-    so our serialiser stays a superset of what existing readers expect."""
-    golden = Path("scripts/santorini_pathbreaker/diagnostics/No14_id3250/"
-                  "station_qa/No14_id3250_allstation_verdicts.json")
-    if not golden.exists():
-        pytest.skip("santorini golden not present")
+    """Recorded verdicts carry the original nine fields, so the serialiser stays a superset of
+    what existing readers expect."""
+    golden = (Path(__file__).resolve().parents[1] / "data" / "data_quality"
+              / "No14_id3250_allstation_verdicts.json")
     rec = next(iter(json.loads(golden.read_text())["present"].values()))
     assert set(ORIGINAL_KEYS).issubset(rec.keys())
     assert set(rec.keys()).issubset(set(ORIGINAL_KEYS) | {

@@ -1,4 +1,4 @@
-"""Tests for the anisotropy injection effects (anisotropy-robustness task).
+"""Tests for the anisotropy injection effects.
 
 Contract (mirrors the module's other effects):
 - key absent or 0.0 ⇒ strict identity (same arrays pass through);
@@ -17,7 +17,7 @@ from seismo_sbi.simulators.post_processing import EFFECT_REGISTRY, build_post_pr
 from seismo_sbi.simulators.anisotropy_effects import AzimuthalAnisotropyEffect, ShearSplittingEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 
-SR = 1.0                          # samples per second, like the Santorini config
+SR = 1.0                          # samples per second
 T = 256
 
 

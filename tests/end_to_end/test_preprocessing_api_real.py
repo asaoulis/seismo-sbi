@@ -82,9 +82,9 @@ def _write_mseed_layout(raw_dir: Path, streams: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def new_api_real_output(cached_iris_wide_download, cached_iris_inventory, tmp_path_factory):
+def preprocessing_real_output(cached_iris_wide_download, cached_iris_inventory, tmp_path_factory):
     """Full new-API pipeline on real IRIS data with response removal."""
-    tmp = tmp_path_factory.mktemp("new_api_real")
+    tmp = tmp_path_factory.mktemp("preprocessing_real")
     raw_dir = tmp / "raw"
     raw_dir.mkdir()
     stationxml_dir = tmp / "stationxml"
@@ -139,7 +139,7 @@ def new_api_real_output(cached_iris_wide_download, cached_iris_inventory, tmp_pa
     for st in all_streams:
         combined += st
 
-    event_h5 = tmp / "ridgecrest_new_api.h5"
+    event_h5 = tmp / "ridgecrest_preprocessed.h5"
     export_to_sbi_h5(
         combined,
         receivers=available_stations,
@@ -171,24 +171,24 @@ def new_api_real_output(cached_iris_wide_download, cached_iris_inventory, tmp_pa
 
 class TestLoadWaveformsReal:
 
-    def test_loads_mseed_from_disk(self, new_api_real_output):
+    def test_loads_mseed_from_disk(self, preprocessing_real_output):
         """load_waveforms should return a non-empty Stream from the cached mseed."""
-        st_paths = new_api_real_output["station_paths"]
+        st_paths = preprocessing_real_output["station_paths"]
         for (network, station), paths in list(st_paths.items())[:1]:
             st = load_waveforms(paths)
             assert len(st) > 0, f"Empty stream for {network}.{station}"
 
-    def test_all_bh_channels_loaded(self, new_api_real_output):
+    def test_all_bh_channels_loaded(self, preprocessing_real_output):
         """Expect Z and at least one horizontal per station."""
-        for (network, station), paths in new_api_real_output["station_paths"].items():
+        for (network, station), paths in preprocessing_real_output["station_paths"].items():
             st = load_waveforms(paths)
             channels = {tr.stats.channel for tr in st}
             z_channels = {c for c in channels if c.endswith("Z")}
             assert len(z_channels) >= 1, f"No Z channel for {station}: {channels}"
 
-    def test_time_trim_reduces_data(self, new_api_real_output):
+    def test_time_trim_reduces_data(self, preprocessing_real_output):
         """Passing starttime/endtime should shorten the loaded stream."""
-        st_paths = new_api_real_output["station_paths"]
+        st_paths = preprocessing_real_output["station_paths"]
         for (network, station), paths in list(st_paths.items())[:1]:
             full = load_waveforms(paths)
             t0 = full[0].stats.starttime + 30
@@ -202,12 +202,12 @@ class TestLoadWaveformsReal:
 
 class TestLoadInventoryReal:
 
-    def test_inventory_loaded_from_dir(self, new_api_real_output):
-        inv = load_inventory(new_api_real_output["stationxml_dir"])
+    def test_inventory_loaded_from_dir(self, preprocessing_real_output):
+        inv = load_inventory(preprocessing_real_output["stationxml_dir"])
         assert len(inv.networks) > 0
 
-    def test_inventory_covers_test_stations(self, new_api_real_output):
-        inv = load_inventory(new_api_real_output["stationxml_dir"])
+    def test_inventory_covers_test_stations(self, preprocessing_real_output):
+        inv = load_inventory(preprocessing_real_output["stationxml_dir"])
         network_station_pairs = {
             (net.code, sta.code)
             for net in inv.networks
@@ -222,14 +222,14 @@ class TestLoadInventoryReal:
 
 class TestWriteWindowReal:
 
-    def test_daily_mseed_readable(self, new_api_real_output):
-        daily_mseed = new_api_real_output["daily_mseed"]
+    def test_daily_mseed_readable(self, preprocessing_real_output):
+        daily_mseed = preprocessing_real_output["daily_mseed"]
         assert daily_mseed.exists()
         st = obspy.read(str(daily_mseed))
         assert len(st) > 0
 
-    def test_daily_mseed_at_target_sr(self, new_api_real_output):
-        st = obspy.read(str(new_api_real_output["daily_mseed"]))
+    def test_daily_mseed_at_target_sr(self, preprocessing_real_output):
+        st = obspy.read(str(preprocessing_real_output["daily_mseed"]))
         for tr in st:
             assert abs(tr.stats.sampling_rate - SR_TARGET) < 1e-6, (
                 f"{tr.id} SR={tr.stats.sampling_rate} != {SR_TARGET}"
@@ -242,17 +242,17 @@ class TestWriteWindowReal:
 
 class TestDeconvolveRealData:
 
-    def test_response_removal_changes_amplitude(self, new_api_real_output, cached_iris_wide_download):
+    def test_response_removal_changes_amplitude(self, preprocessing_real_output, cached_iris_wide_download):
         """Displacement output (response removed) should differ from raw counts.
 
         IRIS broadband channels have sensitivities ~1500 counts/(nm/s); after
         response removal the amplitude will be orders of magnitude different.
         """
         for (network, station), paths in list(
-            new_api_real_output["station_paths"].items()
+            preprocessing_real_output["station_paths"].items()
         )[:1]:
             raw = load_waveforms(paths)
-            inv = new_api_real_output["inventory"].select(
+            inv = preprocessing_real_output["inventory"].select(
                 network=network, station=station
             )
 
@@ -271,13 +271,13 @@ class TestDeconvolveRealData:
                 "Response removal had no effect on signal amplitude"
             )
 
-    def test_response_removal_output_finite(self, new_api_real_output, cached_iris_wide_download):
+    def test_response_removal_output_finite(self, preprocessing_real_output, cached_iris_wide_download):
         """Displacement traces after response removal must not contain NaN/Inf."""
         for (network, station), paths in list(
-            new_api_real_output["station_paths"].items()
+            preprocessing_real_output["station_paths"].items()
         )[:1]:
             raw = load_waveforms(paths)
-            inv = new_api_real_output["inventory"].select(
+            inv = preprocessing_real_output["inventory"].select(
                 network=network, station=station
             )
             proc = deconvolve_and_filter(
@@ -290,13 +290,13 @@ class TestDeconvolveRealData:
                     f"{tr.id}: NaN/Inf after response removal"
                 )
 
-    def test_bandpass_applied_after_response_removal(self, new_api_real_output, cached_iris_wide_download):
+    def test_bandpass_applied_after_response_removal(self, preprocessing_real_output, cached_iris_wide_download):
         """After response removal + bandpass, near-Nyquist energy must be suppressed."""
         for (network, station), paths in list(
-            new_api_real_output["station_paths"].items()
+            preprocessing_real_output["station_paths"].items()
         )[:1]:
             raw = load_waveforms(paths)
-            inv = new_api_real_output["inventory"].select(
+            inv = preprocessing_real_output["inventory"].select(
                 network=network, station=station
             )
             proc = deconvolve_and_filter(
@@ -325,54 +325,54 @@ class TestDeconvolveRealData:
 
 class TestNewApiRealH5Schema:
 
-    def test_h5_created(self, new_api_real_output):
-        assert new_api_real_output["h5"].exists()
+    def test_h5_created(self, preprocessing_real_output):
+        assert preprocessing_real_output["h5"].exists()
 
-    def test_h5_has_outputs_and_misc(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
+    def test_h5_has_outputs_and_misc(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
             assert "outputs" in f
             assert "misc" in f
 
-    def test_all_available_stations_in_h5(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
-            for sta in new_api_real_output["available_stations"]:
+    def test_all_available_stations_in_h5(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
+            for sta in preprocessing_real_output["available_stations"]:
                 assert sta in f["outputs"], f"{sta} missing from /outputs"
 
-    def test_component_keys_z_1_2(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
-            for sta in new_api_real_output["available_stations"]:
+    def test_component_keys_z_1_2(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
+            for sta in preprocessing_real_output["available_stations"]:
                 keys = set(f["outputs"][sta].keys())
                 assert keys == {"Z", "1", "2"}, (
                     f"{sta}: expected {{Z,1,2}}, got {keys}"
                 )
                 assert "E" not in keys and "N" not in keys
 
-    def test_array_length_correct(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
-            for sta in new_api_real_output["available_stations"]:
+    def test_array_length_correct(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
+            for sta in preprocessing_real_output["available_stations"]:
                 for comp, ds in f["outputs"][sta].items():
                     assert ds.shape[0] == DATA_VECTOR_LEN, (
                         f"{sta}/{comp}: expected {DATA_VECTOR_LEN}, got {ds.shape[0]}"
                     )
 
-    def test_arrays_finite_and_nonzero(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
+    def test_arrays_finite_and_nonzero(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
             for sta in f["outputs"]:
                 for comp, ds in f["outputs"][sta].items():
                     arr = ds[()]
                     assert np.all(np.isfinite(arr)), f"{sta}/{comp} has NaN/Inf"
                     assert np.any(arr != 0.0), f"{sta}/{comp} is all-zero"
 
-    def test_variance_positive(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
+    def test_variance_positive(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
             for sta in f["misc"]:
                 for comp, ds in f["misc"][sta].items():
                     v = float(np.atleast_1d(ds[()]).flat[0])
                     assert v > 0, f"{sta}/{comp} variance non-positive: {v}"
 
-    def test_autocorrelation_length_plausible(self, new_api_real_output):
+    def test_autocorrelation_length_plausible(self, preprocessing_real_output):
         expected = int(COV_WINDOW.total_seconds() * SR_TARGET)
-        with h5py.File(new_api_real_output["h5"], "r") as f:
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
             for sta in f["misc"]:
                 for comp, ds in f["misc"][sta].items():
                     arr = ds[()]
@@ -383,8 +383,8 @@ class TestNewApiRealH5Schema:
 
 class TestNewApiRealCovarianceProperties:
 
-    def test_zero_lag_dominant(self, new_api_real_output):
-        with h5py.File(new_api_real_output["h5"], "r") as f:
+    def test_zero_lag_dominant(self, preprocessing_real_output):
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
             for sta in f["misc"]:
                 for comp, ds in f["misc"][sta].items():
                     arr = ds[()]
@@ -396,12 +396,12 @@ class TestNewApiRealCovarianceProperties:
                             f"{sta}/{comp}: R(0)={r0:.3e} ≤ median off-diag {med_off:.3e}"
                         )
 
-    def test_variance_differs_across_stations(self, new_api_real_output):
+    def test_variance_differs_across_stations(self, preprocessing_real_output):
         """Different stations have different noise levels (different distance / instrument)."""
-        available = new_api_real_output["available_stations"]
+        available = preprocessing_real_output["available_stations"]
         if len(available) < 2:
             pytest.skip("Need ≥2 stations")
-        with h5py.File(new_api_real_output["h5"], "r") as f:
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
             z_vars = {
                 sta: float(f["misc"][sta]["Z"][()][0])
                 for sta in available
@@ -414,10 +414,10 @@ class TestNewApiRealCovarianceProperties:
             f"All Z variances suspiciously identical: {z_vars}"
         )
 
-    def test_components_not_identical_within_station(self, new_api_real_output):
+    def test_components_not_identical_within_station(self, preprocessing_real_output):
         """Z, 1, 2 arrays must carry distinct signals."""
-        with h5py.File(new_api_real_output["h5"], "r") as f:
-            for sta in new_api_real_output["available_stations"]:
+        with h5py.File(preprocessing_real_output["h5"], "r") as f:
+            for sta in preprocessing_real_output["available_stations"]:
                 z = f["outputs"][sta]["Z"][()]
                 c1 = f["outputs"][sta]["1"][()]
                 c2 = f["outputs"][sta]["2"][()]
@@ -429,11 +429,11 @@ class TestNewApiRealCovarianceProperties:
 class TestSbiIngestionWithNewApiH5:
     """SimulationDataLoader and RealNoiseSampler must consume new-API h5 files."""
 
-    def test_simulation_data_loader_reads_h5(self, new_api_real_output):
+    def test_simulation_data_loader_reads_h5(self, preprocessing_real_output):
         from seismo_sbi.simulators.receivers import Receiver, Receivers
         from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
-        available = new_api_real_output["available_stations"]
+        available = preprocessing_real_output["available_stations"]
         # Use ANMO network for IU stations, BFO for II — just pass a dummy network
         # for testing; SimulationDataLoader only uses station name for h5 lookup
         receivers = Receivers(receivers=[
@@ -441,24 +441,24 @@ class TestSbiIngestionWithNewApiH5:
             for sta in available
         ])
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
-        vec = loader.load_flattened_simulation_vector(new_api_real_output["h5"])
+        vec = loader.load_flattened_simulation_vector(preprocessing_real_output["h5"])
         expected_len = len(available) * 3 * DATA_VECTOR_LEN
         assert vec.shape == (expected_len,), (
             f"Expected flat length {expected_len}, got {vec.shape}"
         )
         assert np.all(np.isfinite(vec)), "Flattened vector has NaN/Inf"
 
-    def test_real_noise_sampler_reads_h5(self, new_api_real_output, tmp_path):
+    def test_real_noise_sampler_reads_h5(self, preprocessing_real_output, tmp_path):
         """RealNoiseSampler should be able to use the new-API event h5 as a noise file."""
         from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
         from seismo_sbi.simulators.receivers import Receiver, Receivers
         from seismo_sbi.sbi.types.parameters import SimulationParameters
         import shutil
 
-        available = new_api_real_output["available_stations"]
+        available = preprocessing_real_output["available_stations"]
         h5_dir = tmp_path / "noise"
         h5_dir.mkdir()
-        shutil.copy(new_api_real_output["h5"], h5_dir / "noise_sample.h5")
+        shutil.copy(preprocessing_real_output["h5"], h5_dir / "noise_sample.h5")
 
         receivers = Receivers(receivers=[
             Receiver(0.0, 0.0, "IU", sta, ["Z", "E", "N"])

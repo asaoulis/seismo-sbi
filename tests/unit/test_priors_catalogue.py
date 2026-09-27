@@ -1,68 +1,58 @@
 """Unit tests for the catalogue loader (CSV + obspy paths)."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
 from seismo_sbi.priors.catalogue import EventCatalogue, load_catalogue
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CATALOGUE_DIR = REPO_ROOT / "scripts" / "santorini_pathbreaker" / "catalogue"
-SANTORINI_CSV = CATALOGUE_DIR / "Santorini_catalog.csv"
-NLLSC_CSV = (
-    CATALOGUE_DIR
-    / "20250506A_auth_ml_Santorini-Amorgos_Seismicity_20250101-20250228_NLL-SC_se4.csv"
+SPLIT_TIME_CSV = (
+    "event_id,latitude,longitude,depth,magnitude,magnitude_type,year,month,day,hour,minute,"
+    "seconds,RMS,Nphases,AzGap,dist_sta,ErrH,Errz\n"
+    "1,36.51,25.46,3.0,1.06,Ml,2024,1,1,2,36,19.488,0.11,14,171,6.9,1.49,4.24\n"
+    "2,36.32,25.59,12.9,1.33,Ml,2024,1,1,3,18,27.135,0.16,16,286,11.2,3.34,3.71\n"
+    "3,36.40,25.50,7.5,2.10,Mw,2024,1,2,10,5,1.500,0.09,22,120,4.1,0.80,1.20\n"
+)
+ISO_TIME_CSV = (
+    "date-time, latitude, longitude, depth, RMS, Nphs, Gap, Dist, errH, errZ, Mamp, Mdur\n"
+    "2025-01-01T14:42:24.000907, 36.4319, 25.4245, 5.8936, 0.066, 15, 134.0, 1.93, 0.25, 0.32, 1.78, -9.9\n"
+    "2025-01-01T18:51:54.460904, 36.4188, 25.4074, 5.9277, 0.066, 14, 131.0, 3.47, 0.46, 1.06, 1.44, -9.9\n"
 )
 
 
-@pytest.mark.skipif(not SANTORINI_CSV.exists(), reason="Santorini catalogue CSV not present")
-def test_load_real_santorini_csv():
-    cat = load_catalogue(SANTORINI_CSV)
-    assert isinstance(cat, EventCatalogue)
-    assert len(cat) == 4088
+def test_split_time_columns_give_km_depths_errors_and_origin_times(tmp_path):
+    path = tmp_path / "split_time.csv"
+    path.write_text(SPLIT_TIME_CSV)
+    cat = load_catalogue(path)
+    assert isinstance(cat, EventCatalogue) and len(cat) == 3
     assert cat.latitude.dtype == float and cat.depth.dtype == float
-    # plausible Aegean ranges
-    assert 35.0 < cat.latitude.mean() < 38.0
-    assert 24.0 < cat.longitude.mean() < 27.0
-    # depth is in km, not metres
-    assert cat.depth.max() < 100.0
-    # error columns present
+    assert np.allclose(cat.depth, [3.0, 12.9, 7.5])
     assert cat.err_h is not None and cat.err_z is not None
-    assert cat.lat_lon_depth.shape == (4088, 3)
-    # legacy CSV time built from the split y/m/d/h/min/seconds columns
-    assert cat.time is not None and cat.time.dtype == np.dtype("datetime64[us]")
-    assert len(cat.time) == 4088
+    assert cat.lat_lon_depth.shape == (3, 3)
+    assert cat.time.dtype == np.dtype("datetime64[us]")
+    assert cat.time[0] == np.datetime64("2024-01-01T02:36:19.488")
 
 
-@pytest.mark.skipif(not NLLSC_CSV.exists(), reason="NLL-SC catalogue CSV not present")
-def test_load_nllsc_csv():
-    cat = load_catalogue(NLLSC_CSV)
-    assert isinstance(cat, EventCatalogue)
-    assert len(cat) == 25484
-    # plausible Aegean ranges (leading-whitespace headers handled)
-    assert 35.0 < cat.latitude.mean() < 38.0
-    assert 24.0 < cat.longitude.mean() < 27.0
-    assert cat.depth.max() < 100.0
-    # magnitude taken from Mamp, typed Ml for all rows
+def test_iso_time_layout_reads_padded_headers_and_mamp_as_ml(tmp_path):
+    path = tmp_path / "iso_time.csv"
+    path.write_text(ISO_TIME_CSV)
+    cat = load_catalogue(path)
+    assert len(cat) == 2
     assert set(np.unique(cat.magnitude_type)) == {"Ml"}
-    assert 0.0 < cat.magnitude.min() and cat.magnitude.max() < 7.0
-    # errH/errZ present, ISO date-time parsed within the 2025 crisis window
+    assert np.allclose(cat.magnitude, [1.78, 1.44])
     assert cat.err_h is not None and cat.err_z is not None
-    assert cat.time is not None and cat.time.dtype == np.dtype("datetime64[us]")
-    assert cat.time.min() >= np.datetime64("2025-01-01")
-    assert cat.time.max() < np.datetime64("2025-03-01")
+    assert cat.time.min() == np.datetime64("2025-01-01T14:42:24.000907")
 
 
-@pytest.mark.skipif(not SANTORINI_CSV.exists(), reason="Santorini catalogue CSV not present")
-def test_csv_magnitude_type_filter():
-    cat = load_catalogue(SANTORINI_CSV, magnitude_type="Ml")
-    assert len(cat) > 0
+def test_magnitude_type_filter_keeps_only_that_type(tmp_path):
+    path = tmp_path / "split_time.csv"
+    path.write_text(SPLIT_TIME_CSV)
+    cat = load_catalogue(path, magnitude_type="Ml")
+    assert len(cat) == 2
     assert set(np.unique(cat.magnitude_type)) == {"Ml"}
 
 
 def test_load_obspy_quakeml_depth_in_km(tmp_path):
-    obspy = pytest.importorskip("obspy")
+    pytest.importorskip("obspy")
     from obspy.core.event import Catalog, Event, Magnitude, Origin
     from obspy import UTCDateTime
 

@@ -1,16 +1,9 @@
-"""End-to-end smoke for InstaseisMultiModelSimulator against a real Instaseis DB.
+"""InstaseisMultiModelSimulator against a real Instaseis database.
 
-Proves the multi-model dispatch/merge works with the actual Instaseis backend:
-two regions (disjoint station sets) are each backed by an Instaseis-DB ensemble,
-and each station's merged seismogram must equal a single-ensemble simulation of
-that station.  Uses the locally-available Santorini brustle ensemble; both
-regions point at it (the mode_a/mode_b ensembles live only on the cluster during
-the autonomous run, so the routing is validated against brustle here).
-
-`use_fiducial=True` is used throughout so the draw is deterministic and never
-hits one of the brustle ensemble's known-broken members.
-
-Skipped if the brustle DB is not present locally.  Marked @pytest.mark.slow.
+Two regions with disjoint station sets are each backed by an ensemble; every station's merged
+seismogram must equal a single-ensemble simulation of that station. Both ensembles link to the
+database at ``INSTASEIS_DB`` (one member and the fiducial), and ``use_fiducial=True`` keeps the
+draw deterministic. Skipped when the database is absent.
 """
 
 import os
@@ -26,21 +19,19 @@ from seismo_sbi.simulators.sources import GenericPointSource, GeneralMomentTenso
 
 pytestmark = pytest.mark.slow
 
-_ENS_DIR = next(
-    (p for p in [
-        os.environ.get("MULTIMODEL_TEST_DB"),
-        "/data/alex/axisem_dbs/santorini_tomo_brustle",
-    ] if p and Path(p).is_dir() and (Path(p) / "fiducial").is_dir()),
-    None,
-)
+INSTASEIS_DB = Path(os.environ.get("INSTASEIS_DB", "/data/shared/ROSA_PREM_10s_disc"))
 
 
-def _skip_if_no_db():
-    if _ENS_DIR is None:
-        pytest.skip(
-            "No local Instaseis ensemble DB found (set MULTIMODEL_TEST_DB or place "
-            "the Santorini brustle ensemble at /data/alex/axisem_dbs/santorini_tomo_brustle)."
-        )
+@pytest.fixture(scope="module")
+def ensemble(tmp_path_factory):
+    """``(ensemble_dir, fiducial_dir)``: a one-member ensemble linking to ``INSTASEIS_DB``."""
+    if not INSTASEIS_DB.is_dir():
+        pytest.skip(f"no Instaseis database at {INSTASEIS_DB}")
+    root = tmp_path_factory.mktemp("ensemble")
+    (root / "members").mkdir()
+    (root / "members" / "member_0").symlink_to(INSTASEIS_DB)
+    (root / "fiducial").symlink_to(INSTASEIS_DB)
+    return str(root / "members"), str(root / "fiducial")
 
 
 _PROC = {
@@ -51,7 +42,7 @@ _PROC = {
 _DURATION = 200.0
 _COMPONENTS = ["Z"]
 
-# Two on/near-Santorini lomax stations (one per region).
+# One station per region.
 _STA_A = Receiver(latitude=36.47090, longitude=25.40560, network="HT",
                   station_name="CMBO", components=["Z"])   # region A
 _STA_B = Receiver(latitude=36.63001, longitude=25.67795, network="HT",
@@ -63,20 +54,16 @@ _SOURCE = GenericPointSource(
 )
 
 
-def _fiducial_dir():
-    return str(Path(_ENS_DIR) / "fiducial")
-
-
 @pytest.fixture(scope="module")
-def multimodel():
-    _skip_if_no_db()
+def multimodel(ensemble):
+    ensemble_dir, fiducial_dir = ensemble
     region_a = Receivers(receivers=[_STA_A])
     region_b = Receivers(receivers=[_STA_B])
     union = Receivers(receivers=[_STA_A, _STA_B])
     return InstaseisMultiModelSimulator(
         models=[
-            {"receivers": region_a, "ensemble_dir": _ENS_DIR, "fiducial_dir": _fiducial_dir()},
-            {"receivers": region_b, "ensemble_dir": _ENS_DIR, "fiducial_dir": _fiducial_dir()},
+            {"receivers": region_a, "ensemble_dir": ensemble_dir, "fiducial_dir": fiducial_dir},
+            {"receivers": region_b, "ensemble_dir": ensemble_dir, "fiducial_dir": fiducial_dir},
         ],
         components=_COMPONENTS, receivers=union,
         seismogram_duration_in_s=_DURATION, synthetics_processing=_PROC,
@@ -84,20 +71,20 @@ def multimodel():
 
 
 @pytest.fixture(scope="module")
-def single_region_a():
-    _skip_if_no_db()
+def single_region_a(ensemble):
+    ensemble_dir, fiducial_dir = ensemble
     return InstaseisEnsembleSimulator(
-        instaseis_ensemble_dir=_ENS_DIR, instaseis_fiducial_loc=_fiducial_dir(),
+        instaseis_ensemble_dir=ensemble_dir, instaseis_fiducial_loc=fiducial_dir,
         components=_COMPONENTS, receivers=Receivers(receivers=[_STA_A]),
         seismogram_duration_in_s=_DURATION, synthetics_processing=_PROC,
     )
 
 
 @pytest.fixture(scope="module")
-def single_region_b():
-    _skip_if_no_db()
+def single_region_b(ensemble):
+    ensemble_dir, fiducial_dir = ensemble
     return InstaseisEnsembleSimulator(
-        instaseis_ensemble_dir=_ENS_DIR, instaseis_fiducial_loc=_fiducial_dir(),
+        instaseis_ensemble_dir=ensemble_dir, instaseis_fiducial_loc=fiducial_dir,
         components=_COMPONENTS, receivers=Receivers(receivers=[_STA_B]),
         seismogram_duration_in_s=_DURATION, synthetics_processing=_PROC,
     )

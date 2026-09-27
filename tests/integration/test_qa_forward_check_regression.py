@@ -1,9 +1,7 @@
-"""Regression test: the new ``seismo_sbi.data_quality`` code must reproduce the
-committed Santorini QA artifacts exactly, proving the port from the ad-hoc
-``qa_forward_check.py`` is behaviour-preserving.
+"""``seismo_sbi.data_quality`` reproduces one event's recorded QA verdicts and time shifts exactly.
 
-Uses saved obs/syn ``.npz`` fixtures (captured from the *current* script before the
-refactor) so no Instaseis/forward model is needed in CI.
+The observed and synthetic traces and the recorded verdicts and shifts are committed fixtures
+under ``tests/data/data_quality``, so no forward model is needed.
 """
 import json
 from pathlib import Path
@@ -17,16 +15,11 @@ from seismo_sbi.data_quality.alignment import nonzero_shifts, optimise_event_shi
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "tests" / "data" / "data_quality"
-SANTO = REPO / "scripts" / "santorini_pathbreaker"
 EVENT = "No14_id3250"
 
 # Original numeric fields that MUST be byte-for-byte preserved by the port.
 NUMERIC_FIELDS = ["dist_km", "azimuth", "lag_Z", "xcorr_Z", "median_amp_ratio",
                   "suggested_shift"]
-
-pytestmark = pytest.mark.skipif(
-    not (FIXTURES / f"{EVENT}_allstations.npz").exists(),
-    reason="QA regression fixtures not present")
 
 
 def _load_traces(npz):
@@ -41,9 +34,7 @@ def test_allstation_verdicts_match_golden():
     metrics = compute_trace_metrics(obs, syn, traces, slat, slon, max_lag=60)
     verdicts = summarise_event(metrics, QAThresholds())  # default thresholds (gates on)
 
-    golden = json.loads(
-        (SANTO / "diagnostics" / EVENT / "station_qa"
-         / f"{EVENT}_allstation_verdicts.json").read_text())["present"]
+    golden = json.loads((FIXTURES / f"{EVENT}_allstation_verdicts.json").read_text())["present"]
 
     assert set(verdicts) == set(golden)
     for sta, g in golden.items():
@@ -67,5 +58,5 @@ def test_time_shifts_match_golden():
     results = optimise_event_shifts(obs, syn, traces, max_shift=8)
     shifts = nonzero_shifts(results)
 
-    golden = json.loads((SANTO / "events" / EVENT / "time_shifts.json").read_text())
+    golden = json.loads((FIXTURES / f"{EVENT}_time_shifts.json").read_text())
     assert shifts == golden

@@ -83,7 +83,7 @@ def test_empty_names_raises():
 
 
 def test_config_from_kept_drives_sample_loop():
-    """Mirror the Santorini all-vs-filtered comparison: one full observation, two
+    """An all-versus-filtered station comparison: one full observation, two
     config_from_kept configs (all + a filtered subset ⊆ all), sampled together. The
     filtered config must pack a NARROWER context (fewer station rows) — proving the
     subset rows/coords are indexed consistently."""

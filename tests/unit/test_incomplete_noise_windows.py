@@ -2,7 +2,7 @@
 
 `RealNoiseSampler` historically dropped a whole noise window if ANY model station was
 missing, so usable windows = pool x P(all stations present). That fraction collapses as
-the station count grows (measured on the Iceland band-1 pool: 77.9% at 29 stations),
+the station count grows (about 78% of windows at 29 stations in one recorded pool),
 which pushed the station set *down* exactly when more stations were wanted.
 
 Under variable-station training a window missing station X is still perfectly good noise

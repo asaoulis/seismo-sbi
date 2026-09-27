@@ -1,23 +1,9 @@
-"""Phase 2 — New preprocessing API tests on synthetic data.
+"""Every public function of ``seismo_sbi.data_handling.preprocessing`` on synthetic in-memory data.
 
-Every public function in seismo_sbi.data_handling.preprocessing is tested here
-on deterministic in-memory data.  No Instaseis, no network access.
-
-Run:
-    conda run -n seismo-sbi python -m pytest \
-        tests/end_to_end/test_new_api_synthetic.py -v -m slow
-
-These tests serve a dual purpose:
-1. Contract tests that every function in the new API behaves correctly.
-2. Regression tests that the new API produces h5 files that downstream
-   SBI consumers (RealNoiseSampler, SimulationDataLoader) can read without
-   modification.
-
-Key invariants pinned here:
-- E→1, N→2 renaming applied at h5 write time
-- Array length = compute_data_vector_length(duration, sr) + 1  (inclusive slice)
-- Autocorrelation computed from [event_start - cov_window, event_start]
-- No 'E'/'N' keys ever appear in /outputs
+Checks each function's contract and that the h5 it writes is readable by RealNoiseSampler and
+SimulationDataLoader unchanged: E and N stored as 1 and 2, no 'E'/'N' keys in /outputs, arrays
+of ``compute_data_vector_length(duration, sr) + 1`` samples, and the autocorrelation taken over
+``[event_start - cov_window, event_start]``. No Instaseis or network access.
 """
 
 import datetime

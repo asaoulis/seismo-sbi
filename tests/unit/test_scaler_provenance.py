@@ -207,13 +207,12 @@ def test_a_real_scale_shape_scaler_is_caught_against_a_linear_checkpoint(capsys)
     assert "MISMATCH" in capsys.readouterr().out
 
 
-# ---- the mw32 campaign's window, pinned end-to-end through build_flexible_scaler ----
+# ---- an Mw 3.2-5.5 prior's window, pinned end-to-end through build_flexible_scaler ----
 
 def test_auto_window_from_a_mw_3p2_gutenberg_richter_prior():
     """`mt_log_decades: auto` + mw_min 3.2 / mw_max 5.5 => log10 M0 in [13.900, 17.350].
 
-    This is the exact scaling the mw32 training campaign runs under, and the number that
-    must appear in every one of its checkpoints' model_meta.json.
+    Every checkpoint trained under this prior records this window in its model_meta.json.
     """
     raw_config = {
         "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},

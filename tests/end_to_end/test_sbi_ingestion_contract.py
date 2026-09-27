@@ -14,7 +14,7 @@ from seismo_sbi.sbi.types.parameters import SimulationParameters
 from seismo_sbi.sbi.data_manager import DataManager
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
 
-from tests.end_to_end.test_new_api_synthetic import (
+from tests.end_to_end.test_preprocessing_api_synthetic import (
     STATIONS,
     NETWORK,
     SR_TARGET,
@@ -62,7 +62,7 @@ def event_h5(processed_context):
     return processed_context["h5"]
 
 
-from tests.end_to_end.test_new_api_synthetic import processed_context  # noqa: F401,E402
+from tests.end_to_end.test_preprocessing_api_synthetic import processed_context  # noqa: F401,E402
 
 
 class TestSimulationDataLoader:

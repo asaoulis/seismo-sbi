@@ -1,13 +1,13 @@
 """A UTC day holding SEVERAL per-event windows must still read back the RIGHT one.
 
-Cross-repo contract. The F-net fetcher (personal-page worker/fnet/fetch_fnet.py) writes short
-per-event windows into a DAY-granular layout, tagging the filename's location field
+Contract with fetchers that write short per-event windows into a DAY-granular layout, tagging
+the filename's location field
 (``BO.ABU.w143900.BHZ.2025.002.mseed``) so same-day events cannot overwrite each other. That
 tag is only safe if THIS side -- ``find_mseed_files`` + ``load_waveforms`` -- still discovers
 the files and selects the window belonging to the event being built.
 
-Without these assertions a naming fix on the writer could look correct while
-``build_catalogue.py`` silently stitched the wrong event's waveform into an event h5.
+Without these assertions a naming fix on the writer could look correct while the catalogue
+builder silently stitched the wrong event's waveform into an event h5.
 """
 import numpy as np
 import obspy

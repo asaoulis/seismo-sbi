@@ -1,8 +1,8 @@
-"""Tests for the 2026-08-25 nuisance recalibration (Japan non-DC forensics, TECH §7):
+"""Tests for the recalibrated nuisance effects:
 
 * AmplitudeErrorEffect: log-normal / per-component / always-on modes; legacy path unchanged.
 * TimeShiftErrorEffect: distance-scaled per-station sigma.
-* DispersionSpreadEffect: phase-only per-octave delay operator (ported from N11).
+* DispersionSpreadEffect: phase-only per-octave delay operator.
 * InstaseisEnsembleSimulator: Poisson-boundary azimuthal-sector member sampling.
 """
 import numpy as np

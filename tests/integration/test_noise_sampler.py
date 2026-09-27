@@ -148,7 +148,7 @@ class TestRealNoiseSamplerShortWindowSkip:
     """A noise window sitting on a station data gap has a trace shorter than data_length;
     SimulationDataLoader anchors the length to the first receiver and truncates, silently
     returning a sub-length vector that will not broadcast against the full-length data
-    vector D (the v2 Santorini compression crash). When data_length is known the sampler
+    vector D and crashes the compression. When data_length is known the sampler
     must SKIP such windows — the variable-length analogue of the missing-station KeyError
     skip."""
 

@@ -5,8 +5,7 @@ always the sea-level datum catalogues use.  ``source_depth_offset_km`` corrects
 that at the single point where a depth is handed to Instaseis, so catalogues,
 prior boxes, conditioning vectors and posteriors all stay in one datum.
 
-The default (0.0) must reproduce the pre-existing behaviour exactly -- every
-Santorini/Japan config relies on it.
+The default (0.0) must leave the depth unchanged, as every existing config expects.
 """
 import numpy as np
 import pytest

@@ -322,8 +322,7 @@ class TestBuildStfSliprateWithGcmt:
 
     def test_always_positive_finite_area_at_1hz(self):
         """Across the small-Mw regime the sliprate must have positive, finite area at the
-        1 Hz sampling used by the Santorini config, so normalisation never produces NaN.
-        This is the regression guard for the STF-sampling NaN found in the first smoke run."""
+        1 Hz sampling, so normalisation never produces NaN."""
         for gcmt_half in (0.02, 0.1, 0.2, 0.4, 0.6, 1.0, 2.0):
             for scale in (0.5, 1.0, 2.0):
                 s = build_stf_sliprate(scale, dt=1.0, gcmt_half_duration=gcmt_half)
@@ -332,7 +331,7 @@ class TestBuildStfSliprateWithGcmt:
 
 
 class TestSliprateCarriesUnitMoment:
-    """Regression guard for the factor-2 amplitude bug (2026-08-07).
+    """Regression guard for a factor-2 amplitude error in the sliprate.
 
     Every sliprate this module returns must satisfy ``sum * dt == 1``, on BOTH the Dirac and
     triangular branches and at every (dt, Mw, scale) the production prior can reach. The DC
@@ -340,13 +339,11 @@ class TestSliprateCarriesUnitMoment:
     long-period amplitude gain — any departure from 1 scales M0 directly and shifts Mw by
     ``-(2/3)*log10(area)``.
 
-    History: the Dirac branch used to return a unit-HEIGHT spike normalised by Instaseis via
-    ``np.trapz``, which half-weights endpoints -> area 2 -> every synthetic 2x too loud ->
-    a flat -0.2007 Mw deficit against every reference catalogue, in two independent regions.
-    See artifacts/ROOT_CAUSE.md in the mw-bias-investigation task.
+    A unit-height Dirac spike normalised with ``np.trapz`` (which half-weights the endpoints)
+    has area 2: every synthetic twice too loud, and Mw 0.2007 low.
     """
 
-    #: real production sample intervals: santorini 5s meshes, japan10s
+    #: sample intervals of production meshes
     DTS = (0.5, 1.0, 1.202625, 2.346442)
 
     def test_dirac_branch_unit_moment(self):

@@ -13,7 +13,7 @@ def _rec(verdict, xcorr_Z, amp):
     return {"verdict": verdict, "xcorr_Z": xcorr_Z, "median_amp_ratio": amp}
 
 
-def test_station_reliability_basic():
+def test_station_reliability_counts_drops_xcorr_amplitude_and_shifts_per_station():
     arts = [
         _art("E1", {"GOOD": _rec("keep", 0.9, 1.0), "BAD": _rec("drop-amp", 0.8, 100.0)},
              time_shifts={"GOOD": 2}),
