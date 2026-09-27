@@ -38,19 +38,21 @@ class TrainingData:
     post_noise_nuisance_params: dict
 
 
-def build_pipeline(config, config_path, num_simulations=None):
+def build_pipeline(config, config_path, num_simulations=None, pipeline_class=None):
     """Build the pipeline named by ``config.pipeline_type`` and load its seismic parameters.
 
-    ``num_simulations`` overrides the configured size of the training dataset.
+    ``num_simulations`` overrides the configured size of the training dataset;
+    ``pipeline_class`` overrides the class the configuration names.
     """
     if num_simulations is not None:
         config.dataset_parameters = config.dataset_parameters._replace(
             num_simulations=num_simulations)
         print(f"Overriding num_simulations -> {num_simulations}")
 
-    pipeline_class = {"single_event": SingleEventPipeline,
-                      "vary_dataset_size": VaryDatasetSizeEventPipeline}.get(
-                          config.pipeline_type, MultiEventPipeline)
+    if pipeline_class is None:
+        pipeline_class = {"single_event": SingleEventPipeline,
+                          "vary_dataset_size": VaryDatasetSizeEventPipeline}.get(
+                              config.pipeline_type, MultiEventPipeline)
     pipeline = pipeline_class(config.pipeline_parameters, config_path)
     pipeline.compression_methods = config.compression_methods
     pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters,

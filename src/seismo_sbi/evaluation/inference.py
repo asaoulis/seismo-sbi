@@ -37,15 +37,12 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     from pathlib import Path as _Path
     from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
+    from seismo_sbi.sbi.training_data import build_pipeline
 
     config = SBI_Configuration()
     config.parse_config_file(config_path)
 
-    sbi_pipeline = SingleEventPipeline(config.pipeline_parameters, config_path)
-    sbi_pipeline.compression_methods = config.compression_methods
-    sbi_pipeline.load_seismo_parameters(
-        config.sim_parameters, config.model_parameters, config.dataset_parameters
-    )
+    sbi_pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
     original_parameters = deepcopy(sbi_pipeline.parameters)
 
     # Snapshot the config-default receiver time shifts NOW, before any compressor
