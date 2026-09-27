@@ -176,6 +176,14 @@ class TestRunSimulationDispatch:
         assert source.source_location.depth == pytest.approx(5.0)
         assert source.source_location.time_shift == pytest.approx(0.0)
 
+    def test_a_seed_in_the_parameters_reaches_the_forward_model(self, mock_sim):
+        mock_sim.run_simulation({**_MT_PARAMS, "seed": 11})
+        assert mock_sim.last_kwargs["seed"] == 11
+
+    def test_without_a_seed_the_forward_model_receives_none(self, mock_sim):
+        mock_sim.run_simulation(dict(_MT_PARAMS))
+        assert "seed" not in mock_sim.last_kwargs
+
     def test_returns_tuple_of_source_and_seismograms(self, mock_sim):
         result = mock_sim.run_simulation(dict(_MT_PARAMS))
         assert isinstance(result, tuple) and len(result) == 2

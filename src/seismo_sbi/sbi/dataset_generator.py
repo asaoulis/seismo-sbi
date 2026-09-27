@@ -15,7 +15,7 @@ import numpy as np
 
 from seismo_sbi.sbi.configuration import ModelParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.utils.parallel import tqdm_joblib
+from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
 
 from tqdm import tqdm
 
@@ -259,11 +259,13 @@ class DatasetGenerator(ParallelSimulationRunner):
                           "truncated gaussian": truncated_gaussian_sampler,
                           "velocity model": velocity_model_sampler}
 
-    def __init__(self, simulator, output_base_path, num_parallel_jobs=1):
+    def __init__(self, simulator, output_base_path, num_parallel_jobs=1, seed=None):
         super().__init__(simulator, num_parallel_jobs)
 
         self.output_base_path = output_base_path
         self.num_parallel_jobs = num_parallel_jobs
+        #: Seeds each simulation's ensemble-member draw when set; None leaves the draws unseeded.
+        self.seed = seed
 
 
     def run_and_save_simulations(self, parameters : ModelParameters, sampler_details, indices, sample_namer = None, priors= (None, None)):
@@ -293,6 +295,10 @@ class DatasetGenerator(ParallelSimulationRunner):
 
 
         simulation_job_args_list = [input_config for input_config in input_generator]
+        if self.seed is not None:
+            member_seeds = worker_seeds(self.seed, len(simulation_job_args_list), "training members")
+            simulation_job_args_list = [({**inputs, "seed": member_seed}, path) for (inputs, path), member_seed
+                                        in zip(simulation_job_args_list, member_seeds)]
         self.run_parallel_simulations(simulation_job_args_list)
     
     def run_predefined_batch(self, thetas, indices, parameters : ModelParameters):

@@ -25,6 +25,7 @@ _SIMULATOR_KEYS = frozenset({
     "velocity_model",
     "use_fiducial",
     "stf_duration",
+    "seed",
 })
 
 
@@ -91,6 +92,9 @@ class Simulator(ABC):
         use_fiducial = combined_params.pop("use_fiducial", None)
         if kwargs.get("use_fiducial") is None:
             kwargs["use_fiducial"] = use_fiducial
+        seed = combined_params.pop("seed", None)
+        if seed is not None:
+            kwargs["seed"] = seed
 
         source_location = self._unpack_source_location_params(source_location_params)
 

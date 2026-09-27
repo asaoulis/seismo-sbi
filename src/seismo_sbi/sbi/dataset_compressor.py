@@ -74,7 +74,7 @@ class DatasetCompressor:
         """One row ``[theta, compressed(D + noise)]`` per simulation; a ``seed`` gives each
         simulation its own reproducible noise draw, in any worker.
         """
-        sim_seeds = worker_seeds(seed, len(simulation_data_paths))
+        sim_seeds = worker_seeds(seed, len(simulation_data_paths), "training noise")
         cov = self.compressor.C
         matmul_callable = cov.create_matmul_inverse_covariance(cov.inverse_metadata, cov.data_vector_length)
         if self.num_parallel_jobs not in [0,1]:

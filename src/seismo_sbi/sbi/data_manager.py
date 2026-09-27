@@ -105,6 +105,7 @@ class DataManager:
         simulator_wrapper,
         simulation_parameters,
         skip_cov_gradients=True,
+        seed=None,
     ):
         from copy import deepcopy
         compression_method_details = [cm[0] for cm in compression_methods]
@@ -119,6 +120,7 @@ class DataManager:
             covariance_simulator = simulator_wrapper.select_and_initialise_simulator(
                 simulator_config, simulation_parameters
             )
+            covariance_simulator.seed = seed
 
             dummy_datamanager = deepcopy(self)
             dummy_datamanager.dataset_compressor.simulator = (

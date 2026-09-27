@@ -4,6 +4,8 @@ import numpy as np
 from seismo_sbi.sbi import likelihood
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
+from seismo_sbi.sbi.dataset_generator import DatasetGenerator
+from seismo_sbi.utils.parallel import worker_seeds
 
 DATA_VECTOR_LENGTH = 8
 
@@ -60,3 +62,28 @@ def test_sbi_seed_is_read_from_the_inference_block():
     assert configuration.sbi_seed == 7
     configuration.parse_sbi_config({"sbi": sbi_block, "likelihood": {"run": False}})
     assert configuration.sbi_seed is None
+
+
+def simulation_job_args(seed):
+    generator = DatasetGenerator(simulator=None, output_base_path="unused", seed=seed)
+    captured = []
+    generator.run_parallel_simulations = captured.extend
+    generator._create_sampler_generator_dict = lambda parameters, details, priors: {
+        "moment_tensor": lambda args, num_samples: (np.zeros(6) for _ in range(num_samples))}
+    generator._sampler_args = lambda parameters, samplers: {"moment_tensor": None}
+    generator._create_sampler_transformer = lambda parameters: lambda sample: {"source_location": [0, 0, 1, 0]}
+    generator.run_and_save_simulations(None, {}, 3, sample_namer=lambda n: (f"sim_{i}" for i in range(n)))
+    return captured
+
+
+def test_seeded_training_simulations_each_carry_their_own_member_seed():
+    seeds = [inputs["seed"] for inputs, _ in simulation_job_args(seed=2)]
+    assert seeds == worker_seeds(2, 3, "training members") and len(set(seeds)) == 3
+
+
+def test_unseeded_training_simulations_carry_no_seed():
+    assert all("seed" not in inputs for inputs, _ in simulation_job_args(seed=None))
+
+
+def test_worker_seed_streams_are_unrelated():
+    assert set(worker_seeds(1, 50, "training noise")).isdisjoint(worker_seeds(1, 50, "mcmc chains"))

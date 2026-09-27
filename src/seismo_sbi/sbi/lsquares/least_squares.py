@@ -38,6 +38,8 @@ class IterativeLeastSquaresSolver:
         self.least_squares_configuration = least_squares_configuration
 
         self.num_parallel_jobs = num_parallel_jobs
+        #: Seeds the theory-covariance realisations of each iteration; None leaves them unseeded.
+        self.seed = None
 
     @error_handling_wrapper(num_attempts=3)
     def solve_least_squares(self, observation, compressor, single_step = True, return_history = False):
@@ -59,7 +61,8 @@ class IterativeLeastSquaresSolver:
         for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             # Step 1: Compute gradients
 
-            score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
+            score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
+                                                                                                          seed=self.seed)
             scaling_factors = self._create_scaling_vector(new_parameters)
             scaling_factors = np.ones_like(scaling_factors)
 
@@ -103,7 +106,8 @@ class IterativeLeastSquaresSolver:
         if self.least_squares_configuration.use_best_model and best_params_vec is not None:
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(best_params_vec, 'theta_fiducial')
             print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
-        final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args)
+        final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
+                                                                                                                seed=self.seed)
         if not return_history:
             return final_score_compression_data, extra_gradients
         else:

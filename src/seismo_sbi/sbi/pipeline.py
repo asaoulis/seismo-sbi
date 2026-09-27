@@ -90,7 +90,7 @@ class SBIPipeline:
         self.compressor_keys = []
         self.compressors = {}
         self.compression_methods = None
-        #: Seeds the SBI leg (MLE chains, training set, noise draws, NPE training); None leaves it unseeded.
+        #: Seeds the SBI leg (covariance realisations, MLE chains, training set, NPE training); None leaves it unseeded.
         self.seed = None
         self.score_compression_data = None
         self.extra_gradients = None
@@ -361,7 +361,7 @@ class SBIPipeline:
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
         """Run the derivative stencils the compression methods need; returns the compression data."""
-        return self.data_manager.compute_required_compression_data(model_parameters, compression_methods, self.simulator_wrapper, self.simulation_parameters)
+        return self.data_manager.compute_required_compression_data(model_parameters, compression_methods, self.simulator_wrapper, self.simulation_parameters, seed=self.seed)
     
     def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
 
@@ -380,7 +380,8 @@ class SBIPipeline:
             simulation_indices = (0, num_simulations)
         sampling_method = dataset_parameters.sampling_method
 
-        dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.simulations_output_path + '/train', self.num_parallel_jobs)
+        dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.simulations_output_path + '/train', self.num_parallel_jobs,
+                                             seed=self.seed)
         dataset_generator.run_and_save_simulations(self.parameters, sampling_method, simulation_indices, priors=priors)
         return dataset_generator
 
@@ -626,6 +627,7 @@ class SingleEventPipeline(SBIPipeline):
         score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(
             self.parameters,
             *self.least_squares_solver.stencil_args,
+            seed=self.seed,
         )
         compression_data = score_compression_data
         _, _, _, _ = self.prepare_single_compressor(
@@ -739,6 +741,7 @@ class SingleEventPipeline(SBIPipeline):
             covariance_data=covariance_data,
             dataset_details=dataset_details,
         )
+        self.least_squares_solver.seed = self.seed
         compression_data, extra_gradients = self.least_squares_solver.solve_least_squares(
             data_vector,
             compressor,

@@ -153,6 +153,7 @@ class CPSVariableKernelSimulator(CPSSimulator):
     
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
         kwargs.pop('use_fiducial', False)
+        kwargs.pop('seed', None)
         return update_with_Gtensor(
             objstats,
             velocity_model,
@@ -199,7 +200,7 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
         return self._fiducial_model_path
 
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
-        seed = kwargs.get('seed', None)
+        seed = kwargs.pop('seed', None)
         use_fiducial = kwargs.pop('use_fiducial', False)
         cps_data_folder = self.select_member(use_fiducial=use_fiducial, seed=seed)
         if verbose:

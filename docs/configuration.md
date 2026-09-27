@@ -19,10 +19,12 @@ examples: `examples/configs/LV2.yaml` (Gaussian likelihood and SBI) and
 | `jobs` | `test_job_simulations`, `real_event_jobs` | synthetic test events, noise models to test against, real events, plots |
 | `ml_*` | `TrainingConfiguration` (`training`) | NPE architecture, encoder, conditioning, flow, optimiser, batches, caches, logging, scaler |
 
-`inference.sbi.seed` (an integer) makes the SBI leg of `scripts/event_inversion.py` reproducible:
-it seeds numpy and torch before each compressor's inversion, and gives every MCMC chain and every
-training simulation's noise draw its own seed, since worker processes start with fresh random
-state. The Gaussian-likelihood inversion that follows is not seeded.
+`inference.sbi.seed` (an integer) makes the SBI leg of `scripts/event_inversion.py` reproducible.
+numpy and torch are seeded at the start and again before each compressor's inversion, and every
+draw made in a worker process, which starts with fresh random state, gets its own seed: each
+theory-covariance realisation's and each training simulation's ensemble member, each training
+simulation's noise, and each MCMC chain that finds the maximum-likelihood point. The chains of the
+Gaussian-likelihood inversion that follows are not seeded.
 
 The `seismic_context`, `parameters`, `simulations`, `compression`, `inference` and `jobs` blocks
 are required. An `ml_*` block that the training configuration does not know is an error.

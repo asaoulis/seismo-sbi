@@ -9,6 +9,7 @@ Jupyter kernel both pause garbage collection while workers start (``gc_paused_in
 import contextlib
 import gc
 import sys
+import zlib
 
 import joblib
 import numpy as np
@@ -60,10 +61,11 @@ def gc_paused_in_notebooks():
         gc.enable()
 
 
-def worker_seeds(seed, num_tasks):
-    """``num_tasks`` independent integer seeds drawn from ``seed``, or ``num_tasks`` Nones when
-    ``seed`` is None.
+def worker_seeds(seed, num_tasks, stream):
+    """``num_tasks`` independent integer seeds drawn from ``seed`` for the named ``stream``, or
+    ``num_tasks`` Nones when ``seed`` is None. Different streams give unrelated seeds.
     """
     if seed is None:
         return [None] * num_tasks
-    return [int(task_seed) for task_seed in np.random.SeedSequence(seed).generate_state(num_tasks)]
+    entropy = [seed, zlib.crc32(stream.encode())]
+    return [int(task_seed) for task_seed in np.random.SeedSequence(entropy).generate_state(num_tasks)]

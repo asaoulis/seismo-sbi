@@ -9,7 +9,7 @@ import numpy as np
 
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
-from seismo_sbi.utils.parallel import parallel_execution
+from seismo_sbi.utils.parallel import parallel_execution, worker_seeds
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 
 
@@ -28,11 +28,15 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         self.data_flattening_callable = data_flattening
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.covariance_mean = covariance_mean
+        #: Seeds each realisation's ensemble-member draw when set; None leaves the draws unseeded.
+        self.seed = None
         self.num_jobs = internal_jobs
         self.receivers.set_time_shifts({rec.station_name: 0 for rec in self.simulator.receivers.iterate()})
 
     def generic_point_source_simulation(self, source, **kwargs):
-        sim_func  = lambda _: self.data_flattening_callable({"outputs":apply_station_time_shifts(self.simulator.receivers, self.simulator.generic_point_source_simulation(source, **kwargs))})
+        member_seeds = worker_seeds(self.seed, self.num_realisations, "ensemble members")
+        realisation_kwargs = lambda realisation: kwargs if self.seed is None else {**kwargs, "seed": member_seeds[realisation]}
+        sim_func  = lambda realisation: self.data_flattening_callable({"outputs":apply_station_time_shifts(self.simulator.receivers, self.simulator.generic_point_source_simulation(source, **realisation_kwargs(realisation)))})
         simulations = parallel_execution(range(self.num_realisations), sim_func, num_jobs=self.num_jobs)
 
         

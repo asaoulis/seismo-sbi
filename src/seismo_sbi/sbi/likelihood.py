@@ -178,7 +178,7 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
         else:
             samples = sampler.get_chain(flat=True)
     else:
-        chain_seeds = worker_seeds(seed, num_processes)
+        chain_seeds = worker_seeds(seed, num_processes, "mcmc chains")
         with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)):
             with joblib.parallel_backend('loky', n_jobs=num_processes):
                 results = joblib.Parallel()(

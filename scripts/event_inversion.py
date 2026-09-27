@@ -10,6 +10,10 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
+
+import numpy as np
+import torch
+
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.pipeline import SingleEventPipeline
 from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
@@ -42,6 +46,9 @@ def main():
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
     sbi_pipeline.compression_methods = config.compression_methods
     sbi_pipeline.seed = config.sbi_seed
+    if config.sbi_seed is not None:
+        np.random.seed(config.sbi_seed)
+        torch.manual_seed(config.sbi_seed)
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)
 
     test_jobs_paths = sbi_pipeline.simulate_test_jobs(config.dataset_parameters, config.test_job_simulations)

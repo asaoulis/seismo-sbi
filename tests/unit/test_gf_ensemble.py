@@ -227,6 +227,21 @@ class TestEnsembleTheoryCovarianceEstimationSimulator:
         cov_sim = self._make_cov_sim(receivers, mock_sim)
         assert cov_sim.num_realisations == mock_sim.num_models
 
+    def test_a_seed_fixes_every_realisations_member_draw(self, receivers, mock_sim):
+        cov_sim = self._make_cov_sim(receivers, mock_sim)
+        cov_sim.seed = 3
+        first = cov_sim.generic_point_source_simulation(self._dummy_source())["STA1"]["Z"]
+        np.testing.assert_array_equal(first, cov_sim.generic_point_source_simulation(self._dummy_source())["STA1"]["Z"])
+
+    def test_without_a_seed_realisations_receive_no_seed(self, receivers, mock_sim):
+        cov_sim = self._make_cov_sim(receivers, mock_sim)
+        cov_sim.num_jobs = 1
+        received = []
+        original = mock_sim.generic_point_source_simulation
+        mock_sim.generic_point_source_simulation = lambda source, **kwargs: received.append(kwargs) or original(source, **kwargs)
+        cov_sim.generic_point_source_simulation(self._dummy_source())
+        assert received and all("seed" not in kwargs for kwargs in received)
+
 
 # ---------------------------------------------------------------------------
 # CPSPrecomputedSimulator regression — verify select_member is used and
