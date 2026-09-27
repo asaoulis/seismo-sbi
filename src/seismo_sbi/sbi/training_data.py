@@ -119,10 +119,13 @@ def prepare_training_data(pipeline, config, simulation_paths, training):
 def rescale_training_noise_to_event(pipeline, config):
     """Scale the training noise covariance to one real event's pre-event variance.
 
-    Skipped in generic-event mode (``real_noise`` with ``rescale: false``), where the sampler
-    draws noise windows verbatim and the event file need not hold every station.
+    Skipped for white ``gaussian`` noise, whose level is fixed by ``noise_level``, and in
+    generic-event mode (``real_noise`` with ``rescale: false``), where the sampler draws noise
+    windows verbatim and the event file need not hold every station.
     """
     noise_model = config.sbi_noise_model
+    if noise_model.get('type') == 'gaussian':
+        return
     if noise_model.get('type') == 'real_noise' and not noise_model.get('rescale', True):
         return
     if not config.real_event_jobs:
