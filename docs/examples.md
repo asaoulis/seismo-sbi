@@ -8,4 +8,5 @@ _generated/examples/03_npe_training_and_evaluation
 _generated/examples/theory_errors_LV2
 _generated/examples/nuisance_parameters_demo
 _generated/examples/nuisance_augmentation_demo
+_generated/examples/azores_inversion
 ```
