@@ -222,11 +222,13 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
 
     def generic_point_source_simulation(
         self, source: GenericPointSource, *, use_fiducial=False, seed=None,
-        stf_duration=None, **kwargs
+        stf_duration=None, member=None, **kwargs
     ) -> dict:
-        if not use_fiducial and getattr(self, 'member_sampling', None) == 'sector':
+        """Seismograms on one ensemble member: ``member`` if given, else the fiducial member or
+        a random draw (per station or per azimuth sector when so configured)."""
+        if member is None and not use_fiducial and getattr(self, 'member_sampling', None) == 'sector':
             return self._simulate_sector(source, seed=seed, stf_duration=stf_duration)
-        if self.resample_member_per_station and not use_fiducial:
+        if member is None and self.resample_member_per_station and not use_fiducial:
             return self._simulate_per_station(source, seed=seed, stf_duration=stf_duration)
-        member = self.select_member(use_fiducial=use_fiducial, seed=seed)
+        member = self.select_member(use_fiducial=use_fiducial, seed=seed, member=member)
         return self._simulate_with_member(member, source, stf_duration=stf_duration)

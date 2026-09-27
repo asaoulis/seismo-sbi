@@ -36,13 +36,17 @@ class GFEnsembleSimulator(Simulator, ABC):
     def num_models(self) -> int:
         return len(self.members)
 
-    def select_member(self, *, use_fiducial=False, seed=None):
-        """One member drawn from the ensemble.
+    def select_member(self, *, use_fiducial=False, seed=None, member=None):
+        """One member drawn from the ensemble, with replacement.
 
-        A seed is applied as ``np.random.seed(seed)`` then ``np.random.choice(members)``.
+        ``member`` names the member to use instead of drawing one; ``use_fiducial`` selects the
+        reference member. A seed is applied as ``np.random.seed(seed)`` then
+        ``np.random.choice(members)``.
         """
         if use_fiducial:
             return self.fiducial_member
+        if member is not None:
+            return member
         if seed is not None:
             np.random.seed(seed)
         return np.random.choice(self.members)

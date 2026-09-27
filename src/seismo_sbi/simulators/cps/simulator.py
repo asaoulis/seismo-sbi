@@ -170,7 +170,8 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
         seed = kwargs.pop('seed', None)
         use_fiducial = kwargs.pop('use_fiducial', False)
-        cps_data_folder = self.select_member(use_fiducial=use_fiducial, seed=seed)
+        member = kwargs.pop('member', None)
+        cps_data_folder = self.select_member(use_fiducial=use_fiducial, seed=seed, member=member)
         if verbose:
             print(f"Using CPS data folder: {cps_data_folder}")
         return update_with_Gtensor(

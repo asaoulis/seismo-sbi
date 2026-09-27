@@ -16,9 +16,9 @@ from seismo_sbi.utils.seismograms import apply_station_time_shifts
 class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
     """Per-trace theory-error covariance estimated from an ensemble simulator.
 
-    One draw per ensemble member, demeaned against the reference member or the ensemble mean;
-    the result is a ``(n_samples, n_samples)`` covariance per trace, returned in the shape of a
-    simulation map.
+    One realisation per ensemble member, each member visited exactly once in ``members`` order,
+    demeaned against the reference member or the ensemble mean; the result is a
+    ``(n_samples, n_samples)`` covariance per trace, returned in the shape of a simulation map.
     """
 
     def __init__(self, simulator: GFEnsembleSimulator, data_flattening, *args, internal_jobs=20, covariance_mean='fiducial', **kwargs):
@@ -28,14 +28,15 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         self.data_flattening_callable = data_flattening
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.covariance_mean = covariance_mean
-        #: Seeds each realisation's ensemble-member draw when set; None leaves the draws unseeded.
+        #: Seeds each realisation's other random draws when set; None leaves them unseeded.
         self.seed = None
         self.num_jobs = internal_jobs
         self.receivers.set_time_shifts({rec.station_name: 0 for rec in self.simulator.receivers.iterate()})
 
     def generic_point_source_simulation(self, source, **kwargs):
+        members = list(self.simulator.members)
         member_seeds = worker_seeds(self.seed, self.num_realisations, "ensemble members")
-        realisation_kwargs = lambda realisation: kwargs if self.seed is None else {**kwargs, "seed": member_seeds[realisation]}
+        realisation_kwargs = lambda realisation: {**kwargs, "member": members[realisation]} if self.seed is None else {**kwargs, "member": members[realisation], "seed": member_seeds[realisation]}
         sim_func  = lambda realisation: self.data_flattening_callable({"outputs":apply_station_time_shifts(self.simulator.receivers, self.simulator.generic_point_source_simulation(source, **realisation_kwargs(realisation)))})
         simulations = parallel_execution(range(self.num_realisations), sim_func, num_jobs=self.num_jobs)
 
