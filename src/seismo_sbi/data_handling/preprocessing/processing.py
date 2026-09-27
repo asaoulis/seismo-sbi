@@ -22,24 +22,17 @@ def deconvolve_and_filter(
     filter_kwargs: dict = None,
     target_sr: float = None,
 ) -> Stream:
-    """Process a raw waveform Stream into SBI-ready data.
+    """Merge gaps, remove the instrument response, cosine-taper, bandpass and resample a raw ``Stream``.
 
-    Steps: merge gaps → [remove instrument response] → cosine taper →
-           bandpass filter → resample to target_sr.
-
-    Args:
-        stream: Raw input traces (any sampling rate).
-        inventory: Required when remove_response=True.
-        remove_response: Whether to deconvolve the instrument response.
-        prefilter_kwargs: Overrides for remove_response pre-filter/taper
-            (merged with defaults: pre_filt, taper, taper_fraction).
-        filter_kwargs: Overrides for bandpass filter
-            (merged with defaults: freqmin, freqmax, corners, zerophase).
-        target_sr: Resample to this rate (Hz) after filtering.
-            If None, no resampling is performed.
-
-    Returns:
-        Processed Stream (displacement if response removed, else counts).
+    :param stream: raw traces at any sampling rate.
+    :param inventory: required when ``remove_response`` is True.
+    :param remove_response: whether to deconvolve the instrument response.
+    :param prefilter_kwargs: overrides for the response-removal pre-filter and taper
+        (``pre_filt``, ``taper``, ``taper_fraction``).
+    :param filter_kwargs: overrides for the bandpass (``freqmin``, ``freqmax``, ``corners``,
+        ``zerophase``).
+    :param target_sr: resample to this rate in Hz after filtering; None keeps the rate.
+    :returns: the processed ``Stream``, displacement if the response was removed, else counts.
     """
     pf_kw = {**_DEFAULT_PREFILTER, **(prefilter_kwargs or {})}
     filt_kw = {**_DEFAULT_FILTER, **(filter_kwargs or {})}

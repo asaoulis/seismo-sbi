@@ -181,7 +181,7 @@ def _load_csv_iso_time(rows, col) -> EventCatalogue:
 
 
 def _load_obspy(path: Path) -> EventCatalogue:
-    import obspy  # local import: obspy is heavy and only needed for non-CSV catalogues
+    import obspy
 
     events = obspy.read_events(str(path))
     lats, lons, depths, mags, mag_types, times = [], [], [], [], [], []

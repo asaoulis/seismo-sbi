@@ -4,8 +4,7 @@
 inference on each simulation and returns the arrays for TARP coverage and recovery scatter plus
 a few per-example results; :func:`write_validation_outputs` turns those into figures and a
 metrics JSON. Fixed- and variable-station models differ only in how a held-out simulation
-becomes a posterior sample, so both go through the same engine. Heavy dependencies are imported
-lazily inside each function.
+becomes a posterior sample.
 """
 from __future__ import annotations
 

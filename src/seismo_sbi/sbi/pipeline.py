@@ -150,10 +150,8 @@ class SBIPipeline:
 
     def load_compressors(self, compression_methods : dict, score_compression_data, priors=(None,None), covariance_data=None, extra_gradients = None, freeze=False):
 
-        """Deprecated: prefer using find_mle_and_set_compressor/prepare_single_compressor.
-
-        compression_methods is a list of (full_key, options) where full_key is the
-        final compressor name (e.g. 'optimal_score_filtered_block').
+        """Build every compressor of ``compression_methods``, a list of ``(name, options)`` pairs where
+        ``name`` is the final compressor name (e.g. ``'optimal_score_filtered_block'``).
         """
         for full_key, options in compression_methods:
             compressor, key = self._build_single_compressor(

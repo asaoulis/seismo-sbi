@@ -66,17 +66,13 @@ class CompressionTrainer:
                  num_dims=6, feature_length=128, lr=1e-4, weight_decay=1e-4,
                  model_config=None, flow_config=None, lr_second_stage="cosine",
                  lr_min_factor=0.1):
-        """Build the embedding net + conditional normalising flow.
+        """Build the embedding net and the conditional normalising flow.
 
-        trace_length: per-trace sample count of the data (CNN input length). Defaults to
-            200 for backward compatibility; pass the pipeline's real ``trace_length``.
-        model_config / flow_config: optional overrides merged over DEFAULT_MODEL_CONFIG /
-            DEFAULT_FLOW_CONFIG.
-        lr_second_stage: LR schedule after warmup — "cosine" (default; decay to
-            lr*lr_min_factor), "constant" (held flat at lr), or "cyclic". Forwarded to the
-            Lightning module.
-        lr_min_factor: cosine floor as a fraction of the base LR (eta_min = lr*factor).
-            0.1 = legacy (lr/10); 0.2 = lr/5. Ignored by the constant/cyclic schedules.
+        ``components`` and ``station_locations`` describe the recording geometry; ``trace_length`` is
+        the per-trace sample count of the data. ``model_config`` and ``flow_config`` override entries of
+        ``DEFAULT_MODEL_CONFIG`` and ``DEFAULT_FLOW_CONFIG``. ``lr_second_stage`` is the learning-rate
+        schedule after warm-up: ``"cosine"`` decays to ``lr * lr_min_factor``, ``"constant"`` holds
+        ``lr``, ``"cyclic"`` cycles.
         """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -139,12 +135,7 @@ class CompressionTrainer:
     def _assemble_flow(*, architecture, num_seismic_components, model_config, flow_config,
                        feature_length, latent_dim, num_dims, station_locations, trace_length,
                        device):
-        """Build the embedding net (by registry name) + conditional NSF flow.
-
-        Shared by ``__init__`` and ``load_best`` so a checkpoint can be rebuilt from its
-        sidecar metadata (architecture / model_config / flow_config) rather than whatever
-        configuration the loading trainer happened to be constructed with.
-        """
+        """The embedding net named by ``architecture`` wrapped in a conditional NSF flow."""
         if architecture not in EMBEDDING_NET_REGISTRY:
             raise KeyError(
                 f"unknown architecture '{architecture}'; "
@@ -194,12 +185,8 @@ class CompressionTrainer:
     def record_model_config(self, **entries):
         """Merge extra entries into the ``model_config`` recorded in ``model_meta.json``.
 
-        ``__init__`` MERGES the caller's ``model_config`` into a new dict, so mutating the
-        caller's own dict after construction does not reach the sidecar. Settings that can
-        only be resolved once the trainer exists (e.g. the MMD auxiliary-loss block, which
-        needs ``trainer.model.enable_mmd``) must be registered through here instead, or the
-        checkpoint silently loses them: an MMD-trained checkpoint then looks identical to a
-        non-MMD one in its metadata, and a lambda sweep becomes unattributable after the fact.
+        Settings resolved only once the trainer exists, such as the MMD auxiliary-loss block, are
+        registered here so the checkpoint's metadata carries them.
         """
         self._model_config.update(entries)
         return self._model_config
@@ -207,23 +194,13 @@ class CompressionTrainer:
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
               logger="wandb", enable_checkpointing=True, enable_progress_bar=True,
               extra_callbacks=None, devices=1, strategy=None):
-        """Train the flow.
+        """Train the flow; returns the trained model.
 
-        Defaults preserve production behaviour (W&B logging + checkpointing). For headless
-        runs (tests/CI) pass ``logger=None`` (or ``False``) to disable logging entirely,
-        ``enable_checkpointing=False`` to skip writing .ckpt files, and
-        ``enable_progress_bar=False`` for clean output. ``extra_callbacks`` (list) are
-        appended to the Trainer callbacks (e.g. epoch timers in the bench harnesses).
-        Returns the trained model so callers that disabled checkpointing can use it
-        without reading a checkpoint from disk.
-
-        ``devices`` selects how many accelerators to train on: ``1`` (default) is the
-        single-device path and is byte-identical to the previous behaviour. ``devices > 1``
-        engages multi-GPU DistributedDataParallel (one rank per GPU, launched via ``srun``
-        under SLURM); each rank receives its OWN batch of ``train_batch_size`` samples, so
-        the caller must size ``train_batch_size`` for a single GPU. Pass an explicit
-        ``strategy`` (a Lightning strategy object or string) to override the auto-selected
-        one; by default ``devices > 1`` uses ``DDPStrategy(find_unused_parameters=True)``.
+        ``logger=None`` disables logging, ``enable_checkpointing=False`` skips writing ``.ckpt`` files
+        and ``enable_progress_bar=False`` silences the bar. ``extra_callbacks`` are appended to the
+        Trainer's. ``devices`` is the number of accelerators; above one, each rank trains on its own
+        batch of ``train_batch_size`` samples, so size that for a single device, and ``strategy``
+        overrides the distributed strategy.
         """
         if dataloader_args is None or "train_max_index" not in dataloader_args:
             raise ValueError("dataloader_args must include: data_loader, data_folder, parameter_name_map, synthetic_noise_model_sampler, and train_max_index.")
@@ -289,13 +266,8 @@ class CompressionTrainer:
     def write_model_meta(self, output_path: Path) -> Path:
         """Write the ``model_meta.json`` sidecar describing this trainer's architecture.
 
-        :meth:`train` calls this once ``trainer.fit`` returns, but it is exposed separately
-        so the sidecar can be written for a checkpoint whose run never got that far: a SLURM
-        wall-clock kill leaves perfectly good best-val .ckpt files with NO sidecar, and
-        :meth:`load_best` then silently falls back to whatever architecture THIS object was
-        constructed with instead of the one that was trained. Recover by building the trainer
-        from the SAME config the run used and calling this (``train_NPE.py --stage meta`` does
-        exactly that), never by hand-editing a sidecar copied from another run.
+        :meth:`train` calls it once training finishes; ``train_NPE.py --stage meta`` calls it for a
+        run that was killed before then, from the same configuration the run used.
         """
         output_path = Path(output_path)
         meta = {
@@ -321,14 +293,11 @@ class CompressionTrainer:
         return meta_path
 
     def load_best(self, output_path: Path) -> Path:
-        """
-        Locate and load the best-performing checkpoint into self.model.
-        Returns the path to the checkpoint that was loaded.
+        """Load the best checkpoint under ``output_path`` into ``self.model``; returns its path.
 
-        If a ``model_meta.json`` sidecar exists alongside the checkpoint directory,
-        it is loaded and its ``architecture`` / ``model_config`` / ``flow_config``
-        values are used to rebuild the flow before loading weights.  Old checkpoints
-        that lack the sidecar fall back silently to the current object's flow.
+        The ``model_meta.json`` sidecar, when present, gives the ``architecture``, ``model_config`` and
+        ``flow_config`` the flow is rebuilt with before the weights are loaded; without it the flow of
+        this object is used.
         """
         output_path = Path(output_path)
         ckpt_path = find_best_checkpoint_path(output_path)
@@ -422,22 +391,14 @@ def find_best_checkpoint_path(output_path: Path) -> Path:
     return best
 
 def load_warm_start_weights(model, source_path: Path) -> Path:
-    """Load the best checkpoint under ``<source_path>/checkpoints`` into ``model``'s weights.
+    """Load the best checkpoint under ``<source_path>/checkpoints`` into ``model``'s weights;
+    returns its path.
 
-    This is a WARM START, not a Lightning resume: only the ``state_dict`` is transferred, so
-    the optimizer moments, the LR-schedule position and the epoch counter all start fresh.
-    That is deliberate — a continuation run re-declares its own ``--epochs`` budget, and
-    ``seismogram_transformer.configure_optimizers`` derives BOTH the warmup length and the
-    cosine ``T_max`` from it, so a restored scheduler would fight the new budget.
-
-    ``strict=True``: a warm start whose architecture does not match the source checkpoint is a
-    silently different experiment, so a key/shape mismatch must raise rather than load a
-    partially-initialised flow. Keep every architecture block (``ml_architecture``,
-    ``ml_conditioning``, ``ml_variable_stations``, ``ml_amplitude_embedding``,
-    ``ml_positional_encoding``, ``ml_pooling``, ``ml_flow``, ``ml_encoder``) identical to the
-    source run; only optimizer/batch/epoch settings may differ.
-
-    Returns the checkpoint path that was loaded (log it — provenance for the new run).
+    Only the weights are transferred: the optimiser state, the learning-rate schedule and the epoch
+    counter start afresh, so the new run declares its own ``--epochs``. Every architecture block
+    (``ml_architecture``, ``ml_conditioning``, ``ml_variable_stations``, ``ml_amplitude_embedding``,
+    ``ml_positional_encoding``, ``ml_pooling``, ``ml_flow``, ``ml_encoder``) must match the source
+    run; a mismatch raises.
     """
     ckpt_path = find_best_checkpoint_path(source_path)
     # weights_only=False: a Lightning .ckpt carries non-tensor entries (hyper_parameters,

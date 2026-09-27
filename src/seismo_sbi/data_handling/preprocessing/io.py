@@ -19,23 +19,16 @@ def find_mseed_files(
     network: str = "*",
     channel_glob: str = "BH?",
 ) -> List[Path]:
-    """Find mseed files matching the custom_download.py directory layout.
+    """The mseed files of one station between two times, in the download layout
+    ``{data_dir}/{station}/{year}.{jday}/{net}.{sta}.{loc}.{cha}.{year}.{jday}.mseed``.
 
-    Layout: {data_dir}/{station}/{year}.{jday}/{net}.{sta}.{loc}.{cha}.{year}.{jday}.mseed
-
-    Searches all julian-day subdirectories covered by [t_start, t_end] and
-    returns every matching mseed file found.
-
-    Args:
-        data_dir: Root data directory.
-        station: Station code (e.g. 'ANMO').
-        t_start: Window start (datetime or UTCDateTime).
-        t_end: Window end (datetime or UTCDateTime).
-        network: Network code or glob pattern (default '*').
-        channel_glob: Channel glob pattern (default 'BH?').
-
-    Returns:
-        Sorted list of matching Path objects.  May be empty if no data found.
+    :param data_dir: root data directory.
+    :param station: station code.
+    :param t_start: window start, ``datetime`` or ``UTCDateTime``.
+    :param t_end: window end.
+    :param network: network code or glob (default ``'*'``).
+    :param channel_glob: channel glob (default ``'BH?'``).
+    :returns: sorted paths; empty when nothing matches.
     """
     t0 = UTCDateTime(t_start)
     t1 = UTCDateTime(t_end)
@@ -64,16 +57,12 @@ def load_waveforms(
     starttime: UTCDateTime = None,
     endtime: UTCDateTime = None,
 ) -> Stream:
-    """Load waveforms from one or more mseed files into a single Stream.
+    """One merged ``Stream`` from several mseed files.
 
-    Args:
-        mseed_paths: Iterable of paths to .mseed files.
-        starttime: Optional trim start (UTCDateTime or datetime).
-        endtime: Optional trim end.
-
-    Returns:
-        Merged Stream containing all traces from the given files,
-        trimmed to [starttime, endtime] if provided.
+    :param mseed_paths: paths of the files.
+    :param starttime: optional trim start, ``UTCDateTime`` or ``datetime``.
+    :param endtime: optional trim end.
+    :returns: the merged ``Stream``, trimmed to ``[starttime, endtime]`` when given.
     """
     st = Stream()
     for path in mseed_paths:
@@ -87,14 +76,7 @@ def load_waveforms(
 
 
 def load_inventory(resp_dir: Path) -> Inventory:
-    """Read all StationXML files found under resp_dir into one Inventory.
-
-    Args:
-        resp_dir: Directory (searched recursively) containing ``*.xml`` files.
-
-    Returns:
-        Combined Inventory.
-    """
+    """One ``Inventory`` from every ``*.xml`` StationXML file under ``resp_dir``, searched recursively."""
     xml_files = list(Path(resp_dir).rglob("*.xml"))
     if not xml_files:
         raise FileNotFoundError(f"No StationXML files found under {resp_dir}")

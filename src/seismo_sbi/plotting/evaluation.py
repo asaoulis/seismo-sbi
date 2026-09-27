@@ -3,8 +3,7 @@
 Loads inversion result pickles, overlays a freshly trained model's posterior against frozen
 reference inversions, and draws the calibration and recovery figures: cross-run TARP curves and
 per-parameter recovery scatter. The metrics they show are computed in
-:mod:`seismo_sbi.evaluation.posterior_metrics`. Plotting and torch imports are lazy, so importing
-this module stays cheap.
+:mod:`seismo_sbi.evaluation.posterior_metrics`.
 """
 from __future__ import annotations
 

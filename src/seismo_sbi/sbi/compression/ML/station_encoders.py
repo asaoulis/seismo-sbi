@@ -158,7 +158,7 @@ class InputDecimator(nn.Module):
         return x
 
 
-# CNNEncoder — thin adapter around SeismicTraceCNN (backward-compatible default)
+# CNNEncoder: the SeismicTraceCNN as a station encoder, the default.
 
 @register_encoder("cnn")
 class CNNEncoder(nn.Module):
@@ -180,7 +180,6 @@ class CNNEncoder(nn.Module):
         **encoder_config: Any,
     ) -> None:
         super().__init__()
-        # Import here to avoid circular imports at module load time
         from .cnn_feature_extractor import SeismicTraceCNN
 
         # The last conv has ``final_layer - 1`` channels and a log-amplitude channel is

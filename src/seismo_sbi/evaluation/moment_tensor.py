@@ -5,7 +5,7 @@ up-south-east convention the simulator feeds instaseis and the published catalog
 ``pyrocko_mt`` builds a pyrocko ``MomentTensor`` directly in ``m_up_south_east`` with no sign
 change, so ``M = [[m_rr, m_rt, m_rp], [m_rt, m_tt, m_tp], [m_rp, m_tp, m_pp]]``; negating
 ``m_rp``/``m_tp`` would be a reflection that leaves Kagan angles, scalar moment and source type
-untouched while mirroring the absolute orientation. pyrocko is imported lazily per function.
+untouched while mirroring the absolute orientation.
 """
 from __future__ import annotations
 

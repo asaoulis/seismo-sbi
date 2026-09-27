@@ -130,7 +130,6 @@ class VariableStationsConfig:
         """The dataloader's station subsampler, or ``None`` when every station is kept."""
         if not self.enabled:
             return None
-        # Imported here so a configuration can be parsed without pulling in torch.
         from .compression.ML.dataloading import StationSubsampler
         return StationSubsampler(keep_fraction=self.keep_fraction,
                                  min_stations=self.min_stations)

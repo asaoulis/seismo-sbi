@@ -28,18 +28,13 @@ def plot_beachball_mpl(
         projection='lambert',
         size_units='points',
         view='top'):
-    """
-    Adapted: returns components needed for external placement and distortion correction.
+    """The pieces of a pyrocko beachball for placement and distortion correction by the caller:
+    ``(collection, base_transform, position, size, raw_data)``.
 
-    Returns:
-        (collection, base_transform, position, size, raw_data)
-    where:
-        - collection: PatchCollection with polygons in unit-beachball coordinates,
-                      transform set to IdentityTransform() (caller must set final transform)
-        - base_transform: transform returned by choose_transform(axes, size_units, ...)
-        - position: position array returned by choose_transform (useful metadata)
-        - size: size scalar returned by choose_transform (useful metadata)
-        - raw_data: original data list [(verts, facecolor, edgecolor, linewidth), ...]
+    ``collection`` holds the polygons in unit-beachball coordinates with an identity transform for
+    the caller to set; ``base_transform``, ``position`` and ``size`` come from
+    ``choose_transform(axes, size_units, ...)``; ``raw_data`` is the list of
+    ``(verts, facecolor, edgecolor, linewidth)`` the polygons were drawn from.
     """
     # Resolve transform/position/size like original code
     transform, position, size = choose_transform(axes, size_units, position, size)

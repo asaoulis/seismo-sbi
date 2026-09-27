@@ -34,38 +34,27 @@ def process_daily_files(
     n_jobs: int = 1,
     overwrite: bool = False,
 ) -> List[Path]:
-    """Process raw mseed into processed daily files, parallelised over (station, day).
+    """Process raw mseed into daily processed files, in parallel over (station, day).
 
-    For each calendar day in [t_start, t_end] and each station in
-    *station_networks*, this function:
+    For each calendar day in ``[t_start, t_end]`` and each station: find the raw files, remove the
+    instrument response (when ``stationxml_dir`` is given), bandpass, resample to ``sampling_rate``
+    and write one daily mseed file into ``processed_dir`` under the same ``{station}/{YYYY.DDD}/``
+    layout as the raw data, so :func:`find_mseed_files` reads it. Existing files are skipped unless
+    ``overwrite``.
 
-    1. Finds the raw mseed files for that station-day.
-    2. Removes instrument response (if stationxml_dir is given), applies
-       bandpass filter, resamples to *sampling_rate*.
-    3. Writes the result as a daily mseed file into *processed_dir* using
-       the same ``{station}/{YYYY.DDD}/`` directory layout as raw data so
-       that ``find_mseed_files`` works transparently on processed_dir.
-
-    Existing files are silently skipped (resumable). Pass ``overwrite=True``
-    to force reprocessing.
-
-    Args:
-        data_dir: Root raw mseed directory.
-        station_networks: ``{station_code: network_code}`` mapping.
-        processed_dir: Output directory for processed daily files.
-        t_start: Start of the range to process (datetime or UTCDateTime).
-        t_end: End of the range to process.
-        stationxml_dir: Directory with StationXML response files (or None to
-            skip response removal).
-        prefilter_kwargs: Passed to ``deconvolve_and_filter``.
-        filter_kwargs: Passed to ``deconvolve_and_filter``.
-        sampling_rate: Target sampling rate (Hz); if None, keep original rate.
-        channel_glob: Channel glob pattern (default ``'BH?'``).
-        n_jobs: Number of parallel workers.
-        overwrite: If True, reprocess even if the output file already exists.
-
-    Returns:
-        Flat list of Paths to successfully written processed mseed files.
+    :param data_dir: root raw mseed directory.
+    :param station_networks: ``{station_code: network_code}``.
+    :param processed_dir: output directory for the daily files.
+    :param t_start: start of the range, ``datetime`` or ``UTCDateTime``.
+    :param t_end: end of the range.
+    :param stationxml_dir: StationXML response files; None skips response removal.
+    :param prefilter_kwargs: passed to :func:`deconvolve_and_filter`.
+    :param filter_kwargs: passed to :func:`deconvolve_and_filter`.
+    :param sampling_rate: target rate in Hz; None keeps the original.
+    :param channel_glob: channel glob (default ``'BH?'``).
+    :param n_jobs: parallel workers.
+    :param overwrite: reprocess even if the output exists.
+    :returns: the paths of the daily files written.
     """
     processed_dir = Path(processed_dir)
     processed_dir.mkdir(parents=True, exist_ok=True)

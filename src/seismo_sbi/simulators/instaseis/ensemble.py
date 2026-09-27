@@ -21,13 +21,9 @@ from .querier import InstaseisDBQuerier
 PER_STATION_SEED_STRIDE = 10_000
 
 #: Open database handles, keyed by ``(pid, db_path, seismogram_length, processing_signature)``.
-#: A module global rather than an instance attribute because the simulator is pickled out to
-#: workers and an open handle is not picklable; the pid keeps a forked child off its parent's.
 _QUERIER_CACHE = OrderedDict()
 
-#: Cap on :data:`_QUERIER_CACHE`, and a memory budget: an open handle costs about 55 MB resident
-#: per worker process. A miss costs one ``instaseis.open_db``, never correctness.
-#: ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides it; the default grows to one ensemble.
+#: Cap on :data:`_QUERIER_CACHE`; ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides the default.
 _QUERIER_CACHE_MAXSIZE = max(1, int(os.environ.get("SEISMO_QUERIER_CACHE_MAXSIZE", "64")))
 
 #: True when the cap came from ``SEISMO_QUERIER_CACHE_MAXSIZE``, in which case it is
@@ -36,7 +32,7 @@ _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT = "SEISMO_QUERIER_CACHE_MAXSIZE" in os.enviro
 
 
 def _ensure_querier_cache_capacity(n_members: int) -> None:
-    """Grow the cache cap to hold one full ensemble; a no-op against an explicit cap."""
+    """Let the open-database cache hold one full ensemble; a no-op against an explicit cap."""
     global _QUERIER_CACHE_MAXSIZE
     if _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT:
         return
@@ -114,7 +110,7 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         )
 
     def _cached_querier(self, db_path) -> InstaseisDBQuerier:
-        """An open querier for ``db_path``, from :data:`_QUERIER_CACHE` or freshly opened."""
+        """An open querier for ``db_path``."""
         key = (os.getpid(), str(db_path), self.seismogram_length, self._processing_signature)
         querier = _QUERIER_CACHE.get(key)
         if querier is None:

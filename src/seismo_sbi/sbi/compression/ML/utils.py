@@ -40,7 +40,6 @@ def get_best_model(model_type : LightningModel, name,
         try:
             with unpickling_torch_load():
                 model = model_type.load_from_checkpoint(best_ckpt, **kwargs)
-        ### TODO: Need to either catch a specific exception or re-raise the exception
         except Exception as e:
             print("Error loading model from checkpoint:\n", e)
             raise e
@@ -51,9 +50,7 @@ def get_best_model(model_type : LightningModel, name,
 
 @contextlib.contextmanager
 def unpickling_torch_load():
-    """Within the block ``torch.load`` runs with ``weights_only=False``: Lightning checkpoints
-    pickle their hyperparameters, which torch 2.6 and later refuse by default. Trusted files only.
-    """
+    """Within the block ``torch.load`` also unpickles the hyperparameters a Lightning checkpoint carries. Trusted files only."""
     original_load = torch.load
     torch.load = lambda *args, **kwargs: original_load(*args, **{**kwargs, "weights_only": False})
     try:

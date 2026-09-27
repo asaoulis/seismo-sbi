@@ -1,7 +1,7 @@
-"""Run a pipeline's inversions with plotting and saving off the main process.
+"""Run a pipeline's inversions, plotting and saving each result as it completes.
 
-The ``run_*`` functions consume the pipeline's results generator and hand each result to a
-plotting or saving worker through a queue, or run every inversion before plotting.
+The ``run_*`` functions consume the pipeline's results generator and plot or save each result,
+either as it arrives or after every inversion has run.
 """
 
 import os

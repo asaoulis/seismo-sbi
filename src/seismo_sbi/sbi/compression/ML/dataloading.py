@@ -141,8 +141,6 @@ class TorchSimulationDataset(Dataset):
         else:
             print(f"Found {len(self.paths)} simulations matching {glob_pattern} under {data_folder}")
 
-        # Per-sample HDF5 reads are shared-file reads that do not scale with worker count, so
-        # every clean array is preloaded into one buffer the workers share copy-on-write.
         self._cache_D = None
         self._cache_theta = None
         self._cache_cond = None
@@ -153,14 +151,7 @@ class TorchSimulationDataset(Dataset):
         return len(self.paths)
 
     def _preload_cache(self, max_workers: int = 16, dtype=np.float32):
-        """Preload every sim's clean (theta, D[, conditioning]) into contiguous RAM buffers.
-
-        Runs ONCE in the main process (before the DataLoader forks its workers) so the big
-        ``_cache_D`` buffer is shared copy-on-write. Uses a thread pool because h5py releases the
-        GIL on reads, so the per-file open/read I/O overlaps across threads (the on-disk path's
-        scaling wall is exactly this serialised read). The cached arrays reproduce ``_load_sim`` /
-        ``_load_conditioning`` exactly, so __getitem__ stays behaviour-identical.
-        """
+        """Load every simulation's clean ``(theta, D[, conditioning])`` into contiguous buffers, reproducing ``_load_sim`` and ``_load_conditioning`` exactly."""
         from concurrent.futures import ThreadPoolExecutor
         from tqdm import tqdm
         import time as _t
@@ -402,18 +393,7 @@ def variable_station_collate(batch):
 
 
 def _seed_worker(worker_id):
-    """Seed numpy per DataLoader worker so stochastic augmentation is reproducible.
-
-    Each worker process inherits the same numpy global RNG state on fork; without
-    re-seeding, all workers would draw the SAME augmentation sequence. Derive a
-    distinct seed per worker from torch's per-worker initial seed.
-
-    Under multi-GPU DDP (one srun rank per GPU) each rank draws its own noise and
-    augmentation; folding in ``SLURM_PROCID`` guarantees the per-rank streams are
-    provably independent (so two ranks never corrupt the same synthetic with the
-    identical noise realisation) and robust to any future ``seed_everything``.
-    ``SLURM_PROCID`` is unset off-cluster ⇒ rank 0 ⇒ byte-identical to before.
-    """
+    """Seed numpy in each DataLoader worker from torch's per-worker seed and the SLURM rank, so every worker and rank draws its own augmentation sequence."""
     rank = int(os.environ.get("SLURM_PROCID", 0))
     seed = (torch.initial_seed() + worker_id + rank * 100003) % (2 ** 32)
     np.random.seed(seed)

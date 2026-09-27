@@ -57,42 +57,30 @@ def build_event_catalogue(
     use_daily_processing: bool = True,
     processed_dir: Optional[Path] = None,
 ) -> List[Path]:
-    """Export one SBI h5 file per event in *events*.
+    """Export one HDF5 file per event of ``events``; returns the paths written.
 
-    Args:
-        events: obspy.Catalog or list of obspy Event objects.
-        data_dir: Root directory with per-station mseed subdirectories.
-        stationxml_dir: Directory with StationXML response files (or None to
-            skip response removal).
-        station_networks: Mapping ``{station_code: network_code}``.
-        output_dir: Destination directory; created if absent.
-        duration_s: Event window length in seconds.
-        sampling_rate: Target sampling rate (Hz).
-        covariance_window_s: Pre-event covariance window length (s).
-        pre_event_window_s: Start the event window this many seconds *before*
-            the origin time.  DEFAULTS TO 60 s to match the pre-origin pad every
-            Instaseis synthetic carries (``SyntheticsPreprocessing`` /
-            ``SYNTHETICS_PRE_EVENT_PAD_S`` in ``simulators/wrapper.py``):
-            the sims place the origin at t=+60 s, so the observations MUST too or
-            obs and synthetics are misaligned by 60 s (an out-of-distribution shift
-            ~12x beyond the training time-shift augmentation).  Pass 0 only for a
-            non-Instaseis convention.
-        prefilter_kwargs: Override for ``deconvolve_and_filter`` pre-filter.
-        filter_kwargs: Override for ``deconvolve_and_filter`` bandpass.
-        channel_glob: Glob for mseed channel codes (default ``'BH?'``).
-        min_completeness: Minimum sample completeness fraction (0–1).
-        max_flat_fraction: Maximum fraction of consecutive identical samples
-            allowed per trace (0–1).  Default 0.05.
-        n_jobs: Number of parallel workers.
-        error_log: Path to append failures as CSV rows; None = no logging.
-        use_daily_processing: Process raw data in daily chunks first, then
-            slice windows (default True).  Strongly recommended for large
-            catalogues — much faster and avoids taper edge effects.
-        processed_dir: Where to store / find daily processed files.  Defaults
-            to ``output_dir / "_daily"``.
-
-    Returns:
-        List of Paths to successfully written h5 files.
+    :param events: ``obspy.Catalog`` or a list of obspy ``Event`` objects.
+    :param data_dir: root directory with per-station mseed subdirectories.
+    :param stationxml_dir: StationXML response files; None skips response removal.
+    :param station_networks: ``{station_code: network_code}``.
+    :param output_dir: destination directory, created if absent.
+    :param duration_s: event window length in seconds.
+    :param sampling_rate: target sampling rate in Hz.
+    :param covariance_window_s: pre-event covariance window length in seconds.
+    :param pre_event_window_s: the event window starts this many seconds before the origin time;
+        60 s matches the pre-origin pad of the Instaseis synthetics (``SYNTHETICS_PRE_EVENT_PAD_S``),
+        so observations and synthetics align. Pass 0 only for a forward model without that pad.
+    :param prefilter_kwargs: overrides for the :func:`deconvolve_and_filter` pre-filter.
+    :param filter_kwargs: overrides for the :func:`deconvolve_and_filter` bandpass.
+    :param channel_glob: glob for the mseed channel codes (default ``'BH?'``).
+    :param min_completeness: minimum sample completeness fraction, 0-1.
+    :param max_flat_fraction: maximum fraction of consecutive identical samples per trace, 0-1
+        (default 0.05).
+    :param n_jobs: parallel workers.
+    :param error_log: path to append failures to as CSV rows; None logs nothing.
+    :param use_daily_processing: process the raw data in daily files first, then slice windows
+        (default True; avoids taper edge effects on long catalogues).
+    :param processed_dir: where the daily files live; defaults to ``output_dir / "_daily"``.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -201,46 +189,35 @@ def build_noise_catalogue(
     use_daily_processing: bool = True,
     processed_dir: Optional[Path] = None,
 ) -> List[Path]:
-    """Export one SBI h5 file per event-free noise window.
+    """Export one HDF5 file per event-free noise window; returns the paths written.
 
-    Args:
-        noise_start: Start of the search period.
-        noise_end: End of the search period.
-        interfering_events: obspy.Catalog of events to avoid (may be empty).
-        data_dir: Root mseed directory.
-        stationxml_dir: StationXML directory (or None).
-        station_networks: ``{station: network}`` mapping.
-        output_dir: Destination directory; created if absent.
-        duration_s: Noise window length (s).
-        sampling_rate: Target sampling rate (Hz).
-        prefilter_kwargs / filter_kwargs: Passed to ``deconvolve_and_filter``.
-        channel_glob: Mseed channel glob.
-        buffer_minutes: Gap to leave at the start/end of each event-free
-            continuous region (minutes).
-        min_completeness: Minimum sample completeness per trace.
-        max_flat_fraction: Maximum fraction of consecutive identical samples
-            allowed per trace (0–1).  Default 0.05.
-        taup_model: TauPy model name; only used when ``use_taup=True``.
-        use_taup: If True, use TauPy to compute precise arrival windows for
-            event avoidance.  If False (default), use the event onset time
-            directly — suitable for local/regional catalogues where travel
-            times are negligible.
-        rolling_window_gap_s: Step (in seconds) between consecutive noise
-            windows.  Defaults to 30 s, producing a dense rolling/sliding
-            window catalogue.  Set equal to ``duration_s`` for non-overlapping
-            windows, or to ``buffer_minutes * 60`` to match the old behaviour.
-        n_jobs: Parallel workers.
-        receivers: Receivers object with lat/lon for TauPy distance calc
-            (only used when ``use_taup=True``).
-            If None, a zero-lat/lon dummy is used for each station.
-        error_log: Path to append failures; None = no logging.
-        use_daily_processing: Process raw data in daily chunks first (default
-            True).  Strongly recommended for large catalogues.
-        processed_dir: Where to store / find daily processed files.  Defaults
-            to ``output_dir / "_daily"``.
-
-    Returns:
-        List of Paths to written h5 files.
+    :param noise_start: start of the search period.
+    :param noise_end: end of the search period.
+    :param interfering_events: ``obspy.Catalog`` of events to avoid (may be empty).
+    :param data_dir: root mseed directory.
+    :param stationxml_dir: StationXML directory, or None.
+    :param station_networks: ``{station: network}``.
+    :param output_dir: destination directory, created if absent.
+    :param duration_s: noise window length in seconds.
+    :param sampling_rate: target sampling rate in Hz.
+    :param prefilter_kwargs: passed to :func:`deconvolve_and_filter`.
+    :param filter_kwargs: passed to :func:`deconvolve_and_filter`.
+    :param channel_glob: mseed channel glob.
+    :param buffer_minutes: gap left at the start and end of each event-free region, in minutes.
+    :param min_completeness: minimum sample completeness per trace.
+    :param max_flat_fraction: maximum fraction of consecutive identical samples per trace, 0-1
+        (default 0.05).
+    :param taup_model: TauPy model name, used when ``use_taup``.
+    :param use_taup: compute arrival windows with TauPy for event avoidance; False (default) uses
+        the onset time, which suits local and regional catalogues.
+    :param rolling_window_gap_s: step between consecutive noise windows in seconds (default 30);
+        ``duration_s`` gives non-overlapping windows.
+    :param n_jobs: parallel workers.
+    :param receivers: ``Receivers`` with coordinates for the TauPy distances (``use_taup`` only);
+        None uses a zero-latitude, zero-longitude station.
+    :param error_log: path to append failures to; None logs nothing.
+    :param use_daily_processing: process the raw data in daily files first (default True).
+    :param processed_dir: where the daily files live; defaults to ``output_dir / "_daily"``.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -349,20 +326,12 @@ def _setup_data_source(
     channel_glob: str,
     n_jobs: int,
 ):
-    """Set up the data source for window slicing.
+    """The data source the windows are sliced from: ``(data_dir, inventory, remove_response,
+    prefilter_kwargs, filter_kwargs)``.
 
-    Returns:
-        (effective_data_dir, inventory, remove_response,
-         effective_prefilter_kwargs, effective_filter_kwargs)
-
-    When use_daily_processing=True:
-        - Runs process_daily_files() to populate the daily cache directory.
-        - Returns processed_dir as effective_data_dir.
-        - inventory and filter kwargs are None (already applied during daily step).
-
-    When use_daily_processing=False:
-        - Returns data_dir as effective_data_dir.
-        - Loads the inventory and passes filter kwargs through unchanged.
+    With ``use_daily_processing`` the daily files are produced first and the response and filter
+    are already applied, so the inventory and filter arguments come back None; otherwise the raw
+    directory, the inventory and the filter arguments are returned for slicing to apply.
     """
     if use_daily_processing:
         daily_dir = Path(processed_dir) if processed_dir else Path(output_dir) / "_daily"

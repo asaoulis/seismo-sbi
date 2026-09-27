@@ -21,23 +21,16 @@ def slice_event_window(
     t_end,
     sampling_rate: float,
 ) -> Stream:
-    """Slice a Stream to an event window whose end sample is inclusive.
+    """Slice a ``Stream`` to an event window whose end sample is inclusive.
 
-    The window is:
-        fixed_num_seconds = ceil(duration / sr) * sr
-        exact_end = t_start + fixed_num_seconds
-        data.slice(t_start, exact_end)   # inclusive → +1 sample
+    The end is ``t_start + ceil(duration / sr) * sr`` and the slice is inclusive, giving
+    ``compute_data_vector_length(duration, sr) + 1`` samples.
 
-    This gives compute_data_vector_length(duration, sr) + 1 samples.
-
-    Args:
-        stream: Pre-processed Stream (already at target sampling_rate).
-        t_start: Window start (datetime or UTCDateTime).
-        t_end: Window end (datetime or UTCDateTime).
-        sampling_rate: Target sampling rate (Hz).
-
-    Returns:
-        Sliced Stream with the canonical sample count.
+    :param stream: preprocessed ``Stream`` at ``sampling_rate``.
+    :param t_start: window start, ``datetime`` or ``UTCDateTime``.
+    :param t_end: window end.
+    :param sampling_rate: sampling rate in Hz.
+    :returns: the sliced ``Stream``.
     """
     duration = (UTCDateTime(t_end) - UTCDateTime(t_start))
     fixed_num_seconds = math.ceil(duration / sampling_rate) * sampling_rate
@@ -51,18 +44,13 @@ def make_noise_windows(
     buffer: timedelta = timedelta(minutes=15),
     step: Optional[timedelta] = None,
 ) -> Iterator[Tuple[datetime, datetime]]:
-    """Yield (start, end) noise windows from event-free continuous regions.
+    """Yield ``(start, end)`` noise windows from event-free continuous regions.
 
-    Ports EventWindowSelector.create_windows_from_regions as a generator.
-
-    Args:
-        continuous_regions: List of (start, end) pairs marking event-free time.
-        window_length: Length of each noise window.
-        buffer: Gap to leave at the start and end of each continuous region.
-        step: How far to advance the window start between consecutive windows.
-            Defaults to ``buffer`` when None (original non-rolling behaviour).
-            Set to a small value (e.g. ``timedelta(seconds=30)``) for a
-            rolling/sliding window that densely covers the available time.
+    :param continuous_regions: ``(start, end)`` pairs of event-free time.
+    :param window_length: length of each noise window.
+    :param buffer: gap left at the start and end of each continuous region.
+    :param step: advance of the window start between consecutive windows; ``buffer`` when None,
+        a small value such as ``timedelta(seconds=30)`` for a rolling window.
     """
     advance = step if step is not None else buffer
     for start, end in continuous_regions:
@@ -83,13 +71,7 @@ def make_daily_overlapping_windows(
     buffer: timedelta = timedelta(minutes=15),
     overlap_offset: timedelta = None,
 ) -> dict:
-    """Build per-date lists of overlapping noise windows.
-
-    Ports EventWindowSelector.create_daily_overlapping_windows_from_regions.
-
-    Returns:
-        Dict mapping date → list of (start, end) window tuples.
-    """
+    """Per-date lists of overlapping noise windows: ``{date: [(start, end), ...]}``."""
     if overlap_offset is None:
         overlap_offset = buffer
 
@@ -119,23 +101,15 @@ def compute_event_arrival_windows(
     n_jobs: int = 1,
     padding: timedelta = timedelta(minutes=5),
 ) -> List[Tuple]:
-    """Compute (start, end) unavailability windows for each event.
+    """``(start, end)`` unavailability windows, one per event, from the earliest and latest TauPy
+    arrivals over all stations padded by ``padding`` on both sides.
 
-    For each event in *events*, computes the earliest and latest seismic
-    arrivals across all stations in *receivers* using TauPy, then pads each
-    window by *padding* on both sides.
-
-    Args:
-        events: obspy.Catalog or list of obspy Event objects.
-        receivers: Receivers object (has .receivers with .latitude/.longitude)
-            OR a list of (lat, lon) tuples.
-        taup_model: TauPy earth model name (default 'prem').
-        n_jobs: Number of parallel jobs for joblib (default 1 = serial).
-        padding: Extra time to add around each arrival window (default 5 min).
-
-    Returns:
-        List of (start_UTCDateTime, end_UTCDateTime) tuples, one per event.
-        Events with no computable arrivals are silently skipped.
+    :param events: ``obspy.Catalog`` or a list of obspy ``Event`` objects.
+    :param receivers: a ``Receivers`` object, or a list of ``(lat, lon)`` tuples.
+    :param taup_model: TauPy Earth model name (default ``'prem'``).
+    :param n_jobs: parallel jobs (1 = serial).
+    :param padding: time added around each arrival window (default 5 min).
+    :returns: ``(start, end)`` ``UTCDateTime`` pairs; an event with no computable arrival is skipped.
     """
     from obspy.taup import TauPyModel
     import joblib
@@ -197,16 +171,13 @@ def filter_events_by_distance(
     min_radius_deg: Optional[float] = None,
     max_radius_deg: Optional[float] = None,
 ) -> list:
-    """Filter an obspy Catalog/list to events within a distance range.
+    """The events within an epicentral-distance range of a point.
 
-    Args:
-        events: obspy.Catalog or list of obspy Event objects.
-        center: (latitude, longitude) of the reference point in degrees.
-        min_radius_deg: Minimum epicentral distance in degrees (inclusive).
-        max_radius_deg: Maximum epicentral distance in degrees (inclusive).
-
-    Returns:
-        Filtered list of Event objects.
+    :param events: ``obspy.Catalog`` or a list of obspy ``Event`` objects.
+    :param center: ``(latitude, longitude)`` of the reference point in degrees.
+    :param min_radius_deg: minimum epicentral distance in degrees, inclusive.
+    :param max_radius_deg: maximum epicentral distance in degrees, inclusive.
+    :returns: the filtered list of ``Event`` objects.
     """
     center_lat, center_lon = center
     filtered = []
@@ -229,13 +200,7 @@ def get_continuous_regions(
     start_time,
     end_time,
 ) -> Tuple[List[Tuple], List[Tuple]]:
-    """Compute event-free continuous regions between a set of event windows.
-
-    Ports EventWindowSelector.get_continuous_regions.
-
-    Returns:
-        (continuous_regions, gaps) where gaps are the event intervals.
-    """
+    """``(continuous_regions, gaps)``: the event-free regions between a set of event windows, and the event intervals themselves."""
     continuous_regions = []
     gaps = []
 

@@ -1,11 +1,9 @@
 """Fused multi-head attention, an opt-in drop-in for ``nn.MultiheadAttention``.
 
-``FusedMHA`` routes the attention through ``scaled_dot_product_attention`` instead of the
-unfused ``bmm -> softmax -> bmm`` path. The axial transformer and the pooling head issue many
-small masked attentions, which the stock module does not fast-path while a key-padding mask is
-present, so the workload is launch-bound; one fused kernel also avoids materialising the score
-matrix. Parameters, initialisation and the arithmetic match, so outputs agree to floating-point
-tolerance. ``build_mha(..., use_sdpa)`` returns this or the stock module.
+``FusedMHA`` computes the same masked multi-head attention as the stock module through
+``scaled_dot_product_attention``: parameters, initialisation and the arithmetic match, so
+outputs agree to floating-point tolerance. ``build_mha(..., use_sdpa)`` returns this or the
+stock module.
 """
 
 from __future__ import annotations

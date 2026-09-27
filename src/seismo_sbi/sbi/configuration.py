@@ -252,13 +252,10 @@ class SBI_Configuration:
     def _normalise_sampling_method(sampling_method):
         """Resolve dict-form ``sampling_method`` entries into built samplers.
 
-        String entries pass through unchanged (looked up in
-        ``DatasetGenerator.sampler_lookup_map`` later). A dict entry selects a
-        catalogue-driven prior: its ``type`` names a factory in
-        :data:`SAMPLER_FACTORIES`, any ``catalogue`` path is loaded once into an
-        ``EventCatalogue``, and the factory is called to build the
-        ``(args, num_samples)`` closure (so the heavy I/O — catalogue load and
-        b-value fit — happens a single time, at parse time).
+        String entries pass through unchanged (looked up in ``DatasetGenerator.sampler_lookup_map``
+        later). A dict entry selects a catalogue-driven prior: its ``type`` names a factory in
+        :data:`SAMPLER_FACTORIES`, any ``catalogue`` path is loaded into an ``EventCatalogue``, and
+        the factory builds the ``(args, num_samples)`` sampler.
         """
         resolved = {}
         for key, value in sampling_method.items():

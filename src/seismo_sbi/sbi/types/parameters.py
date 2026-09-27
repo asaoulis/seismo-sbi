@@ -50,8 +50,7 @@ class SimulationParameters(NamedTuple):
     #: or 'sector' (Poisson(sector_lambda) azimuthal sectors, one member each).
     member_sampling: Optional[str] = None
     sector_lambda: Optional[float] = None
-    #: Cap on open Instaseis handles cached per worker (about 55 MB each); None grows to the
-    #: ensemble size. A miss costs one open_db, never a different output.
+    #: Cap on the open Instaseis database handles each worker keeps; None allows one per member.
     querier_cache_maxsize: Optional[int] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):

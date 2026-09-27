@@ -1,9 +1,8 @@
 """Base class shared by the Gaussian-likelihood noise covariances.
 
 ``EmpiricalCovariance`` fixes the interface every covariance offers: the log-likelihood of a
-residual, C⁻¹ times a vector, closures carrying their data for worker processes, and a noise
-sampler. ``station_component_value`` reads one trace's entry from a ``{station: {component: value}}``
-dict.
+residual, C⁻¹ times a vector, a loss callable and a noise sampler. ``station_component_value``
+reads one trace's entry from a ``{station: {component: value}}`` dict.
 """
 from abc import ABC, abstractmethod
 

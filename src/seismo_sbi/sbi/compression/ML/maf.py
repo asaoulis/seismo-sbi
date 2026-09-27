@@ -39,14 +39,12 @@ class ContextSplineMap(nn.Module):
         context_features: int,
         hidden_layers: int,
     ):
-        """
-        Initialize neural network that learns to predict spline parameters.
+        """Network predicting the spline parameters of a one-dimensional ``x`` from its context.
 
-        Args:
-            in_features: Unused since there is no `conditioner` in 1D.
-            out_features: Number of spline parameters.
-            hidden_features: Number of hidden units.
-            context_features: Number of context features.
+        :param in_features: unused, there being no conditioner in one dimension.
+        :param out_features: number of spline parameters.
+        :param hidden_features: hidden units.
+        :param context_features: context features.
         """
         super().__init__()
         # `self.hidden_features` is only defined such that nflows can infer
@@ -68,16 +66,11 @@ class ContextSplineMap(nn.Module):
         self.spline_predictor = nn.Sequential(*layer_list)
 
     def __call__(self, inputs: Tensor, context: Tensor, *args, **kwargs) -> Tensor:
-        """
-        Return parameters of the spline given the context.
+        """The spline parameters given the context.
 
-        Args:
-            inputs: Unused. It would usually be the other dimensions, but in
-                1D, there are no other dimensions.
-            context: Context features.
-
-        Returns:
-            Spline parameters.
+        :param inputs: unused in one dimension.
+        :param context: context features.
+        :returns: the spline parameters.
         """
         return self.spline_predictor(context)
 
@@ -97,34 +90,26 @@ def build_nsf(
     use_identity = False,
     **kwargs,
 ) -> nn.Module:
-    """Builds NSF p(x|y).
+    """Neural spline flow for ``p(x | y)``.
 
-    Args:
-        batch_x: Batch of xs, used to infer dimensionality and (optional) z-scoring.
-        batch_y: Batch of ys, used to infer dimensionality and (optional) z-scoring.
-        z_score_x: Whether to z-score xs passing into the network, can be one of:
-            - `none`, or None: do not z-score.
-            - `independent`: z-score each dimension independently.
-            - `structured`: treat dimensions as related, therefore compute mean and std
-            over the entire batch, instead of per-dimension. Should be used when each
-            sample is, for example, a time series or an image.
-        z_score_y: Whether to z-score ys passing into the network, same options as
-            z_score_x.
-        hidden_features: Number of hidden features.
-        num_transforms: Number of transforms.
-        num_bins: Number of bins used for the splines.
-        embedding_net: Optional embedding network for y.
-        tail_bound: tail bound for each spline.
-        hidden_layers_spline_context: number of hidden layers of the spline context net
-            for one-dimensional x.
-        num_blocks: number of blocks used for residual net for context embedding.
-        dropout_probability: dropout probability for regularization in residual net.
-        use_batch_norm: whether to use batch norm in residual net.
-        kwargs: Additional arguments that are passed by the build function but are not
-            relevant for maf and are therefore ignored.
-
-    Returns:
-        Neural network.
+    :param batch_x: batch of ``x``, giving the dimensionality and the optional z-scoring.
+    :param batch_y: batch of ``y``, likewise.
+    :param z_score_x: ``None``/``'none'`` (no z-scoring), ``'independent'`` (per dimension) or
+        ``'structured'`` (one mean and standard deviation over the whole batch, for a time series or
+        an image).
+    :param z_score_y: as ``z_score_x``, for ``y``.
+    :param hidden_features: hidden features.
+    :param num_transforms: number of transforms.
+    :param num_bins: spline bins.
+    :param embedding_net: optional embedding network for ``y``.
+    :param tail_bound: tail bound of each spline.
+    :param hidden_layers_spline_context: hidden layers of the spline context net for
+        one-dimensional ``x``.
+    :param num_blocks: residual blocks of the context embedding.
+    :param dropout_probability: dropout probability in the residual net.
+    :param use_batch_norm: batch norm in the residual net.
+    :param kwargs: further build arguments, ignored.
+    :returns: the flow.
     """
     x_numel = dim
     if conditional_dim:

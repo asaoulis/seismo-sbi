@@ -255,14 +255,13 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
 def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None) -> FlexibleScaler:
     """Build a :class:`FlexibleScaler`, honouring an optional top-level ``ml_scaler`` block.
 
-    The same helper must be used at training and at inference so the scaling matches::
+    The same helper is used at training and at inference so the scaling matches::
 
         ml_scaler:
           moment_tensor: scale_shape   # or "linear" (default)
           mt_log_decades: 9.0          # optional, MomentTensorScaler dynamic range
 
-    ``raw_config`` is the parsed YAML dict (``SBI_Configuration.raw_config`` or a
-    ``yaml.safe_load`` of the config file); ``None`` reproduces the legacy default.
+    ``raw_config`` is the parsed YAML dict; ``None`` gives the linear scaling.
     """
     raw_config = raw_config or {}
     cfg = raw_config.get("ml_scaler") or {}

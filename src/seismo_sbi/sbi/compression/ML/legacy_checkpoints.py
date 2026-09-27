@@ -1,9 +1,9 @@
-"""Load checkpoints written before the per-station encoder became pluggable.
+"""Load checkpoints written with the earlier station-CNN parameter names.
 
 Those checkpoints name the station CNN ``CNN_feature_extractor.seismic_trace_CNN`` and carry
 the weights of a feed-forward head the forward pass never used. :func:`remap_legacy_state_dict`
-renames each old key by the table below and drops the unused head, and only when an old-style
-key is present, so a current checkpoint passes through untouched.
+renames each old key by the table below and drops the unused head; a current checkpoint passes
+through untouched.
 """
 
 #: Old key fragment -> new fragment, or ``None`` for weights the current model does not have.
@@ -14,7 +14,7 @@ LEGACY_KEY_RENAMES = {
 
 
 def is_legacy_state_dict(state_dict) -> bool:
-    """Whether any key uses a name from before the encoder refactor."""
+    """Whether any key uses one of the earlier station-CNN parameter names."""
     return any(old in key for key in state_dict for old in LEGACY_KEY_RENAMES)
 
 

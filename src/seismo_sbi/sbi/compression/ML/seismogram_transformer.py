@@ -519,21 +519,7 @@ class LightningModel(pl.LightningModule):
         return [opt], [sch]
 
 def fused_adam_supported(params):
-    """True if every parameter satisfies torch's fused-AdamW preconditions.
-
-    Checked eagerly because torch validates them LAZILY, inside the first
-    ``optimizer.step()`` — so wrapping the ``AdamW(..., fused=True)`` constructor in a
-    try/except catches neither failure. Both have bitten real runs:
-
-    * **device** — some torch versions accept fused CPU params at construction and only
-      reject them at step time.
-    * **dtype** — torch >= 2.5 (``_device_dtype_check_for_fused``) rejects COMPLEX params.
-      The pno encoder's ``SpectralConv1d`` spectral weights are ``complex64``.
-
-    Falling back to unfused AdamW is mathematically identical (same update rule); fused
-    only saves per-parameter kernel launches. So this returns a plain bool and the caller
-    silently takes the slower, always-correct path.
-    """
+    """True if every parameter is a real-valued tensor on a device fused AdamW accepts; the unfused optimiser gives the same update otherwise."""
     params = list(params)
     if not params:
         return False
@@ -573,7 +559,7 @@ class NPELightningModule(pl.LightningModule):
             self._log_prob_fn = torch.compile(self._log_prob)
         elif compile_flow and hasattr(torch, "compile"):
             self._flow_tail_fn = torch.compile(self._flow_log_prob_from_embedded)
-        # Misspecification-robust MMD auxiliary loss (opt-in via enable_mmd; None = legacy).
+        # The MMD auxiliary loss is armed by enable_mmd; None means NLL only.
         self._mmd_cfg = None
         self._mmd_psim_loader = None
         self._mmd_psim_iter = None
@@ -583,25 +569,18 @@ class NPELightningModule(pl.LightningModule):
         self._mmd_last_z_scale = float("nan")
 
     def on_load_checkpoint(self, checkpoint):
-        """Rename a pre-refactor checkpoint's keys before Lightning loads its weights."""
+        """Rename a checkpoint's earlier station-CNN parameter names before its weights are loaded."""
         checkpoint["state_dict"] = remap_legacy_state_dict(checkpoint["state_dict"])
 
     def enable_mmd(self, mmd_config: dict, real_context, psim_loader):
-        """Arm the summary-space MMD auxiliary loss (Huang et al. 2023-style, two-sample).
+        """Arm the summary-space MMD auxiliary loss (two-sample, after Huang et al. 2023).
 
-        ``real_context``: pre-packed context tensor (N_real, W) of the QA-cleaned real
-        events — registered as a NON-persistent buffer (moves with the module to GPU;
-        checkpoints stay lean, the caller re-supplies it on reload). ``psim_loader``: a
-        DataLoader over the posterior-matched simulation suite that reproduces the
-        training-time augmentation path (noise + amplitude + per-parent-event masks) and
-        yields ``(theta, context)`` batches — iterated cyclically, one batch per MMD step.
-
-        The total loss becomes ``nll + lambda(t) * MMD^2_u(embed(real), embed(psim))``
-        with lambda ramped 0 -> lambda_mmd after ``warmup_epochs`` over ``ramp_epochs``.
-        Checkpoint selection stays on the NLL-only ``val_loss``; the MMD is logged as a
-        diagnostic (``train_mmd2`` / ``val_mmd2``). Designed for single-device training
-        (each DDP rank would draw independent sub-batches — fine, but the logged MMD is
-        then per-rank).
+        ``real_context`` is the ``(N_real, W)`` context tensor of the QA-cleaned real events;
+        ``psim_loader`` yields ``(theta, context)`` batches of the posterior-matched simulation suite
+        with the training-time augmentation applied, one batch per MMD step. The loss becomes
+        ``nll + lambda(t) * MMD^2_u(embed(real), embed(psim))`` with ``lambda`` ramped from 0 to
+        ``lambda_mmd`` after ``warmup_epochs`` over ``ramp_epochs``; checkpoint selection stays on the
+        NLL-only ``val_loss`` and the MMD is logged as ``train_mmd2`` / ``val_mmd2``.
         """
         from .mmd import DEFAULT_BANDWIDTH_SCALES
         cfg = dict(mmd_config or {})
@@ -705,7 +684,6 @@ class NPELightningModule(pl.LightningModule):
         theta, x = batch
         log_prob = self.forward(x, theta)
         loss = -log_prob.mean()
-        # MMD auxiliary loss (armed via enable_mmd; absent => byte-identical legacy loss).
         if self._mmd_cfg is not None and self.global_step % self._mmd_cfg["every_n_steps"] == 0:
             lam = self._mmd_lambda()
             mmd2 = self._mmd_term()
@@ -818,7 +796,7 @@ class NPELightningModule(pl.LightningModule):
                 "frequency": 1,
             }]
 
-        # Cosine annealing down to lr_min_factor * base LR (0.1 legacy, 0.2 = lr/5)
+        # Cosine annealing down to lr_min_factor times the base learning rate.
         cosine = CosineAnnealingLR(optimizer, T_max=cosine_epochs,
                                    eta_min=self.lr * self.lr_min_factor)
 

@@ -1,3 +1,9 @@
+"""Recorded noise windows drawn as data-vector noise.
+
+:class:`RealNoiseSampler` reads a directory of HDF5 noise windows in the receiver order of the
+simulation, optionally rescaled to one event's pre-event variances, and can hold every valid
+window in memory for training.
+"""
 from pathlib import Path
 import numpy as np
 
@@ -14,27 +20,16 @@ class RealNoiseSampler:
     optionally rescaled to the variances set by :meth:`set_adaptive_covariance_with_misc_data`.
     """
 
-    # TODO: add components implementation
-
     def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None, adaptive_covariance= None,
                  freeze_scale: bool = False, allow_incomplete: bool = False):
-        """
-        allow_incomplete:
-            When False (default, unchanged behaviour) a noise window missing ANY model
-            station is skipped entirely, so the usable pool is
-            ``n_windows * P(all stations present)`` -- which collapses as the station count
-            grows (about 78% of windows at 29 stations, far fewer at 49).
+        """``simulation_parameters`` supplies the receivers, components, seismogram duration and
+        sampling rate; ``directory`` holds one HDF5 noise window per file.
 
-            When True the window is used for the stations it DOES have: absent stations are
-            zero-filled and ``__call__`` returns ``(noise_vector, present_mask)``. The
-            consumer must mask those stations out -- in practice by intersecting the mask
-            with the variable-station keep-set (see ``StationSubsampler(available=...)``),
-            which is why this mode is only meaningful with variable-station training.
-
-            Whole windows are still drawn intact, so inter-station noise coherence -- real
-            at microseism periods -- is preserved. Assembling one sample's noise from
-            several windows would destroy it and make the noise artificially
-            uncorrelated across stations, biasing the posterior towards overconfidence.
+        With ``allow_incomplete`` False a window missing any model station is skipped. With it True the
+        window is used for the stations it has: absent stations are zero-filled and ``__call__`` returns
+        ``(noise_vector, present_mask)`` for the caller to mask out, which is meaningful only with
+        variable-station training. Whole windows are always drawn intact, preserving the inter-station
+        noise coherence real at microseism periods.
         """
         self.allow_incomplete = bool(allow_incomplete)
         receivers = simulation_parameters.receivers
@@ -73,15 +68,7 @@ class RealNoiseSampler:
         print(f"Found {len(self.noise_paths)} noise realisations.")
     
     def _build_presence_index(self):
-        """Pack each cached window's station presence into one integer for O(n) subset queries.
-
-        With <= 64 stations a window's presence is a single ``uint64``, so "which windows
-        contain all of subset S" is one vectorised AND + compare over the whole pool
-        (~40k windows => tens of microseconds), instead of a per-window Python loop or a
-        rejection sampler that retries until it happens to hit a matching window.
-
-        Only needed by :meth:`sample_containing`; the ordinary draw needs no index at all.
-        """
+        """Pack each cached window's station presence into one integer, so :meth:`sample_containing` can find the windows holding a station subset in one comparison."""
         n = self._presence_cache.shape[1]
         if n > 64:
             # Fall back to the boolean matrix; the query below stays vectorised, just wider.
@@ -123,15 +110,12 @@ class RealNoiseSampler:
         return np.array(list(Path(directory).glob('*.h5')))
 
     def preload_cache(self, max_workers: int = 16, dtype=np.float32):
-        """Preload every VALID noise window into one contiguous RAM buffer (opt-in, generic mode).
+        """Load every valid noise window into ``self._noise_cache`` ``(n_valid, L)``; ``__call__`` then
+        returns a uniformly random row.
 
-        Loads each ``noise_paths`` file once (in parallel — h5py reads release the GIL), keeps the
-        windows whose flattened length matches the data-vector length (skipping the
-        missing-station / data-gap windows the on-disk ``__call__`` skips too), and stacks them into
-        ``self._noise_cache`` ``(n_valid, L)``. Built in the MAIN process before the DataLoader forks
-        workers, so the buffer is shared copy-on-write. ``__call__`` then returns a uniformly random
-        row instead of opening a file. Only the generic (no-rescale, ``adaptive_covariance is None``)
-        path uses the cache; the adaptive / ``no_rescale`` paths still read from disk.
+        Windows whose flattened length differs from the data-vector length (missing stations or data
+        gaps) are skipped as the on-disk path skips them. Only the generic path (``adaptive_covariance``
+        None, no rescaling) draws from the cache.
         """
         from concurrent.futures import ThreadPoolExecutor
         from tqdm import tqdm

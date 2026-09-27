@@ -3,8 +3,7 @@
 :func:`build_eval_pipeline` constructs the pipeline from a configuration,
 :func:`build_ml_posterior` loads a trained model into a posterior, :func:`resolve_ckpt_dir`
 finds the checkpoint directory to load from, and :func:`load_real_observation` reads one named
-real event. Not a command-line entry point. The pipeline and torch imports are lazy inside each
-function, so importing this module costs nothing during the fast test gate.
+real event.
 """
 from __future__ import annotations
 
@@ -115,11 +114,8 @@ def build_ml_posterior(ckpt_dir, sbi_pipeline, dim=256):
 
 
 def resolve_ckpt_dir(ckpt_dir) -> Path:
-    """Return the directory that actually holds model_meta.json (+ checkpoints/).
-
-    Accepts either that directory directly or any ancestor of it (the training
-    output_directory nests the run dir a few levels deep).  Shared by the
-    continuity and santorini eval drivers.
+    """The directory holding ``model_meta.json`` and ``checkpoints/``: ``ckpt_dir`` itself or the
+    one run directory found beneath it.
     """
     ckpt_dir = Path(ckpt_dir)
     if (ckpt_dir / "model_meta.json").exists():

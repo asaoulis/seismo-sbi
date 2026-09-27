@@ -139,11 +139,7 @@ def _evaluate_ensemble_log_probability(scaled_theta):
 
 
 def _ensemble_pool(log_probability, num_processes):
-    """Process pool and the function emcee maps over it.
-
-    Where fork exists the workers inherit ``log_probability`` through a module global, so it and
-    the arrays it holds are never pickled; elsewhere it is pickled to spawned workers.
-    """
+    """Process pool and the function emcee maps over it."""
     global _ensemble_log_probability
     if "fork" in multiprocessing.get_all_start_methods():
         _ensemble_log_probability = log_probability

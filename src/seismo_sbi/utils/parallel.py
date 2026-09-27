@@ -45,12 +45,7 @@ def parallel_execution(inputs, func, num_jobs = 20):
 
 @contextlib.contextmanager
 def gc_paused_in_notebooks():
-    """Inside a Jupyter kernel, pause garbage collection while worker processes are forked.
-
-    ipykernel registers a collection callback that takes threading's global lock. A forked child
-    resets its threads while holding that lock, so a collection at that moment deadlocks the child
-    for ever. The child inherits the paused collector. Outside a kernel nothing changes.
-    """
+    """Inside a Jupyter kernel, pause garbage collection while worker processes are forked; outside a kernel nothing changes."""
     if "ipykernel" not in sys.modules or not gc.isenabled():
         yield
         return

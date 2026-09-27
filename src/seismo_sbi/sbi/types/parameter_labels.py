@@ -7,8 +7,9 @@
 from typing import NamedTuple, Callable
 from enum import Enum
 
-# TODO SHOULD MAKE THIS GENERAL
+#: Kilometres per degree of longitude at 39 degrees north, the default longitude scale.
 UPFLOW_LONGITUDE_SCALE = 86
+#: Kilometres per degree of latitude.
 LATITUDE_DEG_TO_KM_SCALE = 111.1
 
 class DegreeType(Enum):

@@ -9,8 +9,6 @@ import re
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, ScalarFormatter, LogLocator
 
-# ChainConsumer 0.34 imports scipy.integrate.simps, which was renamed to `simpson` and removed in
-# scipy 1.14.  Provide a backwards-compatible alias before importing chainconsumer.
 import scipy.integrate as _scipy_integrate
 if not hasattr(_scipy_integrate, "simps"):
     _scipy_integrate.simps = _scipy_integrate.simpson

@@ -45,11 +45,7 @@ def _unmask_all_true_rows(mask: Optional[torch.Tensor]) -> Optional[torch.Tensor
 
 
 class _FeedForward(nn.Module):
-    """Position-wise FFN (Linear→GELU→Dropout→Linear→Dropout); mirrors ``axial_transformer``.
-
-    Defined locally (rather than imported) so this module has no dependency on
-    ``axial_transformer`` — which imports *this* module — avoiding a circular import.
-    """
+    """Position-wise feed-forward block: Linear, GELU, Dropout, Linear, Dropout."""
 
     def __init__(self, d_model: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
@@ -249,11 +245,7 @@ class SetTransformerPMAHead(nn.Module):
         cls, d_model: int, num_heads_default: int, cfg: Dict[str, Any],
         use_sdpa: bool = False,
     ) -> "SetTransformerPMAHead":
-        """Build from the ``pma_pooling`` config dict, rejecting unknown keys.
-
-        ``use_sdpa`` is a perf flag threaded from the transformer (not a config-block key), so
-        it is passed separately and never appears in ``cfg``.
-        """
+        """Build from the ``pma_pooling`` config dict, rejecting unknown keys; ``use_sdpa`` is passed separately."""
         unknown = set(cfg) - _CONFIG_KEYS
         if unknown:
             raise ValueError(

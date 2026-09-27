@@ -33,11 +33,7 @@ def configure_numba_cache():
 
 
 def cap_querier_cache(maxsize):
-    """Cap the per-worker LRU of open Instaseis database handles at ``maxsize`` (``None`` = uncapped).
-
-    Exported into the environment because joblib workers are spawned and would not inherit a
-    module global; each handle costs about 55 MB resident per worker process.
-    """
+    """Cap the number of open Instaseis database handles each worker keeps at ``maxsize`` (``None`` = uncapped)."""
     if maxsize is None:
         return
     os.environ["SEISMO_QUERIER_CACHE_MAXSIZE"] = str(int(maxsize))
@@ -47,11 +43,7 @@ def cap_querier_cache(maxsize):
 
 
 def stamp_arviz_daily_warning():
-    """Write today's date into arviz's once-a-day warning stamp, through a per-process temp file.
-
-    arviz rewrites the stamp at import through one shared temp name, so ranks importing it in the
-    same second race and the loser dies; with today's stamp in place arviz skips the write.
-    """
+    """Write today's date into arviz's once-a-day warning stamp, so several ranks can import arviz at the same moment."""
     try:
         from platformdirs import user_cache_dir
     except ImportError:

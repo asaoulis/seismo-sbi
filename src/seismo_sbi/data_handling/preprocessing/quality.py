@@ -21,41 +21,23 @@ def check_window_quality(
     max_flat_fraction: float = 0.05,
     min_npts: Optional[int] = None,
 ) -> Tuple[bool, str]:
-    """Check that a preprocessed window meets minimum quality requirements.
+    """Whether a preprocessed window meets the minimum quality requirements; ``(ok, reason)``.
 
-    The following checks are applied per station / component:
+    Per station and component: at least ``min_completeness`` of the expected samples are present;
+    at least ``min_npts`` samples when set (``compute_data_vector_length(duration, sr) + 1`` in the
+    catalogue pipeline); no NaN or Inf; not all zeros; RMS above ``min_rms``; and at most
+    ``max_flat_fraction`` of consecutive identical samples (a dead or clipped channel, or a gap
+    filled with a constant).
 
-    1. **Completeness**: at least *min_completeness* fraction of the expected
-       sample count must be present (catches gapped or truncated windows).
-    2. **Strict sample count** (when *min_npts* is set): the trace must have
-       at least *min_npts* samples.  In the catalogue pipeline this is set to
-       ``compute_data_vector_length(duration, sr) + 1`` (the SBI contract
-       length) to prevent short arrays reaching the h5 export.
-    3. **Non-finite values**: any NaN or Inf sample fails immediately.
-    4. **All-zeros**: a trace whose every sample is exactly zero is rejected
-       regardless of the *min_rms* setting.
-    5. **RMS floor**: the RMS of each trace must exceed *min_rms*.
-    6. **Flat-period fraction**: the fraction of consecutive identical samples
-       must not exceed *max_flat_fraction*.  A high fraction indicates a dead
-       or clipped channel, or a data gap filled with a constant.
-
-    Args:
-        stream: Preprocessed Stream (already at *sampling_rate*).
-        receivers: Ordered list of station names to check.
-        sampling_rate: Expected sampling rate (Hz).
-        duration: Expected window length (timedelta).
-        min_completeness: Minimum fraction of expected samples (0–1).
-        min_rms: Minimum acceptable per-trace RMS value.
-        max_flat_fraction: Maximum allowed fraction of consecutive identical
-            samples in a trace (0–1).  Default 0.05 (5 %).
-        min_npts: Minimum absolute sample count required per trace.  When set,
-            enforced after the completeness check.  Pass
-            ``compute_data_vector_length(duration_s, sr) + 1`` from the
-            catalogue pipeline to guarantee the SBI contract array length.
-            Default None (disabled).
-
-    Returns:
-        (ok: bool, reason: str)  — reason is empty string when ok=True.
+    :param stream: preprocessed ``Stream`` at ``sampling_rate``.
+    :param receivers: ordered station names to check.
+    :param sampling_rate: expected sampling rate in Hz.
+    :param duration: expected window length, a ``timedelta``.
+    :param min_completeness: minimum fraction of the expected samples, 0-1.
+    :param min_rms: minimum per-trace RMS.
+    :param max_flat_fraction: maximum fraction of consecutive identical samples, 0-1 (default 0.05).
+    :param min_npts: minimum sample count per trace; None disables the check.
+    :returns: ``(ok, reason)``; ``reason`` is empty when ``ok``.
     """
     expected_samples = int(duration.total_seconds() * sampling_rate)
     if expected_samples == 0:
@@ -146,20 +128,14 @@ def partition_window_quality(
     max_flat_fraction: float = 0.05,
     min_npts: Optional[int] = None,
 ) -> Tuple[List[str], List[Tuple[str, str]]]:
-    """Partition *receivers* into those passing quality and those dropped.
+    """Partition ``receivers`` into the stations passing quality and those dropped.
 
-    Same per-station checks as :func:`check_window_quality`, but instead of
-    failing the whole window on the first bad trace, each station is judged
-    independently: a station is **kept** only if all its component traces pass,
-    otherwise it is **dropped** (recording the failure reason).  This lets a
-    single dead/flat/zero channel remove just that station rather than the entire
-    event or noise window — essential when scaling to many stations, where one
-    flaky station would otherwise reject most windows.
+    The per-station checks of :func:`check_window_quality`, judged station by station: a station is
+    kept only if all its component traces pass, so one dead channel removes that station rather than
+    the whole window.
 
-    Returns:
-        (kept, dropped) where *kept* is the ordered list of station names that
-        passed (a subset of *receivers*, order preserved) and *dropped* is a
-        list of ``(station, reason)`` pairs for the rejected stations.
+    :returns: ``(kept, dropped)``: the ordered station names that passed, and ``(station, reason)``
+        pairs for the rest.
     """
     expected_samples = int(duration.total_seconds() * sampling_rate)
     if expected_samples == 0:

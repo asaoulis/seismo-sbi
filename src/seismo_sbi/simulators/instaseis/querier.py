@@ -72,11 +72,7 @@ class SyntheticsPreprocessing:
 
 
 def keep_inverse_mapping_out_of_the_numba_disk_cache():
-    """Compile instaseis' ``_inv_mapping_iterative`` in each process instead of caching it on disk.
-
-    Its arguments are other jitted functions, and numba cannot re-save that cache index from a
-    second process ("underlying object has vanished"). Builds of instaseis without numba lack it.
-    """
+    """Compile instaseis' ``_inv_mapping_iterative`` in this process; a build of instaseis without numba has nothing to compile."""
     try:
         from instaseis import finite_elem_mapping
         from numba.core.caching import NullCache

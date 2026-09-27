@@ -1,6 +1,5 @@
 """mseed_to_sbi.py — Convert preprocessed mseed + StationXML to seismo-sbi h5.
 
-This is the explicit SBI-boundary tool described in Phase 2 of the refactor plan.
 It consumes data that has already been downloaded and optionally processed
 (e.g. by custom_download.py), deconvolves the instrument response, applies
 the bandpass filter, and writes the final h5 file that RealNoiseSampler reads.

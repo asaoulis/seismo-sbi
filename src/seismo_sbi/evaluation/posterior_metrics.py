@@ -4,7 +4,7 @@
 validation result into per-parameter bias, width, coverage and figures of merit, including the
 derived gamma, delta, Mw, strike, dip and rake; :func:`write_run_metrics` and
 :func:`scan_run_metrics` store and collect them per run; :func:`spread_stats` summarises the
-source-type spread of one posterior. Heavy imports are lazy.
+source-type spread of one posterior.
 """
 from __future__ import annotations
 
