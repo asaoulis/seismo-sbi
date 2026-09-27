@@ -37,7 +37,7 @@ def test_the_lv2_checkpoint_loads_strictly_into_the_current_model():
     from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
 
     path = LV2_CHECKPOINTS / "checkpoints" / "best_model-LV2.ckpt"
-    state = torch.load(path, map_location="cpu")["state_dict"]
+    state = torch.load(path, map_location="cpu", weights_only=False)["state_dict"]
     assert is_legacy_state_dict(state)
     coords = state["flow._embedding_net.all_station_transformer.station_coords"].numpy()
     trainer = CompressionTrainer(["Z", "E", "N"], coords.reshape(-1, 2), 256, 256)

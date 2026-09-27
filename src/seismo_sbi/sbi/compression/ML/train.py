@@ -16,6 +16,7 @@ import torch
 from .seismogram_transformer import SeismogramTransformer, NPELightningModule
 from .maf import build_nsf
 from .dataloading import make_torch_dataloaders
+from .utils import unpickling_torch_load
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
@@ -365,12 +366,13 @@ class CompressionTrainer:
                 device=self.device,
             )
 
-        self.model = NPELightningModule.load_from_checkpoint(
-            ckpt_path,
-            flow=self.flow,
-            lr=self.lr,
-            weight_decay=self.weight_decay,
-        )
+        with unpickling_torch_load():
+            self.model = NPELightningModule.load_from_checkpoint(
+                ckpt_path,
+                flow=self.flow,
+                lr=self.lr,
+                weight_decay=self.weight_decay,
+            )
         self.model.eval()
         self.model.freeze()
         return ckpt_path

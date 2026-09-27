@@ -1,12 +1,15 @@
 """Checkpoint lookup for the regression compressor.
 
 :func:`get_best_epoch` picks the checkpoint with the lowest ``val_loss`` in its filename;
-:func:`get_best_model` loads it into a ``LightningModel``.
+:func:`get_best_model` loads it into a ``LightningModel``. :func:`unpickling_torch_load` lets
+Lightning load this project's own checkpoints on torch 2.6 and later.
 """
 
+import contextlib
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from .seismogram_transformer import LightningModel
 
@@ -35,7 +38,8 @@ def get_best_model(model_type : LightningModel, name,
         best_ckpt = get_best_epoch(ckpts)
         print("Loading model from checkpoint", best_ckpt, "\n")
         try:
-            model = model_type.load_from_checkpoint(best_ckpt, **kwargs)
+            with unpickling_torch_load():
+                model = model_type.load_from_checkpoint(best_ckpt, **kwargs)
         ### TODO: Need to either catch a specific exception or re-raise the exception
         except Exception as e:
             print("Error loading model from checkpoint:\n", e)
@@ -43,3 +47,16 @@ def get_best_model(model_type : LightningModel, name,
         if 'scaler' in kwargs:
             model.scaler = kwargs['scaler']
         return model
+
+
+@contextlib.contextmanager
+def unpickling_torch_load():
+    """Within the block ``torch.load`` runs with ``weights_only=False``: Lightning checkpoints
+    pickle their hyperparameters, which torch 2.6 and later refuse by default. Trusted files only.
+    """
+    original_load = torch.load
+    torch.load = lambda *args, **kwargs: original_load(*args, **{**kwargs, "weights_only": False})
+    try:
+        yield
+    finally:
+        torch.load = original_load
