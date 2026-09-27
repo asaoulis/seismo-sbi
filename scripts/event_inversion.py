@@ -11,7 +11,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
 from seismo_sbi.sbi import job_runners
 
 def parse_arguments():

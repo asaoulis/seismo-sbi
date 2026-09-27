@@ -11,7 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .pipeline import SingleEventPipeline, MultiEventPipeline, VaryDatasetSizeEventPipeline
+from .pipeline import SingleEventPipeline
+from .pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
 from .scalers import FlexibleScaler, build_flexible_scaler
 from seismo_sbi.simulators.post_processing import build_augmentation_chain_from_parameters
 from ..utils.errors import InvalidConfiguration
