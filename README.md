@@ -7,7 +7,10 @@ This is the official repo used to produce the results in [Saoulis et al. (2025)]
 
 ### Data errors paper
 
-We are currently working on an updated, unified version of this repository. However, some example notebooks are not backware compatible yet. For the data errors paper [Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112), revert to the earlier release to ensure all examples work correctly:
+The data-errors example, [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb)
+([Saoulis et al. (2025)](https://doi.org/10.1093/gji/ggaf112)), runs out of the box on the current
+release (data download, processing and inversion). To reproduce the paper's full set of results
+exactly, use the earlier release:
 
 https://github.com/asaoulis/seismo-sbi/releases/tag/paper-release
 
