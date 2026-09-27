@@ -1,25 +1,9 @@
-"""Benchmark harness for the training-time nuisance-augmentation dataloader.
+"""Benchmark of the training-time nuisance-augmentation dataloader.
 
-Phase-2 diagnosis tool for `.claude/runs/ml-architectures/nuisance-sampling-route`.
-NOT a test (kept out of the suite). Attributes the ~50% slowdown of the
-`training_augmentation` route vs the baked route, and finds the `num_workers` knee.
-
-Runs on the fabricated-kernel pipeline — NO Instaseis/CPS, no network. Builds a
-realistic-shaped on-disk sim set (N stations x C components x T), then times:
-
-  (a) `_load_sim` only                     -- disk read + theta marshalling
-  (b) full `__getitem__`, chain=None       -- baked-equivalent floor (noise add only)
-  (c) full `__getitem__`, aug chain        -- the augmentation route
-  (d) `apply_chain_to_array` per effect    -- isolates adapter + each effect
-  (e) end-to-end DataLoader throughput      -- sweep num_workers / pin_memory / prefetch
-
-Also prints a fixed-seed checksum of one augmented sample so O1/O2 edits can be
-proven behaviour-preserving (compare the number before/after).
-
-Usage:
-    conda run -n seismo-sbi python scripts/bench_aug_dataloader.py \
-        --stations 30 --components ZNE --num-sims 128 --duration 300 \
-        --getitem-iters 400 --loader-epochs 2
+On a synthetic simulation set (no Instaseis or CPS), times ``_load_sim``, ``__getitem__`` with
+and without the augmentation chain, each effect through ``apply_chain_to_array``, and DataLoader
+throughput over ``num_workers``; prints a fixed-seed checksum of one augmented sample. Not a
+test. Usage: ``python scripts/bench_aug_dataloader.py --stations 30 --num-sims 128``.
 """
 import argparse
 import os

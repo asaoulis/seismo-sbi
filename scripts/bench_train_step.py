@@ -1,21 +1,10 @@
-"""Model-only passthrough benchmark: fwd + bwd + optimizer-step ms/step.
+"""Model-only training-step benchmark: forward, backward and optimizer step in ms per step.
 
-The PRIMARY passthrough metric for `.claude/runs/ml-architectures/efficiency-optimization`.
-Builds the REAL production architecture (the brustle-lomax YAML: tcn encoder + source
-conditioning + variable stations + amplitude embedding + RFF posenc + PMA-tokens pooling +
-8-transform NSF flow) via `CompressionTrainer`, synthesises ONE fixed variable-station batch
-in the exact packed format `variable_station_collate` produces, moves it to the GPU once, and
-times the training step `loss = -flow.log_prob(theta, context=x).mean(); loss.backward();
-opt.step()` in a tight loop. NO dataloader, NO augmentation, NO disk — so the number isolates
-GPU forward-pass + backprop compute, which is what the compute optimisations target.
-
-NOT a test (kept out of the suite). Deterministic batch for a fixed --seed so before/after
-numbers are comparable. Reports median/mean ms/step (warmup dropped) + peak GPU mem, and a
-fixed-input log_prob checksum so numerics-touching opts can be checked for non-regression.
-
-Usage:
-    PYTHONPATH=. conda run -n seismo-sbi python scripts/bench_train_step.py \
-        --batch-size 128 --stations 16 --duration 200 --steps 100 --warmup 25
+Builds the production architecture through ``CompressionTrainer``, packs one fixed
+variable-station batch as ``variable_station_collate`` does, and times the step on the GPU with
+no dataloader or disk. Reports median and mean ms per step, peak GPU memory and a fixed-input
+``log_prob`` checksum for comparing numerics before and after a change. Not a test. Usage:
+``python scripts/bench_train_step.py --batch-size 128 --stations 16 --steps 100 --warmup 25``.
 """
 import argparse
 import os

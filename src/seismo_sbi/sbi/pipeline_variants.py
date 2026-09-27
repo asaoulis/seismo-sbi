@@ -136,6 +136,8 @@ class MultiEventPipeline(SingleEventPipeline):
 
 
 class VaryDatasetSizeEventPipeline(MultiEventPipeline):
+    """Repeat the SBI inversion over a list of training-set sizes."""
+
     def __init__(self, pipeline_parameters : PipelineParameters, config_path : str = None):
             
         super().__init__(pipeline_parameters, config_path)
@@ -217,6 +219,8 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
 
 
 class MLEEstimatePipeline(SingleEventPipeline):
+    """Run only the maximum-likelihood search for each job."""
+
 
     def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details, plot = True):
 
