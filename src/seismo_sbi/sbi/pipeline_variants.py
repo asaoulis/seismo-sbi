@@ -111,26 +111,14 @@ class MultiEventPipeline(SingleEventPipeline):
                             covariance=covariance_data)
                     )
 
-        for real_event_name, real_event_data in real_event_jobs.items():
-            if isinstance(real_event_data, str):
-                real_event_path = real_event_data
-                priors = (None, None)
-            elif isinstance(real_event_data, dict):
-                real_event_path = real_event_data['path']
-                priors = tuple(real_event_data['priors'])
-            self.data_loader.data_length = 901
-            D = self.data_loader.load_flattened_simulation_vector(real_event_path)
-            covariance_data = self.data_loader.load_misc_data(real_event_path)
-            self.data_loader.data_length = None
-            for test_noise_name in self.test_noises.keys():
-                job_data.append(
-                    JobData(real_event_name,
-                            test_noise_name,
-                            D, 
-                            theta0=None,
-                            covariance = covariance_data,
-                            priors = priors)
-                )
+        # Real events are truncated to the configured trace length, derived from the seismogram
+        # duration and sampling rate.
+        data_loader = self.data_manager.data_loader
+        data_loader.data_length = self.data_manager.data_length
+        try:
+            job_data += self.data_manager._create_job_data_from_real_events(real_event_jobs, self.test_noises)
+        finally:
+            data_loader.data_length = None
 
         return job_data
 

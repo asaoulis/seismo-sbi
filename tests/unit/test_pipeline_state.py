@@ -38,3 +38,27 @@ def test_the_pipeline_keeps_the_configured_receiver_time_shifts(tmp_path, monkey
     receivers.set_time_shifts({"AAA": 0, "BBB": 0})
 
     assert pipeline.default_receiver_time_shifts == {"AAA": 3}
+
+
+def test_multi_event_real_jobs_are_read_at_the_configured_trace_length():
+    from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline
+
+    lengths_seen = []
+
+    class _DataManager:
+        data_loader = SimpleNamespace(data_length=None)
+        data_length = 201
+
+        def _create_job_data_from_real_events(self, real_event_jobs, test_noises):
+            lengths_seen.append(self.data_loader.data_length)
+            return ["real job"]
+
+    pipeline = MultiEventPipeline.__new__(MultiEventPipeline)
+    pipeline.data_manager = _DataManager()
+    pipeline.test_noises = {}
+
+    job_data = pipeline.create_job_data([], {"event": "/events/event.h5"})
+
+    assert job_data == ["real job"]
+    assert lengths_seen == [201]
+    assert pipeline.data_manager.data_loader.data_length is None
