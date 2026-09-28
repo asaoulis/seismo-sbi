@@ -476,10 +476,10 @@ def make_torch_dataloader(
 
 def make_torch_dataloaders(
     *,
-    data_loader: SimulationDataLoader,
-    data_folder: str,
-    parameter_name_map: dict,
-    synthetic_noise_model_sampler,
+    data_loader: SimulationDataLoader = None,
+    data_folder: str = None,
+    parameter_name_map: dict = None,
+    synthetic_noise_model_sampler=None,
     augmentation_chain=None,
     augmentation_nuisance_params=None,
     data_scaler=None,
@@ -503,37 +503,45 @@ def make_torch_dataloaders(
     cache_in_memory: bool = False,
     cache_preload_workers: int = 16,
     cache_dtype: str = "float32",
+    dataset: Dataset = None,
 ):
     """``(train_loader, val_loader)`` over one dataset, split at ``train_max_index``.
 
-    The dataset arguments go to :class:`TorchSimulationDataset`; ``val_batch_size`` defaults to
-    ``train_batch_size``.
+    The dataset arguments go to :class:`TorchSimulationDataset`; a ``dataset`` already built, such
+    as an :class:`~seismo_sbi.sbi.compression.ML.array_dataset.ArraySimulationDataset`, is split
+    as it is instead. ``val_batch_size`` defaults to ``train_batch_size``.
     """
     if val_batch_size is None:
         val_batch_size = train_batch_size
 
     # Train and val share one dataset, so nuisance augmentation is applied to BOTH
     # (val augmentation ON by design — val loss reflects the augmented distribution).
-    full_dataset = TorchSimulationDataset(
-        data_loader=data_loader,
-        data_folder=data_folder,
-        parameter_name_map=parameter_name_map,
-        synthetic_noise_model_sampler=synthetic_noise_model_sampler,
-        augmentation_chain=augmentation_chain,
-        augmentation_nuisance_params=augmentation_nuisance_params,
-        data_scaler=data_scaler,
-        glob_pattern=glob_pattern,
-        return_tensors=return_tensors,
-        torch_dtype=torch_dtype,
-        conditioning_param_map=conditioning_param_map,
-        conditioning_noise_std=conditioning_noise_std,
-        station_subsampler=station_subsampler,
-        post_noise_augmentation_chain=post_noise_augmentation_chain,
-        post_noise_nuisance_params=post_noise_nuisance_params,
-        cache_in_memory=cache_in_memory,
-        cache_preload_workers=cache_preload_workers,
-        cache_dtype=cache_dtype,
-    )
+    if dataset is not None:
+        if data_loader is not None or data_folder is not None:
+            raise ValueError("Pass either a dataset or the folder to build one from, not both.")
+        full_dataset = dataset
+        station_subsampler = dataset.station_subsampler
+    else:
+        full_dataset = TorchSimulationDataset(
+            data_loader=data_loader,
+            data_folder=data_folder,
+            parameter_name_map=parameter_name_map,
+            synthetic_noise_model_sampler=synthetic_noise_model_sampler,
+            augmentation_chain=augmentation_chain,
+            augmentation_nuisance_params=augmentation_nuisance_params,
+            data_scaler=data_scaler,
+            glob_pattern=glob_pattern,
+            return_tensors=return_tensors,
+            torch_dtype=torch_dtype,
+            conditioning_param_map=conditioning_param_map,
+            conditioning_noise_std=conditioning_noise_std,
+            station_subsampler=station_subsampler,
+            post_noise_augmentation_chain=post_noise_augmentation_chain,
+            post_noise_nuisance_params=post_noise_nuisance_params,
+            cache_in_memory=cache_in_memory,
+            cache_preload_workers=cache_preload_workers,
+            cache_dtype=cache_dtype,
+        )
     train_subset, val_subset = _split_at_index(full_dataset, train_max_index)
     loader_options = _loader_options(num_workers, pin_memory, persistent_workers, prefetch_factor,
                                      station_subsampler)

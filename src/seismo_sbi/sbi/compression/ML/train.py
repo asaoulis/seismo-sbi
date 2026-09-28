@@ -203,7 +203,8 @@ class CompressionTrainer:
         overrides the distributed strategy.
         """
         if dataloader_args is None or "train_max_index" not in dataloader_args:
-            raise ValueError("dataloader_args must include: data_loader, data_folder, parameter_name_map, synthetic_noise_model_sampler, and train_max_index.")
+            raise ValueError("dataloader_args must include train_max_index and either a dataset or "
+                             "data_loader, data_folder, parameter_name_map and synthetic_noise_model_sampler.")
 
         # Build train/val dataloaders from a single split index
         train_dataloader, val_dataloader = make_torch_dataloaders(**dataloader_args)

@@ -13,7 +13,8 @@ from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.compression.ML.array_dataset import ArraySimulationDataset
-from seismo_sbi.sbi.compression.ML.dataloading import StationSubsampler, TorchSimulationDataset
+from seismo_sbi.sbi.compression.ML.dataloading import (
+    StationSubsampler, TorchSimulationDataset, make_torch_dataloaders)
 
 TRACE_LENGTH = 40
 COMPONENTS = "ZEN"
@@ -122,3 +123,22 @@ def test_array_dataset_rejects_x_for_another_station_count():
     x = np.zeros((2, 4, 3, TRACE_LENGTH))
     with pytest.raises(ValueError, match="3 receivers"):
         ArraySimulationDataset(np.zeros((2, 2)), x, _receivers(), COMPONENTS, _noise)
+
+
+def test_loaders_split_an_array_dataset_into_padded_station_batches():
+    rng = np.random.default_rng(0)
+    theta, x = rng.normal(size=(10, 2)), rng.normal(size=(10, 3, 3, TRACE_LENGTH))
+    dataset = ArraySimulationDataset(theta, x, _receivers(), COMPONENTS, _noise,
+                                     station_subsampler=StationSubsampler((0.3, 1.0)))
+    train_loader, val_loader = make_torch_dataloaders(
+        dataset=dataset, train_max_index=8, train_batch_size=4, val_batch_size=2)
+    assert len(train_loader.dataset) == 8 and len(val_loader.dataset) == 2
+    theta_batch, context = next(iter(train_loader))
+    assert theta_batch.shape == (4, 2) and context.shape[0] == 4
+
+
+def test_loaders_refuse_a_dataset_together_with_a_folder(tmp_path):
+    dataset = ArraySimulationDataset(np.zeros((2, 2)), np.zeros((2, 3, 3, TRACE_LENGTH)),
+                                     _receivers(), COMPONENTS, _noise)
+    with pytest.raises(ValueError, match="not both"):
+        make_torch_dataloaders(dataset=dataset, data_folder=str(tmp_path), train_max_index=1)
