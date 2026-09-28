@@ -74,6 +74,7 @@ scripts/configs/santorini/
 scripts/configs/japan/
 scripts/configs/iceland/
 scripts/configs/indo_pacific/
+scripts/configs/JAN/
 examples/configs/santorini_brustle_lomax.yaml
 scripts/*.ipynb
 examples/explore_indonesia.ipynb
