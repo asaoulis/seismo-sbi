@@ -36,6 +36,7 @@ def test_library_progress_records_reach_stdout_as_bare_messages(capsys):
     handlers, level = list(library_logger.handlers), library_logger.level
     try:
         log_progress_to_stdout()
+        log_progress_to_stdout()
         logging.getLogger("seismo_sbi.sbi.pipeline").info("Starting MLE")
         logging.getLogger("seismo_sbi.sbi.pipeline").debug("not shown")
     finally:

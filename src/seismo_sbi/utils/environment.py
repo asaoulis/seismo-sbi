@@ -63,9 +63,13 @@ def stamp_arviz_daily_warning():
 
 
 def log_progress_to_stdout(level=logging.INFO):
-    """Print the library's log records at ``level`` and above to stdout, one message per line."""
+    """Print the library's log records at ``level`` and above to stdout, one message per line;
+    calling it again changes only the level.
+    """
+    library_logger = logging.getLogger("seismo_sbi")
+    library_logger.setLevel(level)
+    if any(getattr(handler, "stream", None) is sys.stdout for handler in library_logger.handlers):
+        return
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter("%(message)s"))
-    library_logger = logging.getLogger("seismo_sbi")
     library_logger.addHandler(handler)
-    library_logger.setLevel(level)
