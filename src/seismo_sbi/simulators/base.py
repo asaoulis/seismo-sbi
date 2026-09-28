@@ -29,6 +29,15 @@ _SIMULATOR_KEYS = frozenset({
 })
 
 
+def point_source_parameters(source: GenericPointSource) -> dict:
+    """The source-parameter dict :meth:`Simulator.run_simulation` reads, for a point source."""
+    if isinstance(source.moment_tensor, SimpleMomentTensor):
+        mechanism = {"earthquake_magnitude": [source.moment_tensor.source_magnitude]}
+    else:
+        mechanism = {"moment_tensor": list(source.moment_tensor.components)}
+    return {"source_location": list(source.source_location), **mechanism}
+
+
 class Simulator(ABC):
 
     def __init__(
@@ -74,6 +83,13 @@ class Simulator(ABC):
         return source_location
 
     def run_simulation(self, source_parameters, **kwargs):
+        """``(source, {station: {component: waveform}})`` for ``source_parameters``, a
+        :class:`~seismo_sbi.simulators.sources.GenericPointSource` or a dict with
+        ``source_location`` (``[latitude, longitude, depth_km, time_s]``), ``moment_tensor``
+        (six components in N.m) or ``earthquake_magnitude``, and any nuisance parameters.
+        """
+        if isinstance(source_parameters, GenericPointSource):
+            source_parameters = point_source_parameters(source_parameters)
         # Copied so the caller's dict is not mutated.
         combined_params = dict(source_parameters)
 
