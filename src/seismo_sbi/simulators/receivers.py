@@ -117,7 +117,7 @@ class Receivers:
         
     def _convert_to_instaseis_receivers(self, path_to_stations, receiver_components_map_path, receiver_time_shifts_map) -> List[Receiver]:
 
-        stations_details = np.genfromtxt(path_to_stations, comments="#", dtype='str')
+        stations_details = np.genfromtxt(path_to_stations, comments="#", dtype='str', ndmin=2)
 
         if receiver_components_map_path is None:
             components = ["Z", "E", "N"]

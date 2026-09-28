@@ -163,3 +163,12 @@ def test_network_station_codes_follow_the_station_file_order():
     codes = Receivers.from_station_file(str(stations)).network_station_codes()
 
     assert codes == [("BK", "BKS"), ("BK", "CMB"), ("BK", "KCC"), ("BK", "ORV"), ("BK", "PKD")]
+
+
+def test_a_station_file_with_one_station_gives_one_receiver(tmp_path):
+    stations = tmp_path / "stations.txt"
+    stations.write_text("BKS BK 37.876221 -122.23558\n")
+
+    receivers = Receivers.from_station_file(str(stations))
+
+    assert receivers.receivers == [Receiver(37.876221, -122.23558, "BK", "BKS", ["Z", "E", "N"])]
