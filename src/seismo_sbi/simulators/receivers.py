@@ -162,7 +162,28 @@ class Receivers:
         with open(path_to_stations, 'w') as f:
             for rec in self.receivers:
                 f.write("%s %s %s %s\n" % (rec.station_name, rec.network, rec.latitude, rec.longitude))
-            
+
+    def network_station_codes(self):
+        """``[(network, station_name)]`` in receiver order, as an FDSN client is queried with."""
+        return [(rec.network, rec.station_name) for rec in self.receivers]
+
+    def to_inventory(self, channel_band="BH"):
+        """An obspy ``Inventory`` with one station per receiver and one channel per component.
+
+        Stations are grouped by network in order of first appearance; elevation and channel depth
+        are 0 m, and a component ``Z`` becomes channel ``BHZ`` for the default ``channel_band``.
+        Time shifts are not carried.
+        """
+        from obspy.core.inventory import Channel, Inventory, Network, Station
+
+        networks = {}
+        for rec in self.receivers:
+            channels = [Channel(channel_band + component, "", rec.latitude, rec.longitude, 0.0, 0.0)
+                        for component in rec.components]
+            station = Station(rec.station_name, rec.latitude, rec.longitude, 0.0, channels=channels)
+            networks.setdefault(rec.network, []).append(station)
+        return Inventory(networks=[Network(code, stations=stations) for code, stations in networks.items()],
+                         source="seismo_sbi")
 
     def plot(self, ax=None, projection=None, add_labels=True, add_scalebar=True, add_north=False, add_receiver_icons=True):
         """Plot the receiver network on a map, on ``ax`` or on a new figure."""

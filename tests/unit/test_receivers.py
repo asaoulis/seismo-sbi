@@ -1,5 +1,6 @@
-"""Receivers built from a station file, a components map and a time-shift map."""
+"""Receivers built from a station file, a components map, a time-shift map, arrays or an obspy Inventory, and written back."""
 import json
+from pathlib import Path
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 
@@ -142,3 +143,23 @@ def test_from_inventory_given_components_overrides_the_channels():
     receivers = Receivers.from_inventory(inventory, components=("Z", "N"))
 
     assert [rec.components for rec in receivers] == [["Z", "N"], ["Z", "N"]]
+
+
+def test_to_inventory_round_trips_through_from_inventory():
+    receivers = Receivers(receivers=[Receiver(37.9, -122.2, "BK", "BKS", ["Z", "E", "N"], 4),
+                                     Receiver(38.0, -120.4, "BK", "CMB", ["Z"]),
+                                     Receiver(36.1, -117.8, "CI", "CLC", ["E", "N"])])
+
+    inventory = receivers.to_inventory()
+    rebuilt = Receivers.from_inventory(inventory)
+
+    assert [channel.code for channel in inventory.select(station="BKS")[0][0]] == ["BHZ", "BHE", "BHN"]
+    assert rebuilt.receivers == [rec._replace(time_shift=0) for rec in receivers]
+
+
+def test_network_station_codes_follow_the_station_file_order():
+    stations = Path(__file__).resolve().parents[2] / "examples" / "configs" / "stations.txt"
+
+    codes = Receivers.from_station_file(str(stations)).network_station_codes()
+
+    assert codes == [("BK", "BKS"), ("BK", "CMB"), ("BK", "KCC"), ("BK", "ORV"), ("BK", "PKD")]
