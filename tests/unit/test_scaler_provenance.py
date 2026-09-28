@@ -249,3 +249,39 @@ def test_the_old_and_new_prior_floors_produce_different_provenance():
     old, new = _prov(3.5), _prov(3.2)
     assert scaler_provenance(old) != scaler_provenance(new)
     assert check_scaler_provenance({"theta_scaler": scaler_provenance(old)}, new) is False
+
+
+# ---- linear bounds, and checkpoints without any record ----
+
+def test_a_real_linear_flexible_scaler_records_the_bounds_of_every_block():
+    provenance = scaler_provenance(FlexibleScaler(_mt_and_location_params()))
+    assert provenance["linear_bounds"]["moment_tensor"] == [[-5e17] * 6, [5e17] * 6]
+    assert provenance["linear_bounds"]["source_location"] == [[36.0, 25.0, 0.0, -2.0], [37.0, 26.0, 55.0, 2.0]]
+
+
+def test_a_linear_checkpoint_used_with_changed_moment_tensor_bounds_fails_strict():
+    trained = scaler_provenance(FlexibleScaler(_mt_and_location_params()))
+    widened = _mt_and_location_params()
+    widened.bounds["moment_tensor"] = [[-1e18] * 6, [1e18] * 6]
+    with pytest.raises(ValueError, match="MISMATCH"):
+        check_scaler_provenance({"theta_scaler": trained}, FlexibleScaler(widened), strict=True)
+
+
+def test_a_scale_shape_checkpoint_used_with_changed_location_bounds_fails_strict():
+    trained = scaler_provenance(FlexibleScaler(_mt_and_location_params(), moment_tensor_scaling="scale_shape"))
+    moved = _mt_and_location_params()
+    moved.bounds["source_location"] = [[35.0, 25.0, 0.0, -2.0], [37.0, 26.0, 55.0, 2.0]]
+    with pytest.raises(ValueError, match="MISMATCH"):
+        check_scaler_provenance({"theta_scaler": trained}, FlexibleScaler(moved, moment_tensor_scaling="scale_shape"),
+                                strict=True)
+
+
+def test_a_record_without_linear_bounds_warns_and_passes_strict(capsys):
+    scaler = FlexibleScaler(_mt_and_location_params())
+    assert check_scaler_provenance({"theta_scaler": {"moment_tensor": "linear"}}, scaler, strict=True) is True
+    assert "no linear_bounds" in capsys.readouterr().out
+
+
+def test_a_checkpoint_with_no_record_fails_strict():
+    with pytest.raises(ValueError, match="no theta_scaler provenance"):
+        check_scaler_provenance({}, FlexibleScaler(_mt_and_location_params()), strict=True)

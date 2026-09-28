@@ -216,9 +216,9 @@ def scaler_provenance(scaler) -> dict:
     ``ml_scaler``/``bounds`` after training and every recovered moment is silently wrong,
     with no error anywhere.  Compare with :func:`check_scaler_provenance`.
 
-    Captures the resolved NUMBERS (the log10 M0 window), not the config spelling, so
-    ``mt_log_decades: auto`` and the equivalent explicit value compare equal — what matters
-    is the map, not how it was written.
+    Captures the resolved NUMBERS (the log10 M0 window of a scale-shape moment tensor, and
+    ``linear_bounds``, the ``[lower, upper]`` of every linearly scaled block), not the config
+    spelling, so ``mt_log_decades: auto`` and the equivalent explicit value compare equal.
     """
     out = {"moment_tensor": "linear"}
     mt = getattr(scaler, "mt_scaler", None) or getattr(scaler, "_mt_scaler", None)
@@ -233,33 +233,64 @@ def scaler_provenance(scaler) -> dict:
         out = {"moment_tensor": "scale_shape",
                "log10_m0_min": round(float(mt.log10_m0_min), 9),
                "log10_m0_max": round(float(mt.log10_m0_max), 9)}
+    linear_bounds = _linear_bounds(scaler)
+    if linear_bounds:
+        out["linear_bounds"] = linear_bounds
     return out
+
+
+def _linear_bounds(scaler) -> dict:
+    """``{block: [lower, upper]}`` of every :class:`ZeroOneScaler` block of a :class:`FlexibleScaler`."""
+    blocks = {}
+    for (start, _), block_scaler in zip(getattr(scaler, "indices", []), getattr(scaler, "scalers", [])):
+        if isinstance(block_scaler, ZeroOneScaler):
+            try:
+                blocks[scaler.index_to_param_type[start]] = [
+                    np.atleast_1d(np.asarray(bound, dtype=float)).tolist() for bound in block_scaler.bounds]
+            except (TypeError, ValueError):
+                continue
+    return blocks
+
+
+def _same_linear_bounds(recorded: dict, current: dict) -> bool:
+    return (recorded.keys() == current.keys()
+            and all(np.allclose(np.asarray(recorded[block], dtype=float), np.asarray(current[block], dtype=float),
+                                rtol=1e-9, atol=0.0) for block in recorded))
 
 
 def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool:
     """Compare a checkpoint's recorded theta scaling against the one about to be used.
 
-    ``meta`` is the parsed ``model_meta.json``.  Returns True when they agree (or when the
-    checkpoint predates the record and nothing can be checked).  A mismatch is the failure
-    mode that motivated this: it produces a silent, constant magnitude offset rather than a
-    crash, so it is reported loudly and — with ``strict`` — fatally.
+    ``meta`` is the parsed ``model_meta.json``.  Returns True when they agree.  A mismatch
+    produces a constant offset in every recovered parameter rather than a crash, so it is
+    reported loudly and, with ``strict``, raises ``ValueError``.  A checkpoint with no record
+    raises under ``strict`` and otherwise warns and returns True; a record without
+    ``linear_bounds`` (written before they were recorded) warns that the bounds are unchecked.
     """
     recorded = (meta or {}).get("theta_scaler") or \
         ((meta or {}).get("model_config") or {}).get("theta_scaler")
     if not recorded:
-        print("WARNING: checkpoint records no theta_scaler provenance (trained before it was "
-              "added); the scaling being used cannot be verified against training.")
+        msg = ("checkpoint records no theta_scaler provenance; the scaling being used cannot be "
+               "verified against training.")
+        if strict:
+            raise ValueError(msg)
+        print(f"WARNING: {msg}")
         return True
     current = scaler_provenance(scaler)
     same = (recorded.get("moment_tensor") == current.get("moment_tensor")
             and all(abs(float(recorded.get(k, 0.0)) - float(current.get(k, 0.0))) < 1e-6
                     for k in ("log10_m0_min", "log10_m0_max")
                     if k in recorded or k in current))
+    if "linear_bounds" in recorded and "linear_bounds" in current:
+        same = same and _same_linear_bounds(recorded["linear_bounds"], current["linear_bounds"])
+    elif "linear_bounds" in current:
+        print("WARNING: checkpoint records no linear_bounds; the bounds of the linearly scaled "
+              "parameters cannot be verified against training.")
     if not same:
         msg = ("theta-scaler MISMATCH between checkpoint and config.\n"
                f"    trained with : {recorded}\n"
                f"    about to use : {current}\n"
-               "  Recovered moments will be WRONG by a constant factor. Use the config the "
+               "  Recovered parameters will be WRONG by a constant factor. Use the config the "
                "checkpoint was trained with, or retrain.")
         if strict:
             raise ValueError(msg)

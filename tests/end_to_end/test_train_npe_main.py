@@ -169,7 +169,8 @@ def test_the_sidecar_records_the_configured_architecture(launcher_run):
     assert meta["model_config"]["station_encoder"] == "cnn"
     assert meta["model_config"]["channels"] == TrainingConfiguration().model_dim
     assert meta["trace_length"] == compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
-    assert meta["model_config"]["theta_scaler"] == {"moment_tensor": "linear"}
+    assert meta["model_config"]["theta_scaler"]["moment_tensor"] == "linear"
+    assert "moment_tensor" in meta["model_config"]["theta_scaler"]["linear_bounds"]
 
 
 def test_the_generate_stage_stops_before_training(tmp_path, monkeypatch):
