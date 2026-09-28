@@ -91,6 +91,21 @@ class TorchSimulationDataset(Dataset):
         cache_dtype: str = "float32",
         fixed_item_masks=None,
     ):
+        self._set_sample_processing(
+            data_loader, parameter_name_map, synthetic_noise_model_sampler, data_scaler,
+            augmentation_chain, augmentation_nuisance_params, return_tensors, torch_dtype,
+            conditioning_param_map, conditioning_noise_std, station_subsampler,
+            post_noise_augmentation_chain, post_noise_nuisance_params, fixed_item_masks)
+        self._index_simulations(data_folder, glob_pattern, cache_in_memory, cache_preload_workers,
+                                cache_dtype)
+
+    def _set_sample_processing(self, data_loader, parameter_name_map, synthetic_noise_model_sampler,
+                               data_scaler, augmentation_chain, augmentation_nuisance_params,
+                               return_tensors, torch_dtype, conditioning_param_map,
+                               conditioning_noise_std, station_subsampler,
+                               post_noise_augmentation_chain, post_noise_nuisance_params,
+                               fixed_item_masks):
+        """What is done to each sample: augmentation, noise, scaling, station selection and conditioning."""
         self.data_loader = data_loader
 
         # Per-item ``(keep_indices, zero_channels)`` in the sorted order of ``paths``; they replace
@@ -135,6 +150,9 @@ class TorchSimulationDataset(Dataset):
         self.post_noise_augmentation_chain = post_noise_augmentation_chain
         self.post_noise_nuisance_params = post_noise_nuisance_params or {}
 
+    def _index_simulations(self, data_folder, glob_pattern, cache_in_memory, cache_preload_workers,
+                           cache_dtype):
+        """Where samples come from: the sorted HDF5 files under ``data_folder``, optionally held in RAM."""
         self.paths = sorted(glob.glob(os.path.join(data_folder, glob_pattern)))
         if len(self.paths) == 0:
             raise FileNotFoundError(f"No simulations matched {glob_pattern} under {data_folder}")
