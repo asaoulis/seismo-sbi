@@ -137,7 +137,7 @@ configuration and calls one library entry point. Run any of them with `--help` f
 | `event_inversion.py` | runs a complete pipeline (Gaussian likelihood and/or SBI) on the synthetic and real events of a configuration | `--config` |
 | `custom_download.py` | downloads waveforms and StationXML from FDSN providers | `--stations_file`, `--output_dir`, `--providers`, `--starttime`, `--endtime` |
 | `build_catalogue.py` | builds event and noise HDF5 catalogues from downloaded data | see step 2 below |
-| `custom_preprocess.py` | prepares one event and its noise without a full catalogue | `--data_dir`, `--output_dir`, `--event_name`, `--event_starttime`, `--event_endtime` |
+| `prepare_event.py` | prepares one event and its pre-event noise from a `preprocessing:` configuration block | `--config`, `--event-name` |
 | `prepare_azores_example.py` | downloads and prepares the data of the Azores example notebook | `--output_dir`, `--force` |
 | `build_axisem_ensemble.py` | stages an AxiSEM ensemble of perturbed 1-D Earth models from one configuration | `--config`, `--dry-run`, `--from-bm-dir`, `--name` |
 
@@ -200,16 +200,16 @@ This produces:
 
 Each run is resumable: existing h5 and daily files are skipped automatically.
 
-For a single event without a full noise catalogue, `custom_preprocess.py` is simpler:
+For a single event without a full noise catalogue, `prepare_event.py` is simpler. Its
+`preprocessing:` block names the raw data, the station file, the event window, the band and the
+output (`examples/configs/LV2_preprocessing.yaml` is the Long Valley event):
 
 ```bash
-python custom_preprocess.py \
-    --data_dir      /data/project \
-    --output_dir    /data/noise/long_valley \
-    --event_name    LV2 \
-    --event_starttime 1997-11-22T17:20:35 \
-    --event_endtime   1997-11-22T17:23:54
+python prepare_event.py --config ../examples/configs/LV2_preprocessing.yaml
 ```
+
+From Python, `prepare_event(PreprocessingConfiguration.from_yaml(path))` in
+`seismo_sbi.data_handling.preprocessing.prepare_event` does the same.
 
 ### 3. Run the SBI inversion
 

@@ -16,7 +16,7 @@ from seismo_sbi.sbi.configuration import SBI_Configuration
 REPO = Path(__file__).resolve().parents[2]
 CHECKED_DIRS = ["scripts/configs/azores", "scripts/configs/croatia", "scripts/configs/JAN",
                 "scripts/configs/long_valley", "scripts/configs/ridgecrest"]
-NOT_PIPELINE_CONFIGS = {"examples/configs/axisem_ensemble.yaml"}
+NOT_PIPELINE_CONFIGS = {"examples/configs/axisem_ensemble.yaml", "examples/configs/LV2_preprocessing.yaml"}
 
 
 def committed_configs():

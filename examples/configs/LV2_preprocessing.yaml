@@ -1,0 +1,19 @@
+# Preprocessing of the 1997-11-22 Long Valley (LV2) event: raw BH? data and StationXML from
+# custom_download.py to the event file the LV2 configurations read. Paths are relative to examples/.
+preprocessing:
+  data_dir: './data/LV2'
+  output_dir: './data/preprocessed/LV2'
+  stations_file: './configs/stations.txt'
+  event_name: 'LV2'
+  event_start_utc: '1997-11-22T17:20:35'
+  event_end_utc: '1997-11-22T17:23:54'
+  sampling_rate_hz: 1.0
+  filter:
+    freqmin_hz: 0.02
+    freqmax_hz: 0.05
+    corners: 4
+    zerophase: false
+  prefilter_hz: [0.005, 0.01, 0.2, 0.4]
+  covariance_window_s: 300
+  channel_glob: 'BH?'
+  event_file: 'LV2_noise_filt_20_50_1hz.h5'
