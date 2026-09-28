@@ -22,10 +22,11 @@ from seismo_sbi.utils.seismograms import compute_data_vector_length
 # --- Internal helpers ---
 
 def _rename_component(channel: str) -> str:
-    """The component key (``Z``, ``1`` or ``2``) of a SEED channel code such as ``BHE``."""
+    """The component key of a SEED channel code ending in Z, E or N: ``Z``, ``1`` (east) or
+    ``2`` (north). A channel coded 1 or 2 has not been rotated to north/east and is rejected."""
+    if channel[-1] not in ("Z", "E", "N"):
+        raise ValueError(f"Cannot map channel '{channel}' to Z/E/N; rotate 1/2 channels to north/east first")
     component = component_alias(channel[-1])
-    if component not in ("Z", "1", "2"):
-        raise ValueError(f"Cannot map channel '{channel}' to Z/1/2")
     return component
 
 

@@ -81,15 +81,16 @@ def test_zero_fill_rejects_a_station_ordered_against_the_layout(tmp_path):
 
 
 @pytest.mark.parametrize("channel, component", [
-    ("BHZ", "Z"), ("BHE", "1"), ("BHN", "2"), ("BH1", "1"), ("BH2", "2"), ("HHZ", "Z"), ("EHE", "1"),
+    ("BHZ", "Z"), ("BHE", "1"), ("BHN", "2"), ("HHZ", "Z"), ("EHE", "1"),
 ])
 def test_rename_component_reads_the_orientation_code(channel, component):
     assert _rename_component(channel) == component
 
 
-def test_rename_component_rejects_a_non_orientation_channel():
+@pytest.mark.parametrize("channel", ["LOG", "BH1", "BH2"])
+def test_rename_component_rejects_a_channel_not_coded_z_e_or_n(channel):
     with pytest.raises(ValueError):
-        _rename_component("LOG")
+        _rename_component(channel)
 
 
 def synthetic_stream(station_names, t_start, sampling_rate_hz=1.0, n_samples=120):

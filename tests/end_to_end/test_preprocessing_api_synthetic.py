@@ -745,29 +745,30 @@ class TestExportEdgeCases:
                         f"{sta}/{comp}: expected scalar variance, got shape {arr.shape}"
                     )
 
-    def test_channel_code_variants_bh1_bh2(self, tmp_path):
-        """BH1/BH2 (numeric suffixes) must map to '1'/'2'."""
-        st = _make_stream(channels=["BHZ", "BH1", "BH2"], stations=["STA1"])
-        proc = deconvolve_and_filter(st, remove_response=False,
+    @pytest.mark.parametrize("band", ["BH", "HH"])
+    def test_numeric_horizontals_are_exported_as_north_and_east(self, tmp_path, band):
+        """A ?H1 channel at azimuth 0 lands in the north key ('2'), a ?H2 at 90 in the east key ('1')."""
+        st = _make_stream(channels=[f"{band}Z", f"{band}1", f"{band}2"], stations=["STA1"])
+        st.select(channel=f"{band}2")[0].data *= 3
+        channels = [obspy.core.inventory.Channel(code=f"{band}{code}", location_code="", latitude=0, longitude=0,
+                                                 elevation=0, depth=0, azimuth=azimuth_deg, dip=dip_deg, sample_rate=SR_DATA)
+                    for code, azimuth_deg, dip_deg in [("Z", 0, -90), ("1", 0, 0), ("2", 90, 0)]]
+        station = obspy.core.inventory.Station("STA1", 0, 0, 0, channels=channels)
+        inventory = Inventory(networks=[obspy.core.inventory.Network(NETWORK, stations=[station])], source="test")
+        proc = deconvolve_and_filter(st, inventory=inventory, remove_response=False,
                                      filter_kwargs=FILTER_KWARGS, target_sr=SR_TARGET)
-        out = tmp_path / "bh12.h5"
+        out = tmp_path / f"{band}12.h5"
         export_to_sbi_h5(proc, ["STA1"], (EVENT_START, EVENT_END),
                          out, SR_TARGET, COV_WINDOW)
         with h5py.File(out, "r") as f:
-            keys = set(f["outputs"]["STA1"].keys())
-            assert keys == {"Z", "1", "2"}, f"BH1/BH2 mapping failed: {keys}"
+            outputs = f["outputs"]["STA1"]
+            assert set(outputs.keys()) == {"Z", "1", "2"}
+            np.testing.assert_allclose(outputs["1"][()], 3 * outputs["2"][()], rtol=0, atol=1e-2)
 
-    def test_channel_code_variants_hh1_hh2(self, tmp_path):
-        """HH1/HH2 (high-gain channels with numeric suffix) → '1'/'2'."""
-        st = _make_stream(channels=["HHZ", "HH1", "HH2"], stations=["STA1"])
-        proc = deconvolve_and_filter(st, remove_response=False,
-                                     filter_kwargs=FILTER_KWARGS, target_sr=SR_TARGET)
-        out = tmp_path / "hh12.h5"
-        export_to_sbi_h5(proc, ["STA1"], (EVENT_START, EVENT_END),
-                         out, SR_TARGET, COV_WINDOW)
-        with h5py.File(out, "r") as f:
-            keys = set(f["outputs"]["STA1"].keys())
-            assert keys == {"Z", "1", "2"}, f"HH1/HH2 mapping failed: {keys}"
+    def test_numeric_horizontals_without_an_inventory_raise(self):
+        st = _make_stream(channels=["BHZ", "BH1", "BH2"], stations=["STA1"])
+        with pytest.raises(ValueError, match="inventory"):
+            deconvolve_and_filter(st, remove_response=False, filter_kwargs=FILTER_KWARGS, target_sr=SR_TARGET)
 
     def test_station_with_only_two_components_excluded(self, tmp_path):
         """A station with fewer than 3 components must not appear in /outputs."""
