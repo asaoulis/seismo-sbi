@@ -34,9 +34,9 @@ from .noises.toeplitz_covariances import (
 from .noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
 from .noises.covariance_estimator import build_cov_sigma2_dict
 
-from .sbi_inference import SBI_Inference
-from . import likelihood as likelihood
-from .lsquares.least_squares import IterativeLeastSquaresSolver
+from .inversion.sbi_inference import SBI_Inference
+from .inversion import likelihood as likelihood
+from .inversion.least_squares import IterativeLeastSquaresSolver
 
 from .scalers import FlexibleScaler
 from .dataset_compressor import DatasetCompressor

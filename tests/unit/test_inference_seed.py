@@ -1,7 +1,7 @@
 """A seed in ``inference.sbi`` makes the draws the SBI leg makes in worker processes reproducible."""
 import numpy as np
 
-from seismo_sbi.sbi import likelihood
+from seismo_sbi.sbi.inversion import likelihood
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
 from seismo_sbi.sbi.dataset_generator import DatasetGenerator

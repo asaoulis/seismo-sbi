@@ -6,7 +6,7 @@ independent chains have mixed (R-hat ~1) or are stuck in per-walker islands
 """
 import numpy as np
 
-from seismo_sbi.sbi.likelihood import split_rhat
+from seismo_sbi.sbi.inversion.likelihood import split_rhat
 
 
 def test_rhat_converged_chains_near_one():

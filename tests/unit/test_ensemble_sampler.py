@@ -3,7 +3,7 @@ import multiprocessing
 
 import numpy as np
 
-from seismo_sbi.sbi import likelihood
+from seismo_sbi.sbi.inversion import likelihood
 
 CENTRE = np.array([0.3, 0.6])
 

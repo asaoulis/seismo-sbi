@@ -1,7 +1,7 @@
 """The Gaussian-likelihood MCMC recovers the analytical posterior of a linear forward model."""
 import numpy as np
 
-from seismo_sbi.sbi.likelihood import GaussianLikelihoodEvaluator, generate_samples
+from seismo_sbi.sbi.inversion.likelihood import GaussianLikelihoodEvaluator, generate_samples
 from seismo_sbi.sbi.noises.diagonal_covariances import ScalarEmpiricalCovariance
 from seismo_sbi.sbi.scalers import ZeroOneScaler
 

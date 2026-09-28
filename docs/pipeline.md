@@ -168,7 +168,7 @@ data, any function from source parameters to a data vector, a scaler to the unit
 covariance's loss; `generate_samples` runs the chains:
 
 ```python
-from seismo_sbi.sbi.likelihood import GaussianLikelihoodEvaluator, generate_samples
+from seismo_sbi.sbi.inversion.likelihood import GaussianLikelihoodEvaluator, generate_samples
 from seismo_sbi.sbi.scalers import ZeroOneScaler
 
 scaler = ZeroOneScaler((lower_bounds, upper_bounds))
