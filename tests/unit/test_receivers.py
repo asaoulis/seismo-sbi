@@ -87,3 +87,58 @@ def test_receivers_report_their_length_iteration_and_names():
     assert len(receivers) == 2
     assert list(receivers) == list(receivers.iterate())
     assert repr(receivers) == "Receivers(2 stations: BKS, CMB)"
+
+
+def _station_with_channels(code, channel_codes):
+    from obspy.core.inventory import Channel, Station
+
+    channels = [Channel(channel_code, "", 37.9, -122.2, 244.0, 0.0) for channel_code in channel_codes]
+    return Station(code, 37.9, -122.2, 244.0, channels=channels)
+
+
+def _inventory(*stations):
+    from obspy.core.inventory import Inventory, Network
+
+    return Inventory(networks=[Network("BK", stations=list(stations))], source="test")
+
+
+def test_from_inventory_reads_each_station_s_channels_in_z_e_n_order():
+    inventory = _inventory(_station_with_channels("BKS", ["BHN", "BHZ", "BHE"]),
+                           _station_with_channels("CMB", ["BH2", "BHZ", "BH1"]))
+
+    receivers = Receivers.from_inventory(inventory)
+
+    assert [rec.components for rec in receivers] == [["Z", "E", "N"], ["Z", "E", "N"]]
+
+
+def test_from_inventory_keeps_only_channels_matching_the_pattern():
+    inventory = _inventory(_station_with_channels("BKS", ["BHZ", "BHE", "BHN"]))
+
+    receivers = Receivers.from_inventory(inventory, channels="BHZ")
+
+    assert [rec.components for rec in receivers] == [["Z"]]
+
+
+def test_from_inventory_ignores_state_of_health_channels():
+    inventory = _inventory(_station_with_channels("BKS", ["BHZ", "LCE", "ACE", "VEC", "LOG"]))
+
+    receivers = Receivers.from_inventory(inventory)
+
+    assert [rec.components for rec in receivers] == [["Z"]]
+
+
+def test_from_inventory_drops_a_station_whose_channels_give_no_component():
+    inventory = _inventory(_station_with_channels("BKS", ["BHZ"]),
+                           _station_with_channels("CMB", ["LOG", "HHZ", "HHE"]))
+
+    receivers = Receivers.from_inventory(inventory, channels="BH?")
+
+    assert [rec.station_name for rec in receivers] == ["BKS"]
+
+
+def test_from_inventory_given_components_overrides_the_channels():
+    inventory = _inventory(_station_with_channels("BKS", ["BHZ"]), _station_with_channels("CMB", []))
+
+    receivers = Receivers.from_inventory(inventory, components=("Z", "N"))
+
+    assert [rec.components for rec in receivers] == [["Z", "N"], ["Z", "N"]]

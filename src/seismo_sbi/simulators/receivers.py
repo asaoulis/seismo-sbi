@@ -6,6 +6,7 @@ the order every seismogram array in the pipeline is in. It is built from a stati
 optional components map and per-station shift map), from arrays, or from an obspy ``Inventory``.
 """
 
+from fnmatch import fnmatchcase
 from typing import NamedTuple, List
 import numpy as np
 import json
@@ -28,6 +29,18 @@ class Receiver(NamedTuple):
     #: Static correction in samples at the pipeline sampling rate, applied to every component of
     #: this station; positive delays the trace.
     time_shift : int = 0
+
+
+def inventory_station_components(station, channels="?H?"):
+    """The components, ordered Z, E, N, of an obspy ``Station`` from its channel codes matching ``channels``.
+
+    ``1`` and ``2`` orientation codes read as ``E`` and ``N``. A station without channels records Z, E, N.
+    """
+    if not station.channels:
+        return ["Z", "E", "N"]
+    orientations = {channel.code[-1] for channel in station.channels if fnmatchcase(channel.code, channels)}
+    orientations = {{"1": "E", "2": "N"}.get(code, code) for code in orientations}
+    return [component for component in ("Z", "E", "N") if component in orientations]
 
 
 class Receivers:
@@ -63,12 +76,26 @@ class Receivers:
         ])
 
     @classmethod
-    def from_inventory(cls, inventory, components=("Z", "E", "N")):
-        """One receiver per station of an obspy ``Inventory`` (e.g. read from StationXML), in its order."""
-        return cls(receivers=[
-            Receiver(station.latitude, station.longitude, network.code, station.code, list(components))
-            for network in inventory for station in network
-        ])
+    def from_inventory(cls, inventory, channels="?H?", components=None):
+        """One receiver per station of an obspy ``Inventory`` (e.g. read from StationXML), in its order.
+
+        A station records the components named by the last letter of its channel codes that match
+        the ``channels`` pattern (default: seismometer channels), with ``1`` read as ``E`` and ``2``
+        as ``N``, ordered Z, E, N; other orientation codes are ignored. A station listed without
+        channels records Z, E, N; one whose channels give no component is dropped. ``components``,
+        when given, is used for every station instead.
+        """
+        receivers = []
+        for network in inventory:
+            for station in network:
+                if components is not None:
+                    station_components = list(components)
+                else:
+                    station_components = inventory_station_components(station, channels)
+                if station_components:
+                    receivers.append(Receiver(station.latitude, station.longitude, network.code, station.code,
+                                              station_components))
+        return cls(receivers=receivers)
 
     def __len__(self):
         return len(self.receivers or [])
