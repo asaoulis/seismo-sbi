@@ -1,6 +1,7 @@
-"""Selecting which real event an evaluation loads."""
+"""Loading a real event or event file for evaluation, finding a run's checkpoint directory and rebuilding its posterior."""
 
 import inspect
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -39,3 +40,46 @@ def test_load_observation_undoes_the_receiver_time_shifts(tmp_path):
     np.testing.assert_array_equal(observation[0, 0], np.r_[traces["AAA"][2:], 0.0, 0.0])
     np.testing.assert_array_equal(observation[1, 0], traces["BBB"])
     assert [receiver.time_shift for receiver in receivers] == [-2, 0]
+
+
+def test_resolve_ckpt_dir_finds_the_nested_run_directory(tmp_path):
+    from seismo_sbi.evaluation.inference import resolve_ckpt_dir
+
+    run_directory = tmp_path / "model" / "run_1"
+    run_directory.mkdir(parents=True)
+    (run_directory / "model_meta.json").write_text("{}")
+    checkpoint_only = tmp_path / "staged" / "run_2" / "checkpoints"
+    checkpoint_only.mkdir(parents=True)
+    (checkpoint_only / "best_model-epoch=3.ckpt").touch()
+
+    assert resolve_ckpt_dir(tmp_path / "model") == run_directory
+    assert resolve_ckpt_dir(run_directory) == run_directory
+    assert resolve_ckpt_dir(tmp_path / "staged") == checkpoint_only.parent
+    with pytest.raises(FileNotFoundError):
+        resolve_ckpt_dir(tmp_path / "missing")
+
+
+LV2_CHECKPOINTS = Path(__file__).resolve().parents[2] / "examples" / "ml-checkpoints"
+
+
+@pytest.mark.requires_data
+@pytest.mark.skipif(not (LV2_CHECKPOINTS / "checkpoints" / "best_model-LV2.ckpt").is_file(),
+                    reason="needs the LV2 checkpoint")
+def test_build_ml_posterior_from_the_lv2_checkpoint():
+    import numpy as np
+    import torch
+
+    from seismo_sbi.evaluation.inference import build_ml_posterior
+    from seismo_sbi.simulators.receivers import Receivers
+
+    receivers = Receivers.from_station_file(str(LV2_CHECKPOINTS.parent / "configs" / "stations.txt"))
+    pipeline = SimpleNamespace(data_manager=SimpleNamespace(data_loader=SimpleNamespace(components="ZEN")),
+                               simulation_parameters=SimpleNamespace(receivers=receivers), trace_length=200)
+
+    posterior = build_ml_posterior(LV2_CHECKPOINTS, pipeline)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    observation = torch.as_tensor(np.random.default_rng(0).normal(scale=1e-6, size=(1, 5, 3, 200)),
+                                  dtype=torch.float32).to(device)
+    samples = posterior.sample((50,), observation, show_progress_bars=False).cpu().numpy()
+
+    assert samples.shape == (50, 6) and np.all(np.isfinite(samples))
