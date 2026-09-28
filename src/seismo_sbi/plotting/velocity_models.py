@@ -1,6 +1,6 @@
 """Event maps and 1-D velocity-model perturbation figures.
 
-:func:`add_event_to_map` places an event's beachball, labelled with Mw from :func:`compute_mw`, on a
+:func:`add_event_to_map` places an event's beachball, labelled with its moment magnitude, on a
 cartopy map; :func:`plot_perturbations` draws perturbed layered models around the fiducial one.
 """
 
@@ -10,15 +10,7 @@ import numpy as np
 from pyrocko import moment_tensor as mtm
 from pyrocko.plot.beachball import plot_beachball_mpl
 
-from seismo_sbi.moment_tensor.conventions import create_matrix
-
-
-def compute_mw(moment_tensor_matrix):
-    """Mw of a ``(3, 3)`` moment tensor in N m: ``(log10 M0 - 9.1) / 1.5`` with
-    ``M0 = sqrt(sum(M_ij^2) / 2)``, the same as ``moment_tensor.decomposition.get_MW_and_epsilon``."""
-    M0 = np.sqrt(0.5 * np.sum(moment_tensor_matrix**2))
-    Mw = (2.0 / 3.0) * (np.log10(M0) - 9.1)
-    return Mw
+from seismo_sbi.moment_tensor.conventions import create_matrix, moment_magnitude
 
 
 def add_event_to_map(
@@ -67,8 +59,7 @@ def add_event_to_map(
     mt_matrix = create_matrix(mt_sph)
     mt = mtm.MomentTensor(m_up_south_east=mt_matrix)
 
-    # Compute Mw
-    Mw = compute_mw(mt_matrix)
+    Mw = moment_magnitude(mt_sph)
     label = f"{event_name}\n$M_w$ {Mw:.2f}"
 
     # --- Plot actual source location ---

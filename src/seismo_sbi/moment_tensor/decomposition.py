@@ -8,15 +8,13 @@ builds from the up-south-east ones.
 import numpy as np
 from pyrocko import moment_tensor as pmt
 
-from seismo_sbi.moment_tensor.conventions import create_matrix, scalar_moment
+from seismo_sbi.moment_tensor.conventions import create_matrix, moment_magnitude
 
 
 def get_MW_and_epsilon(moment_tensor_sol):
 
     moment_tensor_matrix = create_matrix(moment_tensor_sol)
-    M_0 = scalar_moment(moment_tensor_sol)
-
-    MW = (np.log10(M_0) - 9.1)/1.5
+    MW = moment_magnitude(moment_tensor_sol)
 
     M_isotropic = 1/3 * np.trace(moment_tensor_matrix) * np.eye(3)
     M_deviatoric = moment_tensor_matrix - M_isotropic
