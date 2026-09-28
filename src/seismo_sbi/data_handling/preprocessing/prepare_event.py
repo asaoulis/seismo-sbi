@@ -66,8 +66,8 @@ class PreprocessingConfiguration:
     @classmethod
     def from_yaml_block(cls, block):
         """The configuration from the parsed ``preprocessing`` mapping."""
-        known = {f.name for f in fields(cls)}
-        unknown = sorted(set(block) - known)
+        unknown = sorted(set(block) - {f.name for f in fields(cls)})
+        unknown += sorted(f"filter.{key}" for key in set(block.get("filter") or {}) - {f.name for f in fields(BandpassFilter)})
         missing = [f.name for f in fields(cls) if f.default is MISSING and f.name not in block]
         if unknown or missing:
             raise InvalidConfiguration(f"preprocessing block: unknown keys {unknown}, missing keys {missing}")

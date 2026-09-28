@@ -29,6 +29,15 @@ def test_a_block_without_a_sampling_rate_is_rejected():
         PreprocessingConfiguration.from_yaml_block(block)
 
 
+def test_an_unknown_filter_key_is_rejected():
+    block = {"data_dir": "d", "output_dir": "o", "stations_file": "s", "event_name": "e",
+             "event_start_utc": "2020-03-01T12:00:00", "event_end_utc": "2020-03-01T12:01:00",
+             "sampling_rate_hz": 1.0, "filter": {"freqmin_hz": 0.02, "freqmax_hz": 0.05, "type": "bandpass"}}
+
+    with pytest.raises(InvalidConfiguration, match="filter.type"):
+        PreprocessingConfiguration.from_yaml_block(block)
+
+
 def _write_raw_day(data_dir, station, rng):
     day = data_dir / station / f"{START.year}.{START.julday:03d}"
     day.mkdir(parents=True)
