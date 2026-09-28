@@ -732,3 +732,13 @@ def test_a_config_without_the_synthetic_filter_rate_is_rejected(tmp_path):
             "stations_path": None, "station_components_path": None, "seismogram_duration": 30,
             "sampling_rate": 1, "syngine_address": None,
             "processing": {"filter": {"type": "bandpass", "freqmin": 0.01, "freqmax": 0.1}, "sampling_rate": 1}})
+
+
+def test_the_pipeline_documentation_names_every_pipeline_type():
+    from pathlib import Path
+
+    from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
+
+    documentation = (Path(__file__).resolve().parents[2] / "docs" / "pipeline.md").read_text()
+
+    assert all(f"`{name}`" in documentation for name in PIPELINE_CLASSES)
