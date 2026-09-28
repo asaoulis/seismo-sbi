@@ -126,3 +126,18 @@ def test_stream_to_seismogram_map_skips_absent_stations_and_components():
     seismogram_map = stream_to_seismogram_map(stream, ["AAA", "ZZZ"], t_start, t_start + 10)
     assert list(seismogram_map) == ["AAA"]
     assert set(seismogram_map["AAA"]) == {"Z", "1"}
+
+
+def test_event_window_has_n_plus_one_samples_at_20_hz():
+    from seismo_sbi.data_handling.preprocessing.sbi_export import _exact_end_time
+    from seismo_sbi.data_handling.preprocessing.windowing import slice_event_window
+
+    start = UTCDateTime("2020-03-01T12:00:00")
+    stream = Stream([Trace(np.zeros(2000), header=dict(station="AAA", channel=f"BH{component}",
+                                                        sampling_rate=20.0, starttime=start - 10))
+                     for component in "ZEN"])
+
+    sliced = slice_event_window(stream, start, start + 30.3, 20.0)
+
+    assert [trace.stats.npts for trace in sliced] == [607, 607, 607]
+    assert _exact_end_time(start, start + 30.3, 20.0) - start == pytest.approx(30.3)

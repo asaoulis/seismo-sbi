@@ -8,7 +8,6 @@ and ``SimulationDataLoader`` consume these files unchanged. Channel keys on disk
 the pre-event window and averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -1)``.
 """
 
-import math
 from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -17,6 +16,7 @@ import numpy as np
 from obspy import Stream, UTCDateTime
 
 from seismo_sbi.simulators.simulation_io import SimulationSaver, component_alias
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 # --- Internal helpers ---
@@ -42,10 +42,10 @@ def _compute_autocorrelation(data: np.ndarray) -> np.ndarray:
 
 
 def _exact_end_time(t_start: UTCDateTime, t_end: UTCDateTime, sampling_rate: float) -> UTCDateTime:
-    """Compute the inclusive slice end time that matches legacy behaviour."""
-    duration = t_end - t_start
-    fixed_seconds = math.ceil(duration / sampling_rate) * sampling_rate
-    return t_start + fixed_seconds
+    """The inclusive slice end ``t_start + n / sampling_rate``, with
+    ``n = compute_data_vector_length(t_end - t_start, sampling_rate)``: the window holds ``n + 1`` samples."""
+    n = compute_data_vector_length(t_end - t_start, sampling_rate)
+    return t_start + n / sampling_rate
 
 
 # --- Public API ---

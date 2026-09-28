@@ -5,13 +5,14 @@ EventWindowSelector as standalone functions so they can be used without
 instantiating an FDSN client.
 """
 
-import math
 from datetime import timedelta, datetime
 from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 from obspy import Stream, UTCDateTime
 from obspy.geodetics import locations2degrees
+
+from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
 
@@ -23,8 +24,8 @@ def slice_event_window(
 ) -> Stream:
     """Slice a ``Stream`` to an event window whose end sample is inclusive.
 
-    The end is ``t_start + ceil(duration / sr) * sr`` and the slice is inclusive, giving
-    ``compute_data_vector_length(duration, sr) + 1`` samples.
+    The end is ``t_start + n / sr`` with ``n = compute_data_vector_length(duration, sr)`` and the
+    slice is inclusive, giving ``n + 1`` samples.
 
     :param stream: preprocessed ``Stream`` at ``sampling_rate``.
     :param t_start: window start, ``datetime`` or ``UTCDateTime``.
@@ -33,8 +34,8 @@ def slice_event_window(
     :returns: the sliced ``Stream``.
     """
     duration = (UTCDateTime(t_end) - UTCDateTime(t_start))
-    fixed_num_seconds = math.ceil(duration / sampling_rate) * sampling_rate
-    exact_end = UTCDateTime(t_start) + fixed_num_seconds
+    n = compute_data_vector_length(duration, sampling_rate)
+    exact_end = UTCDateTime(t_start) + n / sampling_rate
     return stream.slice(UTCDateTime(t_start), exact_end)
 
 
