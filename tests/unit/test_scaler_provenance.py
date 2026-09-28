@@ -6,12 +6,14 @@ whatever YAML is passed; edit `ml_scaler`/`bounds` after training and every reco
 moment is wrong by a constant factor, with no exception anywhere — it surfaces only as a
 systematic magnitude offset in the finished catalogue.
 """
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from seismo_sbi.sbi.scalers import (
     FlexibleScaler, MomentTensorScaler, build_flexible_scaler,
-    check_scaler_provenance, scaler_provenance,
+    check_scaler_provenance, recorded_m0_convention, scaler_provenance,
 )
 from seismo_sbi.sbi.types.parameters import ModelParameters
 
@@ -285,3 +287,60 @@ def test_a_record_without_linear_bounds_warns_and_passes_strict(capsys):
 def test_a_checkpoint_with_no_record_fails_strict():
     with pytest.raises(ValueError, match="no theta_scaler provenance"):
         check_scaler_provenance({}, FlexibleScaler(_mt_and_location_params()), strict=True)
+
+
+# ---- the M0 convention -----------------------------------------------------------
+
+#: Outputs of the six-component scaler, frozen before the full-tensor convention was added.
+SIX_COMPONENT_OUTPUTS = Path(__file__).resolve().parents[1] / "fixtures" / "six_component_scaler_outputs.npz"
+#: A scale-shape record written before the M0 convention was recorded.
+LEGACY_RECORD = {"moment_tensor": "scale_shape", "log10_m0_min": np.log10(2e18 / np.sqrt(2)) - 9.0,
+                 "log10_m0_max": np.log10(2e18 / np.sqrt(2))}
+
+
+def _moment_tensor_params(max_abs_nm):
+    p = ModelParameters()
+    p.names = {"moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"]}
+    p.theta_fiducial = {"moment_tensor": [1e15] * 6}
+    p.bounds = {"moment_tensor": [[-max_abs_nm] * 6, [max_abs_nm] * 6]}
+    return p
+
+
+def test_a_scale_shape_record_carries_its_m0_convention():
+    for convention in ("full_tensor", "six_components"):
+        scaler = MomentTensorScaler(bounds=BOUNDS, m0_convention=convention)
+        assert scaler_provenance(_Holder(scaler))["m0_convention"] == convention
+
+
+def test_a_record_without_m0_convention_means_six_components():
+    assert recorded_m0_convention({"theta_scaler": dict(LEGACY_RECORD)}) == "six_components"
+    assert recorded_m0_convention({}) == "six_components"
+
+
+def test_a_legacy_checkpoint_scales_bit_identically_to_the_frozen_outputs():
+    frozen = np.load(SIX_COMPONENT_OUTPUTS)
+    raw_config = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": 9.0}}
+    meta = {"model_config": {"theta_scaler": dict(LEGACY_RECORD)}}
+    scaler = build_flexible_scaler(_moment_tensor_params(2e18), raw_config, model_meta=meta)
+    np.testing.assert_array_equal(scaler.transform(frozen["m6"]), frozen["bounds_scaled"])
+    np.testing.assert_array_equal(scaler.inverse_transform(frozen["bounds_scaled"]), frozen["bounds_inverse"])
+    assert check_scaler_provenance(meta, scaler, strict=True) is True
+    for window, log10_m0_range in {"window_a": (12.1, 16.6), "window_b": (13.6, 18.1)}.items():
+        legacy = MomentTensorScaler(log10_m0_range=log10_m0_range, m0_convention=recorded_m0_convention(meta))
+        np.testing.assert_array_equal(legacy.transform(frozen["m6"]), frozen[f"{window}_scaled"])
+        np.testing.assert_array_equal(legacy.inverse_transform(frozen[f"{window}_scaled"]),
+                                      frozen[f"{window}_inverse"])
+
+
+def test_a_legacy_checkpoint_fails_strict_against_the_full_tensor_scaler():
+    raw_config = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": 9.0}}
+    scaler = build_flexible_scaler(_moment_tensor_params(2e18), raw_config)
+    with pytest.raises(ValueError, match="MISMATCH"):
+        check_scaler_provenance({"theta_scaler": dict(LEGACY_RECORD)}, scaler, strict=True)
+
+
+def test_the_full_tensor_scaler_radius_is_the_library_scalar_moment():
+    scaler = MomentTensorScaler(log10_m0_range=(12.0, 18.0))
+    m6 = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 1e15], [1e15, -1e15, 0.0, 0.0, 0.0, 0.0]])
+    u = np.linalg.norm(2.0 * scaler.transform(m6) - 1.0, axis=1)
+    np.testing.assert_allclose(u * 6.0 + 12.0, [15.0, 15.0], rtol=1e-12)

@@ -65,8 +65,11 @@ class MomentTensorScaler:
 
     Magnitude is encoded as the radius ``||2*scaled - 1|| = u`` and orientation as its
     direction, so the map is invertible (a.e.) with no dropped components or sign loss.
-    ``M0 = ||m6|| / sqrt(2)`` is the library scalar-moment convention
-    (``moment_tensor.conventions.scalar_moment``); the inverse rebuilds ``m6 = sqrt(2) * M0 * m_hat``.
+    ``M0`` and ``m_hat`` are taken in the metric of ``m0_convention``: ``"full_tensor"`` weights
+    the off-diagonal components by sqrt(2), so ``M0`` is
+    :func:`~seismo_sbi.moment_tensor.conventions.scalar_moment`; ``"six_components"`` counts each
+    component once, ``M0 = ||m6|| / sqrt(2)``, the convention of checkpoints whose provenance
+    records none.
 
     Parameters
     ----------
@@ -81,6 +84,8 @@ class MomentTensorScaler:
         NB the window's upper edge comes from ``bounds`` (not ``mw_max``), so the true
         minimum is ``log10 M0_max(bounds) - log10 M0_min(prior)`` — slightly larger than
         the prior span. Prefer ``log10_m0_range`` (``mt_log_decades: auto``) to avoid this.
+    m0_convention:
+        ``"full_tensor"`` (default) or ``"six_components"``, see above.
     log10_m0_range:
         Optional ``(log10 M0_min, log10 M0_max)`` window, overriding ``bounds``/``n_decades``.
         Set from the GR prior's ``[mw_min, mw_max]`` (via ``build_flexible_scaler`` with
@@ -89,8 +94,19 @@ class MomentTensorScaler:
     """
 
     _SQRT2 = np.sqrt(2.0)
+    #: Per-component weights whose weighted Euclidean norm of ``m6`` is ``sqrt(2) * M0``.
+    COMPONENT_WEIGHTS = {
+        "full_tensor": np.array([1.0, 1.0, 1.0, np.sqrt(2.0), np.sqrt(2.0), np.sqrt(2.0)]),
+        "six_components": np.ones(6),
+    }
 
-    def __init__(self, bounds=None, n_decades: float = 9.0, log10_m0_range=None):
+    def __init__(self, bounds=None, n_decades: float = 9.0, log10_m0_range=None,
+                 m0_convention: str = "full_tensor"):
+        if m0_convention not in self.COMPONENT_WEIGHTS:
+            raise ValueError(f"m0_convention must be one of {sorted(self.COMPONENT_WEIGHTS)}, "
+                             f"got {m0_convention!r}")
+        self.m0_convention = m0_convention
+        self._weights = self.COMPONENT_WEIGHTS[m0_convention]
         if log10_m0_range is not None:
             # Explicit magnitude window (e.g. derived from the GR prior's
             # [mw_min, mw_max] so the sampled range maps to u in [0, 1] exactly).
@@ -112,8 +128,8 @@ class MomentTensorScaler:
         self._log_range = self.log10_m0_max - self.log10_m0_min
 
     def transform(self, X):
-        X = np.asarray(X, dtype=float)
-        r = np.linalg.norm(X, axis=1, keepdims=True)              # ||m6|| = sqrt(2)*M0
+        X = np.asarray(X, dtype=float) * self._weights
+        r = np.linalg.norm(X, axis=1, keepdims=True)              # = sqrt(2)*M0
         m0 = r / self._SQRT2
         with np.errstate(divide="ignore"):
             log10_m0 = np.log10(np.where(m0 > 0, m0, 1.0))
@@ -132,20 +148,21 @@ class MomentTensorScaler:
         log10_m0 = u * self._log_range + self.log10_m0_min
         m0 = np.power(10.0, log10_m0)
         r = self._SQRT2 * m0
-        return r * m_hat
+        return r * m_hat / self._weights
 
 
 class FlexibleScaler:
 
     def __init__(self, parameters : ModelParameters, moment_tensor_scaling: str = "linear",
-                 mt_log_decades: float = 9.0, mt_log10_m0_range=None):
+                 mt_log_decades: float = 9.0, mt_log10_m0_range=None, m0_convention: str = "full_tensor"):
         """Per-parameter-block scaler into [0, 1].
 
         ``moment_tensor_scaling`` selects how the moment-tensor block is scaled:
         ``"linear"`` (default) uses the plain :class:`ZeroOneScaler` min-max;
         ``"scale_shape"`` uses :class:`MomentTensorScaler` (log-magnitude +
         scale-invariant unit tensor), better-behaved when M0 spans many orders of
-        magnitude. ``mt_log_decades`` is forwarded to :class:`MomentTensorScaler`.
+        magnitude. ``mt_log_decades`` and ``m0_convention`` are forwarded to
+        :class:`MomentTensorScaler`.
         The training-time and inference-time scalers MUST use the same setting (build
         both with :func:`build_flexible_scaler` from the same config).
         """
@@ -166,6 +183,7 @@ class FlexibleScaler:
                     np.array(parameters.bounds["moment_tensor"]),
                     n_decades=(mt_log_decades if mt_log10_m0_range is None else 9.0),
                     log10_m0_range=mt_log10_m0_range,
+                    m0_convention=m0_convention,
                 )
             else:
                 scaler = ZeroOneScaler(np.array(parameters.bounds[param_type]))
@@ -216,9 +234,10 @@ def scaler_provenance(scaler) -> dict:
     ``ml_scaler``/``bounds`` after training and every recovered moment is silently wrong,
     with no error anywhere.  Compare with :func:`check_scaler_provenance`.
 
-    Captures the resolved NUMBERS (the log10 M0 window of a scale-shape moment tensor, and
-    ``linear_bounds``, the ``[lower, upper]`` of every linearly scaled block), not the config
-    spelling, so ``mt_log_decades: auto`` and the equivalent explicit value compare equal.
+    Captures the resolved NUMBERS (the log10 M0 window and M0 convention of a scale-shape
+    moment tensor, and ``linear_bounds``, the ``[lower, upper]`` of every linearly scaled
+    block), not the config spelling, so ``mt_log_decades: auto`` and the equivalent explicit
+    value compare equal.
     """
     out = {"moment_tensor": "linear"}
     mt = getattr(scaler, "mt_scaler", None) or getattr(scaler, "_mt_scaler", None)
@@ -232,7 +251,8 @@ def scaler_provenance(scaler) -> dict:
     if isinstance(mt, MomentTensorScaler):
         out = {"moment_tensor": "scale_shape",
                "log10_m0_min": round(float(mt.log10_m0_min), 9),
-               "log10_m0_max": round(float(mt.log10_m0_max), 9)}
+               "log10_m0_max": round(float(mt.log10_m0_max), 9),
+               "m0_convention": mt.m0_convention}
     linear_bounds = _linear_bounds(scaler)
     if linear_bounds:
         out["linear_bounds"] = linear_bounds
@@ -266,9 +286,9 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
     reported loudly and, with ``strict``, raises ``ValueError``.  A checkpoint with no record
     raises under ``strict`` and otherwise warns and returns True; a record without
     ``linear_bounds`` (written before they were recorded) warns that the bounds are unchecked.
+    A scale-shape record without ``m0_convention`` was trained with ``"six_components"``.
     """
-    recorded = (meta or {}).get("theta_scaler") or \
-        ((meta or {}).get("model_config") or {}).get("theta_scaler")
+    recorded = _recorded_theta_scaler(meta)
     if not recorded:
         msg = ("checkpoint records no theta_scaler provenance; the scaling being used cannot be "
                "verified against training.")
@@ -281,6 +301,8 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
             and all(abs(float(recorded.get(k, 0.0)) - float(current.get(k, 0.0))) < 1e-6
                     for k in ("log10_m0_min", "log10_m0_max")
                     if k in recorded or k in current))
+    if current.get("moment_tensor") == "scale_shape":
+        same = same and recorded_m0_convention(meta) == current.get("m0_convention", "six_components")
     if "linear_bounds" in recorded and "linear_bounds" in current:
         same = same and _same_linear_bounds(recorded["linear_bounds"], current["linear_bounds"])
     elif "linear_bounds" in current:
@@ -298,7 +320,22 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
     return same
 
 
-def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None) -> FlexibleScaler:
+def _recorded_theta_scaler(meta: dict) -> dict:
+    """The ``theta_scaler`` record of a parsed ``model_meta.json``, top level or under ``model_config``."""
+    return (meta or {}).get("theta_scaler") or ((meta or {}).get("model_config") or {}).get("theta_scaler")
+
+
+def recorded_m0_convention(meta: dict) -> str:
+    """The M0 convention a checkpoint's moment-tensor scaler was trained with.
+
+    ``meta`` is the parsed ``model_meta.json``; a record written before the convention was
+    recorded, or no record, means ``"six_components"``.
+    """
+    return (_recorded_theta_scaler(meta) or {}).get("m0_convention", "six_components")
+
+
+def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None,
+                          model_meta: dict = None) -> FlexibleScaler:
     """Build a :class:`FlexibleScaler`, honouring an optional top-level ``ml_scaler`` block.
 
     The same helper is used at training and at inference so the scaling matches::
@@ -307,7 +344,9 @@ def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None) 
           moment_tensor: scale_shape   # or "linear" (default)
           mt_log_decades: 9.0          # optional, MomentTensorScaler dynamic range
 
-    ``raw_config`` is the parsed YAML dict; ``None`` gives the linear scaling.
+    ``raw_config`` is the parsed YAML dict; ``None`` gives the linear scaling. ``model_meta``,
+    the parsed ``model_meta.json`` of a trained checkpoint, sets the M0 convention it was trained
+    with (:func:`recorded_m0_convention`); without it the scaler is the full-tensor one of a new run.
     """
     raw_config = raw_config or {}
     cfg = raw_config.get("ml_scaler") or {}
@@ -328,6 +367,7 @@ def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None) 
         moment_tensor_scaling=mt_scaling,
         mt_log_decades=mt_log_decades,
         mt_log10_m0_range=mt_log10_m0_range,
+        m0_convention="full_tensor" if model_meta is None else recorded_m0_convention(model_meta),
     )
 
 

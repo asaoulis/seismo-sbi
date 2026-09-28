@@ -161,5 +161,7 @@ The notebook's last two sections run this and show the figures.
   `jobs.real_events` as an `(n_stations, n_components, n_samples)` array.
 
 The parameter scaling at inference must match the one the model was trained with:
-`build_flexible_scaler` builds it from the configuration, and `check_scaler_provenance`
-compares it with the one recorded in `model_meta.json`.
+`build_flexible_scaler(parameters, raw_config, model_meta=meta)` builds it from the
+configuration and the scalar-moment convention recorded in `model_meta.json` (checkpoints that
+record none were trained with the six-component moment), and `check_scaler_provenance`
+compares it with the record.

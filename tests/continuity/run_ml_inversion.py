@@ -7,6 +7,7 @@ time shifts are undone, the network having been trained on unshifted data) and w
 event_inversion.py uses. Run from ``examples/``.
 """
 import argparse
+import json
 import os
 import pickle
 from pathlib import Path
@@ -67,7 +68,9 @@ def main():
     print(f"Drawing {args.num_samples} posterior samples...")
     samples = posterior.sample((args.num_samples,), tensor_obs, show_progress_bars=True)
 
-    data_scaler = build_flexible_scaler(original_parameters, config.raw_config)
+    meta_path = ckpt_dir / "model_meta.json"
+    model_meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    data_scaler = build_flexible_scaler(original_parameters, config.raw_config, model_meta=model_meta)
     ml_inversion_data = InversionData(
         theta0=None,
         samples=data_scaler.inverse_transform(samples.cpu().numpy()),
