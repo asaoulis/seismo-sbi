@@ -207,3 +207,24 @@ def test_from_receivers_draws_what_the_simulation_parameters_constructor_draws(r
     expected = from_parameters()
     np.random.seed(4)
     np.testing.assert_array_equal(from_receivers(), expected)
+
+
+def test_from_windows_draws_whole_rows_of_the_given_windows(receivers):
+    windows = np.arange(4 * TRACE_LEN, dtype=float).reshape(4, TRACE_LEN)
+    sampler = RealNoiseSampler.from_windows(windows, receivers, "Z")
+    assert sampler.noise_paths.size == 0
+    np.random.seed(0)
+    draws = [sampler() for _ in range(20)]
+    assert all(draw.shape == (TRACE_LEN,) for draw in draws)
+    assert {int(draw[0]) // TRACE_LEN for draw in draws} <= {0, 1, 2, 3}
+    assert all(np.array_equal(draw, windows[int(draw[0]) // TRACE_LEN]) for draw in draws)
+
+
+def test_from_windows_with_presence_returns_the_window_and_its_stations(receivers):
+    windows = np.ones((3, TRACE_LEN))
+    present = np.array([[True], [False], [True]])
+    sampler = RealNoiseSampler.from_windows(windows, receivers, "Z", present=present)
+    assert sampler.allow_incomplete
+    noise, mask = sampler()
+    assert noise.shape == (TRACE_LEN,) and mask.shape == (1,)
+    assert sampler.subset_window_count([0]) == 2

@@ -22,8 +22,9 @@ class RealNoiseSampler:
 
     def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None, adaptive_covariance= None,
                  freeze_scale: bool = False, allow_incomplete: bool = False):
-        """``simulation_parameters`` supplies the receivers, components, seismogram duration and
-        sampling rate; ``directory`` holds one HDF5 noise window per file.
+        """``simulation_parameters`` supplies the receivers and components; ``directory`` holds one
+        HDF5 noise window per file, or is None when the windows are given in memory
+        (:meth:`from_windows`).
 
         With ``allow_incomplete`` False a window missing any model station is skipped. With it True the
         window is used for the stations it has: absent stations are zero-filled and ``__call__`` returns
@@ -64,7 +65,8 @@ class RealNoiseSampler:
                 for component in self.adaptive_covariance[receiver].keys():
                     self.adaptive_covariance[receiver][component] = self.adaptive_covariance[receiver][component][0]
 
-        print(f"Found {len(self.noise_paths)} noise realisations.")
+        if directory is not None:
+            print(f"Found {len(self.noise_paths)} noise realisations.")
 
     @classmethod
     def from_receivers(cls, receivers, components, seismogram_duration_s, sampling_rate_hz, directory, **kwargs):
@@ -76,7 +78,29 @@ class RealNoiseSampler:
             syngine_address=None, sampling_rate=sampling_rate_hz, processing={},
         )
         return cls(simulation_parameters, directory, **kwargs)
-    
+
+    @classmethod
+    def from_windows(cls, noise_windows, receivers, components, present=None):
+        """A sampler drawing uniformly from ``noise_windows`` held in memory.
+
+        ``noise_windows`` is ``(n_windows, data_vector_length)``: each row one window's traces for
+        every component each receiver records, in receiver order, as :meth:`__call__` returns
+        them. ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; with
+        it a call returns ``(noise_vector, present_mask)`` as with ``allow_incomplete``, and the
+        rows are zero where a station is absent. Windows are drawn as recorded, never rescaled.
+        """
+        simulation_parameters = SimulationParameters(
+            receivers=receivers, components=components, seismogram_duration=None,
+            syngine_address=None, sampling_rate=None, processing={},
+        )
+        sampler = cls(simulation_parameters, None, freeze_scale=True,
+                      allow_incomplete=present is not None)
+        sampler._noise_cache = np.ascontiguousarray(noise_windows)
+        if present is not None:
+            sampler._presence_cache = np.ascontiguousarray(present, dtype=bool)
+            sampler._build_presence_index()
+        return sampler
+
     def _build_presence_index(self):
         """Pack each cached window's station presence into one integer, so :meth:`sample_containing` can find the windows holding a station subset in one comparison."""
         n = self._presence_cache.shape[1]
@@ -117,6 +141,8 @@ class RealNoiseSampler:
         return self._noise_cache[matches[r]]
 
     def _find_noise_paths(self, directory):
+        if directory is None:
+            return np.array([])
         return np.array(list(Path(directory).glob('*.h5')))
 
     def preload_cache(self, max_workers: int = 16, dtype=np.float32):
