@@ -62,3 +62,19 @@ def test_multi_event_real_jobs_are_read_at_the_configured_trace_length():
     assert job_data == ["real job"]
     assert lengths_seen == [201]
     assert pipeline.data_manager.data_loader.data_length is None
+
+
+def test_the_real_trace_length_is_the_configured_duration_times_the_sampling_rate(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline_module, "GeneralSimulatorWrapper", _StubSimulatorWrapper)
+    monkeypatch.setattr(pipeline_module.DatasetGenerator, "create_samplers", staticmethod(lambda *args: {}))
+    receivers = Receivers(receivers=[Receiver(37.0, -118.0, "XX", "AAA")])
+    parameters = ModelParameters()
+    parameters.theta_fiducial = {"moment_tensor": [1e15] * 6}
+    trace_lengths = {}
+    for sampling_rate_hz in (1.0, 0.5):
+        pipeline = _pipeline(tmp_path)
+        simulation = SimulationParameters(receivers, "ZEN", 200.0, None, sampling_rate_hz, {})
+        pipeline._load_base_pipeline_params(simulation, parameters, SimpleNamespace(sampling_method={}), None)
+        trace_lengths[sampling_rate_hz] = pipeline.data_manager.data_length
+
+    assert trace_lengths == {1.0: 201, 0.5: 101}
