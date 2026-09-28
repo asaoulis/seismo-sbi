@@ -22,7 +22,10 @@ from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.multi_region import MultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
 from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
+from seismo_sbi.utils.errors import InvalidConfiguration
 
+#: Rate (Hz) at which every CPS backend computes and returns its Green's functions.
+CPS_SAMPLING_RATE_HZ = 1.0
 CPS_INPUT_COVERSION = 1.e-13
 CPS_OUTPUT_COVERSION = 1.e-2
 def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
@@ -38,6 +41,11 @@ class CPSSimulator(Simulator):
     
     def __init__(self, gf_storage_root=None, cps_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        sampling_rate_hz = float(self.synthetics_processing.get('sampling_rate', CPS_SAMPLING_RATE_HZ))
+        if sampling_rate_hz != CPS_SAMPLING_RATE_HZ:
+            raise InvalidConfiguration(
+                f"CPS synthetics are sampled at {CPS_SAMPLING_RATE_HZ} Hz; "
+                f"seismic_context.processing.sampling_rate is {sampling_rate_hz}")
         self.sensitivity_kernels = None
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.gf_storage_root = gf_storage_root
@@ -80,7 +88,7 @@ class CPSSimulator(Simulator):
     
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
-        greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)
+        greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1 / CPS_SAMPLING_RATE_HZ, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)
         greens_functions = greens_functions.transpose(2, 0, 1, 3)
 
         used_greens_functions = []

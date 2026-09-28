@@ -43,7 +43,7 @@ seismic_context:
       freqmax: 0.05
       corners: 4
       zerophase: False
-    sampling_rate: 0.5
+    sampling_rate: 1
 
 parameters:
   inference:
