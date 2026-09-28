@@ -13,8 +13,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
-from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
 from seismo_sbi.sbi import job_runners
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 
@@ -79,8 +78,7 @@ def main():
 
 def generate_CPS_perturbations(config):
     config_path = None
-    Pipeline = SingleEventPipeline if config.pipeline_type == 'single_event' else MultiEventPipeline
-    Pipeline = VaryDatasetSizeEventPipeline if config.pipeline_type == 'vary_dataset_size' else Pipeline
+    Pipeline = PIPELINE_CLASSES[config.pipeline_type]
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
     sbi_pipeline.compression_methods = config.compression_methods
     sbi_pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters, config.dataset_parameters)

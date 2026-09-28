@@ -11,7 +11,7 @@ from copy import copy
 
 from seismo_sbi.sbi.types.parameter_labels import ParameterInformation, DegreeKMConverter, DegreeType
 from seismo_sbi.simulators.receivers import Receivers
-from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, \
+from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES, ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 from seismo_sbi.nuisance_effects.post_processing import (
@@ -359,6 +359,9 @@ class SBI_Configuration:
         inference_config = config
         self.sbi_method = inference_config["sbi"]["method"]
         self.pipeline_type = inference_config["sbi"].get("pipeline", "single_event")
+        if self.pipeline_type not in PIPELINE_TYPES:
+            raise InvalidConfiguration(
+                f"inference.sbi.pipeline must be one of {', '.join(PIPELINE_TYPES)}, not {self.pipeline_type!r}.")
         self.sbi_noise_model = inference_config["sbi"]["noise_model"]
         self.sbi_seed = inference_config["sbi"].get("seed")
         self.likelihood_config = inference_config["likelihood"]

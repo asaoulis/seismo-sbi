@@ -262,3 +262,12 @@ class MLEEstimatePipeline(SingleEventPipeline):
                 inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
 
                 yield None, inversion_result
+
+
+#: The pipeline class for each value of ``inference.sbi.pipeline``.
+PIPELINE_CLASSES = {
+    "single_event": SingleEventPipeline,
+    "multi_event": MultiEventPipeline,
+    "vary_dataset_size": VaryDatasetSizeEventPipeline,
+    "mle_estimate": MLEEstimatePipeline,
+}

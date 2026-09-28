@@ -77,7 +77,8 @@ job_results, inversion_results = job_runners.run_all_inversions_before_plotting(
 
 `MultiEventPipeline` and `VaryDatasetSizeEventPipeline` (in `seismo_sbi.sbi.pipeline_variants`)
 run the same steps over several events, or over training sets of increasing size. Choose one with
-`inference.sbi.pipeline`: `single_event`, `multi_event` or `vary_dataset_size`.
+`inference.sbi.pipeline`: `single_event`, `multi_event`, `vary_dataset_size` or `mle_estimate`
+(only the maximum-likelihood search, `MLEEstimatePipeline`).
 
 ## Score compression
 

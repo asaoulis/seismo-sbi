@@ -11,6 +11,9 @@ from copy import deepcopy
 
 from seismo_sbi.simulators.receivers import Receivers
 
+#: The values of ``inference.sbi.pipeline``, each naming one pipeline class.
+PIPELINE_TYPES = ("single_event", "multi_event", "vary_dataset_size", "mle_estimate")
+
 class PipelineParameters(NamedTuple):
     run_name : str
     output_directory: str

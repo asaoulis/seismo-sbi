@@ -86,6 +86,19 @@ def test_parse_sbi_pipeline_type():
     assert cfg.pipeline_type == "multi_event"
 
 
+def test_a_misspelled_pipeline_type_is_rejected_at_parse_time():
+    cfg = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration, match="singel_event"):
+        cfg.parse_sbi_config(_sbi_config_dict(pipeline="singel_event"))
+
+
+def test_every_pipeline_type_names_a_pipeline_class():
+    from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
+    from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES
+
+    assert tuple(PIPELINE_CLASSES) == PIPELINE_TYPES
+
+
 def test_parse_sbi_default_pipeline():
     """Missing pipeline key should default to single_event."""
     cfg = SBI_Configuration()

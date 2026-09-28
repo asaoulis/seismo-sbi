@@ -11,8 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .pipeline import SingleEventPipeline
-from .pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
+from .pipeline_variants import PIPELINE_CLASSES
 from .scalers import FlexibleScaler, build_flexible_scaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
 from ..utils.errors import InvalidConfiguration
@@ -50,9 +49,7 @@ def build_pipeline(config, config_path, num_simulations=None, pipeline_class=Non
         print(f"Overriding num_simulations -> {num_simulations}")
 
     if pipeline_class is None:
-        pipeline_class = {"single_event": SingleEventPipeline,
-                          "vary_dataset_size": VaryDatasetSizeEventPipeline}.get(
-                              config.pipeline_type, MultiEventPipeline)
+        pipeline_class = PIPELINE_CLASSES[config.pipeline_type]
     pipeline = pipeline_class(config.pipeline_parameters, config_path)
     pipeline.compression_methods = config.compression_methods
     pipeline.load_seismo_parameters(config.sim_parameters, config.model_parameters,

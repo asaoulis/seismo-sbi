@@ -15,8 +15,7 @@ import numpy as np
 import torch
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
-from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline, VaryDatasetSizeEventPipeline
+from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
 from seismo_sbi.sbi import job_runners
 
 def parse_arguments():
@@ -41,8 +40,7 @@ def main():
 
     ### Start SBI Pipeline
 
-    Pipeline = SingleEventPipeline if config.pipeline_type == 'single_event' else MultiEventPipeline
-    Pipeline = VaryDatasetSizeEventPipeline if config.pipeline_type == 'vary_dataset_size' else Pipeline
+    Pipeline = PIPELINE_CLASSES[config.pipeline_type]
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)
     sbi_pipeline.compression_methods = config.compression_methods
     sbi_pipeline.seed = config.sbi_seed
