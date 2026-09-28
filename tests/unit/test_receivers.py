@@ -1,6 +1,9 @@
 """Receivers built from a station file, a components map, a time-shift map, arrays or an obspy Inventory, and written back."""
+import importlib.util
 import json
 from pathlib import Path
+
+import pytest
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 
@@ -179,3 +182,22 @@ def test_default_receivers_do_not_share_a_components_list():
 
     assert first.components == ("Z", "E", "N")
     assert not isinstance(first.components, list) and second.components == ("Z", "E", "N")
+
+
+@pytest.mark.skipif(importlib.util.find_spec("cartopy") is None, reason="needs cartopy")
+def test_plot_draws_one_marker_and_label_per_station():
+    import cartopy.crs as ccrs
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    receivers = Receivers(receivers=[Receiver(37.9, -122.2, "BK", "BKS"), Receiver(38.0, -120.4, "BK", "CMB")])
+    fig, ax = plt.subplots(subplot_kw={"projection": ccrs.PlateCarree()})
+
+    receivers.plot(ax=ax, add_scalebar=False)
+
+    markers = [line for line in ax.lines if line.get_marker() == "v"]
+    assert [(line.get_xdata()[0], line.get_ydata()[0]) for line in markers] == [(-122.2, 37.9), (-120.4, 38.0)]
+    assert sorted(text.get_text() for text in ax.texts) == ["BK.BKS", "BK.CMB"]
+    plt.close(fig)
