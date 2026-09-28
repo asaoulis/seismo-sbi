@@ -1203,3 +1203,41 @@ def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline
     # (4) missing source run must raise, not silently start from scratch.
     with pytest.raises(FileNotFoundError):
         load_warm_start_weights(fresh.model, tmp_path / "no_such_run")
+
+
+def _replace_the_folder_by_its_arrays(trainer, dataloader_args):
+    """Hand the trainer an ArraySimulationDataset holding exactly what the folder holds."""
+    from seismo_sbi.sbi.compression.ML.array_dataset import ArraySimulationDataset
+    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+    from_files = TorchSimulationDataset(
+        dataloader_args.pop("data_loader"), dataloader_args.pop("data_folder"),
+        dataloader_args.pop("parameter_name_map"), None)
+    loaded = [from_files._load_sim(path) for path in from_files.paths]
+    dataloader_args["dataset"] = ArraySimulationDataset(
+        np.stack([theta for theta, _ in loaded]), np.stack([data for _, data in loaded]),
+        from_files.data_loader.receivers, from_files.data_loader.components,
+        dataloader_args.pop("synthetic_noise_model_sampler"),
+        data_scaler=dataloader_args.pop("data_scaler"))
+
+
+def test_one_epoch_on_arrays_trains_the_same_weights_as_on_the_files(kernel_pipeline, tmp_path):
+    """Array-backed and file-backed training agree bit for bit under deterministic kernels."""
+    import torch
+    pipeline, _, data_vector_length = kernel_pipeline
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    torch.use_deterministic_algorithms(True)
+    try:
+        weights = []
+        for hook in (None, _replace_the_folder_by_its_arrays):
+            np.random.seed(0)
+            torch.manual_seed(0)
+            trainer, _, _ = _train_one_epoch(pipeline, data_vector_length, "seismogram_transformer",
+                                             tmp_path, pre_train_hook=hook)
+            weights.append(trainer.model.state_dict())
+    finally:
+        torch.use_deterministic_algorithms(False)
+        torch.set_num_threads(threads)
+    assert weights[0].keys() == weights[1].keys()
+    for name, value in weights[0].items():
+        assert torch.equal(value, weights[1][name]), name

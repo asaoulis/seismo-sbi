@@ -85,6 +85,37 @@ The [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/mai
 and [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb)
 notebooks show the two nuisance stages.
 
+## Training on arrays
+
+Simulations made elsewhere train the same flow without being written as HDF5 files. An
+`ArraySimulationDataset` holds the unscaled source parameters `theta`,
+`(n_simulations, n_parameters)`, and the clean seismograms `x`,
+`(n_simulations, n_stations, n_components, trace_length)`: stations in receiver order, components
+in the order of `components`, zeros where a station does not record a component. Each draw gets
+the augmentation, noise and scaling a simulation file gets, and `RealNoiseSampler.from_windows`
+draws recorded noise windows held in memory:
+
+```python
+from seismo_sbi.sbi.compression.ML.array_dataset import ArraySimulationDataset
+from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
+from seismo_sbi.sbi.scalers import FlexibleScaler, scaler_provenance
+
+scaler = FlexibleScaler.from_bounds({"moment_tensor": (m6_lower_nm, m6_upper_nm)})
+noise = RealNoiseSampler.from_windows(noise_windows, receivers, "ZEN")
+dataset = ArraySimulationDataset(theta, x, receivers, "ZEN", noise, data_scaler=scaler,
+                                 station_subsampler=training.variable_stations.build_subsampler())
+trainer = CompressionTrainer.from_configuration(
+    training, "ZEN", receivers.get_station_locations_array(), x.shape[-1],
+    scaler_provenance(scaler))
+trainer.train("my_model", epochs=training.epochs, output_path="models", logger=None,
+              dataloader_args={"dataset": dataset, **training.loader_args(len(dataset))})
+```
+
+`noise_windows` is `(n_windows, data_vector_length)`, each row a window's traces for the
+components each receiver records, in receiver order. With `x` in float32 the samples equal those
+of a preloaded simulation folder (`ml_cache.sims`), with `x` in float64 those read file by file.
+
 ## The model
 
 The input is every trace of every station, `(n_stations, n_components, n_samples)`.
