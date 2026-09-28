@@ -155,7 +155,6 @@ def plot_beachball_on_axes(
 
     scale_unit = (
         Affine2D()
-        .translate(-ax_fx, -ax_fy)
         .scale(r, r)          # uniform: keeps beachball circular
         .translate(ax_fx, ax_fy)
     )
