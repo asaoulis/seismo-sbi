@@ -110,10 +110,11 @@ Import each name from the module that defines it.
 |---|---|
 | `simulators` | forward models: sources, receivers, the `Simulator` interface and its registry, Green's-function ensembles; backends in `instaseis/`, `cps/`, and `axisem/` (the perturbed 1-D Earth models an Instaseis ensemble is built from). See [docs/simulators.md](docs/simulators.md) |
 | `nuisance_effects` | what a real recording does to a synthetic seismogram: amplitude, time-shift, dropout, scattering coda, anisotropy and dispersion effects, and the `PostProcessingChain` that applies them at simulation or training time |
-| `sbi` | the inference pipeline (`pipeline`, `configuration`, `training_configuration`), dataset generation, scalers and job runners |
+| `sbi` | the inference pipeline (`pipeline`, `configuration`, `training_configuration`), scalers and job runners |
 | `sbi.noises` | noise models: the Gaussian-likelihood covariances (diagonal, Toeplitz, theory-block), their estimator and samplers, and real-noise samplers for training |
 | `sbi.compression` | compression to one summary per parameter: derivative stencils and score compressors; `ML/` holds the neural compressors and NPE training |
-| `sbi.lsquares` | iterative least-squares source estimates |
+| `sbi.inversion` | inversion of compressed data: Gaussian-likelihood sampling, neural posterior estimation and iterative least-squares source estimates |
+| `sbi.datasets` | training sets: prior draws simulated in parallel, their noisy compressed versions, and the data an NPE training run consumes |
 | `sbi.types` | typed records passed between pipeline stages |
 | `data_handling` | observed data ahead of inference; `preprocessing/` finds raw data, removes the response, filters, resamples, windows and writes the HDF5 the pipeline reads |
 | `data_quality` | comparison of a reference synthetic with observed waveforms: per-trace metrics and the quality policy built on them |
