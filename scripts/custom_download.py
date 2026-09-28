@@ -3,8 +3,9 @@ from pathlib import Path
 import obspy
 from obspy.clients.fdsn.mass_downloader import Restrictions, MassDownloader, GlobalDomain
 import sys
-import numpy as np
 from obspy import read_inventory
+
+from seismo_sbi.simulators.receivers import Receivers
 
 
 def get_arguments():
@@ -46,22 +47,6 @@ def check_output_directory(path):
 
 def get_mseed_storage(output_dir, network, station, location, channel, starttime, endtime):
     return str(output_dir / f"{station}/{starttime.year}.{starttime.julday:03g}/{network}.{station}.{location}.{channel}.{starttime.year}.{starttime.julday:03g}.mseed")
-
-def load_station_codes(stations_path: Path):
-    """
-    Load (network, station) pairs using numpy from a file with columns:
-    STATION NETWORK LAT LON
-    """
-    try:
-        codes = np.loadtxt(stations_path, dtype=str, comments="#", usecols=(0, 1))
-        # Ensure 2D array even for a single line
-        if codes.ndim == 1:
-            codes = codes.reshape(1, 2)
-        # Return as (network, station)
-        return [(net, sta) for sta, net in codes]
-    except Exception as e:
-        print(f"Error reading stations file {stations_path}: {e}")
-        sys.exit(1)
 
 def unpack_stationxml(output_dir: Path):
     """
@@ -113,7 +98,7 @@ def main():
 
     # Use the stations file provided via CLI
     stations_path = args.stations_file
-    station_pairs = load_station_codes(stations_path)
+    station_pairs = Receivers.from_station_file(str(stations_path)).network_station_codes()
     starttime = obspy.UTCDateTime(args.starttime)
     endtime = obspy.UTCDateTime(args.endtime)
 
