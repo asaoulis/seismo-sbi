@@ -352,7 +352,25 @@ class TrainingConfiguration:
             "augmentation_nuisance_params": data.augmentation_nuisance_params,
             "post_noise_augmentation_chain": data.post_noise_chain,
             "post_noise_nuisance_params": data.post_noise_nuisance_params,
-            "train_max_index": int(self.batch.train_fraction * len(data.simulation_paths)),
+            "conditioning_param_map": self.conditioning.param_map,
+            "conditioning_noise_std": self.conditioning.coordinate_noise_std,
+            "station_subsampler": self.variable_stations.build_subsampler(),
+            "cache_in_memory": self.cache.sims,
+            "cache_dtype": self.cache.dtype,
+            "cache_preload_workers": self.cache.preload_workers,
+            **self.loader_args(len(data.simulation_paths)),
+        }
+
+    def loader_args(self, num_simulations):
+        """The split and batching of ``num_simulations`` samples into training and validation.
+
+        These are the keyword arguments of
+        :func:`~seismo_sbi.sbi.compression.ML.dataloading.make_torch_dataloaders` that do not
+        build the dataset; with ``dataset=`` added they are the ``dataloader_args`` of a training
+        run on an :class:`~seismo_sbi.sbi.compression.ML.array_dataset.ArraySimulationDataset`.
+        """
+        return {
+            "train_max_index": int(self.batch.train_fraction * num_simulations),
             "train_batch_size": self.batch.train,
             "val_batch_size": self.batch.val_size,
             "train_shuffle": True,
@@ -360,12 +378,6 @@ class TrainingConfiguration:
             "num_workers": self.batch.num_workers,
             "pin_memory": True,
             "prefetch_factor": self.batch.prefetch_factor,
-            "conditioning_param_map": self.conditioning.param_map,
-            "conditioning_noise_std": self.conditioning.coordinate_noise_std,
-            "station_subsampler": self.variable_stations.build_subsampler(),
-            "cache_in_memory": self.cache.sims,
-            "cache_dtype": self.cache.dtype,
-            "cache_preload_workers": self.cache.preload_workers,
         }
 
 

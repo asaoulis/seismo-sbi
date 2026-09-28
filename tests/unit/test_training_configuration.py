@@ -143,3 +143,11 @@ def test_dataloader_args_split_the_dataset_at_the_training_fraction():
     assert args["train_batch_size"] == 4 and args["val_batch_size"] == 8
     assert args["station_subsampler"] is None
     assert args["data_folder"] == "/sims"
+
+
+def test_loader_args_split_any_number_of_samples_without_a_pipeline():
+    training = TrainingConfiguration.from_yaml_block(
+        {"ml_batch": {"train": 4, "train_fraction": 0.75}})
+    args = training.loader_args(40)
+    assert args["train_max_index"] == 30 and args["train_batch_size"] == 4
+    assert "data_loader" not in args and "station_subsampler" not in args
