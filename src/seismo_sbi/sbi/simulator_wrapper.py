@@ -6,10 +6,12 @@ that returns a flat data vector for a parameter vector, and one that writes a si
 """
 
 from functools import partial
-from copy import deepcopy
+from copy import copy, deepcopy
+
+import numpy as np
 
 from seismo_sbi.sbi.dataset_generator import flatten_sample
-from seismo_sbi.nuisance_effects.post_processing import build_post_processing_chain
+from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain, build_post_processing_chain
 from seismo_sbi.simulators.registry import build_simulator
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.configuration import ModelParameters, SimulationParameters
@@ -63,6 +65,38 @@ class GeneralSimulatorWrapper:
     def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
         return build_simulator(simulator_config, simulation_parameters, post_processing_effects,
                                data_flattening=getattr(self, "data_loader_callable", None))
+
+    def simulate_at(self, source, moment_tensor, *, stations=None, deterministic=True, stf_duration=None,
+                    return_traces=False):
+        """The flat data vector of ``moment_tensor`` (six components in N.m) at the hypocentre
+        ``source``, a :class:`~seismo_sbi.simulators.sources.SourceLocation` or
+        ``[latitude, longitude, depth_km, time_s]``.
+
+        No nuisance is drawn and no nuisance effect applied. ``deterministic`` uses the fiducial
+        Earth model; otherwise one ensemble member is drawn. ``stf_duration`` scales the source
+        time function, None for a Dirac. ``stations`` keeps only those stations'
+        traces, in receiver order; ``return_traces`` also returns the ``[(station, component)]``
+        order of the traces.
+        """
+        simulator = copy(self.simulator)
+        simulator.post_processing_chain = PostProcessingChain([])
+        inputs_map = {"source_location": list(source), "moment_tensor": list(moment_tensor),
+                      "use_fiducial": deterministic}
+        if stf_duration is not None:
+            inputs_map["stf_duration"] = stf_duration
+        data_vector = np.asarray(self.data_loader_callable(
+            {"outputs": simulator.run_simulation(inputs_map)[1]})).flatten()
+
+        traces = [(receiver.station_name, component)
+                  for receiver in simulator.receivers.iterate() for component in receiver.components]
+        per_trace = data_vector.reshape(len(traces), -1)
+        if stations is not None:
+            wanted = set(stations)
+            keep = [index for index, (station, _) in enumerate(traces) if station in wanted]
+            per_trace = per_trace[keep]
+            traces = [traces[index] for index in keep]
+        data_vector = per_trace.flatten()
+        return (data_vector, traces) if return_traces else data_vector
 
     def create_input_output_simulation_callable(self, parameters, data_loader, samplers):
         return partial(self.input_output_simulation, parameters, data_loader, samplers)
