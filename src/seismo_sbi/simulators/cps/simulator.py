@@ -55,7 +55,8 @@ class CPSSimulator(Simulator):
 
         seismograms = self._compute_seismograms_from_kernels(source)
         seismograms = self.synthetics_summary(seismograms)
-        seismograms = seismograms.reshape(self.num_traces, -1)
+        num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
+        seismograms = seismograms.reshape(num_traces, -1)
 
         trace_counter = 0
         for rec_idx, receiver in enumerate(self.receivers.iterate()):
