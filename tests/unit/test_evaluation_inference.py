@@ -60,11 +60,12 @@ def test_resolve_ckpt_dir_finds_the_nested_run_directory(tmp_path):
 
 
 LV2_CHECKPOINTS = Path(__file__).resolve().parents[2] / "examples" / "ml-checkpoints"
+LV2_CHECKPOINT = LV2_CHECKPOINTS / "checkpoints" / "best_model-LV2.ckpt"
 
 
 @pytest.mark.requires_data
-@pytest.mark.skipif(not (LV2_CHECKPOINTS / "checkpoints" / "best_model-LV2.ckpt").is_file(),
-                    reason="needs the LV2 checkpoint")
+@pytest.mark.skipif(not LV2_CHECKPOINT.is_file() or LV2_CHECKPOINT.stat().st_size < 1_000_000,
+                    reason="needs the LV2 checkpoint (git lfs pull)")
 def test_build_ml_posterior_from_the_lv2_checkpoint():
     import numpy as np
     import torch
