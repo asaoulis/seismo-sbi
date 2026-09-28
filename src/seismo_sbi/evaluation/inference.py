@@ -42,11 +42,6 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     sbi_pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
     original_parameters = deepcopy(sbi_pipeline.parameters)
 
-    # Snapshot the config-default time shifts before load_compressors: the theory-covariance
-    # estimator zeroes the shared map, which would make the NPE time-shift undo a no-op.
-    sbi_pipeline._default_receiver_time_shifts = dict(
-        sbi_pipeline.simulation_parameters.receivers.receiver_time_shifts_map)
-
     existing_sims = sorted(
         _Path(sbi_pipeline.simulations_output_path).glob("random_event_*.h5"))
     if regenerate_dataset or not existing_sims:
@@ -149,11 +144,7 @@ def load_real_observation(config, sbi_pipeline, job_name):
             f"Available: {list(config.real_event_jobs.keys())}")
 
     components = sbi_pipeline.data_manager.data_loader.components
-    # The config-default shifts snapshotted at build time; the live map is zeroed by the
-    # theory-covariance estimator.
-    forward_shifts = getattr(sbi_pipeline, "_default_receiver_time_shifts", None)
-    if forward_shifts is None:
-        forward_shifts = sbi_pipeline.simulation_parameters.receivers.receiver_time_shifts_map
+    forward_shifts = sbi_pipeline.default_receiver_time_shifts
     print(f"NPE time-shift undo: inverting config-default shifts {dict(forward_shifts)}")
     return load_observation(real_event_path, sbi_pipeline.simulation_parameters.receivers, components,
                             forward_shifts)

@@ -92,7 +92,11 @@ class SBIPipeline:
         self.test_jobs_paths = None
 
         self.num_dim = None
+        self.parameters = None
         self.simulation_parameters = None
+        #: The configured receiver time shifts, ``{station: samples}``, kept before the
+        #: theory-covariance estimator zeroes them on the shared receivers.
+        self.default_receiver_time_shifts = {}
         self.simulator_wrapper = None
         
         self.ground_truth_scaler = None
@@ -111,6 +115,7 @@ class SBIPipeline:
         self.test_noises = {}
 
         self.dataset_generation_samplers = None
+        self.data_cov_mat = None
         self.empirical_cov_mat = None
         self.adaptive_covariance = None
 
@@ -141,6 +146,7 @@ class SBIPipeline:
         dataset_compressor = DatasetCompressor(data_loader, self.simulator_wrapper.simulation_save_callable, self.num_parallel_jobs, downsampled_length)
         data_length = compute_data_vector_length(simulation_parameters.seismogram_duration, simulation_parameters.sampling_rate) + 1
         self.data_manager = DataManager(data_loader, dataset_compressor, data_length)
+        self.default_receiver_time_shifts = dict(simulation_parameters.receivers.receiver_time_shifts_map)
 
     def compute_data_vector_properties(self, test_jobs_paths, real_event_jobs_config):
         """Set ``data_vector_length`` and ``trace_length`` from the test and real-event jobs."""
@@ -505,6 +511,8 @@ class SingleEventPipeline(SBIPipeline):
     def __init__(self, pipeline_parameters : PipelineParameters, config_path : str = None):
 
         super().__init__(pipeline_parameters, config_path)
+        self.least_squares_solver = None
+        self.mcmc_chain_for_mle = None
 
     def load_seismo_parameters(self,
                                simulation_parameters : SimulationParameters, 
