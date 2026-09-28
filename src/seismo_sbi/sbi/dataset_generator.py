@@ -5,6 +5,7 @@ turn a configuration block into the callables that draw each parameter. A sample
 and a sample count and returns an array of draws.
 """
 
+import logging
 from abc import ABC, abstractmethod
 import joblib
 import traceback
@@ -18,6 +19,8 @@ from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
 
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 class ParallelSimulationRunner(ABC):
@@ -40,6 +43,8 @@ class ParallelSimulationRunner(ABC):
                     return True
                 except Exception as exc:
                     last_exc = exc
+                    # Printed, not logged: this runs in joblib worker processes, which carry no
+                    # logging handlers of their own.
                     print(f"Simulation terminated with exception {attempt_number + 1} times:")
                     print(traceback.format_exc())
                     print("Retrying simulation...")
@@ -68,7 +73,7 @@ class ParallelSimulationRunner(ABC):
                                 simulation_job_args in simulation_job_args_list
                         )
             except Exception as exc:
-                print("Parallel simulations failed. Exiting.")
+                logger.warning("Parallel simulations failed. Exiting.")
                 raise exc
             finally:
                 from joblib.externals.loky import get_reusable_executor
@@ -93,8 +98,8 @@ class ParallelSimulationRunner(ABC):
         if not n_skipped:
             return
         fraction = n_skipped / total if total else 0.0
-        print(f"[dataset_generator] {n_skipped}/{total} simulations skipped "
-              f"({fraction:.2%}) after exhausting retries.")
+        logger.warning(f"[dataset_generator] {n_skipped}/{total} simulations skipped "
+                       f"({fraction:.2%}) after exhausting retries.")
         if fraction > max_skip_fraction:
             raise RuntimeError(
                 f"Aborting dataset generation: {fraction:.1%} of simulations failed "
@@ -231,7 +236,7 @@ class VelocityModelSampler:
             self.kwargs = {'corr_length_km': 5.0,
                            'std_vp': kappa/100,
                            'std_vs': kappa/100,}
-            print(f"Using smooth perturbations with kappa={kappa}")
+            logger.info(f"Using smooth perturbations with kappa={kappa}")
         else:
             self.perturbation_function = self.perturbation_methods["default"]
             self.kwargs['kappa'] = kappa

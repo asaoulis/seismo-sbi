@@ -36,6 +36,9 @@ def parse_args():
 
 
 def main():
+    from seismo_sbi.utils.environment import log_progress_to_stdout
+
+    log_progress_to_stdout()
     args = parse_args()
     config_path = args.config
     ckpt_dir = Path(args.ckpt_dir)

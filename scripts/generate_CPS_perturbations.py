@@ -13,6 +13,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 
 from pathlib import Path
 from seismo_sbi.sbi.configuration import SBI_Configuration
+from seismo_sbi.utils.environment import log_progress_to_stdout
 from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
 from seismo_sbi.sbi import job_runners
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
@@ -64,6 +65,7 @@ def main():
 
     # Parse arguments and prepare configuration data
 
+    log_progress_to_stdout()
     args = parse_arguments()
     config_path = args.config
 

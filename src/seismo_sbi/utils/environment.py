@@ -2,12 +2,15 @@
 
 Thread caps, the numba JIT cache directory, the Instaseis querier cache size and arviz's
 daily-warning stamp are all read by their libraries at import time or inherited by spawned
-workers, so they are set here before the science imports. Call them at the top of a launcher.
+workers, so they are set here before the science imports. Call them at the top of a launcher,
+with :func:`log_progress_to_stdout` for the library's progress messages.
 """
 
 import datetime
 import getpass
+import logging
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -57,3 +60,12 @@ def stamp_arviz_daily_warning():
     temporary = stamp_dir / f"daily_warning.{os.getpid()}.tmp"
     temporary.write_text(today)
     temporary.replace(stamp)
+
+
+def log_progress_to_stdout(level=logging.INFO):
+    """Print the library's log records at ``level`` and above to stdout, one message per line."""
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    library_logger = logging.getLogger("seismo_sbi")
+    library_logger.addHandler(handler)
+    library_logger.setLevel(level)

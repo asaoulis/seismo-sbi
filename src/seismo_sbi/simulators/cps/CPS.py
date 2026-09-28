@@ -5,11 +5,14 @@ and hpulse96 over a list of epicentral distances, and reads the elementary Green
 back. ``update_with_Gtensor`` rotates them to a receiver's azimuth and into the moment-tensor
 frame, so a simulation is a contraction of the tensor with the six components.
 """
+import logging
 import subprocess
 from obspy import read, Stream
 from pathlib import Path
 import hashlib
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 DEG2M = 111.195e3
 TEN = 10
@@ -54,7 +57,7 @@ def get_hashcode(dists_in_km, evdp_in_km, vmodel):
 def perturb_model(vmodel, kappa, random_seed=None):
     '''Perturb the velocity model by adding random noise to it.'''
     perturb = vmodel.copy()
-    if kappa < 1.: print ('Warning: kappa is too small to make any perturbation')
+    if kappa < 1.: logger.warning('Warning: kappa is too small to make any perturbation')
     perturb[:3, :] *= np.random.normal(1, kappa/100, (3, vmodel.shape[1]))
     return perturb
 
@@ -72,23 +75,23 @@ def calc_CPS_GFs(dists_in_km, evdp_in_km, vmodel, output='DISP',
         raise ValueError("CPS path must be provided dynamically.")
 
     wdir_path = Path(wdir)
-    if verbose: print(' Calculate GFs using CPS programs in', wdir)
+    if verbose: logger.info(' Calculate GFs using CPS programs in %s', wdir)
     with open(wdir_path / 'dfile', 'w') as fp:
-        if verbose: print('  - Preparing dfile')
+        if verbose: logger.info('  - Preparing dfile')
         for dist in dists_in_km:
             fp.write('%.1f %.2f %d %.1f %.1f\n' % (dist, dt, npts, t0, vred))
         fp.close()
-    if verbose: print('  - Preparing model96')
+    if verbose: logger.info('  - Preparing model96')
     vmodel_fname = wdir_path / 'vel.mod'
     write_Model96(vmodel, vmodel_fname)
-    if verbose: print('  - Calculating GFs with CPS programs')
+    if verbose: logger.info('  - Calculating GFs with CPS programs')
     cmd = f'{cps_path}/hprep96 -M vel.mod -d dfile -HS {evdp_in_km} -HR 0.0 -EQEX -R\n'
     cmd += f'{cps_path}/hspec96 > hspec96.out\n'
     cmd += f'{cps_path}/hpulse96 -{output[0]} -p -l 1 > hpulse96.out\n'
     cmd += f'{cps_path}/f96tosac -B hpulse96.out\n'
     cmd += 'rm -f hpulse96.out hspec96.*'
     out = subprocess.run(cmd, stdout=subprocess.PIPE, text=True, shell=True, cwd=wdir)
-    if verbose: print(out.stdout)
+    if verbose: logger.info(out.stdout)
     gfstream = Stream()
     for sacf in sorted(wdir_path.glob('B*.sac')):
         tr = read(sacf, format='SAC')[0]
@@ -98,7 +101,7 @@ def calc_CPS_GFs(dists_in_km, evdp_in_km, vmodel, output='DISP',
     gfstream.write(wdir_path / 'GF.mseed', format='MSEED')
     cmd = 'rm -f *.sac'
     out = subprocess.run(cmd, stdout=subprocess.PIPE, text=True, shell=True, cwd=wdir)
-    if verbose: print('  - Calculated GF written to', wdir_path / 'GF.mseed')
+    if verbose: logger.info('  - Calculated GF written to %s', wdir_path / 'GF.mseed')
 
 def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_params=None,
                          force_calc=True, verbose=True, rootdir='.', return_gf=True, gf_directory=None,
@@ -124,13 +127,13 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
                 cps_path=cps_path,
             )
 
-        if verbose: print('  - Reading GF from', wdir_path / 'GF.mseed')
+        if verbose: logger.info('  - Reading GF from %s', wdir_path / 'GF.mseed')
         gfstream = read(wdir_path / 'GF.mseed', format='MSEED')
     else:
         wdir_path = Path(gf_directory)
         if not wdir_path.exists():
             raise FileNotFoundError(f"GF directory {gf_directory} does not exist.")
-        if verbose: print('  - Reading GF from', wdir_path / 'GF.mseed')
+        if verbose: logger.info('  - Reading GF from %s', wdir_path / 'GF.mseed')
         gfstream = read(wdir_path / 'GF.mseed', format='MSEED')
     gfstream_processed = Stream()
     for s in objstats:
@@ -181,7 +184,7 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
         nt = int(s.window / gfstream_processed[0].stats.delta)
         gfarr = np.array([tr.data[:nt] for tr in gfstream_processed]).reshape((ns, TEN, nt))
     except Exception as ex:
-        print('The length of GF function might need to be longer!')
+        logger.warning('The length of GF function might need to be longer!')
         raise ex
     gf_tensor = np.zeros((ns, nc, ne, nt))
     phi = np.deg2rad([s.azimuth for s in objstats]).reshape((ns, 1))

@@ -6,6 +6,7 @@ likelihood and SBI inversions; :class:`SingleEventPipeline` specialises it to on
 fixed receiver set.
 """
 
+import logging
 from pathlib import Path
 import shutil
 import numpy as np
@@ -49,6 +50,8 @@ from .job_runners import convert_lists_to_arrays
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 from seismo_sbi.utils.errors import InvalidConfiguration
+
+logger = logging.getLogger(__name__)
 
 
 def likelihood_covariance(option, compressor_covariance, data_vector_length):
@@ -221,7 +224,7 @@ class SBIPipeline:
                 noise_level = build_cov_sigma2_dict(covariance_data)
             elif covariance_data is None and noise_level is None:
                 # TEMP NOISE LEVEL
-                print("using temp noies level 1.0")
+                logger.info("using temp noise level 1.0")
                 noise_level = 1.0
 
             diag_regularisation_magnitude = options.get("diag_regularisation_magnitude", 0.0)
@@ -311,7 +314,7 @@ class SBIPipeline:
             cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, self.data_cov_mat.covariance_matrix_arrays, self.simulation_parameters.receivers, self.trace_length, diag_regularisation=diag_reg_magnitude, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "filtered_block":
             noise_level = stationwise_covariances
-            print("Initialising filtered block covariance with noise level:", type(noise_level))
+            logger.info('Initialising filtered block covariance with noise level: %s', type(noise_level))
             cov_mat = BlockDiagonalFilteredCovariance(noise_level, self.simulation_parameters.processing['filter'], self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
         elif cov_matrix_option == "kolb":
             noise_level = stationwise_covariances
@@ -500,8 +503,7 @@ class SBIPipeline:
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
-                    print(e)
-                    print("ChainConsumer failed, skipping plotting of posterior comparisons")
+                    logger.warning("ChainConsumer failed, skipping plotting of posterior comparisons: %s", e)
 
 class SingleEventPipeline(SBIPipeline):
     """The pipeline for one event: an iterative least-squares MLE, then the Gaussian-likelihood
@@ -565,7 +567,7 @@ class SingleEventPipeline(SBIPipeline):
             for compressor_name in self.compressor_keys:
 
                 start_time = time.time()
-                print("Starting on simulation:", sim_name, "with compressor:", compressor_name, flush=True)
+                logger.info("Starting on simulation: %s with compressor: %s", sim_name, compressor_name)
                 inversion_config = InversionConfig("", test_noise, compressor_name)
                 if self.seed is not None:
                     np.random.seed(self.seed)
@@ -577,7 +579,7 @@ class SingleEventPipeline(SBIPipeline):
 
                 inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, priors, compressor_name=compressor_name)
                 
-                print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
+                logger.info(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s")
                 if do_plots:
                     plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
 
@@ -587,19 +589,19 @@ class SingleEventPipeline(SBIPipeline):
 
             
                 if likelihood_config["run"]:
-                    print('Starting likelihood inversions.')
+                    logger.info('Starting likelihood inversions.')
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
                         single_job, likelihood_config, compressor_name,
                         deepcopy(self.parameters), priors
                     ):
                         yield job_result, result[1]
-                    print(f"Time taken for likelihood inversions: {time.time() - start_time}s", flush=True)
+                    logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
     def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, priors, mle_start = None):
         MLE_likelihood_config = deepcopy(likelihood_config)
         use_best = MLE_likelihood_config.get('mle_use_best', False)
-        print("Finding MLE with MCMC, use_best:", use_best)
+        logger.info('Finding MLE with MCMC, use_best: %s', use_best)
         if use_best:
             MLE_likelihood_config['walker_burn_in'] = 30
             MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 400
@@ -627,12 +629,12 @@ class SingleEventPipeline(SBIPipeline):
         samples = res.inversion_data.samples
         if use_best and logps is not None:
             best_idx = int(np.argmax(logps))
-            print("Best chi2 value:", -logps[best_idx])
-            print("Worst chi2 value:", -logps[np.argmin(logps)] )
+            logger.info('Best chi2 value: %s', -logps[best_idx])
+            logger.info('Worst chi2 value: %s', -logps[np.argmin(logps)])
             mcmc_MLE = samples[best_idx]
         else:
             mcmc_MLE = np.mean(samples, axis=0)
-        print('MCMC MLE', mcmc_MLE)
+        logger.info('MCMC MLE %s', mcmc_MLE)
         # compute chi2 of MLE
         
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(mcmc_MLE, 'theta_fiducial')
@@ -656,7 +658,7 @@ class SingleEventPipeline(SBIPipeline):
         )
         D = single_job[2]
         chi2_mle = self.compressors[compressor_name].compute_misfit(D)
-        print(f"chi^2 at MCMC MLE: {chi2_mle:.5f}", flush=True)
+        logger.info(f"chi^2 at MCMC MLE: {chi2_mle:.5f}")
         return compression_data
 
     def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, priors, compressor_name: str = None):
@@ -674,9 +676,9 @@ class SingleEventPipeline(SBIPipeline):
         compressor = self.compressors[compressor_name]
         x_0 = compression_data.theta_fiducial
         
-        print('MLE', x_0)
-        print('theta0', theta0)
-        print('bounds', self.parameters.bounds)
+        logger.info('MLE %s', x_0)
+        logger.info('theta0 %s', theta0)
+        logger.info('bounds %s', self.parameters.bounds)
         self.ground_truth_scaler = FlexibleScaler(self.parameters)
         statistic_scaler = self.ground_truth_scaler
         x_0_scaled = statistic_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
@@ -710,7 +712,7 @@ class SingleEventPipeline(SBIPipeline):
         mean_relative_error = torch.mean(torch.abs(compressions - truths)/truths, dim=1)
         train_data = train_data[mean_relative_error < factor]
         raw_compressed_dataset = raw_compressed_dataset[mean_relative_error < factor]
-        print(f"Removed {start_length - train_data.shape[0]} rows due to high relative compression error.")
+        logger.info(f"Removed {start_length - train_data.shape[0]} rows due to high relative compression error.")
         # count number of rows removed
         return train_data, raw_compressed_dataset
 
@@ -739,7 +741,7 @@ class SingleEventPipeline(SBIPipeline):
         """Find the MLE by iterative least squares and re-centre the compressor on it; returns the
         compression data at the MLE.
         """
-        print("Starting MLE", flush=True)
+        logger.info("Starting MLE")
         # choose a compressor name if not provided (needed to decide single- vs multi-step below)
         if compressor_name is None:
             if not self.compressor_keys:
@@ -862,7 +864,7 @@ class SingleEventPipeline(SBIPipeline):
                                                         self.num_dim,
                                                         nsamples_per_walker=nsamples_per_walker, nwalkers=num_processes,
                                                         burn_in=walker_burn_in, num_processes=num_processes, theta0=theta0, move_size=move_size, mle_start = mle_start, seed=seed)
-        print("Finished MCMC chains.", flush=True)
+        logger.info("Finished MCMC chains.")
         samples = scaler.inverse_transform(samples_scaled)
         inversion_data = InversionData(theta0, samples, scaler)
 

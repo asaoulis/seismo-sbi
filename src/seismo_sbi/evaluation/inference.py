@@ -7,12 +7,15 @@ real event (:func:`load_observation` reads one event file).
 """
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+
+logger = logging.getLogger(__name__)
 
 
 def build_eval_pipeline(config_path, *, setup_training_noise=False,
@@ -46,13 +49,13 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
         _Path(sbi_pipeline.simulations_output_path).glob("random_event_*.h5"))
     if regenerate_dataset or not existing_sims:
         if not existing_sims:
-            print("No existing sims found — generating the dataset.")
+            logger.info("No existing sims found — generating the dataset.")
         test_jobs_paths = sbi_pipeline.simulate_test_jobs(
             config.dataset_parameters, config.test_job_simulations
         )
     else:
-        print(f"Reusing {len(existing_sims)} existing sims at "
-              f"{sbi_pipeline.simulations_output_path} (no regeneration).")
+        logger.info(f"Reusing {len(existing_sims)} existing sims at "
+                    f"{sbi_pipeline.simulations_output_path} (no regeneration).")
         test_jobs_paths = existing_sims
     sbi_pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
     # An NPE-only evaluation never uses the score compressors, and the stencil cannot run on the
@@ -70,8 +73,8 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
             extra_gradients=extra_gradients, freeze=True,
         )
     else:
-        print("skip_compression_data set — skipping score/Fisher stencil + compressor "
-              "load (ML-NPE eval needs no compressors).")
+        logger.info("skip_compression_data set — skipping score/Fisher stencil + compressor "
+                    "load (ML-NPE eval needs no compressors).")
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
     if setup_training_noise:
@@ -126,7 +129,7 @@ def resolve_ckpt_dir(ckpt_dir) -> Path:
         raise FileNotFoundError(
             f"No model_meta.json or checkpoints/best_model-*.ckpt under {ckpt_dir}.")
     if len(matches) > 1:
-        print(f"WARNING: multiple model_meta.json under {ckpt_dir}; using {matches[0]}")
+        logger.warning(f"multiple model_meta.json under {ckpt_dir}; using {matches[0]}")
     return matches[0].parent
 
 
@@ -145,7 +148,7 @@ def load_real_observation(config, sbi_pipeline, job_name):
 
     components = sbi_pipeline.data_manager.data_loader.components
     forward_shifts = sbi_pipeline.default_receiver_time_shifts
-    print(f"NPE time-shift undo: inverting config-default shifts {dict(forward_shifts)}")
+    logger.info(f"NPE time-shift undo: inverting config-default shifts {dict(forward_shifts)}")
     return load_observation(real_event_path, sbi_pipeline.simulation_parameters.receivers, components,
                             forward_shifts)
 

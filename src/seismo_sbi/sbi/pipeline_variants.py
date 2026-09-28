@@ -6,6 +6,7 @@ Gaussian-likelihood inversion for every job; it is the default for training conf
 and :class:`MLEEstimatePipeline` runs only the maximum-likelihood search for each job.
 """
 
+import logging
 import time
 from copy import deepcopy
 from typing import List
@@ -16,6 +17,8 @@ from .compression.gaussian import ScoreCompressionData
 from .configuration import PipelineParameters
 from .pipeline import SingleEventPipeline
 from .types.results import InversionResult, InversionData, JobResult, InversionConfig, JobData
+
+logger = logging.getLogger(__name__)
 
 
 class MultiEventPipeline(SingleEventPipeline):
@@ -70,14 +73,14 @@ class MultiEventPipeline(SingleEventPipeline):
                 )
                 job_result = None
                 if likelihood_config["run"]:
-                    print('Starting likelihood inversions.')
+                    logger.info('Starting likelihood inversions.')
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
                         single_job, likelihood_config, compressor_name,
                         deepcopy(self.parameters), priors
                     ):
                         yield job_result, result[1]
-                    print(f"Time taken for likelihood inversions: {time.time() - start_time}s")
+                    logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
     def create_job_data(self, test_jobs_paths, real_event_jobs):
 
@@ -183,7 +186,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             x_0 = compressor.compress_data_vector(D)
                             x_0_scaled = self.ground_truth_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
                             if np.abs(x_0_scaled - 0.5).max() > 0.5:
-                                print('x_0 problem found', np.abs(x_0_scaled - 0.5).max(), i)
+                                logger.warning('x_0 problem found %s %s', np.abs(x_0_scaled - 0.5).max(), i)
                                 x_0_scaled = np.clip(x_0_scaled, 0, 1.)
                             sample_results, _ = sbi_model.sample_posterior(x_0_scaled, num_samples=10000)
                             theta0_scaled = self.ground_truth_scaler.transform(theta0.reshape(1,-1)).reshape(-1)
@@ -191,19 +194,19 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             job_result = JobResult(compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))
                             compression_data = ScoreCompressionData(x_0, D, compression_data.data_parameter_gradients, None)
 
-                        print(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s", flush=True)
+                        logger.info(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s")
                         inversion_result = InversionResult(sim_name+f'_{num_sims}_{repeat}', inversion_data, inversion_config)
                         yield job_result, inversion_result
 
                         if likelihood_config["run"] and num_sims == 10000 and repeat == 0:
-                            print('Starting likelihood inversions.')
+                            logger.info('Starting likelihood inversions.')
                             start_time = time.time()
                             for result in self.run_single_gaussian_likelihood_inversion(
                                 single_job, likelihood_config, compressor_name,
                                 deepcopy(self.parameters), priors
                             ):
                                 yield result
-                            print(f"Time taken for likelihood inversions: {time.time() - start_time}s")
+                            logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
 
 class MLEEstimatePipeline(SingleEventPipeline):

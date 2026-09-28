@@ -7,11 +7,14 @@ figure, the recovery scatter, example panels and the metrics JSON, one function 
 """
 from __future__ import annotations
 
+import logging
 import json
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def run_validation(
@@ -48,12 +51,10 @@ def run_validation(
     ds, val_idx = validation_dataset(sbi_pipeline, data_scaler, n_val=n_val)
     # Conditioned models are always variable-station (packed context).
     use_packed = bool(variable_stations) or (cond_param_map is not None)
-    print(
-        f"  validation: {len(val_idx)} held-out sims (tail of {len(ds)}), "
-        f"{num_samples} samples each; "
-        f"conditioned={cond_param_map is not None}; "
-        f"path={'packed (variable-station)' if use_packed else 'direct (fixed-station)'}."
-    )
+    logger.info(f"  validation: {len(val_idx)} held-out sims (tail of {len(ds)}), "
+                f"{num_samples} samples each; "
+                f"conditioned={cond_param_map is not None}; "
+                f"path={'packed (variable-station)' if use_packed else 'direct (fixed-station)'}.")
 
     theta_scaled_list, samples_scaled_list, samples_phys_list, shows = sample_validation_posteriors(
         sbi_pipeline, posterior, data_scaler, ds, val_idx, use_packed=use_packed, n_show=n_show,
@@ -181,7 +182,7 @@ def sample_validation_posteriors(sbi_pipeline, posterior, data_scaler, ds, val_i
                 )
             )
         if (k + 1) % 25 == 0:
-            print(f"    …{k + 1}/{len(val_idx)} val sims sampled")
+            logger.info(f"    …{k + 1}/{len(val_idx)} val sims sampled")
 
     return theta_scaled_list, samples_scaled_list, samples_phys_list, shows
 
@@ -242,9 +243,9 @@ def write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures):
             title="TARP expected coverage",
         )
         figures["tarp_coverage"] = str(cov_path)
-        print(f"    wrote TARP coverage -> {cov_path}")
+        logger.info(f"    wrote TARP coverage -> {cov_path}")
     except Exception as e:  # noqa: BLE001
-        print(f"    [warn] TARP coverage failed: {type(e).__name__}: {e}")
+        logger.warning(f"    [warn] TARP coverage failed: {type(e).__name__}: {e}")
     return ecp, alpha
 
 
@@ -258,9 +259,9 @@ def write_recovery_scatter(theta_phys, samples_phys, out_dir, figures):
         sc_path = out_dir / "recovery_scatter.svg"
         ev.plot_recovery_scatter(theta_phys, samples_phys, figsave=sc_path)
         figures["recovery_scatter"] = str(sc_path)
-        print(f"    wrote recovery scatter -> {sc_path}")
+        logger.info(f"    wrote recovery scatter -> {sc_path}")
     except Exception as e:  # noqa: BLE001
-        print(f"    [warn] recovery scatter failed: {type(e).__name__}: {e}")
+        logger.warning(f"    [warn] recovery scatter failed: {type(e).__name__}: {e}")
 
 
 def write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figures):
@@ -283,10 +284,10 @@ def write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figure
                     savefig=True,
                 )
             except Exception as e:  # noqa: BLE001
-                print(f"    [warn] val example {i} failed: {type(e).__name__}: {e}")
+                logger.warning(f"    [warn] val example {i} failed: {type(e).__name__}: {e}")
         figures["examples_dir"] = str(out_dir / "examples")
     except Exception as e:  # noqa: BLE001
-        print(f"    [warn] example panels failed: {type(e).__name__}: {e}")
+        logger.warning(f"    [warn] example panels failed: {type(e).__name__}: {e}")
 
 
 def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples, conditioned):
@@ -299,7 +300,7 @@ def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples,
     try:
         metrics = posterior_metrics.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
     except Exception as e:  # noqa: BLE001
-        print(f"    [warn] metric computation failed: {type(e).__name__}: {e}")
+        logger.warning(f"    [warn] metric computation failed: {type(e).__name__}: {e}")
 
     result = {
         "n_val": n_val,

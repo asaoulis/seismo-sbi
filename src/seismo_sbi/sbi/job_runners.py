@@ -4,10 +4,13 @@ The ``run_*`` functions consume the pipeline's results generator and plot or sav
 either as it arrives or after every inversion has run.
 """
 
+import logging
 import os
 import pickle
 import multiprocessing as mp
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def results_queue_processing(results_generator, queue):
@@ -20,7 +23,7 @@ def results_queue_processing(results_generator, queue):
             inversion_results.append(inversion_result)
     except Exception as e:
         if job_result is not None and inversion_result is not None:
-            print("Exception in results queue processing: ", e)
+            logger.warning('Exception in results queue processing: %s', e)
             raise e
     finally:
         queue.put((None, None))
@@ -31,14 +34,14 @@ def asynchronous_plotting(plotting_callable, results_queue, plotting_complete_ev
         while True:
             job_result, inversion_result = results_queue.get()
             if inversion_result is None:
-                print("Inversion result is none, terminating", flush=True)
+                logger.warning("Inversion result is none, terminating")
                 break
             plotting_callable(job_result, inversion_result)
         plotting_complete_event.set()
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print("Exception in results plotting: ", e)
+        logger.warning('Exception in results plotting: %s', e)
         raise e
 
 def run_asynchronous_plotting(sbi_pipeline, results_generator):
@@ -50,7 +53,7 @@ def run_asynchronous_plotting(sbi_pipeline, results_generator):
         job_results, inversion_results = results_queue_processing(results_generator, results_queue)
         plotting_complete_event.wait()
     except Exception as e:
-        print("Exception in the main thread: ", e)
+        logger.warning('Exception in the main thread: %s', e)
         import traceback
         traceback.print_exc()
     finally:
@@ -82,7 +85,7 @@ def asynchronous_saving(job_data,output_path, results_queue, saving_complete_eve
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print("Exception in results saving: ", e)
+        logger.warning('Exception in results saving: %s', e)
         raise e
 
 def run_asynchronous_results_saving(job_data, results_generator, output_path):
@@ -94,7 +97,7 @@ def run_asynchronous_results_saving(job_data, results_generator, output_path):
         job_results, inversion_results = results_queue_processing(results_generator, results_queue)
         saving_complete_event.wait()
     except Exception as e:
-        print("Exception in the main thread: ", e)
+        logger.warning('Exception in the main thread: %s', e)
         import traceback
         traceback.print_exc()
     finally:
@@ -111,7 +114,7 @@ def run_all_inversions_before_plotting(sbi_pipeline, results_generator):
             job_results.append(job_result)
             inversion_results.append(inversion_result)
     except Exception as e:
-        print("Exception in results queue processing: ", e)
+        logger.warning('Exception in results queue processing: %s', e)
     sbi_pipeline.plot_results(job_results, inversion_results)
     return job_results,inversion_results
 

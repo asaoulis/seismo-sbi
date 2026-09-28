@@ -9,7 +9,7 @@ workflow), ``--stage meta`` rebuilds a run's ``model_meta.json`` sidecar without
 import argparse
 
 from seismo_sbi.utils.environment import (cap_blas_threads, configure_numba_cache, cap_querier_cache,
-                                          stamp_arviz_daily_warning)
+                                          stamp_arviz_daily_warning, log_progress_to_stdout)
 
 # All read by their libraries at import time, so they run before the science imports.
 cap_blas_threads()
@@ -43,6 +43,7 @@ def parse_arguments():
 
 
 def main():
+    log_progress_to_stdout()
     args = parse_arguments()
     config = SBI_Configuration.from_file(args.config)
     training = config.training.apply_overrides(station_encoder=args.architecture,
