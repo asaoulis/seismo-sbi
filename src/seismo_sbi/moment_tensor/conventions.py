@@ -2,9 +2,8 @@
 
 ``m6`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m (up, south, east). ``create_matrix``
 builds the symmetric 3x3 tensor from six components in that index order, the matrix pyrocko's
-``m_up_south_east`` takes. The two scalar moments differ: ``compute_scalar_moment`` sums the
-full 3x3 tensor, counting each off-diagonal twice; ``scalar_moment`` sums the six components
-once each.
+``m_up_south_east`` takes. ``scalar_moment`` is the full-tensor moment of Silver and Jordan
+(1982), ``M0 = sqrt(0.5 * sum_ij M_ij^2)``, in which each off-diagonal component counts twice.
 """
 import numpy as np
 
@@ -17,15 +16,7 @@ def create_matrix(moment_tensor_sol):
     return moment_tensor_matrix
 
 
-def compute_scalar_moment(moment_tensor_sol):
-    """``(3x3 matrix, M0)`` with ``M0 = sqrt(0.5 * sum over the full tensor of m_ij^2)``."""
-    moment_tensor_matrix = create_matrix(moment_tensor_sol)
-
-    M_0 = (1/np.sqrt(2)) * np.sum(moment_tensor_matrix**2)**(1/2)
-    return moment_tensor_matrix, M_0
-
-
 def scalar_moment(mt6) -> float:
-    """``M0 = sqrt(0.5 * dot(mt6, mt6))`` in N.m, each of the six components counted once."""
+    """``M0 = sqrt(0.5 * (m_rr^2 + m_tt^2 + m_pp^2 + 2 * (m_rt^2 + m_rp^2 + m_tp^2)))`` in N.m."""
     mt6 = np.asarray(mt6, dtype=float)
-    return float(np.sqrt(0.5 * np.dot(mt6, mt6)))
+    return float(np.sqrt(0.5 * (np.dot(mt6[:3], mt6[:3]) + 2.0 * np.dot(mt6[3:], mt6[3:]))))

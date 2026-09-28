@@ -20,7 +20,7 @@ except Exception:
 import numpy as np
 
 from ..compression.derivative_stencil import DerivativeStencil
-from seismo_sbi.moment_tensor.conventions import compute_scalar_moment
+from seismo_sbi.moment_tensor.conventions import scalar_moment
 from ...utils.errors import error_handling_wrapper
 from ..types.parameters import IterativeLeastSquaresParameters
 
@@ -135,7 +135,7 @@ class IterativeLeastSquaresSolver:
         for param, value in model_parameters.theta_fiducial.items():
             if param == 'moment_tensor':
                 moment_tensor_components = value
-                _, M_0 = compute_scalar_moment(moment_tensor_components)
+                M_0 = scalar_moment(moment_tensor_components)
                 scaling_factors.append( 1/ M_0 * np.ones(6))
             elif param == 'source_location':
                 scaling_factors.append(np.array([0.1, 0.1, 0.5, 1]))

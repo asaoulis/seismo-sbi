@@ -110,6 +110,12 @@ class TestScalarMoment:
         mt = np.array([1e15] * 6)
         assert isinstance(scalar_moment(mt), float)
 
+    def test_off_diagonal_components_count_twice(self):
+        """A DC carried by m_tp alone has the M0 of the same DC rotated onto the diagonal."""
+        M = 3e14
+        assert scalar_moment(np.array([0.0, 0.0, 0.0, 0.0, 0.0, M])) == pytest.approx(M, rel=1e-12)
+        assert scalar_moment(np.array([0.0, M, -M, 0.0, 0.0, 0.0])) == pytest.approx(M, rel=1e-12)
+
 
 class TestGcmtHalfDuration:
     """Tests for ``_gcmt_half_duration(mt_components)``."""
@@ -129,6 +135,13 @@ class TestGcmtHalfDuration:
         t_small = _gcmt_half_duration(mt_small)
         t_large = _gcmt_half_duration(mt_large)
         assert t_large == pytest.approx(2.0 * t_small, rel=1e-6)
+
+    def test_rotated_double_couples_share_a_half_duration(self):
+        """The same fault seen in two orientations has one source duration."""
+        M = 1e15
+        on_diagonal = np.array([0.0, M, -M, 0.0, 0.0, 0.0])
+        off_diagonal = np.array([0.0, 0.0, 0.0, 0.0, 0.0, M])
+        assert _gcmt_half_duration(off_diagonal) == pytest.approx(_gcmt_half_duration(on_diagonal), rel=1e-12)
 
     def test_positive(self):
         mt = np.array([1e14, -1e14, 0.0, 0.0, 0.0, 0.0])
