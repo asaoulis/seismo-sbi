@@ -254,6 +254,9 @@ class CompressionTrainer:
             enable_progress_bar=enable_progress_bar,
         )
 
+        # Written before fit too, so a run killed mid-fit still records how it was trained.
+        if enable_checkpointing and trainer.is_global_zero:
+            self.write_model_meta(output_path)
         trainer.fit(self.model, train_dataloader, val_dataloader)
 
         # Rank 0 only, so multi-GPU ranks do not race-write the same sidecar; on the
@@ -266,8 +269,8 @@ class CompressionTrainer:
     def write_model_meta(self, output_path: Path) -> Path:
         """Write the ``model_meta.json`` sidecar describing this trainer's architecture.
 
-        :meth:`train` calls it once training finishes; ``train_NPE.py --stage meta`` calls it for a
-        run that was killed before then, from the same configuration the run used.
+        :meth:`train` calls it before and after fitting; ``train_NPE.py --stage meta`` calls it for a
+        run that was killed before its sidecar was written, from the same configuration the run used.
         """
         output_path = Path(output_path)
         meta = {

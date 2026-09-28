@@ -1127,6 +1127,20 @@ def test_mmd_lambda_schedule():
     assert lams[6] == 0.1 and lams[7] == 0.1                  # plateau
 
 
+def test_the_sidecar_exists_before_the_first_training_step(kernel_pipeline, tmp_path):
+    """A run killed mid-fit still records how it was trained, so it can be resumed correctly."""
+    pipeline, _, data_vector_length = kernel_pipeline
+    sidecar = tmp_path / "sidecar_run" / "model_meta.json"
+    present_at_start = []
+
+    def watch_the_sidecar(trainer, dataloader_args):
+        trainer.model.on_train_start = lambda: present_at_start.append(sidecar.exists())
+
+    _train_one_epoch(pipeline, data_vector_length, "seismogram_transformer", tmp_path,
+                     enable_checkpointing=True, run_name="sidecar_run", pre_train_hook=watch_the_sidecar)
+    assert present_at_start == [True]
+
+
 def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline, tmp_path):
     """`load_warm_start_weights` transfers weights only, and keeps the model fit-able.
 

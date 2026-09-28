@@ -6,13 +6,14 @@ chains. The result is a :class:`TrainingData` holding everything the trainer and
 need; the training script calls these in order.
 """
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from .pipeline_variants import PIPELINE_CLASSES
-from .scalers import FlexibleScaler, build_flexible_scaler
+from .scalers import FlexibleScaler, build_flexible_scaler, check_scaler_provenance, recorded_theta_scaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
 from ..utils.errors import InvalidConfiguration
 
@@ -82,6 +83,23 @@ def generate_training_dataset(pipeline, config, skip_compression_stencil=False):
     return simulation_paths
 
 
+def training_scaler(parameters, raw_config, training, models_output_path) -> FlexibleScaler:
+    """The parameter scaler a run trains with.
+
+    A run that warm-starts from ``training.warm_start_run_name`` keeps the scalar-moment convention
+    recorded in that run's ``model_meta.json`` under ``models_output_path`` (six-component when it
+    records none or has no sidecar), and raises if its scaling differs from a recorded one.
+    A cold start gets the full-tensor scaler.
+    """
+    if not training.warm_start_run_name:
+        return build_flexible_scaler(parameters, raw_config)
+    meta_path = Path(models_output_path) / training.warm_start_run_name / "model_meta.json"
+    source_meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    scaler = build_flexible_scaler(parameters, raw_config, model_meta=source_meta)
+    check_scaler_provenance(source_meta, scaler, strict=bool(recorded_theta_scaler(source_meta)))
+    return scaler
+
+
 def prepare_training_data(pipeline, config, simulation_paths, training):
     """Load the compressors, the noise model and the parameter scaler, and build the
     augmentation chains, returning the :class:`TrainingData` a trainer consumes."""
@@ -98,7 +116,8 @@ def prepare_training_data(pipeline, config, simulation_paths, training):
     print(f"Training-time nuisance augmentation: {list(augmentation_nuisance_params) or 'none'}")
     print(f"Post-noise augmentation: {list(post_noise_nuisance_params) or 'none'}")
 
-    data_scaler = build_flexible_scaler(pipeline.parameters, config.raw_config)
+    data_scaler = training_scaler(pipeline.parameters, config.raw_config, training,
+                                  pipeline.models_output_path)
     print(f"Moment-tensor scaling: {data_scaler.moment_tensor_scaling}")
     return TrainingData(
         simulation_paths=simulation_paths,

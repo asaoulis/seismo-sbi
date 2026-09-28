@@ -288,7 +288,7 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
     ``linear_bounds`` (written before they were recorded) warns that the bounds are unchecked.
     A scale-shape record without ``m0_convention`` was trained with ``"six_components"``.
     """
-    recorded = _recorded_theta_scaler(meta)
+    recorded = recorded_theta_scaler(meta)
     if not recorded:
         msg = ("checkpoint records no theta_scaler provenance; the scaling being used cannot be "
                "verified against training.")
@@ -320,7 +320,7 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
     return same
 
 
-def _recorded_theta_scaler(meta: dict) -> dict:
+def recorded_theta_scaler(meta: dict) -> dict:
     """The ``theta_scaler`` record of a parsed ``model_meta.json``, top level or under ``model_config``."""
     return (meta or {}).get("theta_scaler") or ((meta or {}).get("model_config") or {}).get("theta_scaler")
 
@@ -331,7 +331,7 @@ def recorded_m0_convention(meta: dict) -> str:
     ``meta`` is the parsed ``model_meta.json``; a record written before the convention was
     recorded, or no record, means ``"six_components"``.
     """
-    return (_recorded_theta_scaler(meta) or {}).get("m0_convention", "six_components")
+    return (recorded_theta_scaler(meta) or {}).get("m0_convention", "six_components")
 
 
 def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None,
