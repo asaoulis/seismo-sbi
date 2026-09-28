@@ -7,7 +7,7 @@ optional components map and per-station shift map), from arrays, or from an obsp
 """
 
 from fnmatch import fnmatchcase
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Sequence
 import numpy as np
 import json
 
@@ -25,7 +25,7 @@ class Receiver(NamedTuple):
     #: Station code; the key of this station in every seismogram map.
     station_name : str = "XXXX"
     #: The components this station records, from ``Z``, ``E``, ``N``, in that order.
-    components : List[str] = ["Z", "E", "N"]
+    components : Sequence[str] = ("Z", "E", "N")
     #: Static correction in samples at the pipeline sampling rate, applied to every component of
     #: this station; positive delays the trace.
     time_shift : int = 0

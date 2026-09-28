@@ -172,3 +172,10 @@ def test_a_station_file_with_one_station_gives_one_receiver(tmp_path):
     receivers = Receivers.from_station_file(str(stations))
 
     assert receivers.receivers == [Receiver(37.876221, -122.23558, "BK", "BKS", ["Z", "E", "N"])]
+
+
+def test_default_receivers_do_not_share_a_components_list():
+    first, second = Receiver(0.0, 0.0), Receiver(1.0, 1.0)
+
+    assert first.components == ("Z", "E", "N")
+    assert not isinstance(first.components, list) and second.components == ("Z", "E", "N")
