@@ -1,9 +1,9 @@
 """Moment magnitude, CLVD ratio, pyrocko moment tensor and nodal planes of a moment tensor.
 
 ``mt`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m (up, south, east).
-:func:`convert_to_pyrocko` builds pyrocko's north-east-down ``MomentTensor`` with its own sign and
-index mapping; it is not the ``m_up_south_east`` constructor ``moment_tensor.comparison.pyrocko_mt``
-uses, and the two conventions must not be merged.
+:func:`convert_to_pyrocko` builds pyrocko's ``MomentTensor`` from the north-east-down components
+(north = -south, down = -up), the same tensor :func:`~seismo_sbi.moment_tensor.comparison.pyrocko_mt`
+builds from the up-south-east ones.
 """
 import numpy as np
 from pyrocko import moment_tensor as pmt
@@ -28,12 +28,12 @@ def get_MW_and_epsilon(moment_tensor_sol):
 def convert_to_pyrocko(mt):
     #up, south, east to north east down
     m = pmt.MomentTensor(
-        mnn=-mt[1],
-        mee=-mt[2],
-        mdd=-mt[0],
-        mne=-mt[4],
-        mnd=-mt[5],
-        med=-mt[3]
+        mnn=mt[1],
+        mee=mt[2],
+        mdd=mt[0],
+        mne=-mt[5],
+        mnd=mt[3],
+        med=-mt[4]
     )
     return m
 

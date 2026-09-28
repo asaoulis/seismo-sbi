@@ -184,3 +184,31 @@ def test_the_ned_matrix_is_the_use_matrix_rotated():
     m6 = np.random.default_rng(4).normal(size=(5, 6)) * 1e16
 
     np.testing.assert_allclose(m6_to_matrix_ned(m6), _USE_TO_NED @ m6_to_matrix(m6) @ _USE_TO_NED.T, rtol=1e-12)
+
+
+def test_the_north_east_down_pyrocko_tensor_is_the_same_tensor():
+    from seismo_sbi.moment_tensor.comparison import from_pyrocko, kagan, pyrocko_mt
+    from seismo_sbi.moment_tensor.decomposition import convert_to_pyrocko, get_nodal_planes
+
+    for m6 in np.random.default_rng(5).normal(size=(5, 6)) * 1e16:
+        np.testing.assert_allclose(from_pyrocko(convert_to_pyrocko(m6)), m6, rtol=1e-9, atol=1e3)
+        np.testing.assert_allclose(convert_to_pyrocko(m6).m(), pyrocko_mt(m6).m(), rtol=1e-9, atol=1e3)
+        assert kagan(m6, from_pyrocko(convert_to_pyrocko(m6))) < 1e-4
+        np.testing.assert_allclose(get_nodal_planes(m6), pyrocko_mt(m6).both_strike_dip_rake(), atol=1e-6)
+
+
+@pytest.mark.parametrize("strike_dip_rake", [(0, 90, 0), (30, 60, 90), (120, 45, -60)])
+def test_nodal_planes_recover_a_known_mechanism(strike_dip_rake):
+    from pyrocko import moment_tensor as pmt
+
+    from seismo_sbi.moment_tensor.comparison import from_pyrocko
+    from seismo_sbi.moment_tensor.decomposition import get_nodal_planes
+
+    strike, dip, rake = strike_dip_rake
+    m6 = from_pyrocko(pmt.MomentTensor(strike=strike, dip=dip, rake=rake, scalar_moment=1e16))
+
+    planes = np.asarray(get_nodal_planes(m6))
+    strike_offsets_deg = (planes[:, 0] - strike + 180) % 360 - 180
+    matching = planes[np.argmin(np.abs(strike_offsets_deg))]
+    assert np.min(np.abs(strike_offsets_deg)) < 1e-6
+    np.testing.assert_allclose(matching[1:], [dip, rake], atol=1e-6)
