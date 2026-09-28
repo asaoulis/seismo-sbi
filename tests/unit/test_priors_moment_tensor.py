@@ -3,7 +3,7 @@
 import numpy as np
 
 from seismo_sbi.priors.moment_tensor_sampling import uniform_moment_tensor_on_sphere
-from seismo_sbi.utils.mt_conventions import scalar_moment
+from seismo_sbi.moment_tensor.conventions import scalar_moment
 
 
 def test_scalar_moment_equals_requested_m0():

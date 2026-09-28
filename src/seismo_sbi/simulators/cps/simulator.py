@@ -21,7 +21,7 @@ from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.multi_region import MultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
-from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
+from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
 
 CPS_INPUT_COVERSION = 1.e-13
 CPS_OUTPUT_COVERSION = 1.e-2

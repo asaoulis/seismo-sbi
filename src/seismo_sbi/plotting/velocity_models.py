@@ -10,12 +10,12 @@ import numpy as np
 from pyrocko import moment_tensor as mtm
 from pyrocko.plot.beachball import plot_beachball_mpl
 
-from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
+from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
 
 
 def compute_mw(moment_tensor_matrix):
     """Mw of a ``(3, 3)`` moment tensor in N m: ``(log10 M0 - 9.1) / 1.5`` with
-    ``M0 = sqrt(sum(M_ij^2) / 2)``, the same as ``utils.mt_decomposition.get_MW_and_epsilon``."""
+    ``M0 = sqrt(sum(M_ij^2) / 2)``, the same as ``moment_tensor.decomposition.get_MW_and_epsilon``."""
     M0 = np.sqrt(0.5 * np.sum(moment_tensor_matrix**2))
     Mw = (2.0 / 3.0) * (np.log10(M0) - 9.1)
     return Mw

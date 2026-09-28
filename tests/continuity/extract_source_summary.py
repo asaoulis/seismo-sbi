@@ -52,14 +52,14 @@ def compute_summary(samples: np.ndarray) -> dict:
     samples : np.ndarray, shape (N, 6)
         Rows are moment tensor samples [Mxx, Myy, Mzz, Mxy, Mxz, Myz]
         in the parametrisation used by the pipeline (up-south-east ordering
-        matching ``seismo_sbi.utils.mt_conventions.create_matrix``).
+        matching ``seismo_sbi.moment_tensor.conventions.create_matrix``).
 
     Returns
     -------
     dict with keys 'gamma_deg', 'delta_deg', 'Mw'.
     """
-    from seismo_sbi.plotting.lune import mts6_to_gamma_delta
-    from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon
+    from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
+    from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon
 
     if samples.ndim != 2 or samples.shape[1] != 6:
         raise ValueError(

@@ -2,13 +2,13 @@
 
 ``mt`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m (up, south, east).
 :func:`convert_to_pyrocko` builds pyrocko's north-east-down ``MomentTensor`` with its own sign and
-index mapping; it is not the ``m_up_south_east`` constructor ``evaluation.moment_tensor.pyrocko_mt``
+index mapping; it is not the ``m_up_south_east`` constructor ``moment_tensor.comparison.pyrocko_mt``
 uses, and the two conventions must not be merged.
 """
 import numpy as np
 from pyrocko import moment_tensor as pmt
 
-from seismo_sbi.utils.mt_conventions import compute_scalar_moment
+from seismo_sbi.moment_tensor.conventions import compute_scalar_moment
 
 
 def get_MW_and_epsilon(moment_tensor_sol):

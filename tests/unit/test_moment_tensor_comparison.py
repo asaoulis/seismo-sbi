@@ -1,5 +1,5 @@
 """Unit tests for the lifted moment-tensor primitives
-(``seismo_sbi.evaluation.moment_tensor``) and ``recovered_mt_samples``.
+(``seismo_sbi.moment_tensor.comparison``) and ``recovered_mt_samples``.
 
 These prove the lift from the gitignored ``compare_to_reference.py`` is faithful:
 the Kagan angle is reflexive (``kagan(m, m) == 0``), symmetric, returns a sensible
@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from seismo_sbi.evaluation.inference import recovered_mt_samples
-from seismo_sbi.evaluation.moment_tensor import kagan
-from seismo_sbi.evaluation.moment_tensor import pyrocko_mt
+from seismo_sbi.moment_tensor.comparison import kagan
+from seismo_sbi.moment_tensor.comparison import pyrocko_mt
 
 pytest.importorskip("pyrocko")  # kagan/pyrocko_mt need pyrocko at call time
 
@@ -97,7 +97,7 @@ def _random_m6(n, seed=0):
 
 
 def test_kagan_batch_matches_pyrocko_kagan():
-    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    from seismo_sbi.moment_tensor.comparison import kagan_batch
     A, B = _random_m6(200, seed=1), _random_m6(200, seed=2)
     ref = np.array([kagan(a, b) for a, b in zip(A, B)])
     got = kagan_batch(A, B)
@@ -110,7 +110,7 @@ def test_kagan_batch_self_zero_symmetric_and_scale_invariant():
     # rounding error in qmax lifts the angle to ~2e-6 deg.  That floor is
     # inherent to the quaternion form (pyrocko's kagan_angle shares it) and is
     # ~7 orders below any orientation difference of interest.
-    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    from seismo_sbi.moment_tensor.comparison import kagan_batch
     A, B = _random_m6(50, seed=3), _random_m6(50, seed=4)
     assert np.allclose(kagan_batch(A, A), 0.0, atol=1e-4)
     assert np.allclose(kagan_batch(A, B), kagan_batch(B, A), atol=1e-6)
@@ -119,7 +119,7 @@ def test_kagan_batch_self_zero_symmetric_and_scale_invariant():
 
 
 def test_kagan_batch_broadcasts_single_tensor_either_side():
-    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    from seismo_sbi.moment_tensor.comparison import kagan_batch
     A, one = _random_m6(20, seed=5), _random_m6(1, seed=6)
     assert kagan_batch(A, one).shape == (20,)
     assert kagan_batch(one, A).shape == (20,)
@@ -129,7 +129,7 @@ def test_kagan_batch_broadcasts_single_tensor_either_side():
 
 
 def test_kagan_batch_rejects_mismatched_batches():
-    from seismo_sbi.evaluation.moment_tensor import kagan_batch
+    from seismo_sbi.moment_tensor.comparison import kagan_batch
     with pytest.raises(ValueError):
         kagan_batch(_random_m6(5, seed=7), _random_m6(3, seed=8))
 
@@ -142,7 +142,7 @@ def test_mt_axes_matches_mt_features_axes():
     (a horizontal axis is azimuth-ambiguous by exactly 180°, and either
     convention is correct).
     """
-    from seismo_sbi.evaluation.moment_tensor import mt_axes
+    from seismo_sbi.moment_tensor.comparison import mt_axes
     from pyrocko import moment_tensor as pmt
 
     M6 = _random_m6(100, seed=9)
@@ -162,7 +162,7 @@ def test_mt_axes_matches_mt_features_axes():
 
 def test_mt_axes_pure_strike_slip_axes_are_horizontal():
     # A vertical strike-slip fault has horizontal P and T axes and a vertical null axis.
-    from seismo_sbi.evaluation.moment_tensor import mt_axes
+    from seismo_sbi.moment_tensor.comparison import mt_axes
     from pyrocko import moment_tensor as pmt
     M = pmt.MomentTensor(strike=0.0, dip=90.0, rake=0.0).m_up_south_east()
     m6 = np.array([M[0, 0], M[1, 1], M[2, 2], M[0, 1], M[0, 2], M[1, 2]])

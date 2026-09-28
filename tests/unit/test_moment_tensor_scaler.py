@@ -11,7 +11,7 @@ from seismo_sbi.sbi.scalers import (
 )
 from seismo_sbi.sbi.types.parameters import ModelParameters
 from seismo_sbi.priors.moment_tensor_sampling import uniform_moment_tensor_on_sphere
-from seismo_sbi.utils.mt_conventions import scalar_moment
+from seismo_sbi.moment_tensor.conventions import scalar_moment
 from seismo_sbi.priors.gutenberg_richter import magnitude_to_m0
 
 # bounds = +/- 2e18 per component -> M0_max = 2e18/sqrt(2) ~ 1.41e18 (Mw ~ 6.1)

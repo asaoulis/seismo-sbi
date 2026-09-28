@@ -66,7 +66,7 @@ class MomentTensorScaler:
     Magnitude is encoded as the radius ``||2*scaled - 1|| = u`` and orientation as its
     direction, so the map is invertible (a.e.) with no dropped components or sign loss.
     ``M0 = ||m6|| / sqrt(2)`` is the library scalar-moment convention
-    (``utils.mt_conventions.scalar_moment``); the inverse rebuilds ``m6 = sqrt(2) * M0 * m_hat``.
+    (``moment_tensor.conventions.scalar_moment``); the inverse rebuilds ``m6 = sqrt(2) * M0 * m_hat``.
 
     Parameters
     ----------

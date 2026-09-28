@@ -96,8 +96,8 @@ def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
 
 def _gamma_delta_mw(mt_samples: np.ndarray):
     """Vectorised (gamma_deg, delta_deg) and per-sample Mw for (N,6) MT samples."""
-    from seismo_sbi.plotting.lune import mts6_to_gamma_delta
-    from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon
+    from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
+    from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon
     gamma, delta = mts6_to_gamma_delta(mt_samples)
     mw = np.array([get_MW_and_epsilon(s)[0] for s in mt_samples])
     return gamma, delta, mw
@@ -110,7 +110,7 @@ def _derived_matrix(mt_samples: np.ndarray) -> np.ndarray:
     project's lune / pyrocko converters; the nodal-plane ambiguity is resolved by
     consistently taking the first plane (as ``MomentTensorReparametrised`` does).
     """
-    from seismo_sbi.utils.mt_decomposition import get_nodal_planes
+    from seismo_sbi.moment_tensor.decomposition import get_nodal_planes
 
     mt_samples = np.asarray(mt_samples, dtype=float)
     gamma, delta, mw = _gamma_delta_mw(mt_samples)

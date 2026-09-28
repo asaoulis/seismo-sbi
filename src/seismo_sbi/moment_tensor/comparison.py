@@ -1,4 +1,4 @@
-"""Moment-tensor comparison primitives for the evaluation harness.
+"""Moment-tensor comparison: the up-south-east pyrocko tensor, Kagan angles and principal axes.
 
 ``m6`` is the pipeline vector ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in the spherical
 up-south-east convention the simulator feeds instaseis and the published catalogues report.
@@ -81,7 +81,7 @@ def kagan_batch(m6_a, m6_b):
     which broadcasts against the other.  Returns a ``(n,)`` array.
 
     Numerically identical to :func:`kagan` (max ``|Δ|`` ~1e-12 deg over random and
-    real posterior tensors — locked by ``tests/unit/test_evaluation_moment_tensor.py``)
+    real posterior tensors — locked by ``tests/unit/test_moment_tensor_comparison.py``)
     but ~4e4x faster, which is what makes posterior-wide orientation statistics
     affordable.  The rotation between the two eigen-frames is converted to a
     quaternion and the *largest* component taken, which is exactly pyrocko's

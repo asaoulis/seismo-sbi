@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 
 from typing import NamedTuple
 
-from seismo_sbi.utils.mt_conventions import scalar_moment
+from seismo_sbi.moment_tensor.conventions import scalar_moment
 
 
 class MomentTensor(ABC):

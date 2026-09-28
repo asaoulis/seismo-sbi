@@ -21,17 +21,13 @@ from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from seismo_sbi.utils.parallel import tqdm_joblib
-from seismo_sbi.utils.mt_conventions import convert_mt_convention, create_matrix
-from seismo_sbi.utils.mt_decomposition import get_MW_and_epsilon, get_nodal_planes
+from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
+from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon, get_nodal_planes
 from .rocko_beachball_patch import plot_beachball_on_axes
 from contextlib import contextmanager
 import logging
-from seismo_sbi.plotting.lune import (
-    mts6_to_gamma_delta,
-    plot_lune_frame,
-    kde_on_grid,
-    kde_hpd_contour_levels,
-)
+from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
+from seismo_sbi.plotting.lune import plot_lune_frame, kde_on_grid, kde_hpd_contour_levels
 
 
 # The angle distributions of a reparametrised moment tensor cover a periodic sample space,

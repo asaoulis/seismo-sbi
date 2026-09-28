@@ -124,7 +124,7 @@ def add_decomposition_beachballs(ax, theta0_mt, posterior_plotter, color="salmon
     """
     import numpy as np
     from pyrocko import moment_tensor as pmt
-    from seismo_sbi.utils.mt_conventions import create_matrix
+    from seismo_sbi.moment_tensor.conventions import create_matrix
     from seismo_sbi.plotting.rocko_beachball_patch import plot_beachball_on_axes
 
     mt_matrix = create_matrix(posterior_plotter.convert_mt_convention(theta0_mt))

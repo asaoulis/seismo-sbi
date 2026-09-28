@@ -118,9 +118,10 @@ Import each name from the module that defines it.
 | `data_handling` | observed data ahead of inference; `preprocessing/` finds raw data, removes the response, filters, resamples, windows and writes the HDF5 the pipeline reads |
 | `data_quality` | comparison of a reference synthetic with observed waveforms: per-trace metrics and the quality policy built on them |
 | `priors` | catalogue-driven statistical priors for dataset generation |
-| `evaluation` | pipeline build for evaluation, held-out validation, posterior metrics and moment-tensor comparison |
+| `evaluation` | pipeline build for evaluation, held-out validation and posterior metrics |
+| `moment_tensor` | moment-tensor conventions, scalar moments, decompositions, pyrocko tensors, Kagan angles and lune angles |
 | `plotting` | figures for simulations, posteriors and evaluation runs |
-| `utils` | shared helpers: parallel execution, moment-tensor conventions and decompositions, environment set-up |
+| `utils` | shared helpers: parallel execution, error handling, environment set-up, trace helpers |
 
 The YAML configuration every pipeline is driven by is described in
 [docs/configuration.md](docs/configuration.md).
