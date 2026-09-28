@@ -3,7 +3,7 @@
 :func:`build_eval_pipeline` constructs the pipeline from a configuration,
 :func:`build_ml_posterior` loads a trained model into a posterior, :func:`resolve_ckpt_dir`
 finds the checkpoint directory to load from, and :func:`load_real_observation` reads one named
-real event.
+real event (:func:`load_observation` reads one event file).
 """
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
+
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
 
 def build_eval_pipeline(config_path, *, setup_training_noise=False,
@@ -152,11 +154,22 @@ def load_real_observation(config, sbi_pipeline, job_name):
     forward_shifts = getattr(sbi_pipeline, "_default_receiver_time_shifts", None)
     if forward_shifts is None:
         forward_shifts = sbi_pipeline.simulation_parameters.receivers.receiver_time_shifts_map
-    inverted_shifts = {k: -v for k, v in forward_shifts.items()}
     print(f"NPE time-shift undo: inverting config-default shifts {dict(forward_shifts)}")
-    shifted = sbi_pipeline.data_manager.data_loader.load_simulation_data_array_with_shifts(
-        real_event_path, inverted_shifts)
-    n_stations = len(sbi_pipeline.simulation_parameters.receivers.receivers)
+    return load_observation(real_event_path, sbi_pipeline.simulation_parameters.receivers, components,
+                            forward_shifts)
+
+
+def load_observation(event_path, receivers, components, time_shifts=None):
+    """One event file as an ``(n_stations, n_components, n_samples)`` array, with the receiver
+    time shifts ``time_shifts`` (``{station: samples}``) undone.
+
+    ``receivers`` is left carrying the inverted shifts, and a simulator holding the same object
+    applies them to what it simulates next; ``components`` is the component layout, such as ``"ZEN"``.
+    """
+    inverted_shifts = {k: -v for k, v in (time_shifts or {}).items()}
+    shifted = SimulationDataLoader(components, receivers).load_simulation_data_array_with_shifts(
+        event_path, inverted_shifts)
+    n_stations = len(receivers.receivers)
     return shifted.reshape(n_stations, len(components), -1)
 
 
