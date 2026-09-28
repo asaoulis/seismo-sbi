@@ -19,6 +19,20 @@ The generic parts sit at the root of the package and each backend has its own su
 | `cps/` | Computer Programs in Seismology backend |
 | `axisem/` | the perturbed 1-D Earth models a database ensemble is built from |
 
+## Receivers
+
+`Receivers` is the ordered set of stations every seismogram array follows. It is built in one of
+four ways: `Receivers.from_station_file(stations, components_path, time_shifts_path)` reads
+`name network latitude longitude` lines with two optional JSON maps; `Receivers.from_arrays`
+takes equal-length sequences of names, networks, latitudes and longitudes;
+`Receivers.from_inventory(inventory, channels="?H?")` reads an obspy `Inventory`, for example
+from StationXML; and `Receivers(receivers=[...])` takes `Receiver` records directly. The
+`components.json` map is the per-station channel list an `Inventory` already holds, so
+`from_inventory` fills it from each station's channels (`1` and `2` read as `E` and `N`).
+`receivers.to_inventory()` goes back to obspy for plotting or FDSN queries, and
+`receivers.network_station_codes()` gives the `(network, station)` pairs to request. A
+receiver's `time_shift` is a static correction in samples; it is not carried by an `Inventory`.
+
 ## Nuisance effects
 
 What a real recording does to a synthetic seismogram lives in its own package,
