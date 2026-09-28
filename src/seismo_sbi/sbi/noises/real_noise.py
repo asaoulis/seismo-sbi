@@ -36,7 +36,6 @@ class RealNoiseSampler:
         self.num_stations = len(receivers.receivers)
         self.components = simulation_parameters.components
         self.components = component_alias(self.components)
-        self.vector_length = round(simulation_parameters.seismogram_duration * simulation_parameters.sampling_rate)
 
         self.data_loader = SimulationDataLoader(self.components, simulation_parameters.receivers, data_length)
 
