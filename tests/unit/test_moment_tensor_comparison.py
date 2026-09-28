@@ -1,10 +1,7 @@
-"""Unit tests for the lifted moment-tensor primitives
-(``seismo_sbi.moment_tensor.comparison``) and ``recovered_mt_samples``.
-
-These prove the lift from the gitignored ``compare_to_reference.py`` is faithful:
-the Kagan angle is reflexive (``kagan(m, m) == 0``), symmetric, returns a sensible
-non-trivial angle for clearly different mechanisms, and degrades to ``nan`` rather
-than raising for a degenerate (zero) tensor.
+"""The moment-tensor comparison primitives (``seismo_sbi.moment_tensor.comparison``) and
+``recovered_mt_samples``: the Kagan angle is reflexive, symmetric, non-trivial for clearly different
+mechanisms and ``nan`` for a zero tensor; the pyrocko tensor round-trips; the NED matrix is the
+up-south-east matrix rotated.
 """
 import numpy as np
 import pytest
@@ -170,3 +167,20 @@ def test_mt_axes_pure_strike_slip_axes_are_horizontal():
     assert abs(ax["p_plunge"][0]) < 1.0
     assert abs(ax["t_plunge"][0]) < 1.0
     assert abs(ax["n_plunge"][0] - 90.0) < 1.0
+
+
+def test_from_pyrocko_inverts_pyrocko_mt():
+    from seismo_sbi.moment_tensor.comparison import from_pyrocko, pyrocko_mt
+
+    m6 = np.random.default_rng(3).normal(size=6) * 1e16
+
+    np.testing.assert_allclose(from_pyrocko(pyrocko_mt(m6)), m6, rtol=1e-9)
+
+
+def test_the_ned_matrix_is_the_use_matrix_rotated():
+    from seismo_sbi.moment_tensor.comparison import _USE_TO_NED, m6_to_matrix_ned
+    from seismo_sbi.moment_tensor.lune_angles import m6_to_matrix
+
+    m6 = np.random.default_rng(4).normal(size=(5, 6)) * 1e16
+
+    np.testing.assert_allclose(m6_to_matrix_ned(m6), _USE_TO_NED @ m6_to_matrix(m6) @ _USE_TO_NED.T, rtol=1e-12)

@@ -22,6 +22,13 @@ def pyrocko_mt(m6):
     return pmt.MomentTensor(m_up_south_east=M)
 
 
+def from_pyrocko(mt):
+    """``m6 = [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]`` in N.m (up-south-east) of a pyrocko
+    ``MomentTensor``; the inverse of :func:`pyrocko_mt`."""
+    M = mt.m_up_south_east()
+    return np.array([M[0, 0], M[1, 1], M[2, 2], M[0, 1], M[0, 2], M[1, 2]])
+
+
 def kagan(m6_a, m6_b):
     """Kagan angle (degrees) between two moment tensors ``m6_a``, ``m6_b``.
 
