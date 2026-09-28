@@ -140,25 +140,22 @@ def load_station_waveforms(config, station_pairs, t0_load, t1_load):
 
 
 def load_response_inventory(config):
-    """``(inventory, remove_response)``: the StationXML inventory, or None and False when
-    the response is not removed or no StationXML is found."""
-    remove_response = config.remove_response
+    """``(inventory, remove_response)``: the StationXML inventory, or None when none is found, and
+    whether to remove the response, which needs the inventory. The inventory also orients channels
+    coded 1/2, so it is loaded whenever the StationXML directory exists."""
     stationxml_dir = Path(config.stationxml_dir or Path(config.data_dir) / "stationxml")
     inventory = None
-    if remove_response:
-        if not stationxml_dir.is_dir():
-            logger.warning(
-                f"stationxml_dir {stationxml_dir} not found — "
-                "skipping response removal."
-            )
-            remove_response = False
-        else:
-            try:
-                inventory = load_inventory(stationxml_dir)
-                logger.info(f"Loaded inventory from {stationxml_dir}")
-            except FileNotFoundError as exc:
-                logger.warning(f"{exc} — skipping response removal.")
-                remove_response = False
+    if stationxml_dir.is_dir():
+        try:
+            inventory = load_inventory(stationxml_dir)
+            logger.info(f"Loaded inventory from {stationxml_dir}")
+        except FileNotFoundError as exc:
+            logger.warning(f"{exc}")
+    else:
+        logger.warning(f"stationxml_dir {stationxml_dir} not found")
+    remove_response = config.remove_response and inventory is not None
+    if config.remove_response and not remove_response:
+        logger.warning("No inventory: skipping response removal.")
     return inventory, remove_response
 
 
