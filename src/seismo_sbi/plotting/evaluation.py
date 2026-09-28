@@ -116,7 +116,7 @@ def build_recovery_dict(
 
 
 # Lune recovery plot (with ISO/CLVD/DC decomposition beachballs)
-def add_decomposition_beachballs(ax, theta0_mt, posterior_plotter, color="salmon"):
+def add_decomposition_beachballs(ax, theta0_mt, color="salmon"):
     """
     Add scaled ISO / CLVD / DC beachballs + percentages to the left of a lune axis,
     in axes coordinates. ``theta0_mt`` is a 6-component moment tensor in the pipeline
@@ -127,7 +127,7 @@ def add_decomposition_beachballs(ax, theta0_mt, posterior_plotter, color="salmon
     from seismo_sbi.moment_tensor.conventions import create_matrix
     from seismo_sbi.plotting.rocko_beachball_patch import plot_beachball_on_axes
 
-    mt_matrix = create_matrix(posterior_plotter.convert_mt_convention(theta0_mt))
+    mt_matrix = create_matrix(theta0_mt)
     mt_rocko = pmt.MomentTensor(m_up_south_east=mt_matrix)
     res = mt_rocko.standard_decomposition()
 
@@ -219,7 +219,7 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
         if theta0_vec is not None:
             inputs = plotter.parameters.vector_to_simulation_inputs(
                 theta0_vec, only_theta_fiducial=True)
-            add_decomposition_beachballs(ax, inputs["moment_tensor"], pp, color="salmon")
+            add_decomposition_beachballs(ax, inputs["moment_tensor"], color="salmon")
 
     if figsave is not None:
         Path(figsave).parent.mkdir(parents=True, exist_ok=True)

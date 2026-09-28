@@ -21,7 +21,7 @@ from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.multi_region import MultiModelSimulator
 from seismo_sbi.simulators.sources import GenericPointSource
-from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
+from seismo_sbi.moment_tensor.conventions import create_matrix
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Rate (Hz) at which every CPS backend computes and returns its Green's functions.
@@ -109,7 +109,7 @@ class CPSSimulator(Simulator):
 
     def _compute_seismograms_from_kernels(self, source: GenericPointSource):
         moment_tensor_components = source.moment_tensor.components
-        mt = mtm.MomentTensor(m_up_south_east=create_matrix(convert_mt_convention(moment_tensor_components)))
+        mt = mtm.MomentTensor(m_up_south_east=create_matrix(moment_tensor_components))
         moment_tensor_components = mt.m6_east_north_up()
         moment_tensor_components = np.array(enu_to_ned(*moment_tensor_components))
         seismograms = moment_tensor_components @ self.sensitivity_kernels * CPS_INPUT_COVERSION * CPS_OUTPUT_COVERSION

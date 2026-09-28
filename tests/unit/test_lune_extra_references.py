@@ -3,8 +3,8 @@ Unit tests for the optional ``extra_references`` overlay on the lune plotters
 (seismo_sbi.plotting.distributions). These exercise the new plumbing — the
 ``_scatter_extra_references`` helper and the ``_add_lune_legend`` extra-marker
 handles — WITHOUT a real ModelParameters / pyrocko / basemap render (that heavy
-path is covered by the e2e smoke). The two model-dependent methods are stubbed
-to the identity, which is exactly their effect on the scale/basis-invariant lune
+path is covered by the e2e smoke). The model-dependent method is stubbed
+to the identity, which is exactly its effect on the scale/basis-invariant lune
 position for already-canonical [Mrr,Mtt,Mpp,Mrt,Mrp,Mtp] inputs.
 """
 from collections import OrderedDict
@@ -26,10 +26,9 @@ def _fake_bm(gamma, delta):
 
 def _plotter():
     pp = PosteriorPlotter(data_scaler=None, parameters_info=[], parameters=None)
-    # Stub the two model-dependent methods (identity; canonical MT in, MT out).
+    # Stub the model-dependent method (identity; canonical MT in, MT out).
     pp.get_moment_tensors = lambda samples, theta0: (np.empty((0, 6)),
                                                      np.asarray(theta0, dtype=float))
-    pp.convert_mt_convention = lambda m: np.asarray(m, dtype=float)
     return pp
 
 

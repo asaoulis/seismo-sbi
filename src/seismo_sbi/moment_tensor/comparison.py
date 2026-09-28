@@ -1,11 +1,9 @@
 """Moment-tensor comparison: the up-south-east pyrocko tensor, Kagan angles and principal axes.
 
 ``m6`` is the pipeline vector ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in the spherical
-up-south-east convention the simulator feeds instaseis and the published catalogues report.
+up-south-east convention every simulator reads and the published catalogues report.
 ``pyrocko_mt`` builds a pyrocko ``MomentTensor`` directly in ``m_up_south_east`` with no sign
-change, so ``M = [[m_rr, m_rt, m_rp], [m_rt, m_tt, m_tp], [m_rp, m_tp, m_pp]]``; negating
-``m_rp``/``m_tp`` would be a reflection that leaves Kagan angles, scalar moment and source type
-untouched while mirroring the absolute orientation.
+change, so ``M = [[m_rr, m_rt, m_rp], [m_rt, m_tt, m_tp], [m_rp, m_tp, m_pp]]``.
 """
 from __future__ import annotations
 

@@ -21,7 +21,7 @@ from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from seismo_sbi.utils.parallel import tqdm_joblib
-from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
+from seismo_sbi.moment_tensor.conventions import create_matrix
 from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon, get_nodal_planes
 from .rocko_beachball_patch import plot_beachball_on_axes
 from contextlib import contextmanager
@@ -544,7 +544,7 @@ class PosteriorPlotter:
                     if mt is None:
                         continue
                     facecolor = 'black' if idx == 0 else colors[i % len(colors)]
-                    mt = np.array(self.convert_mt_convention(mt))
+                    mt = np.array(mt)
                     tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
                     tx, ty = bm(tg, td)
                     mt = mtm.MomentTensor(m_up_south_east=create_matrix(mt))
@@ -563,7 +563,7 @@ class PosteriorPlotter:
             if not (true_theta0 is not None and plot_beachballs) and primary_reference is not None:
                 _, pr = self.get_moment_tensors(np.empty((0, 6)),
                                                 np.asarray(primary_reference, dtype=float))
-                pr = np.array(self.convert_mt_convention(pr))
+                pr = np.array(pr)
                 pg, pd = mts6_to_gamma_delta(pr.reshape(1, -1))
                 px, py = bm(pg, pd)
                 ax.scatter(px, py, color='black', marker='o', s=60,
@@ -643,7 +643,7 @@ class PosteriorPlotter:
                 if not plot_beachballs and not is_true_mt:
                     continue
 
-                mt = np.array(self.convert_mt_convention(mt))
+                mt = np.array(mt)
 
                 facecolor = 'peru' if is_true_mt else colors[i % len(colors)]
                 marker = 'd' if is_true_mt else 'o'
@@ -755,7 +755,7 @@ class PosteriorPlotter:
         if not truth_drawn and primary_reference is not None:
             _, pr_mt = self.get_moment_tensors(np.empty((0, 6)),
                                                np.asarray(primary_reference, dtype=float))
-            pr_mt = np.array(self.convert_mt_convention(pr_mt))
+            pr_mt = np.array(pr_mt)
             pg, pd = mts6_to_gamma_delta(pr_mt.reshape(1, -1))
             px, py = bm(pg, pd)
             ax.scatter(px, py, color='peru', marker='d', s=320,
@@ -768,10 +768,10 @@ class PosteriorPlotter:
     def _scatter_extra_references(self, ax, bm, extra_references):
         """Overlay additional published reference MTs as distinct scatter markers on the
         projected lune. ``extra_references`` maps ``label -> MT 6-vector`` in the canonical
-        ``[Mrr,Mtt,Mpp,Mrt,Mrp,Mtp]`` (USE/RTP) convention; each is routed through the SAME
-        conversion path as the primary truth (``get_moment_tensors`` + ``convert_mt_convention``)
-        so its lune position is consistent with the gold 'truth' marker. The lune (γ,δ) is
-        scale- and basis-invariant, so absolute units / deviatoric-vs-full do not matter here.
+        ``[Mrr,Mtt,Mpp,Mrt,Mrp,Mtp]`` (USE/RTP) convention; each is routed through
+        ``get_moment_tensors`` like the primary truth, so its lune position is consistent with
+        the gold 'truth' marker. The lune (γ,δ) is scale- and basis-invariant, so absolute
+        units / deviatoric-vs-full do not matter here.
         Returns a list of ``{label, color, marker}`` legend specs."""
         specs = []
         for j, (label, rmt) in enumerate(extra_references.items()):
@@ -779,7 +779,7 @@ class PosteriorPlotter:
                 continue
             style = LUNE_REFERENCE_STYLES[j % len(LUNE_REFERENCE_STYLES)]
             _, ref_mt = self.get_moment_tensors(np.empty((0, 6)), np.asarray(rmt, dtype=float))
-            ref_mt = np.array(self.convert_mt_convention(ref_mt))
+            ref_mt = np.array(ref_mt)
             rg, rd = mts6_to_gamma_delta(ref_mt.reshape(1, -1))
             rx, ry = bm(rg, rd)
             ax.scatter(rx, ry, color=style["color"], marker=style["marker"], s=style["s"],
@@ -953,7 +953,7 @@ class PosteriorPlotter:
         pyrocko_mts = []
         np.random.shuffle(plotting_units_samples)
         for mt in plotting_units_samples[:1000]:
-            pyrocko_mts.append(mtm.MomentTensor(m_up_south_east=create_matrix(self.convert_mt_convention(mt))))
+            pyrocko_mts.append(mtm.MomentTensor(m_up_south_east=create_matrix(mt)))
 
         plot_kwargs = {
             'beachball_type': 'full',
@@ -978,7 +978,7 @@ class PosteriorPlotter:
         axes.spines['bottom'].set_visible(False)
         axes.spines['left'].set_visible(False)
         if plotting_units_theta_0 is not None:
-            rocko_beachball.plot_fuzzy_beachball_mpl_pixmap(pyrocko_mts, axes, mtm.MomentTensor(m_up_south_east=create_matrix(self.convert_mt_convention(plotting_units_theta_0))), **plot_kwargs)
+            rocko_beachball.plot_fuzzy_beachball_mpl_pixmap(pyrocko_mts, axes, mtm.MomentTensor(m_up_south_east=create_matrix(plotting_units_theta_0)), **plot_kwargs)
         else:
             rocko_beachball.plot_fuzzy_beachball_mpl_pixmap(pyrocko_mts, axes, **plot_kwargs)
 
@@ -998,11 +998,9 @@ class PosteriorPlotter:
             fig.savefig(figsave)
         plt.close()
     
-    convert_mt_convention = staticmethod(convert_mt_convention)
-
 
     def add_beachball_plot(self, ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):
-        mt = mtm.MomentTensor(m_up_south_east=create_matrix(self.convert_mt_convention(moment_tensor_sol)))
+        mt = mtm.MomentTensor(m_up_south_east=create_matrix(moment_tensor_sol))
         if add_text:
             extra_text = f"\n $M_W=${M0_epsilon[0]:.3f},\n$\\epsilon= {M0_epsilon[1]:.2f}$"
         else:

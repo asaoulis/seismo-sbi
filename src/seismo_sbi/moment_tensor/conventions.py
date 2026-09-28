@@ -1,18 +1,12 @@
 """Moment-tensor component conventions, the 3x3 matrix and the scalar moment.
 
 ``m6`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m (up, south, east). ``create_matrix``
-builds the symmetric 3x3 tensor from six components in that index order, ``convert_mt_convention``
-flips the signs of the fifth and sixth before pyrocko's ``m_up_south_east`` plots. The two
-scalar moments differ: ``compute_scalar_moment`` sums the full 3x3 tensor, counting each
-off-diagonal twice; ``scalar_moment`` sums the six components once each.
+builds the symmetric 3x3 tensor from six components in that index order, the matrix pyrocko's
+``m_up_south_east`` takes. The two scalar moments differ: ``compute_scalar_moment`` sums the
+full 3x3 tensor, counting each off-diagonal twice; ``scalar_moment`` sums the six components
+once each.
 """
 import numpy as np
-
-
-def convert_mt_convention(mt_rr_phi_theta):
-    """(mnn, mee, mdd, mne, mnd, med)"""
-
-    return [mt_rr_phi_theta[0], mt_rr_phi_theta[1], mt_rr_phi_theta[2], mt_rr_phi_theta[3], -mt_rr_phi_theta[4], -mt_rr_phi_theta[5]]
 
 
 def create_matrix(moment_tensor_sol):

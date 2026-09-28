@@ -10,7 +10,7 @@ import numpy as np
 from pyrocko import moment_tensor as mtm
 from pyrocko.plot.beachball import plot_beachball_mpl
 
-from seismo_sbi.moment_tensor.conventions import convert_mt_convention, create_matrix
+from seismo_sbi.moment_tensor.conventions import create_matrix
 
 
 def compute_mw(moment_tensor_matrix):
@@ -64,9 +64,7 @@ def add_event_to_map(
     mt_sph = event["moment_tensor"]
     event_name = event["name"]
 
-    # Convert and create MomentTensor
-    mt_conv = convert_mt_convention(mt_sph)
-    mt_matrix = create_matrix(mt_conv)
+    mt_matrix = create_matrix(mt_sph)
     mt = mtm.MomentTensor(m_up_south_east=mt_matrix)
 
     # Compute Mw
