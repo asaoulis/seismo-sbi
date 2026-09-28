@@ -217,3 +217,19 @@ def test_gr_sampler_exposes_log10_m0_range():
         magnitude_conversion={"slope": 1.0, "intercept": 0.5}, seed=0)
     lo2, hi2 = s2.info["log10_m0_range"]
     assert np.isclose(lo2, 1.5 * 3.5 + 9.1) and np.isclose(hi2, 1.5 * 5.5 + 9.1)
+
+
+@pytest.mark.parametrize("moment_tensor_scaling", ["linear", "scale_shape"])
+def test_from_bounds_scales_as_the_model_parameters_constructor(moment_tensor_scaling):
+    p = _mt_and_location_params()
+    from_parameters = FlexibleScaler(p, moment_tensor_scaling=moment_tensor_scaling)
+    from_bounds = FlexibleScaler.from_bounds(p.bounds, moment_tensor_scaling=moment_tensor_scaling)
+
+    rng = np.random.default_rng(0)
+    locs = rng.uniform([36.1, 25.1, 1.0, -1.0], [36.9, 25.9, 50.0, 1.0], size=(200, 4))
+    theta = np.hstack([locs, _gr_like_tensors(200)])
+    scaled = from_parameters.transform(theta)
+    np.testing.assert_allclose(from_bounds.transform(theta), scaled, rtol=1e-12, atol=0)
+    np.testing.assert_allclose(from_bounds.inverse_transform(scaled), from_parameters.inverse_transform(scaled),
+                               rtol=1e-12, atol=0)
+    assert from_bounds.indices == from_parameters.indices

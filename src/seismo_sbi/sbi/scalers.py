@@ -175,6 +175,21 @@ class FlexibleScaler:
                 self.index_to_param_type[index + i] = param_type
             index += len(params)
 
+    @classmethod
+    def from_bounds(cls, bounds, theta_fiducial=None, **kwargs):
+        """The scaler for ``bounds``, ``{block: (lower, upper)}`` with one entry per parameter of
+        the block, blocks in data-vector order (the dict's order).
+
+        ``theta_fiducial`` (``{block: values}``) sets the block order and sizes when given, and
+        defaults to the midpoint of each block's bounds; ``kwargs`` are those of the constructor.
+        """
+        parameters = ModelParameters()
+        parameters.bounds = {block: [np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)]
+                             for block, (lower, upper) in bounds.items()}
+        if theta_fiducial is None:
+            theta_fiducial = {block: list((lower + upper) / 2) for block, (lower, upper) in parameters.bounds.items()}
+        parameters.theta_fiducial = theta_fiducial
+        return cls(parameters, **kwargs)
 
     def transform(self, X):
         X_scaled = np.zeros_like(X)
