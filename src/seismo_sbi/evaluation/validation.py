@@ -1,10 +1,9 @@
 """Held-out validation and TARP coverage for a trained model.
 
-:func:`run_validation` draws the validation tail of the simulation set, runs posterior
-inference on each simulation and returns the arrays for TARP coverage and recovery scatter plus
-a few per-example results; :func:`write_validation_outputs` turns those into figures and a
-metrics JSON. Fixed- and variable-station models differ only in how a held-out simulation
-becomes a posterior sample.
+:func:`run_validation` takes the held-out tail of the simulation set (:func:`validation_dataset`),
+samples the posterior for each simulation (:func:`sample_validation_posteriors`) and returns the
+arrays for TARP coverage and recovery scatter; :func:`write_validation_outputs` writes the TARP
+figure, the recovery scatter, example panels and the metrics JSON, one function each.
 """
 from __future__ import annotations
 
@@ -28,77 +27,60 @@ def run_validation(
     variable_stations: bool = True,
     cond_param_map: Optional[dict] = None,
 ) -> dict:
-    """Draw the held-out validation set and run posterior inference on each sim.
+    """Posterior samples for the held-out tail of the simulation set.
 
-    Builds a plain (full-station, unconditioned) ``TorchSimulationDataset`` with
-    the same augmentation chains and training noise the model trained on, takes
-    the last 10% tail of the sorted sim files as the held-out split (matching
-    ``train_NPE.py``), then samples the posterior for each sim. The two model
-    families differ ONLY in how the observation is packed into the model's input:
+    The last 10 % of the sorted simulations, at most ``n_val`` of them, are drawn with the
+    training noise and augmentations and ``num_samples`` posterior samples taken for each.
+    ``variable_stations`` (or a ``cond_param_map``, ``{block: [parameter names]}`` of the
+    conditioning source parameters) packs the full station set as a variable-station context,
+    conditioned on each simulation's true source; otherwise the flat data vector is the input.
 
-    * **Variable-station / conditioned** (``variable_stations`` or ``cond_param_map``):
-      pack the full master station set via ``pack_subset_observation`` (the inference
-      mirror of the training collate); for a conditioned model the sim's TRUE stored
-      ``source_location`` is fed as ``source_vec`` (matches how real events feed the
-      catalogue location at inference; conditioning noise is train-only, not applied here).
-    * **Fixed-station / unconditioned**: feed the flat data vector straight to the
-      posterior, reproducing the old ``evaluate_validation_set`` direct path.
-
-    Both paths keep the RAW scaled posterior draws for TARP and ``inverse_transform``
-    once for physical units — no lossy ``transform(inverse_transform(.))`` round-trip.
-
-    Parameters
-    ----------
-    sbi_pipeline:
-        A fully-loaded ``SingleEventPipeline`` (as returned by
-        ``build_eval_pipeline``).
-    original_parameters:
-        Deep-copy of pipeline parameters snapshotted before compressor build.
-    posterior:
-        The trained ML posterior (e.g. from ``build_ml_posterior``).
-    data_scaler:
-        FlexibleScaler instance (from ``build_flexible_scaler``).
-    n_val:
-        Maximum number of validation sims to evaluate.
-    n_show:
-        Number of per-example InversionData objects to include in the output.
-    num_samples:
-        Posterior samples to draw per validation sim.
-    device:
-        ``"cuda"`` / ``"cpu"`` (auto-detected if None).
-    variable_stations:
-        ``True`` (default) → pack the observation via ``pack_subset_observation``
-        (variable-station models). Also forced ``True`` when ``cond_param_map`` is
-        set (conditioned models are always variable-station). ``False`` AND
-        ``cond_param_map`` is ``None`` → feed the flat ``(N·C·T,)`` data vector
-        directly, correct for fixed-station / unconditioned models.
-    cond_param_map:
-        ``ml_conditioning.param_map`` dict (e.g.
-        ``{"source_location": ["latitude", "longitude", "depth"]}``).
-        If set, each sim's TRUE stored source vector is fed as conditioning.
-        ``None`` → unconditioned model.
-
-    Returns
-    -------
-    dict with keys:
-        ``theta_phys``    (n_val, n_dims) — truth in physical units
-        ``samples_phys``  (num_samples, n_val, n_dims) — samples in physical units
-        ``theta_scaled``  (n_val, n_dims) — truth in [0,1] (for TARP)
-        ``samples_scaled`` (num_samples, n_val, n_dims) — samples in [0,1]
-        ``show``          list[InversionData] — first n_show examples (physical)
-        ``n_val``         int — actual number of sims evaluated
+    :returns: a dict of ``theta_phys`` and ``theta_scaled`` ``(n_val, n_dims)``,
+        ``samples_phys`` and ``samples_scaled`` ``(num_samples, n_val, n_dims)`` (scaled to
+        ``[0, 1]`` for TARP), ``show`` (the first ``n_show`` examples as ``InversionData``) and
+        ``n_val``.
     """
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
-    from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
-    from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
-    from seismo_sbi.sbi.types.results import InversionData
 
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Mirror training: same augmentation chains so the held-out eval distribution
-    # matches what the posterior was trained on.
+    ds, val_idx = validation_dataset(sbi_pipeline, data_scaler, n_val=n_val)
+    # Conditioned models are always variable-station (packed context).
+    use_packed = bool(variable_stations) or (cond_param_map is not None)
+    print(
+        f"  validation: {len(val_idx)} held-out sims (tail of {len(ds)}), "
+        f"{num_samples} samples each; "
+        f"conditioned={cond_param_map is not None}; "
+        f"path={'packed (variable-station)' if use_packed else 'direct (fixed-station)'}."
+    )
+
+    theta_scaled_list, samples_scaled_list, samples_phys_list, shows = sample_validation_posteriors(
+        sbi_pipeline, posterior, data_scaler, ds, val_idx, use_packed=use_packed, n_show=n_show,
+        num_samples=num_samples, device=device, cond_param_map=cond_param_map)
+
+    theta_scaled = np.stack(theta_scaled_list, axis=0)      # (n_val, n_dims)
+    samples_scaled = np.stack(samples_scaled_list, axis=1)  # (num_samples, n_val, n_dims)
+    theta_phys = data_scaler.inverse_transform(theta_scaled)
+    samples_phys = np.stack(samples_phys_list, axis=1)      # (num_samples, n_val, n_dims)
+
+    return {
+        "theta_phys": theta_phys,
+        "samples_phys": samples_phys,
+        "theta_scaled": theta_scaled,
+        "samples_scaled": samples_scaled,
+        "show": shows,
+        "n_val": len(val_idx),
+    }
+
+
+def validation_dataset(sbi_pipeline, data_scaler, *, n_val: int):
+    """``(dataset, val_idx)``: the simulation set with the training noise and augmentations, and
+    the indices of its held-out tail (the last 10 %, at most ``n_val``).
+    """
+    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+    from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
+
     aug_chain, aug_params = build_augmentation_chain_from_parameters(
         sbi_pipeline.parameters,
         sampling_rate=sbi_pipeline.simulation_parameters.sampling_rate,
@@ -108,7 +90,6 @@ def run_validation(
         stage="training_augmentation_post_noise",
     )
 
-    # A plain dataset returns the full (N, C, T) observation; the loop below packs it for the model.
     noise_sampler = getattr(sbi_pipeline, "training_noise_sampler", None)
     if noise_sampler is None:
         raise RuntimeError(
@@ -127,8 +108,6 @@ def run_validation(
         post_noise_augmentation_chain=post_chain,
         post_noise_nuisance_params=post_params,
     )
-    data_loader = sbi_pipeline.data_manager.data_loader
-    coords_all = np.asarray(ds.station_coords)  # (N_master, 2)
 
     n = len(ds)
     val_idx = list(range(int(0.90 * n), n))[:n_val]
@@ -136,14 +115,22 @@ def run_validation(
         raise RuntimeError(
             f"No held-out validation sims (n={n}, train_max_index={int(0.90*n)})."
         )
-    # Conditioned models are always variable-station (packed context).
-    use_packed = bool(variable_stations) or (cond_param_map is not None)
-    print(
-        f"  validation: {len(val_idx)} held-out sims (tail of {n}), "
-        f"{num_samples} samples each; "
-        f"conditioned={cond_param_map is not None}; "
-        f"path={'packed (variable-station)' if use_packed else 'direct (fixed-station)'}."
-    )
+    return ds, val_idx
+
+
+def sample_validation_posteriors(sbi_pipeline, posterior, data_scaler, ds, val_idx, *, use_packed, n_show,
+                                 num_samples, device, cond_param_map):
+    """Posterior samples for each held-out simulation ``ds[idx]``.
+
+    :returns: lists over the simulations of the scaled truth, the scaled and physical samples,
+        and the first ``n_show`` examples as ``InversionData``.
+    """
+    import torch
+    from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
+    from seismo_sbi.sbi.types.results import InversionData
+
+    data_loader = sbi_pipeline.data_manager.data_loader
+    coords_all = np.asarray(ds.station_coords)  # (N_master, 2)
 
     def _sim_source_vec(sim_path):
         """Load the sim's TRUE stored source vector (for conditioned models)."""
@@ -171,7 +158,7 @@ def run_validation(
             ).to(device)  # (1, W)
         else:
             # Direct path (fixed-station / unconditioned): the embedding net expects the
-            # flat data vector (mirrors _eval_inference.evaluate_validation_set).
+            # flat data vector.
             obs_in = torch.as_tensor(x, dtype=torch.float32).to(device).unsqueeze(0)
 
         s_scaled = posterior.sample(
@@ -196,19 +183,7 @@ def run_validation(
         if (k + 1) % 25 == 0:
             print(f"    …{k + 1}/{len(val_idx)} val sims sampled")
 
-    theta_scaled = np.stack(theta_scaled_list, axis=0)      # (n_val, n_dims)
-    samples_scaled = np.stack(samples_scaled_list, axis=1)  # (num_samples, n_val, n_dims)
-    theta_phys = data_scaler.inverse_transform(theta_scaled)
-    samples_phys = np.stack(samples_phys_list, axis=1)      # (num_samples, n_val, n_dims)
-
-    return {
-        "theta_phys": theta_phys,
-        "samples_phys": samples_phys,
-        "theta_scaled": theta_scaled,
-        "samples_scaled": samples_scaled,
-        "show": shows,
-        "n_val": len(val_idx),
-    }
+    return theta_scaled_list, samples_scaled_list, samples_phys_list, shows
 
 
 def write_validation_outputs(
@@ -221,44 +196,15 @@ def write_validation_outputs(
     conditioned: bool,
     n_show: int,
 ) -> dict:
-    """Write figures + metrics JSON from the ``run_validation`` output dict.
+    """Figures and ``evaluation_metrics.json`` in ``out_dir`` from a :func:`run_validation` dict.
 
-    Extracted from the figure/metrics tail of ``run_posttrain_eval._validation_tarp``
-    and ``visualise_results.py`` Stage B.  Reuses the existing src plotting helpers
-    wholesale — no new plotting code.
+    Writes ``tarp_coverage.png`` (TARP expected coverage), ``recovery_scatter.svg`` (true
+    against recovered gamma, delta and Mw), ``n_show`` example panels under ``examples/`` and
+    the metrics JSON, which records ``num_samples`` and ``conditioned`` with the metrics.
+    ``parameters`` are the pipeline's parameters, for the panel labels.
 
-    Produces:
-        ``tarp_coverage.png``      — TARP expected-coverage curve
-        ``recovery_scatter.svg``   — true-vs-recovered gamma/delta/Mw
-        ``examples/``              — n_show per-example MT/nodal corner panels
-        ``evaluation_metrics.json``— TARP calibration error, empirical coverage, FoM, …
-
-    Parameters
-    ----------
-    val:
-        Return value of ``run_validation``.
-    out_dir:
-        Directory to write outputs into (e.g. ``layout.validation_dir()``).
-    parameters:
-        Pipeline parameters (original_parameters from build_eval_pipeline).
-    data_scaler:
-        FlexibleScaler (same as passed to run_validation).
-    num_samples:
-        Number of posterior samples used (for provenance in the JSON).
-    conditioned:
-        Whether the model is conditioned (for provenance in the JSON).
-    n_show:
-        Number of example panels to render.
-
-    Returns
-    -------
-    dict  — the metrics dict written to ``evaluation_metrics.json``.
+    :returns: the dict written to ``evaluation_metrics.json``.
     """
-    from seismo_sbi.plotting import evaluation as ev
-    from seismo_sbi.evaluation import posterior_metrics
-    from seismo_sbi.plotting.coverage import plot_coverage
-    from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
-
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -270,9 +216,22 @@ def write_validation_outputs(
     n_val = val.get("n_val", theta_scaled.shape[0])
 
     figures: dict = {}
-    ecp = alpha = None
+    ecp, alpha = write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures)
+    write_recovery_scatter(theta_phys, samples_phys, out_dir, figures)
+    if shows:
+        write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figures)
+    return write_metrics_json(val, ecp, alpha, out_dir, figures, n_val=n_val, num_samples=num_samples,
+                              conditioned=conditioned)
 
-    # ── TARP coverage ──────────────────────────────────────────────────────────
+
+def write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures):
+    """TARP expected coverage ``(ecp, alpha)``, drawn to ``tarp_coverage.png`` and entered in
+    ``figures``; ``(None, None)`` when it cannot be computed.
+    """
+    from seismo_sbi.evaluation import posterior_metrics
+    from seismo_sbi.plotting.coverage import plot_coverage
+
+    ecp = alpha = None
     try:
         ecp, alpha = posterior_metrics.tarp_coverage(samples_scaled, theta_scaled, num_bootstrap=100)
         cov_path = out_dir / "tarp_coverage.png"
@@ -286,8 +245,15 @@ def write_validation_outputs(
         print(f"    wrote TARP coverage -> {cov_path}")
     except Exception as e:  # noqa: BLE001
         print(f"    [warn] TARP coverage failed: {type(e).__name__}: {e}")
+    return ecp, alpha
 
-    # ── Recovery scatter ───────────────────────────────────────────────────────
+
+def write_recovery_scatter(theta_phys, samples_phys, out_dir, figures):
+    """True against recovered gamma, delta and Mw, drawn to ``recovery_scatter.svg`` and entered
+    in ``figures``.
+    """
+    from seismo_sbi.plotting import evaluation as ev
+
     try:
         sc_path = out_dir / "recovery_scatter.svg"
         ev.plot_recovery_scatter(theta_phys, samples_phys, figsave=sc_path)
@@ -296,30 +262,39 @@ def write_validation_outputs(
     except Exception as e:  # noqa: BLE001
         print(f"    [warn] recovery scatter failed: {type(e).__name__}: {e}")
 
-    # ── Example panels ─────────────────────────────────────────────────────────
-    if shows:
-        try:
-            vp = SBIPipelinePlotter(str(out_dir), parameters)
-            vp.initialise_posterior_plotter(
-                data_scaler,
-                parameters.parameter_to_vector("information")[:6],
-            )
-            for i, invdata in enumerate(shows[:n_show]):
-                try:
-                    vp.plot_chain_consumer(
-                        "examples",
-                        f"val_{i:02d}",
-                        {"NPE ML": invdata},
-                        kde=True,
-                        savefig=True,
-                    )
-                except Exception as e:  # noqa: BLE001
-                    print(f"    [warn] val example {i} failed: {type(e).__name__}: {e}")
-            figures["examples_dir"] = str(out_dir / "examples")
-        except Exception as e:  # noqa: BLE001
-            print(f"    [warn] example panels failed: {type(e).__name__}: {e}")
 
-    # ── Metrics JSON ──────────────────────────────────────────────────────────
+def write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figures):
+    """Posterior panels for the first ``n_show`` examples under ``out_dir/examples``."""
+    from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
+
+    try:
+        vp = SBIPipelinePlotter(str(out_dir), parameters)
+        vp.initialise_posterior_plotter(
+            data_scaler,
+            parameters.parameter_to_vector("information")[:6],
+        )
+        for i, invdata in enumerate(shows[:n_show]):
+            try:
+                vp.plot_chain_consumer(
+                    "examples",
+                    f"val_{i:02d}",
+                    {"NPE ML": invdata},
+                    kde=True,
+                    savefig=True,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"    [warn] val example {i} failed: {type(e).__name__}: {e}")
+        figures["examples_dir"] = str(out_dir / "examples")
+    except Exception as e:  # noqa: BLE001
+        print(f"    [warn] example panels failed: {type(e).__name__}: {e}")
+
+
+def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples, conditioned):
+    """The evaluation metrics of ``val`` with the run's settings and ``figures``, written to
+    ``evaluation_metrics.json``.
+    """
+    from seismo_sbi.evaluation import posterior_metrics
+
     metrics: dict = {}
     try:
         metrics = posterior_metrics.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
