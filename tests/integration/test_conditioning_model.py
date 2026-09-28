@@ -312,40 +312,6 @@ def test_amplitude_snr_weighting_finite():
     assert torch.isfinite(out).all()
 
 
-def test_inference_path_packs_source_location():
-    """MachineLearningCompressor packs a known source location into the model input."""
-    from seismo_sbi.sbi.compression.gaussian import MachineLearningCompressor
-
-    model = _build_model(conditioning={
-        "n_cond": _NCOND, "d_cond": _DCOND, "inject": ["token_add", "concat_context"],
-    })
-    model.eval()
-
-    captured = {}
-    orig_forward = model.forward
-
-    def spy_forward(inp):
-        captured["shape"] = tuple(inp.shape)
-        return orig_forward(inp)
-    model.forward = spy_forward
-
-    class _IdentityScaler:
-        def inverse_transform(self, x):
-            return x
-
-    comp = MachineLearningCompressor.__new__(MachineLearningCompressor)
-    comp.trained_ml_compressor = model
-    comp.seismogram_preprocessor = lambda D: D            # already a tensor (N, C, T)
-    comp.scaler = _IdentityScaler()
-    comp.source_location = torch.tensor([10.0, 20.0, 5.0])
-
-    D = torch.randn(_N, _C, _T)
-    out = comp.compress_data_vector(D)
-    # Model received a packed 2-D context of width N*C*T + n_cond.
-    assert captured["shape"] == (1, _N * _C * _T + _NCOND)
-    assert torch.isfinite(out).all()
-
-
 # ---------------------------------------------------------------------------
 # RFF station positional encoding (opt-in; review §3.2)
 # ---------------------------------------------------------------------------

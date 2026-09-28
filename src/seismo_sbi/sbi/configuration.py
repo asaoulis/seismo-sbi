@@ -85,7 +85,7 @@ class SBI_Configuration:
         "simulation", "training_augmentation", "training_augmentation_post_noise",
     })
 
-    compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score", "ml_compressor"]
+    compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score"]
     test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
 
     
@@ -143,6 +143,8 @@ class SBI_Configuration:
         for name, parsing_callable in self._parsing_callables.items():
             if name == 'job_options':
                 subconfig = {key: value for key, value in config.items() if not(isinstance(value, dict) or isinstance(value, list))}
+            elif name == 'compression':
+                subconfig = config.get(name) or {}
             else:
                 subconfig = config[name]
             parsing_callable(subconfig)

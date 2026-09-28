@@ -22,7 +22,7 @@ from .configuration import  ModelParameters, SimulationParameters, PipelineParam
 from .types.results import InversionResult, InversionData, JobResult, InversionConfig, JobData
 from .types.fixed_jobs import FixedEventJobs
 
-from .compression.gaussian import GaussianCompressor, MachineLearningCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
+from .compression.gaussian import GaussianCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
 
 from .noises.real_noise import RealNoiseSampler
 from .noises.diagonal_covariances import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance
@@ -243,11 +243,6 @@ class SBIPipeline:
             noise_level = options["noise_level"]
             cov_mat = np.diag(noise_level**2 * np.ones((self.data_vector_length)))
             compressor = SecondOrderCompressor(score_compression_data, extra_gradients, cov_mat)
-
-        elif ctype == "ml_compressor":
-            # options already contains all kwargs for ML compressor
-            ml_kwargs = {k: v for k, v in options.items() if k != "type"}
-            compressor = MachineLearningCompressor(**ml_kwargs)
 
         else:
             raise NotImplementedError(f"Unknown compression type {ctype} for compressor '{full_key}'")

@@ -101,7 +101,6 @@ compression:
 | `theory_optimal_score` | a data-noise covariance (`data_covariance`, with `noise_level`) plus the theory-error covariance from the Earth-model ensemble, per trace; `diag_regularisation_magnitude` adds to its diagonal |
 | `second_order_score` | a scalar noise level; adds the second-order derivatives |
 | `multi_optimal_score` | a scalar noise level; compresses about several fiducial points |
-| `ml_compressor` | none: a trained neural compressor (see `scripts/train_NPE.py`) |
 
 | data covariance | structure |
 |---|---|

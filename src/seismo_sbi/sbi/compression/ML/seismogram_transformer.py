@@ -3,8 +3,7 @@
 :class:`SeismogramTransformer` encodes each station's traces with a pluggable station encoder,
 mixes stations with :class:`~.axial_transformer.SeismogramAxialTransformer`, and maps the result
 and any source conditioning to a fixed-length summary. :class:`NPELightningModule` trains a flow
-on that summary; :class:`LightningModel` is the regression wrapper that
-``MachineLearningCompressor`` loads.
+on that summary.
 """
 
 import torch
@@ -429,94 +428,6 @@ class SeismogramTransformer(nn.Module):
             pooled = pooled + amp_global
         return pooled
 
-
-class LightningModel(pl.LightningModule):
-    """Regression wrapper: trains the embedding network to predict the source parameters under
-    ``loss_function``, adding a draw of the network's noise model to every batch.
-    """
-
-    def __init__(self, loss_function = nn.MSELoss() , lr=0.001, **kwargs):
-        """``kwargs`` are the :class:`SeismogramTransformer` arguments."""
-
-        super().__init__()
-
-        self.model = SeismogramTransformer(**kwargs)
-        self.loss_func = loss_function
-
-        self.lr = lr
-        self.learning_rate_sched = None
-
-        self.weight_decay = 0
-
-    def forward(self, x):
-        """The network's prediction for a batch of seismograms."""
-        return self.model.forward(x)
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        """``(prediction, target)`` for one batch."""
-        x, y = batch
-        y_hat , _= self.shared_step(batch)
-
-        return y_hat, y
-    
-    def shared_step(self, batch, eval_type=""):
-        """Prediction and ``{f"{eval_type}loss": loss}`` for one batch, with noise added to the data."""
-
-        x, y = batch
-        noise = self.model.sample_noise_model(batch_size=x.shape[0])
-
-        y_hat = self(x + noise)
-        loss = self.loss_func(y_hat, y)
-        loss_dict = {f'{eval_type}loss' : loss}
-
-        return y_hat, loss_dict
-
-    def training_step(self, batch, batch_idx):
-        """Loss of one training batch, logged."""
-        
-
-        _, loss = self.shared_step(batch)
-
-
-        self._log_loss(loss)
-   
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        """Loss of one validation batch, logged with the ``val_`` prefix."""
-
-        _, loss = self.shared_step(batch, "val_")
-
-        self._log_loss(loss)
-
-        return loss
-
-    def _log_loss(self, loss):
-        """Log every entry of a loss dictionary."""
-        
-        for l in loss.keys():
-            self.log(l, loss[l])
-
-    def configure_optimizers(self):
-        """
-        Choose what optimizers and learning-rate schedulers to use in your optimization.
-        """
-
-        
-        opt = torch.optim.Adam(self.parameters(), lr=(self.lr or self.learning_rate), weight_decay=self.weight_decay)
-        if not self.learning_rate_sched:
-            return opt
-        if self.learning_rate_sched == 'one_cycle':
-            print("Using one cycle LR: ", self.learning_rate_sched_opt)
-            sch = OneCycleLR(opt, **self.learning_rate_sched_opt)
-        elif self.learning_rate_sched == 'reduce_on_plateau':
-            sch = ReduceLROnPlateau(opt, **self.learning_rate_sched_opt)
-        elif self.learning_rate_sched == 'exponential':
-            sch = ExponentialLR(opt, **self.learning_rate_sched_opt)
-        elif self.learning_rate_sched == 'step':
-            sch = StepLR(opt, **self.learning_rate_sched_opt)
-        sch = {"scheduler": sch, "interval": "epoch", "monitor": "val_loss"}
-        return [opt], [sch]
 
 def fused_adam_supported(params):
     """True if every parameter is a real-valued tensor on a device fused AdamW accepts; the unfused optimiser gives the same update otherwise."""

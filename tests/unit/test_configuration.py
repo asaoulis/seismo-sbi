@@ -1,7 +1,10 @@
 """Tests for SBI_Configuration YAML parsing."""
 
 import json
+from pathlib import Path
+
 import pytest
+import yaml
 
 from seismo_sbi.sbi.configuration import SBI_Configuration, InvalidConfiguration
 
@@ -742,3 +745,13 @@ def test_the_pipeline_documentation_names_every_pipeline_type():
     documentation = (Path(__file__).resolve().parents[2] / "docs" / "pipeline.md").read_text()
 
     assert all(f"`{name}`" in documentation for name in PIPELINE_CLASSES)
+
+
+def test_a_configuration_without_a_compression_block_has_no_compressors(monkeypatch):
+    examples = Path(__file__).resolve().parents[2] / "examples"
+    raw_config = yaml.safe_load((examples / "configs" / "LV2.yaml").read_text())
+    raw_config.pop("compression")
+    monkeypatch.chdir(examples)
+    cfg = SBI_Configuration()
+    cfg.process_configuration_data(raw_config)
+    assert cfg.compression_methods == []

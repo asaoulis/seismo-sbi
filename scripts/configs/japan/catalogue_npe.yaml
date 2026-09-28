@@ -88,10 +88,6 @@ simulations:
       magnitude_conversion: identity   # F-net Mw already Mw
   use_fisher_to_constrain_bounds: False
 
-compression:
-  ml_compressor:
-    path: ''
-
 inference:
   sbi:
     method: 'posterior'
