@@ -66,6 +66,17 @@ class RealNoiseSampler:
                     self.adaptive_covariance[receiver][component] = self.adaptive_covariance[receiver][component][0]
 
         print(f"Found {len(self.noise_paths)} noise realisations.")
+
+    @classmethod
+    def from_receivers(cls, receivers, components, seismogram_duration_s, sampling_rate_hz, directory, **kwargs):
+        """A sampler for ``receivers`` recording ``components`` (a string such as ``"ZEN"``) over
+        ``seismogram_duration_s`` at ``sampling_rate_hz``; ``kwargs`` are those of the constructor.
+        """
+        simulation_parameters = SimulationParameters(
+            receivers=receivers, components=components, seismogram_duration=seismogram_duration_s,
+            syngine_address=None, sampling_rate=sampling_rate_hz, processing={},
+        )
+        return cls(simulation_parameters, directory, **kwargs)
     
     def _build_presence_index(self):
         """Pack each cached window's station presence into one integer, so :meth:`sample_containing` can find the windows holding a station subset in one comparison."""

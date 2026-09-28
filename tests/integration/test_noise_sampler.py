@@ -194,3 +194,16 @@ class TestRealNoiseSamplerShortWindowSkip:
         sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
         with pytest.raises(RuntimeError):
             sampler()
+
+
+def test_from_receivers_draws_what_the_simulation_parameters_constructor_draws(receivers, noise_catalogue_dir):
+    np.random.seed(3)
+    from_parameters = RealNoiseSampler(_make_sim_params(receivers), noise_catalogue_dir)
+    np.random.seed(3)
+    from_receivers = RealNoiseSampler.from_receivers(receivers, "Z", TRACE_LEN, 1.0, noise_catalogue_dir)
+
+    assert list(from_receivers.noise_paths) == list(from_parameters.noise_paths)
+    np.random.seed(4)
+    expected = from_parameters()
+    np.random.seed(4)
+    np.testing.assert_array_equal(from_receivers(), expected)
