@@ -39,10 +39,10 @@ from .inversion import likelihood as likelihood
 from .inversion.least_squares import IterativeLeastSquaresSolver
 
 from .scalers import FlexibleScaler
-from .dataset_compressor import DatasetCompressor
+from .datasets.dataset_compressor import DatasetCompressor
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.sbi.dataset_generator import DatasetGenerator
+from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator
 
 from .data_manager import DataManager
 from .simulator_wrapper import GeneralSimulatorWrapper

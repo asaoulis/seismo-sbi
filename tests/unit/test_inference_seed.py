@@ -3,8 +3,8 @@ import numpy as np
 
 from seismo_sbi.sbi.inversion import likelihood
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
-from seismo_sbi.sbi.dataset_generator import DatasetGenerator
+from seismo_sbi.sbi.datasets.dataset_compressor import DatasetCompressor
+from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator
 from seismo_sbi.utils.parallel import worker_seeds
 
 DATA_VECTOR_LENGTH = 8

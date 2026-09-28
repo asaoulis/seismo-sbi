@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from seismo_sbi.sbi.training_data import rescale_training_noise_to_event
+from seismo_sbi.sbi.datasets.training_data import rescale_training_noise_to_event
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 
@@ -30,7 +30,7 @@ def test_a_rescaled_noise_model_needs_a_real_event():
 @pytest.mark.skipif(not os.path.isdir(os.environ.get("INSTASEIS_DB", "")), reason="needs INSTASEIS_DB")
 def test_prepare_training_data_returns_the_pipeline_geometry(tmp_path, monkeypatch):
     from seismo_sbi.sbi.configuration import SBI_Configuration
-    from seismo_sbi.sbi.training_data import build_pipeline, generate_training_dataset, prepare_training_data
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline, generate_training_dataset, prepare_training_data
 
     monkeypatch.chdir(Path(__file__).resolve().parents[2] / "examples")
     config = SBI_Configuration.from_file("configs/npe_example.yaml")

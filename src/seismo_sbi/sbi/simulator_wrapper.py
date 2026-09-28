@@ -10,7 +10,7 @@ from copy import copy, deepcopy
 
 import numpy as np
 
-from seismo_sbi.sbi.dataset_generator import flatten_sample
+from seismo_sbi.sbi.datasets.dataset_generator import flatten_sample
 from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain, build_post_processing_chain
 from seismo_sbi.simulators.registry import build_simulator
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader

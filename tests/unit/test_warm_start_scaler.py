@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.scalers import MomentTensorScaler, scaler_provenance
-from seismo_sbi.sbi.training_data import training_scaler
+from seismo_sbi.sbi.datasets.training_data import training_scaler
 from seismo_sbi.sbi.types.parameters import ModelParameters
 
 MAX_ABS_NM = 2e18

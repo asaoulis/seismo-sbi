@@ -7,8 +7,8 @@ compressor, and runs the stencil simulations the score compression needs.
 import numpy as np
 import joblib
 
-from .compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
-from .compression.gaussian import Compressor, ScoreCompressionData
+from ..compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
+from ..compression.gaussian import Compressor, ScoreCompressionData
 from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
 from tqdm import tqdm
 

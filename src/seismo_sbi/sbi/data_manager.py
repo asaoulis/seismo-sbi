@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
+from seismo_sbi.sbi.datasets.dataset_compressor import DatasetCompressor
 from seismo_sbi.sbi.configuration import  ModelParameters
 from seismo_sbi.sbi.types.results import  JobData
 from seismo_sbi.utils.errors import error_handling_wrapper

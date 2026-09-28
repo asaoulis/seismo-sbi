@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from seismo_sbi.sbi.dataset_generator import ParallelSimulationRunner
-from seismo_sbi.sbi.training_data import generate_training_dataset
+from seismo_sbi.sbi.datasets.dataset_generator import ParallelSimulationRunner
+from seismo_sbi.sbi.datasets.training_data import generate_training_dataset
 from seismo_sbi.utils.environment import log_progress_to_stdout
 
 

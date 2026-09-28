@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from copy import deepcopy
 
-from seismo_sbi.sbi.dataset_generator import (
+from seismo_sbi.sbi.datasets.dataset_generator import (
     DatasetGenerator,
     flatten_sample,
     transform_sampling_func,

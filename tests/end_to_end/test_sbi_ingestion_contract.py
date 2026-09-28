@@ -12,7 +12,7 @@ from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
 from seismo_sbi.sbi.types.parameters import SimulationParameters
 from seismo_sbi.sbi.data_manager import DataManager
-from seismo_sbi.sbi.dataset_compressor import DatasetCompressor
+from seismo_sbi.sbi.datasets.dataset_compressor import DatasetCompressor
 
 from tests.end_to_end.test_preprocessing_api_synthetic import (
     STATIONS,

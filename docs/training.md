@@ -44,7 +44,7 @@ In Python, `train_NPE.py` reads:
 
 ```python
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.training_data import build_pipeline, generate_training_dataset, prepare_training_data
+from seismo_sbi.sbi.datasets.training_data import build_pipeline, generate_training_dataset, prepare_training_data
 from seismo_sbi.sbi.compression.ML.train import CompressionTrainer, attach_loggers
 from seismo_sbi.sbi.scalers import scaler_provenance
 

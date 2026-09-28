@@ -37,7 +37,7 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     from pathlib import Path as _Path
     from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
-    from seismo_sbi.sbi.training_data import build_pipeline
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline
 
     config = SBI_Configuration()
     config.parse_config_file(config_path)

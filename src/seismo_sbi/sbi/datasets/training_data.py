@@ -12,10 +12,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .pipeline_variants import PIPELINE_CLASSES
-from .scalers import FlexibleScaler, build_flexible_scaler, check_scaler_provenance, recorded_theta_scaler
+from ..pipeline_variants import PIPELINE_CLASSES
+from ..scalers import FlexibleScaler, build_flexible_scaler, check_scaler_provenance, recorded_theta_scaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
-from ..utils.errors import InvalidConfiguration
+from ...utils.errors import InvalidConfiguration
 
 
 @dataclass

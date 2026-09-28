@@ -1,7 +1,7 @@
 """build_pipeline builds the class a configuration names, or the one it is given."""
 from types import SimpleNamespace
 
-from seismo_sbi.sbi.training_data import build_pipeline
+from seismo_sbi.sbi.datasets.training_data import build_pipeline
 
 
 class _RecordingPipeline:

@@ -17,7 +17,7 @@ configure_numba_cache()
 stamp_arviz_daily_warning()
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.training_data import (build_pipeline, generate_training_dataset,
+from seismo_sbi.sbi.datasets.training_data import (build_pipeline, generate_training_dataset,
                                           prepare_training_data, preload_noise_cache)
 from seismo_sbi.sbi.compression.ML.train import (CompressionTrainer, apply_warm_start,
                                                  attach_loggers, enable_mmd_loss)

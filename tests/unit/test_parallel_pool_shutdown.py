@@ -4,7 +4,7 @@ import sys
 
 from joblib.externals.loky import reusable_executor
 
-from seismo_sbi.sbi.dataset_generator import ParallelSimulationRunner
+from seismo_sbi.sbi.datasets.dataset_generator import ParallelSimulationRunner
 from seismo_sbi.utils.parallel import gc_paused_in_notebooks
 
 

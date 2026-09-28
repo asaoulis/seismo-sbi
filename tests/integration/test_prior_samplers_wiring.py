@@ -8,7 +8,7 @@ simulator, plus the kernel-simulator fast-path flag logic in the pipeline.
 
 import numpy as np
 
-from seismo_sbi.sbi.dataset_generator import DatasetGenerator, transform_sampling_func
+from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator, transform_sampling_func
 from seismo_sbi.sbi.types.parameters import ModelParameters
 from seismo_sbi.priors.catalogue import EventCatalogue
 from seismo_sbi.priors.samplers import (
