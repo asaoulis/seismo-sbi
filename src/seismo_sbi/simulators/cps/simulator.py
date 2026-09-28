@@ -46,6 +46,10 @@ class CPSSimulator(Simulator):
             raise InvalidConfiguration(
                 f"CPS synthetics are sampled at {CPS_SAMPLING_RATE_HZ} Hz; "
                 f"seismic_context.processing.sampling_rate is {sampling_rate_hz}")
+        if self.source_depth_offset_km != 0.0:
+            raise InvalidConfiguration(
+                "CPS measures source depth from the top of its layered model and applies no "
+                f"source_depth_offset_km; got {self.source_depth_offset_km}")
         self.sensitivity_kernels = None
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.gf_storage_root = gf_storage_root
@@ -53,7 +57,10 @@ class CPSSimulator(Simulator):
         self.synthetics_summary = lambda x: x
     
     def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
-        
+        if source.source_location.time_shift != 0:
+            raise InvalidConfiguration(
+                "CPS synthetics start at the origin and apply no source time shift; "
+                f"got {source.source_location.time_shift} s")
         all_seismograms_map = {}
         velocity_model = kwargs.pop('velocity_model', None)
         # CPS Green's functions carry no source time function, and update_with_Gtensor would
