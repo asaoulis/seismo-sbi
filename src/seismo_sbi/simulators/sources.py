@@ -41,10 +41,15 @@ class GeneralMomentTensor(MomentTensor):
         return {component_string: component for component_string, component in zip(self.component_strings, self.components)}
 
 class SourceLocation(NamedTuple):
+    """Hypocentre of a point source."""
 
+    #: Latitude in degrees.
     latitude : float
+    #: Longitude in degrees.
     longitude : float
+    #: Depth in km below the catalogue datum, positive downwards.
     depth : float
+    #: Source time in s relative to the origin time.
     time_shift : float
 
 class GenericPointSource(NamedTuple):

@@ -13,12 +13,20 @@ import json
 from pyproj import Geod
 
 class Receiver(NamedTuple):
+    """One station: position, network and station codes, recorded components and a static shift."""
 
+    #: Station latitude in degrees.
     latitude : float
+    #: Station longitude in degrees.
     longitude : float
+    #: Network code.
     network : str = "XX"
+    #: Station code; the key of this station in every seismogram map.
     station_name : str = "XXXX"
+    #: The components this station records, from ``Z``, ``E``, ``N``, in that order.
     components : List[str] = ["Z", "E", "N"]
+    #: Static correction in samples at the pipeline sampling rate, applied to every component of
+    #: this station; positive delays the trace.
     time_shift : int = 0
 
 
