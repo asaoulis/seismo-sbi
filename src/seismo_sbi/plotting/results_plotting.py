@@ -9,7 +9,7 @@ import numpy as np
 
 
 from seismo_sbi.simulators.receivers import Receivers
-from seismo_sbi.plotting.seismo_plots import plot_stacked_waveforms, MisfitsPlotting
+from seismo_sbi.plotting.seismo_plots import MisfitsPlotting
 from seismo_sbi.plotting.distributions import PosteriorPlotter, MomentTensorReparametrised
 from seismo_sbi.sbi.configuration import  ModelParameters
 from seismo_sbi.sbi.types.results import JobData
@@ -33,14 +33,6 @@ class SBIPipelinePlotter:
         if "moment_tensor" in self.parameters.names.keys():
             self.reparametrised_plotter = MomentTensorReparametrised(data_scaler, self.parameters)
 
-    def plot_all_stacked_waveforms(self, single_job : JobData, receivers : Receivers):
-
-        figure_path = self.base_output_path / "./seismograms"
-        figure_path.mkdir(parents=True, exist_ok=True)
-
-        plot_path = figure_path / f"./{single_job.job_name}.png"
-        plot_stacked_waveforms(receivers.receivers, single_job.data_vector, figname=plot_path)
-    
     def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None, only_raw=False, savefig=True):
             
         figure_path = self.base_output_path / "./misfits"

@@ -2,7 +2,6 @@
 
 :class:`MisfitsPlotting` draws observed against synthetic traces: raw, aligned on arrivals,
 by moveout, as a record section, and with posterior-predictive quantile bands.
-:func:`plot_stacked_waveforms` stacks every trace of one data vector.
 """
 
 import matplotlib.pyplot as plt
@@ -16,47 +15,6 @@ from obspy.geodetics import locations2degrees
 def get_epicentral_distances_function(event_lat, event_long, station):
     lat, long = station
     return locations2degrees(event_lat, event_long, lat, long)
-
-def plot_stacked_waveforms(receivers, flattened_seismogram_array, figname = None):
-    num_receivers = len(receivers)
-    all_components =  [component for receiver in receivers for component in receiver.components]
-    time_series_length = int(flattened_seismogram_array.shape[0]//len(all_components))
-    t_axis = list(range(time_series_length))
-    receiver_seismograms = np.reshape(flattened_seismogram_array, (-1, time_series_length))
-
-    fig = plt.figure(figsize=(15, num_receivers//2))
-    ax = fig.add_subplot(111)
-    ax.set_prop_cycle(
-        plt.cycler("color", plt.cm.prism(np.linspace(0, 0.4, num_receivers)))
-    )
-
-    seismogram_scale = np.mean(np.abs(receiver_seismograms))*10
-    offsets = np.linspace(0,seismogram_scale*num_receivers, num_receivers)
-    seismogram_index = 0
-    for offset, receiver in zip(offsets, receivers):
-        station_name = receiver.station_name
-        start_time = 0
-        for component in receiver.components:
-            seismogram = receiver_seismograms[seismogram_index]
-            ax.plot(np.array(t_axis) + start_time, seismogram + offset)
-            start_time += time_series_length + time_series_length//10
-            seismogram_index += 1
-
-        ax.text(
-            t_axis[0] + 2,
-            offset + 0.35 * seismogram_scale,
-            f"{station_name}",
-            fontsize=10,
-            weight="bold",
-            color="red",
-        )
-
-    if figname is not None:
-        fig.savefig(figname)
-        fig.clear()
-    else:
-        plt.show()
-    plt.close()
 
 #: Seconds of record before the origin time in every synthetic and observed window.
 PRE_EVENT_PAD_S = 60

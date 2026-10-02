@@ -446,47 +446,6 @@ class PosteriorPredictiveChecks:
         vals = np.abs(p_obs - p_syn) / p_obs
         return vals
 
-    def _metric_band_power_ratio(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict, bands=None):
-        """
-        Compute band power misfit across frequency bands.
-        Returns per-sample average relative L2-power difference across bands.
-
-        bands: list of (fmin, fmax) in Hz. If None, default to
-               low/mid/high: [(0.02, 0.2), (0.2, 1.0), (1.0, 10.0)] Hz — change to taste.
-        Requires sample_rate in meta.
-        """
-        if welch is None:
-            raise RuntimeError("scipy.signal.welch required for band_power_ratio metric")
-        sr = meta.get("sample_rate", self.sample_rate)
-        if sr is None:
-            raise ValueError("sample_rate required for band_power_ratio metric")
-
-        if bands is None:
-            bands = [(0.05, 0.2), (0.2, 1.0),]
-        # compute PSD for observation
-        nperseg = max(256, int(sr))  # heuristic
-        f_obs, P_obs = welch(obs, fs=sr, nperseg=nperseg)
-        # helper to compute band power
-        def band_power(f, P, bmin, bmax):
-            mask = (f >= bmin) & (f < bmax)
-            if not np.any(mask):
-                return 0.0
-            return float(np.trapz(P[mask], f[mask]))
-
-        P_obs_bands = np.array([band_power(f_obs, P_obs, b0, b1) for (b0, b1) in bands]) + 1e-12
-
-        # compute PSD for synthetics (vectorized loop)
-        vals = np.empty((synthetics.shape[0],), dtype=float)
-        for i, s in enumerate(synthetics):
-            f_s, P_s = welch(s, fs=sr, nperseg=nperseg)
-            # align by interpolating P_s onto f_obs if needed
-            if not np.allclose(f_s, f_obs):
-                P_s = np.interp(f_obs, f_s, P_s, left=0.0, right=0.0)
-            P_s_bands = np.array([band_power(f_obs, P_s, b0, b1) for (b0, b1) in bands]) + 1e-12
-            rel = np.abs(P_obs_bands - P_s_bands) / P_obs_bands
-            vals[i] = float(np.mean(rel))
-        return vals
-
     def _metric_envelope_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
         """
         Envelope-based misfit: mean absolute relative difference of envelope over time.
