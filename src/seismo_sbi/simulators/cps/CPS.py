@@ -48,8 +48,8 @@ def write_Model96(vel_model, fname):
 import uuid
 
 
-def get_hashcode(dists_in_km, evdp_in_km, vmodel):
-    """A random MD5 hash string; the arguments are ignored."""
+def random_run_tag():
+    """A random 32-character hex string that names one CPS working directory."""
     random_bytes = uuid.uuid4().bytes
     return hashlib.md5(random_bytes).hexdigest()
 
@@ -111,7 +111,7 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
     dists = np.unique(np.round(sorted([s.distance for s in objstats]), 1))
     evdp = evdp_in_km if evdp_in_km is not None else objstats[0].event_depth
     if gf_directory is None:
-        hashcode = get_hashcode(dists, evdp, vmodel)
+        hashcode = random_run_tag()
         wdir_path = Path(rootdir) / hashcode
         if not wdir_path.exists(): wdir_path.mkdir(parents=True)
         if not (wdir_path / 'GF.mseed').exists() or force_calc:
