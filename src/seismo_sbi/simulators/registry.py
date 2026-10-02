@@ -220,7 +220,7 @@ def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_f
                     post_processing_effects=pp_effects)
 
 
-def _build_cps_covariance(simulation_parameters, simulator_config, pp_effects, data_flattening):
+def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects, data_flattening):
     ensemble_simulator = simulator_config[1]
     return EnsembleTheoryCovarianceEstimationSimulator(
                     simulator=ensemble_simulator,
@@ -243,7 +243,7 @@ SIMULATOR_REGISTRY = {
     "cps": _build_cps,
     "cps_precomputed": _build_cps_precomputed,
     "cps_multi": _build_cps_multi,
-    "cps_covariance": _build_cps_covariance,
+    "theory_covariance": _build_theory_covariance,
 }
 
 

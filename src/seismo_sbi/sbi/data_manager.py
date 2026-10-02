@@ -118,7 +118,7 @@ class DataManager:
         )
 
         if "theory_optimal_score" in compression_method_details:
-            simulator_config = ("cps_covariance", simulator_wrapper.simulator)
+            simulator_config = ("theory_covariance", simulator_wrapper.simulator)
             covariance_simulator = simulator_wrapper.select_and_initialise_simulator(
                 simulator_config, simulation_parameters
             )
