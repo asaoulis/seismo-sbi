@@ -23,7 +23,6 @@ from .source_conditioning import (
 )
 
 import pytorch_lightning as pl
-from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR, StepLR
 from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LambdaLR, CyclicLR
 
 
@@ -248,10 +247,6 @@ class SeismogramTransformer(nn.Module):
             # Project back to d_model so the flow's conditional_dim is unchanged.
             self.concat_proj = nn.Linear(d_model + d_cond, d_model)
 
-    def sample_noise_model(self, batch_size):
-        """``batch_size`` draws of the noise model, stacked along a new first axis."""
-        return torch.stack([self.noise_model() for _ in range(batch_size)], dim =0)
-    
     def forward(self, x : torch.Tensor):
         """The summary vector, ``(batch, num_outputs)``, of a batch of seismograms or packed contexts."""
         # Scoped to the embedding net, so the flow still receives an fp32 context and its
