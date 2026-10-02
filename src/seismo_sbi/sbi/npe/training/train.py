@@ -13,7 +13,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer, NPELightningModule
+from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer
+from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
 from seismo_sbi.sbi.npe.maf import build_nsf
 from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 from seismo_sbi.sbi.npe.training.checkpoint_loading import unpickling_torch_load

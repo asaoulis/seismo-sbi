@@ -17,7 +17,7 @@ Pure CPU, no GPU required.
 import pytest
 import torch
 
-from seismo_sbi.sbi.npe.networks.seismogram_transformer import fused_adam_supported
+from seismo_sbi.sbi.npe.training.lightning_module import fused_adam_supported
 
 pytestmark = pytest.mark.unit
 

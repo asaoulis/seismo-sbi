@@ -207,7 +207,7 @@ def test_train_one_epoch_returns_finite_logprob(kernel_pipeline, tmp_path, archi
     )
 
     assert model is not None
-    from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
+    from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
     assert isinstance(model, NPELightningModule)
 
     # Pull one batch and check the flow's log-prob is finite.
@@ -1035,7 +1035,7 @@ def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
     assert "val_loss" in metrics and torch.isfinite(metrics["val_loss"])
 
     # ---- default-off equivalence: an un-armed module has NO MMD state ----
-    from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
+    from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
     plain = NPELightningModule(flow=model.flow)
     assert plain._mmd_cfg is None
     assert not hasattr(plain, "mmd_real_context")
@@ -1102,7 +1102,7 @@ def test_mmd_one_epoch_through_a_summary_bottleneck(kernel_pipeline, tmp_path):
 
 def test_mmd_lambda_schedule():
     """Warmup -> linear ramp -> plateau schedule of the MMD weight."""
-    from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
+    from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
 
     class _Stub(NPELightningModule):
         def __init__(self):  # bypass flow construction; only the schedule is tested

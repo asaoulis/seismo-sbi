@@ -14,7 +14,7 @@ import pytest
 import torch
 
 from seismo_sbi.sbi.npe.maf import build_nsf
-from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
+from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
 from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
 pytestmark = pytest.mark.unit

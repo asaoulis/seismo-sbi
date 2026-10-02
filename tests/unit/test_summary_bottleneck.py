@@ -74,7 +74,7 @@ def test_absent_config_leaves_the_head_unchanged():
 def test_mmd_tap_prefers_the_bottleneck_when_present():
     """`_mmd_term` resolves `summary_bottleneck` if the embedding net exposes it.
 
-    Mirrors the getattr dispatch in seismogram_transformer._mmd_term so a rename there
+    Mirrors the getattr dispatch in lightning_module._mmd_term so a rename there
     fails loudly here rather than silently reverting MMD to the wide space.
     """
     class _WithBottleneck(nn.Module):
