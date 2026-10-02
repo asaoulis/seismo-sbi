@@ -1,7 +1,9 @@
-""" Here we add some custom functionality to ChainConsumer
-the only addition is an 'inverse' option, which flips the 
-trade-off plot triangle across the diagonal, as well as
-all the label positions and orientations"""
+"""ChainConsumer's corner plot with the triangle optionally mirrored across the diagonal.
+
+A modified copy of the figure methods of ``Plotter`` from ChainConsumer 0.34.0 (Samuel Hinton,
+MIT licence). ``CustomChainConsumer.configure(inverse=True)`` flips the trade-off triangle and
+moves and rotates every label to match; otherwise the plot is ChainConsumer's own.
+"""
 
 import numpy as np
 from scipy.interpolate import interp1d
