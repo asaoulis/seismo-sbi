@@ -339,6 +339,11 @@ class CompressionTrainer:
                 device=self.device,
             )
 
+        self._load_checkpoint(ckpt_path)
+        return ckpt_path
+
+    def _load_checkpoint(self, ckpt_path):
+        """Load the weights at ``ckpt_path`` into the flow and freeze it for inference."""
         with unpickling_torch_load():
             self.model = NPELightningModule.load_from_checkpoint(
                 ckpt_path,
@@ -348,9 +353,7 @@ class CompressionTrainer:
             )
         self.model.eval()
         self.model.freeze()
-        return ckpt_path
-        
-    
+
     def build_posterior(self):
         """An ``sbi`` ``DirectPosterior`` over the trained flow, on the flow's device."""
         # use sbi to build a direct posterior from the trained flow
