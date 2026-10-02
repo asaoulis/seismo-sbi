@@ -51,6 +51,7 @@ compression:
 inference:
   sbi:
     method: 'posterior'
+    seed: 0
 
     noise_model: 
       type: 'real_noise'
