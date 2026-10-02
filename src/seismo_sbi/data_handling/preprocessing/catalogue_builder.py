@@ -46,7 +46,7 @@ def build_event_catalogue(
     duration_s: float,
     sampling_rate: float,
     covariance_window_s: float = 200.0,
-    pre_event_window_s: float = 60.0,   # = wrapper.SYNTHETICS_PRE_EVENT_PAD_S: sims place the
+    pre_event_window_s: float = 60.0,
     prefilter_kwargs: Optional[dict] = None,
     filter_kwargs: Optional[dict] = None,
     channel_glob: str = "BH?",

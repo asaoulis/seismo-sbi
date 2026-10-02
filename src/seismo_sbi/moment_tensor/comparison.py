@@ -39,7 +39,7 @@ def kagan(m6_a, m6_b):
         return float("nan")
 
 
-# --- Batched eigen-frame primitives: pyrocko's algebra in numpy, ~4e4x faster than kagan() ---
+# --- Batched eigen-frame primitives: pyrocko's algebra in numpy ---
 
 # USE -> NED (north = -south, east = east, down = -up); pyrocko stores m() in NED, so the
 # results are identical to pyrocko's rather than merely equivalent.

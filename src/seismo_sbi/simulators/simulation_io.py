@@ -242,8 +242,6 @@ class SimulationDataLoader():
         station_data = []
         present = []
 
-        # Fetched once rather than per station and component: this is the dataloader's
-        # per-sample path.
         outputs_group = simulation_data_map["outputs"]
         for receiver in self.receivers.iterate():
             receiver_name = receiver.station_name
@@ -276,8 +274,6 @@ class SimulationDataLoader():
 
                 trace_data_vector = trace_data[:seismogram_array_length]
 
-                # Skipped without a scale_dict: every factor would be 1.0, and dividing by it
-                # copies every trace for nothing.
                 if scale_dict is not None:
                     factor = scale_dict.get(receiver_name, {}).get(component)
                     if factor is None:

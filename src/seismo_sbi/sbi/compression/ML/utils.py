@@ -1,7 +1,7 @@
 """Checkpoint loading helpers.
 
-:func:`unpickling_torch_load` lets Lightning load this project's own checkpoints on torch 2.6 and
-later, whose ``torch.load`` refuses the hyperparameters a checkpoint carries by default.
+:func:`unpickling_torch_load` is the context in which to load a checkpoint this library wrote,
+hyperparameters included. Trusted files only.
 """
 
 import contextlib

@@ -117,8 +117,7 @@ class CompressionTrainer:
             device=self.device,
         )
 
-        # Module-level speed toggles (fused optimizer, torch.compile) ride in
-        # model_config['perf'] alongside the embedding-net ones; absent means all off.
+        # ``model_config['perf']`` also holds the optimizer and compile options; absent means all off.
         _perf = model_config.get("perf", {}) or {}
         self.model = NPELightningModule(
             flow=self.flow,

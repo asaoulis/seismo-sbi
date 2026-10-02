@@ -57,8 +57,7 @@ class SeismogramTransformer(nn.Module):
         self.aggregation = aggregation
         d_model = transformer_config['channels']
 
-        # Speed knobs for the embedding net only: the autocast wraps this forward and casts the
-        # context back to fp32, so the precision-brittle flow head never leaves fp32.
+        # ``perf.amp`` runs the embedding net in reduced precision; the flow head stays in fp32.
         perf = transformer_config.get("perf", {}) or {}
         self._amp = bool(perf.get("amp", False))
         _amp_dtype = str(perf.get("amp_dtype", "bfloat16")).lower()
@@ -456,8 +455,6 @@ class NPELightningModule(pl.LightningModule):
         # to 0.2 keeps a usefully large step in the tail of a long run. Cosine branch only.
         self.lr_min_factor = float(lr_min_factor)
         self.cyclic_period_steps = 8000
-        # Speed toggles for a launch-bound workload: one fused optimizer kernel, and compiling
-        # either the whole log-prob or only the flow when the mask branches thrash recompilation.
         self._fused_adam = bool(fused_adam)
         self._log_prob_fn = None
         self._flow_tail_fn = None

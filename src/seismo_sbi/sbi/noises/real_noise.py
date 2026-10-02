@@ -50,8 +50,6 @@ class RealNoiseSampler:
         self.noise_paths = self._find_noise_paths(directory)
         np.random.shuffle(self.noise_paths)
 
-        # Without the cache every call opens an HDF5 file. Drawing uniformly with replacement
-        # and never rescaling, a contiguous in-RAM pool is distributionally the same draw.
         self._noise_cache = None
         self._presence_cache = None
         self._presence_bits = None
@@ -207,8 +205,6 @@ class RealNoiseSampler:
                 and noise_path is None and noise_index is None):
             row = np.random.randint(0, self._noise_cache.shape[0])
             if self.allow_incomplete:
-                # O(1). No search and no rejection loop: the window is drawn first and the
-                # station subset is derived from what it holds (see __init__ docstring).
                 return self._noise_cache[row], self._presence_cache[row]
             return self._noise_cache[row]
 
