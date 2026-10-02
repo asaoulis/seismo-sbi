@@ -13,10 +13,7 @@ from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator,
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.sources import GenericPointSource
 from seismo_sbi.simulators.receivers import Receiver, Receivers
-from seismo_sbi.simulators.theory_covariance import (
-    EnsembleTheoryCovarianceEstimationSimulator,
-    CPSTheoryCovarianceEstimationSimulator,
-)
+from seismo_sbi.simulators.theory_covariance import EnsembleTheoryCovarianceEstimationSimulator
 
 TRACE_LEN = 20
 N_MEMBERS = 5
@@ -219,9 +216,6 @@ class TestEnsembleTheoryCovarianceEstimationSimulator:
         trace = result["STA1"]["Z"]
         # covariance block flattened: trace_len * trace_len
         assert trace.shape == (TRACE_LEN * TRACE_LEN,)
-
-    def test_alias_is_same_class(self):
-        assert CPSTheoryCovarianceEstimationSimulator is EnsembleTheoryCovarianceEstimationSimulator
 
     def test_num_realisations_equals_num_models(self, receivers, mock_sim):
         cov_sim = self._make_cov_sim(receivers, mock_sim)

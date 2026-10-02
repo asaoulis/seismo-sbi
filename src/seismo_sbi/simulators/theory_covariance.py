@@ -63,6 +63,3 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
                 counter += 1
 
         return all_cov_blocks_map
-
-
-CPSTheoryCovarianceEstimationSimulator = EnsembleTheoryCovarianceEstimationSimulator
