@@ -182,6 +182,30 @@ class CompressionTrainer:
             lr_min_factor=training.optimizer.lr_min_factor,
         )
 
+    @classmethod
+    def from_run_directory(cls, run_directory):
+        """The trainer of a finished run with its best checkpoint loaded, ready for
+        :meth:`build_posterior`.
+
+        ``run_directory`` holds ``model_meta.json`` and ``checkpoints/``; the sidecar gives the
+        architecture, the station locations and the trace length, so nothing else is needed.
+        Raises ``FileNotFoundError`` when the sidecar is missing.
+        """
+        run_directory = Path(run_directory)
+        meta_path = run_directory / "model_meta.json"
+        if not meta_path.exists():
+            raise FileNotFoundError(f"{meta_path} is missing; a run is rebuilt from its sidecar.")
+        meta = json.loads(meta_path.read_text())
+        trainer = cls(
+            range(meta["num_seismic_components"]), np.asarray(meta["station_locations"]),
+            latent_dim=meta["latent_dim"], architecture=meta["architecture"],
+            trace_length=meta["trace_length"], num_dims=meta["num_dims"],
+            feature_length=meta["feature_length"], model_config=meta["model_config"],
+            flow_config=meta["flow_config"],
+        )
+        trainer._load_checkpoint(find_best_checkpoint_path(run_directory))
+        return trainer
+
     def record_model_config(self, **entries):
         """Merge extra entries into the ``model_config`` recorded in ``model_meta.json``.
 

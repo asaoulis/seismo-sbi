@@ -269,6 +269,18 @@ def test_flow_config_and_constant_lr_one_epoch_and_round_trip(kernel_pipeline, t
         log_prob2 = reloader.model(x.to(reloader.device), theta.to(reloader.device))
     assert torch.isfinite(log_prob2).all()
 
+    from_directory = CompressionTrainer.from_run_directory(tmp_path / run_name)
+    assert _count_coupling(from_directory.flow) == 8
+    from_directory.model.to(from_directory.device)
+    with torch.no_grad():
+        log_prob3 = from_directory.model(x.to(from_directory.device), theta.to(from_directory.device))
+    torch.testing.assert_close(log_prob3, log_prob2, rtol=0, atol=0)
+
+
+def test_a_run_without_its_sidecar_does_not_load_from_its_directory(tmp_path):
+    with pytest.raises(FileNotFoundError, match="model_meta.json"):
+        CompressionTrainer.from_run_directory(tmp_path)
+
 
 # Per-station amplitude embedding modes exercised by the one-epoch gate.
 AMPLITUDE_MODES = ["array_relative", "absolute"]
