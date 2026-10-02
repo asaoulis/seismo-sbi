@@ -18,6 +18,7 @@ from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
 from seismo_sbi.sbi.npe.maf import build_nsf
 from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 from seismo_sbi.sbi.npe.training.checkpoint_loading import unpickling_torch_load
+from seismo_sbi.sbi.scalers import scaler_provenance
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
@@ -164,23 +165,38 @@ class CompressionTrainer:
 
     @classmethod
     def from_configuration(cls, training, components, station_locations, trace_length,
-                           theta_scaler_provenance):
+                           theta_scaler_provenance, **model_config_overrides):
         """Build the trainer described by a :class:`TrainingConfiguration`.
 
         ``theta_scaler_provenance`` is recorded in the checkpoint's sidecar so the parameter
         scaling used at inference cannot silently differ from the one trained under.
+        ``model_config_overrides`` replace entries of the embedding net's configuration, such as
+        ``layers``; they are recorded in the sidecar too.
         """
         return cls(
             components, station_locations,
             channels=training.model_dim, latent_dim=training.model_dim,
             trace_length=trace_length,
-            model_config=training.to_model_config(theta_scaler_provenance),
+            model_config={**training.to_model_config(theta_scaler_provenance), **model_config_overrides},
             flow_config=training.flow,
             lr=training.optimizer.lr,
             weight_decay=training.optimizer.weight_decay,
             lr_second_stage=training.optimizer.lr_schedule,
             lr_min_factor=training.optimizer.lr_min_factor,
         )
+
+    @classmethod
+    def from_training_data(cls, training, data, **model_config_overrides):
+        """The trainer a :class:`TrainingConfiguration` describes for the
+        :class:`~seismo_sbi.sbi.datasets.training_data.TrainingData` of
+        :func:`~seismo_sbi.sbi.datasets.training_data.prepare_training_data`.
+
+        The recording geometry, trace length and parameter scaling come from ``data``;
+        ``model_config_overrides`` are as in :meth:`from_configuration`.
+        """
+        return cls.from_configuration(training, data.components, data.station_locations,
+                                      data.trace_length, scaler_provenance(data.data_scaler),
+                                      **model_config_overrides)
 
     @classmethod
     def from_run_directory(cls, run_directory):

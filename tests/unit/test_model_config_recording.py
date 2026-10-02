@@ -108,3 +108,32 @@ def test_every_record_model_config_call_site_uses_keywords():
         assert re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=", arg), (
             f"record_model_config call site must pass keyword arguments, got: {arg}"
         )
+
+
+def test_from_training_data_builds_the_trainer_a_caller_would_assemble_by_hand():
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    import numpy as np
+    import torch
+
+    from seismo_sbi.sbi.scalers import FlexibleScaler, scaler_provenance
+    from seismo_sbi.sbi.training_configuration import TrainingConfiguration
+
+    training = replace(TrainingConfiguration.from_yaml_block({"ml_architecture": "cnn"}), model_dim=32)
+    data = SimpleNamespace(components="ZEN", trace_length=101,
+                           station_locations=np.array([[37.0, -118.0], [38.0, -119.0]]),
+                           data_scaler=FlexibleScaler.from_bounds({"moment_tensor": ([-1.0] * 6, [1.0] * 6)}))
+    torch.manual_seed(0)
+    by_hand = CompressionTrainer(
+        data.components, data.station_locations, channels=32, latent_dim=32,
+        trace_length=data.trace_length,
+        model_config={**training.to_model_config(scaler_provenance(data.data_scaler)), "layers": 1},
+        lr=training.optimizer.lr)
+    torch.manual_seed(0)
+    from_data = CompressionTrainer.from_training_data(training, data, layers=1)
+
+    assert from_data._model_config == by_hand._model_config
+    by_hand_state, from_data_state = by_hand.flow.state_dict(), from_data.flow.state_dict()
+    assert by_hand_state.keys() == from_data_state.keys()
+    assert all(torch.equal(by_hand_state[key], from_data_state[key]) for key in by_hand_state)
