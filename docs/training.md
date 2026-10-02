@@ -185,14 +185,20 @@ The notebook's last two sections run this and show the figures.
 
 `seismo_sbi.evaluation.inference` rebuilds a trained model and loads real events:
 
-- `build_eval_pipeline(config_path)` builds the pipeline from the training configuration;
-- `build_ml_posterior(resolve_ckpt_dir(run_directory), pipeline)` rebuilds the embedding network
-  and flow from a run directory's `model_meta.json` and best checkpoint, as an `sbi` posterior;
-- `load_real_observation(config, pipeline, event_name)` loads an event listed under
-  `jobs.real_events` as an `(n_stations, n_components, n_samples)` array.
+```python
+import torch
+from seismo_sbi.evaluation.inference import load_real_observation, load_trained_posterior
 
-The parameter scaling at inference must match the one the model was trained with:
-`build_flexible_scaler(parameters, raw_config, model_meta=meta)` builds it from the
-configuration and the scalar-moment convention recorded in `model_meta.json` (checkpoints that
-record none were trained with the six-component moment), and `check_scaler_provenance`
-compares it with the record.
+trained = load_trained_posterior("configs/my_run.yaml", "model_outputs/my_run")
+observation = load_real_observation(trained.config, trained.pipeline, "my_event")
+samples = trained.posterior.sample((10000,), torch.as_tensor(observation, dtype=torch.float32)[None])
+moment_tensors = trained.data_scaler.inverse_transform(samples.numpy())
+```
+
+`load_trained_posterior` rebuilds the embedding network and flow from the run directory's
+`model_meta.json` and best checkpoint (`CompressionTrainer.from_run_directory`), and builds the
+parameter scaling from the configuration with the scalar-moment convention the sidecar records
+(checkpoints that record none were trained with the six-component moment); it raises if that
+scaling differs from the one the run was trained with. `load_real_observation` returns an event
+listed under `jobs.real_events` as an `(n_stations, n_components, n_samples)` array.
+`build_eval_pipeline(config_path)` also simulates the configuration's test jobs, for validation.
