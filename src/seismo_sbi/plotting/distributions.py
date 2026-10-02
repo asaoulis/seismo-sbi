@@ -1,8 +1,8 @@
 """Posterior figures: corner plots, lunes, beachballs and compression diagnostics.
 
 :class:`PosteriorPlotter` takes posterior samples in the scaled space and draws them in physical
-units: ChainConsumer corner plots, source-type lunes (scatter and KDE contours), fuzzy and
-projected beachballs, and the compressed-statistic likelihood panels.
+units: ChainConsumer corner plots, source-type lunes (scatter and KDE contours), sampled and
+projected beachballs, and the compression-error panels.
 :class:`MomentTensorReparametrised` re-expresses moment-tensor samples as Mw and lune angles.
 """
 
@@ -11,16 +11,13 @@ from typing import List
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-import joblib
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from seismo_sbi.sbi.types.parameter_labels import ParameterInformation
-import torch
 from .patched_chainconsumer import CustomChainConsumer as ChainConsumer
 from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
-from seismo_sbi.utils.parallel import tqdm_joblib
 from seismo_sbi.moment_tensor.conventions import create_matrix
 from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon, get_nodal_planes
 from .rocko_beachball_patch import plot_beachball_on_axes
@@ -260,168 +257,6 @@ class PosteriorPlotter:
         self.num_dim = len(parameters_info)
         self.num_jobs = num_jobs
 
-    def plot_compression_likelihood(self, compressed_dataset, parameter_index, likelihood_estimator, figname=None):
-
-        ground_truths = compressed_dataset[:, :self.num_dim]
-        compressions = compressed_dataset[:, self.num_dim:]
-        ground_truths = self._transform_to_plotting_units(ground_truths)
-        compressions = self._transform_to_plotting_units(compressions)
-        
-
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12,12))
-        ax.axis("off")
-        parameter = self.parameters_info[parameter_index]
-        param_ground_truths = ground_truths[:, parameter_index]
-        param_compressions = compressions[:, parameter_index]
-        
-        ax.set_title(f"{parameter.name}")
-        ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.5)
-        ax.set_xlabel(f"Ground truth ({parameter.unit})")
-        ax.set_ylabel(f"Compression ({parameter.unit})")
-        
-        xs = np.linspace(0,1, 20)
-        
-        xx, yy = np.meshgrid(xs, xs)
-        xx = np.expand_dims(xx, -1)
-        yy =np.expand_dims(yy, -1)
-        base_vector= 0.5* np.ones((self.num_dim - 1))
-        repeated = np.tile(base_vector, (20, 20, 1))
-        thetas = torch.Tensor(np.concatenate([repeated[:,:,:parameter_index], xx, repeated[:,:,parameter_index:]], axis=-1)).flatten(start_dim=0, end_dim=1)
-        compressions  = torch.Tensor(np.concatenate([repeated[:,:,:parameter_index], yy, repeated[:,:,parameter_index:]], axis=-1)).flatten(start_dim=0, end_dim=1)
-        
-        probabilities = likelihood_estimator.log_prob(thetas, compressions)
-        u_thetas = self.data_scaler.inverse_transform(thetas)
-        u_compressions = self.data_scaler.inverse_transform(compressions)
-        # print(parameter.scaling_transform(u_thetas[:200, parameter_index]),
-        #         parameter.scaling_transform(u_compressions[:10, parameter_index]))
-        ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
-                    parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), probabilities.reshape(20,20).detach().numpy().T
-                    # ,alpha=0.3, levels=[-5000,-2000,-1000,-500,-200,-100,0, 1000])
-                    ,alpha=0.3, levels=[-200,-100,-50, -25, -10,0, 200])
-        
-        plt.tight_layout()
-
-        if figname is not None:
-            fig.savefig(figname)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
-
-        plt.hist(probabilities.detach().numpy())
-        plt.show()
-    def compute_posterior_probabilities(self, compressed_dataset, parameter_index,  likelihood_estimator, resolution=20):
-
-        ground_truths = compressed_dataset[:, :self.num_dim]
-        compressions = compressed_dataset[:, self.num_dim:]
-        ground_truths = self._transform_to_plotting_units(ground_truths)
-        compressions = self._transform_to_plotting_units(compressions)
-        
-        xs = np.linspace(0,1, resolution)
-        
-        xx, yy = np.meshgrid(xs, xs)
-        xx = np.expand_dims(xx, -1)
-        yy =np.expand_dims(yy, -1)
-        base_vector= 0.5* np.ones((self.num_dim - 1))
-        repeated = np.tile(base_vector, (resolution, resolution, 1))
-        thetas = torch.Tensor(np.concatenate([repeated[:,:,:parameter_index], xx, repeated[:,:,parameter_index:]], axis=-1)).flatten(start_dim=0, end_dim=1)
-        compressions  = torch.Tensor(np.concatenate([repeated[:,:,:parameter_index], yy, repeated[:,:,parameter_index:]], axis=-1)).flatten(start_dim=0, end_dim=1)
-        probabilities = []
-        from tqdm import tqdm
-        
-        if self.num_jobs == 0:
-            for theta, compression in zip(thetas, compressions):
-                probability = likelihood_estimator.log_prob(theta, compression)
-                probabilities.append(probability)
-        else:
-             with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(thetas))):
-                with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
-                    probabilities = joblib.Parallel()(
-                        joblib.delayed(likelihood_estimator.log_prob)(theta, compression) for theta, compression in zip(thetas, compressions)
-                    )
-        flat_observations = np.linspace(0,1, 200)
-        compression_vals = [0.3, 0.7]
-        posterior_lines = []
-        cust_compression_vals = []
-        for compression_val in compression_vals:
-            cust_thetas = torch.Tensor(0.5*np.ones((200, 6)))
-            cust_thetas[:, parameter_index] = torch.Tensor(flat_observations)
-            cust_theta_saved = self.data_scaler.inverse_transform(cust_thetas)
-
-            cust_compressions = torch.Tensor(0.5*np.ones((200, 6)))
-            cust_compressions[:, parameter_index] = torch.Tensor(np.full_like(flat_observations, compression_val))
-            cust_compressions_saved = self.data_scaler.inverse_transform(cust_compressions)
-            cust_compression_vals.append(cust_compressions_saved)
-            with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(cust_thetas))):
-                with joblib.parallel_backend('loky', n_jobs=self.num_jobs):
-                    posterior_vals = joblib.Parallel()(
-                        joblib.delayed(likelihood_estimator.log_prob)(theta, compression) for theta, compression in zip(cust_thetas, cust_compressions)
-                    )
-            posterior_lines.append(torch.stack(posterior_vals).numpy())
-        
-        probabilities = torch.stack(probabilities)
-        u_thetas = self.data_scaler.inverse_transform(thetas)
-        u_compressions = self.data_scaler.inverse_transform(compressions)
-        return u_thetas, u_compressions, probabilities, (cust_compression_vals, cust_theta_saved, posterior_lines)
-    
-
-    def plot_compression_posterior(self, compressed_dataset, parameter_index, likelihood_estimator, figname=None):
-
-        u_thetas, u_compressions, probabilities, posterior_lines = self.compute_posterior_probabilities(compressed_dataset, parameter_index, likelihood_estimator)
-        ground_truths = compressed_dataset[:, :self.num_dim]
-        compressions = compressed_dataset[:, self.num_dim:]
-        ground_truths = self._transform_to_plotting_units(ground_truths)
-        compressions = self._transform_to_plotting_units(compressions)
-        
-        parameter = self.parameters_info[parameter_index]
-        param_ground_truths = ground_truths[:, parameter_index]
-        param_compressions = compressions[:, parameter_index]
-        
-        #width aspect 2:1 
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(6,5), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
-        ax =axes[0]
-        post_ax = axes[1]
-        post_ax.set_xticks([])
-        post_ax.set_yticks([])
-        post_ax.set_xlabel("Model Parameters, $\\mathbf{m}$")
-
-        ax.scatter(param_ground_truths, param_compressions, label="Compression", marker='x', alpha=0.7, color='red')
-        ax.set_ylim(np.min(parameter.scaling_transform(u_thetas[:,parameter_index])), 
-                    np.max(parameter.scaling_transform(u_thetas[:, parameter_index])))
-        shaped_probs = probabilities.reshape(20,20).detach().numpy().T
-        ax.contourf(parameter.scaling_transform(u_thetas[:,parameter_index]).reshape(20,20),
-                    parameter.scaling_transform(u_compressions[:, parameter_index].reshape(20,20)), np.clip(shaped_probs,-700,10000),
-                    alpha=0.4, levels=[ -750,-500, -350, -200, -100, -50, -25,0,50])
-                    # levels=[  -200, -150, -125, -100, -75,-50,-35, -20, -10, 0,20])
-                    # ,alpha=0.4, levels=[-4, -3, -2.5, -2.2, -1.8, -1.6,  -1,-0.1, 0, 1])
-
-        xs = parameter.scaling_transform(posterior_lines[1][:,parameter_index])
-        posterior = np.exp(0.05*np.array(posterior_lines[2][1]))
-        posterior /= np.max(posterior) * 0.2
-        ys =  parameter.scaling_transform(posterior_lines[0][1][0,parameter_index])* np.ones_like(xs)
-        ax.plot(xs, ys, color='blue', label='Posterior', linestyle='--', linewidth=2)
-        post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='cornflowerblue')
-        
-        posterior = np.exp(0.05*np.array(posterior_lines[2][0]))
-        posterior /= np.max(posterior) * 0.2
-        ys =parameter.scaling_transform(posterior_lines[0][0][0,parameter_index]) * np.ones_like(xs)
-        ax.plot(xs, ys, color='red', label='Posterior', linestyle='--', linewidth=2)
-        post_ax.fill_between(xs, posterior.flatten(), alpha=0.6, color='red')
-        post_ax.set_ylim(0.001, np.max(posterior.flatten()) * 1.2)
-
-        ax.set_xticks([])
-        ax.set_yticks([parameter.scaling_transform(posterior_lines[0][0][0,parameter_index]), parameter.scaling_transform(posterior_lines[0][1][0,parameter_index])])
-        ax.set_yticklabels(["$\\mathbf{D}_1$", '$\\mathbf{D}_2$'])
-        plt.tight_layout()
-
-        if figname is not None:
-            fig.savefig(figname, dpi=200, transparent=True)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
-
-    
     def plot_compression_errors(self, compressed_dataset, compressed_estimate = None, figname=None):
 
         ground_truths = compressed_dataset[:, :self.num_dim]
@@ -800,37 +635,6 @@ class PosteriorPlotter:
             theta0 = theta_inputs["moment_tensor"]
         return sample_mts, theta0
 
-    def plot_posterior_distribution(self, samples, theta0, bounds, figsave= None):
-
-
-        plotting_units_samples, plotting_units_theta_0 = self._prepare_data_for_plotting(theta0, samples)
-        
-        fig, axes = plt.subplots(self.num_dim, 2*self.num_dim,
-                                    figsize = (8*self.num_dim,4 * self.num_dim))
-
-        bounds_array = np.vstack(bounds)
-        plotting_bounds = self._transform_to_plotting_units(bounds_array)
-
-        full_prior_plot_axes = axes[:, :self.num_dim:]
-        zoom_plot_axes = axes[:, self.num_dim:]
-        try:
-            self._add_triangle_plot_to_axes(plotting_units_samples,
-                                            plotting_units_theta_0,
-                                            plotting_bounds,
-                                            full_prior_plot_axes)
-        except:
-            pass
-
-        self._add_triangle_plot_to_axes(plotting_units_samples,
-                                        plotting_units_theta_0,
-                                        None,
-                                        zoom_plot_axes)
-        if figsave is None:
-            plt.show()
-        else:
-            fig.savefig(figsave)
-        plt.close()
-
     def _prepare_data_for_plotting(self, theta0, samples, data_scaler = None, *args, **kwargs):
 
         if data_scaler is None:
@@ -948,57 +752,6 @@ class PosteriorPlotter:
             fig.savefig(figsave, dpi=dpi, transparent=True)
         plt.close()
     
-    def plot_fuzzy_beachball_samples(self, plotting_units_samples, plotting_units_theta_0, sample_color='cornflowerblue', figsave = None):
-
-        pyrocko_mts = []
-        np.random.shuffle(plotting_units_samples)
-        for mt in plotting_units_samples[:1000]:
-            pyrocko_mts.append(mtm.MomentTensor(m_up_south_east=create_matrix(mt)))
-
-        plot_kwargs = {
-            'beachball_type': 'full',
-            'size': 8,
-            'position': (5, 5),
-            'color_t':sample_color,
-            'color_p':'white',
-            'edgecolor':'black',
-            'best_color':'black',
-            'linewidth':5,
-            'alpha':1,
-            }
-
-        fig = plt.figure(figsize=(10., 10.))
-        axes = fig.add_subplot(1, 1, 1)
-        #remove ticks and labels 
-        axes.set_xticks([])
-        axes.set_yticks([])
-        # remove figure box
-        axes.spines['top'].set_visible(False)
-        axes.spines['right'].set_visible(False)
-        axes.spines['bottom'].set_visible(False)
-        axes.spines['left'].set_visible(False)
-        if plotting_units_theta_0 is not None:
-            rocko_beachball.plot_fuzzy_beachball_mpl_pixmap(pyrocko_mts, axes, mtm.MomentTensor(m_up_south_east=create_matrix(plotting_units_theta_0)), **plot_kwargs)
-        else:
-            rocko_beachball.plot_fuzzy_beachball_mpl_pixmap(pyrocko_mts, axes, **plot_kwargs)
-
-        current_xlim = axes.get_xlim()
-        current_ylim = axes.get_ylim()
-
-        # Modify the limits as needed
-        new_xlim = (current_xlim[0]- 0.1, current_xlim[1] + 0.1)  # Replace with your desired values
-        new_ylim = (current_ylim[0] + 0.1, current_ylim[1] - 0.1)  # Replace with your desired values
-
-        # Set the new x-axis and y-axis limits
-        axes.set_xlim(new_xlim)
-        axes.set_ylim(new_ylim)
-        if figsave is None:
-            plt.show()
-        else:
-            fig.savefig(figsave)
-        plt.close()
-    
-
     def add_beachball_plot(self, ax, name, moment_tensor_sol, M0_epsilon, col = 'b', add_text = True):
         mt = mtm.MomentTensor(m_up_south_east=create_matrix(moment_tensor_sol))
         if add_text:

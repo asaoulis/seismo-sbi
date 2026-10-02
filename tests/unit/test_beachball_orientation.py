@@ -185,19 +185,6 @@ def test_projection_samples_hand_obspy_m6_unchanged(monkeypatch, tmp_path, mecha
         np.testing.assert_allclose(fm, m6)
 
 
-@pytest.mark.parametrize("mechanism_deg", MECHANISMS_DEG)
-def test_fuzzy_beachball_hands_pyrocko_the_axes_of_m6(monkeypatch, tmp_path, mechanism_deg):
-    m6 = mechanism_m6(*mechanism_deg)
-    handed = []
-    monkeypatch.setattr(pyrocko_beachball, "plot_fuzzy_beachball_mpl_pixmap",
-                        lambda mts, axes, best_mt=None, **kwargs: handed.extend(list(mts) + [best_mt]))
-    posterior_plotter().plot_fuzzy_beachball_samples(samples_around(m6, 20), m6,
-                                                     figsave=tmp_path / "fuzzy.png")
-    assert len(handed) == 21
-    for mt in handed:
-        assert_same_p_and_t_axes(mt, m6)
-
-
 def capture_beachballs_on_axes(monkeypatch, module):
     handed = []
     monkeypatch.setattr(module, "plot_beachball_on_axes", lambda ax, mt, *args, **kwargs: handed.append(mt))
