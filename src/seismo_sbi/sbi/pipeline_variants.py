@@ -39,7 +39,7 @@ class MultiEventPipeline(SingleEventPipeline):
 
             if theta0_dict is not None:
                 theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
-                dataset_details = self.set_known_parameters(deepcopy(original_dataset_details), theta0_dict)
+                dataset_details = deepcopy(original_dataset_details)
             else:
                 theta0 = None
             for compressor_name in self.compressor_keys:
@@ -153,7 +153,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
 
                     if theta0_dict is not None:
                         theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
-                        dataset_details = self.set_known_parameters(deepcopy(original_dataset_details), theta0_dict)
+                        dataset_details = deepcopy(original_dataset_details)
                     else:
                         theta0 = None
 

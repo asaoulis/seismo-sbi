@@ -6,7 +6,7 @@ that returns a flat data vector for a parameter vector, and one that writes a si
 """
 
 from functools import partial
-from copy import copy, deepcopy
+from copy import copy
 
 import numpy as np
 
@@ -24,9 +24,6 @@ class GeneralSimulatorWrapper:
         default_config = (simulation_parameters.simulation_type, None)
         self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, samplers)
         self.data_loader_callable = data_loader.convert_sim_data_to_array
-        self.generic_simulation_callable = deepcopy(self.simulation_callable)
-        self.generic_simulation_save_callable = deepcopy(self.simulation_save_callable)
-
 
     def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, samplers):
 

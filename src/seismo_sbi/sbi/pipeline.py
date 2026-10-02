@@ -711,27 +711,6 @@ class SingleEventPipeline(SBIPipeline):
         # count number of rows removed
         return train_data, raw_compressed_dataset
 
-    def set_known_parameters(self, dataset_details, theta_dict):
-        for param, sampler in dataset_details.sampling_method.items():
-            order = SBI_Configuration.param_names_map[param]
-            if sampler == 'uniform known':
-                known_theta = theta_dict[param]
-                self.parameters.nuisance[param] = [known_theta[param_name] for param_name in order]
-                self.parameters.bounds[param] = self.parameters.nuisance[param]
-                dataset_details.sampling_method[param] = 'constant'
-
-                self.dataset_generation_samplers = DatasetGenerator.create_samplers(self.parameters, dataset_details.sampling_method)
-                
-                self.simulator_wrapper.set_simulation_objects(
-                    ('instaseis', None), self.simulation_parameters, 
-                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.dataset_generation_samplers
-                )
-                self.simulator_wrapper.simulation_save_callable = self.simulator_wrapper.generic_simulation_save_callable
-                self.data_manager.dataset_compressor.simulator = self.simulator_wrapper.generic_simulation_save_callable
-                self.least_squares_solver.simulator = self.simulator_wrapper.simulator
-        return dataset_details
-                
-
     def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details, extra_gradients=None, compressor_name: str = None):
         """Find the MLE by iterative least squares and re-centre the compressor on it; returns the
         compression data at the MLE.
@@ -799,16 +778,14 @@ class SingleEventPipeline(SBIPipeline):
         return dataset_details
 
     def compute_theta0_and_update_dataset(self, param_names, original_dataset_details, theta0_dict):
-        """``(theta0, dataset_details)``: the truth vector and the dataset settings with known
-        parameters fixed, or ``(None, copy)`` when there is no truth.
+        """``(theta0, dataset_details)``: the truth vector, or None when there is no truth, and a
+        copy of the dataset settings.
         """
         if theta0_dict is not None:
             theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
-            dataset_details = self.set_known_parameters(deepcopy(original_dataset_details), theta0_dict)
         else:
             theta0 = None
-            dataset_details = deepcopy(original_dataset_details)
-        return theta0, dataset_details
+        return theta0, deepcopy(original_dataset_details)
 
     def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, priors=(None,None), mle_start = None, seed = None):
         """Sample the Gaussian-likelihood posterior of one job with emcee; yields

@@ -112,28 +112,13 @@ class ParallelSimulationRunner(ABC):
         return lambda sampled_vector: parameters.vector_to_simulation_inputs(sampled_vector)
 
 
-from scipy.stats.qmc import LatinHypercube
-
-
 def constant_sampler(value, num_samples):
     for _ in range(num_samples):
         yield value
 
-def latin_hypercube_sampler(bounds, num_samples):
-    sampling_engine = LatinHypercube(len(bounds[0]))
-    samples = sampling_engine.random(n = num_samples)
-    delta = bounds[1] - bounds[0]
-    for sample in samples:
-        transformed_values = bounds[0] + np.multiply(sample, delta)
-        yield transformed_values
-
 def uniform_sampler(bounds, num_samples):
     for _ in range(num_samples):
         yield np.random.uniform(bounds[0], bounds[1])
-
-def gaussian_sampler(bounds, num_samples):
-    for _ in range(num_samples):
-        yield np.random.multivariate_normal(bounds[0], np.diag(bounds[1]))
 
 def flatten_sample(values):
     """One draw per parameter -> the flat sample vector ``vector_to_simulation_inputs`` reads.
@@ -161,36 +146,6 @@ def transform_sampling_func(sampling_func, transform_func):
         for value in sampling_func(*args, **kwargs):
             yield transform_func(flatten_sample(value))
     return wrapper
-
-class MomentTensorLogScaleHomogeneous:
-
-    @staticmethod
-    def _generate_sample(bounds):
-
-        # Parametrisation of Stahler and Sigloch (2014), section 2.2.
-        x = [np.random.uniform(0, 1) for _ in range(5)]
-        Y3 = 1
-        Y2 = np.sqrt(x[1])
-        Y1 = Y2*x[0]
-
-        M0 = np.exp(np.random.uniform(np.log(bounds[0]), np.log(bounds[1])))
-
-        M_xx = np.sqrt(Y1) * np.cos(2*np.pi*x[2]) * np.sqrt(2) * M0
-        M_yy = np.sqrt(Y1) * np.sin(2*np.pi*x[2]) * np.sqrt(2) * M0
-        M_zz = np.sqrt(Y2 - Y1) * np.cos(2*np.pi*x[3]) * np.sqrt(2) * M0
-        M_xy = np.sqrt(Y2 - Y1) * np.sin(2*np.pi*x[3]) * M0
-        M_yz = np.sqrt(Y3 - Y2) * np.cos(2*np.pi*x[4]) * M0
-        M_xz = np.sqrt(Y3 - Y2) * np.sin(2*np.pi*x[4]) * M0
-
-        # Into the (r, theta, phi) order, after Aki and Richards (2002) p. 113.
-        M = [M_zz, M_xx, M_yy, M_xz, -M_yz, -M_xy]
-
-        return np.array(M)
-
-    @staticmethod
-    def sampler(bounds, num_samples):
-        for _ in range(num_samples):
-            yield MomentTensorLogScaleHomogeneous._generate_sample(bounds)
 
 from itertools import chain
 
@@ -255,11 +210,7 @@ def velocity_model_sampler(velocity_model_args, num_samples):
 
 class DatasetGenerator(ParallelSimulationRunner):
 
-    sampler_lookup_map = {"latin hypercube" : latin_hypercube_sampler,
-                          "uniform"         : uniform_sampler,
-                          "uniform known"         : uniform_sampler,
-                          "gaussian"        : gaussian_sampler,                     
-                          "moment tensor log prior"   : MomentTensorLogScaleHomogeneous.sampler,
+    sampler_lookup_map = {"uniform": uniform_sampler,
                           "constant": constant_sampler,
                           "truncated gaussian": truncated_gaussian_sampler,
                           "velocity model": velocity_model_sampler}
@@ -304,13 +255,6 @@ class DatasetGenerator(ParallelSimulationRunner):
             member_seeds = worker_seeds(self.seed, len(simulation_job_args_list), "training members")
             simulation_job_args_list = [({**inputs, "seed": member_seed}, path) for (inputs, path), member_seed
                                         in zip(simulation_job_args_list, member_seeds)]
-        self.run_parallel_simulations(simulation_job_args_list)
-    
-    def run_predefined_batch(self, thetas, indices, parameters : ModelParameters):
-
-        simulation_parameters = [parameters.vector_to_simulation_inputs(theta) for theta in thetas]
-        input_generator = zip(simulation_parameters, self._sample_namer(indices))
-        simulation_job_args_list = [input_config for input_config in input_generator]
         self.run_parallel_simulations(simulation_job_args_list)
     
     @staticmethod
