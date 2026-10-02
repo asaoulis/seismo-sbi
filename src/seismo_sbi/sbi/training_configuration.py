@@ -342,6 +342,13 @@ class TrainingConfiguration:
 
     def dataloader_args(self, pipeline, data):
         """Keyword arguments of the training/validation dataloaders for this dataset."""
+        return {**self.dataset_args(pipeline, data), **self.loader_args(len(data.simulation_paths))}
+
+    def dataset_args(self, pipeline, data):
+        """Keyword arguments of the
+        :class:`~seismo_sbi.sbi.npe.data.dataloading.TorchSimulationDataset` a training run draws
+        from: ``TorchSimulationDataset(**training.dataset_args(pipeline, data))``.
+        """
         return {
             "data_loader": pipeline.data_manager.data_loader,
             "data_folder": pipeline.simulations_output_path,
@@ -358,7 +365,6 @@ class TrainingConfiguration:
             "cache_in_memory": self.cache.sims,
             "cache_dtype": self.cache.dtype,
             "cache_preload_workers": self.cache.preload_workers,
-            **self.loader_args(len(data.simulation_paths)),
         }
 
     def loader_args(self, num_simulations):

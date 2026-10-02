@@ -4,6 +4,7 @@ The two fixtures under ``tests/fixtures/model_meta`` pin the ``model_meta.json``
 file must produce, so a change to the parsing that alters a checkpoint's metadata fails here.
 """
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -143,6 +144,24 @@ def test_dataloader_args_split_the_dataset_at_the_training_fraction():
     assert args["train_batch_size"] == 4 and args["val_batch_size"] == 8
     assert args["station_subsampler"] is None
     assert args["data_folder"] == "/sims"
+
+
+def test_dataset_args_build_the_training_dataset_and_loader_args_complete_them():
+    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
+
+    training = TrainingConfiguration.from_yaml_block({"ml_batch": {"train": 4}})
+    pipeline = SimpleNamespace(
+        data_manager=SimpleNamespace(data_loader="loader"),
+        simulations_output_path="/sims",
+        parameters=SimpleNamespace(names={"moment_tensor": []}),
+        training_noise_sampler="sampler")
+    data = SimpleNamespace(simulation_paths=list(range(200)), data_scaler="scaler",
+                           augmentation_chain=None, augmentation_nuisance_params={},
+                           post_noise_chain=None, post_noise_nuisance_params={})
+
+    dataset_args = training.dataset_args(pipeline, data)
+    assert training.dataloader_args(pipeline, data) == {**dataset_args, **training.loader_args(200)}
+    assert set(dataset_args) <= set(inspect.signature(TorchSimulationDataset).parameters)
 
 
 def test_loader_args_split_any_number_of_samples_without_a_pipeline():
