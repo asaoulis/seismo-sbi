@@ -95,9 +95,6 @@ class GeneralSimulatorWrapper:
         data_vector = per_trace.flatten()
         return (data_vector, traces) if return_traces else data_vector
 
-    def create_input_output_simulation_callable(self, parameters, data_loader, samplers):
-        return partial(self.input_output_simulation, parameters, data_loader, samplers)
-
     def input_output_simulation(self, parameters : ModelParameters, data_loader : SimulationDataLoader, samplers, simulator, theta, **kwargs):
         if len(theta.shape) == 1:
             theta = theta.reshape(1,-1)

@@ -135,14 +135,6 @@ class DataManager:
         return score_compression_data, extra_gradients
 
     
-    @error_handling_wrapper(num_attempts=3)
-    def compute_hessian(self, score_compression_data, model_parameters : ModelParameters):
-
-        with tempfile.TemporaryDirectory() as stencil_outputs_folder:
-            hessian_gradients = self.dataset_compressor.run_hessian_stencil(model_parameters, score_compression_data, Path(stencil_outputs_folder))
-
-        return hessian_gradients
-
     def compute_data_vector_length(self, test_jobs_paths, real_event_jobs_config):
         if len(test_jobs_paths) > 0:
             data_vector_length  = self.load_simulation_vector(test_jobs_paths[0]).shape[0]

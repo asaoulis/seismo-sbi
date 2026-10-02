@@ -4,9 +4,7 @@
 estimate, steps to the new maximum-likelihood point, and repeats.
 """
 
-from pathlib import Path
 from copy import deepcopy
-import tempfile
 
 # Optional progress wrapper: use tqdm if available, else no-op
 try:
@@ -19,7 +17,6 @@ except Exception:
 
 import numpy as np
 
-from ..compression.derivative_stencil import DerivativeStencil
 from seismo_sbi.moment_tensor.conventions import scalar_moment
 from ...utils.errors import error_handling_wrapper
 from ..types.parameters import IterativeLeastSquaresParameters
@@ -112,23 +109,6 @@ class IterativeLeastSquaresSolver:
             return final_score_compression_data, extra_gradients
         else:
             return final_score_compression_data, extra_gradients, all_steps
-
-    @error_handling_wrapper(num_attempts=3)
-    def _compute_gradients(self, model_parameters):
-
-        with tempfile.TemporaryDirectory() as stencil_output_folder:
-            stencil_output_folder_path = Path(stencil_output_folder)
-            
-            derivative_stencil = DerivativeStencil(model_parameters, stencil_output_folder_path)
-            
-            score_compression_data = derivative_stencil.calculate_score_compression_data(
-                                        self.simulator.execute_sim_and_save_outputs,
-                                        self.data_loader.load_flattened_simulation_vector,
-                                        self.num_parallel_jobs)
-
-
-        return score_compression_data #score_compression_data.data_parameter_gradients, score_compression_data.second_order_gradients
-    
 
     def _create_scaling_vector(self, model_parameters):
         scaling_factors = []

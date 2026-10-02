@@ -99,7 +99,7 @@ def _report_convergence(chains):
 def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
                                             burn_in, nsamples_per_walker,
                                             initial_state, move_size,
-                                            thin=5, return_sampler=False, return_log_prob=False, seed=None):
+                                            return_sampler=False, return_log_prob=False, seed=None):
     if seed is not None:
         np.random.seed(seed)
 

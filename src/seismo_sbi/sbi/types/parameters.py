@@ -72,7 +72,6 @@ class DatasetGenerationParameters(NamedTuple):
     use_fisher_to_constrain_bounds : int = 5
     iterative_least_squares : IterativeLeastSquaresParameters = IterativeLeastSquaresParameters(10, 0.01)
 
-import hashlib
 
 class ModelParameters:
 
@@ -197,17 +196,3 @@ class ModelParameters:
                 i +=1
 
 
-    def theta_fiducial_hash(self):
-        # Serialize the contents of self.theta_fiducial as a string
-        serialized_theta = str(self.theta_fiducial)
-
-        # Hash the serialized string using md5 algorithm
-        hash_object = hashlib.md5(serialized_theta.encode())
-
-        # Get the hexadecimal representation of the hash digest
-        hash_string = hash_object.hexdigest()
-
-        # Take the first 8 characters of the hash string
-        shortened_hash = hash_string[:8]
-
-        return shortened_hash

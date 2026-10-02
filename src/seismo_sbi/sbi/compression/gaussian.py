@@ -59,12 +59,6 @@ class GaussianCompressor(Compressor):
         self.Fisher_mat = self._compute_Fisher_matrix()
         self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
 
-    def clear_priors(self):
-        self.prior_mean = None
-        self.prior_covariance = None
-        self.Fisher_mat = self._compute_Fisher_matrix()
-        self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
-
     def set_priors(self, prior):
         self.prior_mean, self.prior_covariance = prior
         self.Fisher_mat = self._compute_Fisher_matrix()
@@ -150,11 +144,6 @@ class GaussianCompressor(Compressor):
     def compute_misfit(self, D):
         return np.dot((D - self.D_fiducial), self.C.matmul_inverse_covariance(D - self.D_fiducial)) / len(self.D_fiducial)
     
-    def compute_log_likelihood(self, D, theta):
-
-        dL_dtheta = self.compute_score(D)
-        delta_theta = theta - self.theta_fiducial
-        return self.L_fiducial + np.dot(delta_theta, dL_dtheta)
     
 
 
@@ -187,10 +176,8 @@ class SecondOrderCompressor(GaussianCompressor):
         self.is_diag = is_diag
         if is_diag:
             self.C_inverse = np.diag(1/np.diag(covariance_matrix))
-            self.L_fiducial = -1/2 * np.log(self.C.diagonal().prod())
         else:
             self.C_inverse = np.linalg.inv(covariance_matrix)
-            self.L_fiducial = -1/2 * np.log(np.linalg.det(self.C))
 
         
         self.efficient_dot_prod = self._select_efficient_dot_product_op(self.C)
@@ -211,49 +198,3 @@ class SecondOrderCompressor(GaussianCompressor):
 
         return np.concatenate([delta_F, delta_S.flatten()])
     
-    def compute_observed_information(self, data_vector):
-        return np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector - self.D_fiducial))
-    
-
-    
-    def check_compression(self, data_vector, p):
-        F_hat  = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        S_hat  = np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        delta_F = (F_hat - self.F)
-        delta_S = S_hat - self.S
-
-        lhs = delta_F + np.dot(delta_S, p)
-
-        left_multiplier = self.dD_Dtheta_gradients.T  +np.dot(self.hessian, p)
-        right_multiplier = np.dot(self.dD_Dtheta_gradients.T, p) + 1/2 * np.einsum('kmn,m,n->k', self.hessian, p, p)
-
-        rhs = np.dot(left_multiplier.T, self.efficient_dot_prod(self.C_inverse, right_multiplier))
-
-        return np.linalg.norm((rhs - lhs)**2)
-    
-    def get_delta_statistics(self, data_vector):
-
-        F_hat  = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        S_hat  = np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        delta_F = (F_hat - self.F)
-        delta_S = S_hat - self.S
-
-        return delta_F, delta_S
-
-    def compression_optimisation(self, data_vector, scaling, p_scaled):
-        p = p_scaled * scaling
-        return self.check_compression(data_vector, p)
-
-    def check_first_order_compression(self, data_vector, p):
-        F_hat  = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        lhs = (F_hat - self.F)
-
-        U = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse,self.dD_Dtheta_gradients.T))
-        rhs = np.dot(U, p)
-
-        return rhs, lhs
