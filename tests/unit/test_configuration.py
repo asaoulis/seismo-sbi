@@ -755,3 +755,18 @@ def test_a_configuration_without_a_compression_block_has_no_compressors(monkeypa
     cfg = SBI_Configuration()
     cfg.process_configuration_data(raw_config)
     assert cfg.compression_methods == []
+
+
+def test_from_file_replaces_the_output_directory_and_database_path(monkeypatch, tmp_path):
+    examples = Path(__file__).resolve().parents[2] / "examples"
+    monkeypatch.chdir(examples)
+    as_written = SBI_Configuration.from_file("configs/npe_example.yaml")
+    moved = SBI_Configuration.from_file("configs/npe_example.yaml", output_directory=tmp_path,
+                                        database_path="/elsewhere/prem_a_20s")
+
+    assert moved.pipeline_parameters.output_directory == str(tmp_path)
+    assert moved.sim_parameters.syngine_address == "/elsewhere/prem_a_20s"
+    assert moved.pipeline_parameters._replace(output_directory="x") == \
+        as_written.pipeline_parameters._replace(output_directory="x")
+    assert moved.sim_parameters._replace(syngine_address="x", receivers=None) == \
+        as_written.sim_parameters._replace(syngine_address="x", receivers=None)

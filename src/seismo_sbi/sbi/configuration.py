@@ -121,10 +121,20 @@ class SBI_Configuration:
                                     'jobs': self.parse_jobs_config}
 
     @classmethod
-    def from_file(cls, config_file):
-        """Parse ``config_file`` into a configuration object."""
+    def from_file(cls, config_file, *, output_directory=None, database_path=None):
+        """Parse ``config_file`` into a configuration object.
+
+        ``output_directory`` replaces the configured ``output_directory`` and ``database_path`` the
+        Instaseis database path (``seismic_context.syngine_address``); None keeps the file's value.
+        """
         configuration = cls()
         configuration.parse_config_file(config_file)
+        if output_directory is not None:
+            configuration.pipeline_parameters = configuration.pipeline_parameters._replace(
+                output_directory=str(output_directory))
+        if database_path is not None:
+            configuration.sim_parameters = configuration.sim_parameters._replace(
+                syngine_address=str(database_path))
         return configuration
 
     def parse_config_file(self, config_file):
