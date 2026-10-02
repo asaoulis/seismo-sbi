@@ -44,7 +44,7 @@ def _unmask_all_true_rows(mask: Optional[torch.Tensor]) -> Optional[torch.Tensor
     return mask
 
 
-class _FeedForward(nn.Module):
+class FeedForward(nn.Module):
     """Position-wise feed-forward block: Linear, GELU, Dropout, Linear, Dropout."""
 
     def __init__(self, d_model: int, dim_feedforward: int, dropout: float = 0.0) -> None:
@@ -85,7 +85,7 @@ class _MAB(nn.Module):
         self.use_ffn = bool(ffn)
         if self.use_ffn:
             self.ln_ff = nn.LayerNorm(d_model)
-            self.ffn = _FeedForward(d_model, dim_feedforward or 2 * d_model, dropout)
+            self.ffn = FeedForward(d_model, dim_feedforward or 2 * d_model, dropout)
 
     def forward(
         self,

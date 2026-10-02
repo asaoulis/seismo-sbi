@@ -12,7 +12,7 @@ from typing import Optional
 import math
 
 from seismo_sbi.sbi.npe.networks.positional_encoding import FourierStationPositionalEncoding
-from seismo_sbi.sbi.npe.networks.pma_pooling import SetTransformerPMAHead
+from seismo_sbi.sbi.npe.networks.pma_pooling import FeedForward, SetTransformerPMAHead
 from seismo_sbi.sbi.npe.networks.fused_attention import build_mha
 
 def sinusoidal_time_embedding(L: int, d_model: int, device=None):
@@ -48,21 +48,6 @@ def _time_key_padding_mask(key_padding_mask: Optional[torch.Tensor], rows: int, 
     mask[fully_padded] = False
     return mask
 
-
-# Utility: simple position-wise FFN
-class FeedForward(nn.Module):
-    def __init__(self, d_model: int, dim_feedforward: int = 2 * 128, dropout: float = 0.1):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim_feedforward, d_model),
-            nn.Dropout(dropout),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
 
 # One axial block: station-wise self-attention per time slice, time-wise self-attention per
 # station, query tokens cross-attending to the content, then a position-wise FFN, all pre-norm.
