@@ -197,4 +197,3 @@ class SecondOrderCompressor(GaussianCompressor):
         delta_S = S_hat - self.S
 
         return np.concatenate([delta_F, delta_S.flatten()])
-    

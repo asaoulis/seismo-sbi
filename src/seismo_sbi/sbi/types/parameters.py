@@ -194,5 +194,3 @@ class ModelParameters:
                     self.theta_fiducial[param][param_index] = value
                     return
                 i +=1
-
-
