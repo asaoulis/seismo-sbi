@@ -16,8 +16,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from .dataloading import TorchSimulationDataset, variable_station_collate
-from .source_conditioning import pack_variable_context
+from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset, variable_station_collate
+from seismo_sbi.sbi.npe.source_conditioning import pack_variable_context
 
 
 def load_mmd_manifest(manifest_path, *, clean_only=True, events_h5_dir=None,

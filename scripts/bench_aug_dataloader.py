@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain, apply_chain_to_array
-from seismo_sbi.sbi.compression.ML.dataloading import (
+from seismo_sbi.sbi.npe.data.dataloading import (
     TorchSimulationDataset,
     make_torch_dataloaders,
 )

@@ -12,7 +12,7 @@ import math
 
 import pytest
 import torch
-from seismo_sbi.sbi.compression.ML.station_encoders import (
+from seismo_sbi.sbi.npe.networks.station_encoders import (
     PER_STATION_ENCODER_REGISTRY,
     build_station_encoder,
     normalize_trace,
@@ -99,7 +99,7 @@ def test_encoder_handles_zero_input(enc_name, enc_cfg, T):
 def test_input_decimator_shapes_and_band_limited_exactness():
     """InputDecimator: output length = ceil(T/factor); on a band-limited signal the
     anti-aliased decimation matches ideal striding in the interior (no information loss)."""
-    from seismo_sbi.sbi.compression.ML.station_encoders import InputDecimator
+    from seismo_sbi.sbi.npe.networks.station_encoders import InputDecimator
 
     T, factor, C = 600, 3, 3
     dec = InputDecimator(factor, C, antialias=True)
@@ -121,7 +121,7 @@ def test_input_decimator_shapes_and_band_limited_exactness():
 
 def test_input_decimator_flat_layouts_agree_and_finite():
     """4-D (B,N,C,T) and flat (B*N,C,T) inputs decimate identically; output is finite."""
-    from seismo_sbi.sbi.compression.ML.station_encoders import InputDecimator
+    from seismo_sbi.sbi.npe.networks.station_encoders import InputDecimator
 
     B, N, C, T = 2, 3, 3, 201
     dec = InputDecimator(2, C, antialias=True)
@@ -140,7 +140,7 @@ def test_input_decimation_train_inference_symmetric():
     """A model built with ml_encoder input_decimate sizes its encoder to the decimated
     length and applies the SAME decimation in embed() on both the 4-D and packed paths,
     so train (packed) and inference (4-D) see the same model entry."""
-    from seismo_sbi.sbi.compression.ML.seismogram_transformer import SeismogramTransformer
+    from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer
 
     T, N, B = 201, 2, 3
     model = SeismogramTransformer(
@@ -217,7 +217,7 @@ def test_transformer_handles_long_token_sequence():
     time-embedding add (max_time_steps used to default to 60). PNO with downsample=2 on a
     200-sample trace yields L=100, which pre-fix overflowed the fixed time_embed buffer.
     """
-    from seismo_sbi.sbi.compression.ML.seismogram_transformer import SeismogramTransformer
+    from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer
 
     T, N, B = 200, 2, 3
     model = SeismogramTransformer(
@@ -294,7 +294,7 @@ def test_station_amplitudes_per_station_and_per_component():
 
 def test_cnn_amplitude_channel_equals_log_max():
     """The CNN's LAST output channel must be log(max|x|) broadcast over time."""
-    from seismo_sbi.sbi.compression.ML.cnn_feature_extractor import SeismicTraceCNN
+    from seismo_sbi.sbi.npe.networks.cnn_feature_extractor import SeismicTraceCNN
     cnn = SeismicTraceCNN(_C, input_length=201, final_layer=_D_MODEL).eval()
     x = torch.randn(_BN, _C, 201) * 3.0
     with torch.no_grad():
@@ -308,7 +308,7 @@ def test_cnn_conv_body_scale_invariant_amp_channel_tracks_scale():
     """Scaling the input by c>0 leaves the conv body unchanged (max-abs normalisation) and
     shifts only the log-amplitude channel by log(c) — the contract the new amplitude path
     relies on (scale lives in the amplitude feature, shape in the body)."""
-    from seismo_sbi.sbi.compression.ML.cnn_feature_extractor import SeismicTraceCNN
+    from seismo_sbi.sbi.npe.networks.cnn_feature_extractor import SeismicTraceCNN
     cnn = SeismicTraceCNN(_C, input_length=201, final_layer=_D_MODEL).eval()
     x = torch.randn(_BN, _C, 201)
     c = 10.0

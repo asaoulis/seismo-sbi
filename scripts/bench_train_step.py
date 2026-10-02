@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
 from _bench_common import production_model_config, make_variable_station_batch
 
@@ -96,7 +96,7 @@ def main():
     trainer, n_cond = build_trainer(args, trace_length, station_locations, perf)
     # Optional flow numerics toggle (O7a): rebuild flow without conditioner BatchNorm.
     if args.no_batchnorm:
-        from seismo_sbi.sbi.compression.ML.maf import build_nsf
+        from seismo_sbi.sbi.npe.maf import build_nsf
         trainer.flow = CompressionTrainer._assemble_flow(
             architecture="seismogram_transformer", num_seismic_components=len(args.components),
             model_config={**trainer._model_config}, flow_config={**trainer._flow_config, "use_batch_norm": False},

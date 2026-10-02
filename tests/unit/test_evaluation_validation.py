@@ -77,7 +77,7 @@ class _IdentityScaler:
 
 def test_full_set_config_from_kept_passes_all_stations():
     """config_from_kept(master, master) keeps every station → context is (1, W_full)."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import (
+    from seismo_sbi.sbi.npe.posterior_sampling import (
         config_from_kept, sample_station_dropout_ensemble,
     )
 
@@ -103,10 +103,10 @@ def test_full_set_config_from_kept_passes_all_stations():
 def test_full_set_matches_deterministic_posterior_output():
     """Deterministic posterior output (zeros) is identical whether called via
     the full-set config_from_kept path or a direct posterior.sample call."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import (
+    from seismo_sbi.sbi.npe.posterior_sampling import (
         config_from_kept, sample_station_dropout_ensemble,
     )
-    from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
+    from seismo_sbi.sbi.npe.source_conditioning import pack_subset_observation
 
     N, C, T = 3, 3, 8
     obs = np.random.default_rng(42).normal(size=(N, C, T)).astype(np.float32)
@@ -139,10 +139,10 @@ def test_full_set_matches_deterministic_posterior_output():
 
 def test_full_set_unconditioned_source_vec_is_none_in_context():
     """With source_vec=None the packed context carries no source vector."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import (
+    from seismo_sbi.sbi.npe.posterior_sampling import (
         config_from_kept, sample_station_dropout_ensemble,
     )
-    from seismo_sbi.sbi.compression.ML.source_conditioning import unpack_variable_context
+    from seismo_sbi.sbi.npe.source_conditioning import unpack_variable_context
 
     N, C, T = 3, 3, 8
     obs = np.random.default_rng(1).normal(size=(N, C, T)).astype(np.float32)
@@ -169,10 +169,10 @@ def test_full_set_unconditioned_source_vec_is_none_in_context():
 
 def test_full_set_conditioned_source_vec_is_present_in_context():
     """With source_vec provided the packed context carries the source vector."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import (
+    from seismo_sbi.sbi.npe.posterior_sampling import (
         config_from_kept, sample_station_dropout_ensemble,
     )
-    from seismo_sbi.sbi.compression.ML.source_conditioning import unpack_variable_context
+    from seismo_sbi.sbi.npe.source_conditioning import unpack_variable_context
 
     N, C, T, n_cond = 3, 3, 8, 3
     obs = np.random.default_rng(1).normal(size=(N, C, T)).astype(np.float32)
@@ -315,9 +315,9 @@ def _patch_run_validation_deps(monkeypatch, stub_ds, recorder):
     record each ``pack_subset_observation`` call (and its ``source_vec``) — an empty
     ``recorder["calls"]`` means the DIRECT (fixed-station) branch was taken.
     """
-    import seismo_sbi.sbi.compression.ML.dataloading as dl_mod
+    import seismo_sbi.sbi.npe.data.dataloading as dl_mod
     import seismo_sbi.nuisance_effects.post_processing as pp_mod
-    import seismo_sbi.sbi.compression.ML.source_conditioning as sc_mod
+    import seismo_sbi.sbi.npe.source_conditioning as sc_mod
 
     monkeypatch.setattr(dl_mod, "TorchSimulationDataset",
                         lambda **kw: stub_ds, raising=True)

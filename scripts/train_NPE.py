@@ -19,7 +19,7 @@ stamp_arviz_daily_warning()
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.datasets.training_data import (build_pipeline, generate_training_dataset,
                                           prepare_training_data, preload_noise_cache)
-from seismo_sbi.sbi.compression.ML.train import (CompressionTrainer, apply_warm_start,
+from seismo_sbi.sbi.npe.training.train import (CompressionTrainer, apply_warm_start,
                                                  attach_loggers, enable_mmd_loss)
 from seismo_sbi.sbi.scalers import scaler_provenance
 

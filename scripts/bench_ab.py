@@ -29,7 +29,7 @@ import numpy as np
 import torch
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 from _bench_common import production_model_config, make_variable_station_batch
 
 PERF_FLAGS = {"amp", "sdpa", "channels_last", "compile", "compile_flow"}

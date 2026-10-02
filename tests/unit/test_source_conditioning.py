@@ -9,7 +9,7 @@ import math
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.source_conditioning import (
+from seismo_sbi.sbi.npe.source_conditioning import (
     relative_station_geometry,
     SourceConditioner,
     FiLM,

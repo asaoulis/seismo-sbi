@@ -180,7 +180,7 @@ class CNNEncoder(nn.Module):
         **encoder_config: Any,
     ) -> None:
         super().__init__()
-        from .cnn_feature_extractor import SeismicTraceCNN
+        from seismo_sbi.sbi.npe.networks.cnn_feature_extractor import SeismicTraceCNN
 
         # The last conv has ``final_layer - 1`` channels and a log-amplitude channel is
         # appended, so passing d_model here keeps the downstream projection an identity.

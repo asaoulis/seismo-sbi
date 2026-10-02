@@ -10,11 +10,11 @@ import torch
 
 from torch import nn
 
-from .axial_transformer import SeismogramAxialTransformer
-from .station_encoders import build_station_encoder, InputDecimator
-from .amplitude_embedding import AmplitudeTokenEmbedding
-from .legacy_checkpoints import remap_legacy_state_dict
-from .source_conditioning import (
+from seismo_sbi.sbi.npe.networks.axial_transformer import SeismogramAxialTransformer
+from seismo_sbi.sbi.npe.networks.station_encoders import build_station_encoder, InputDecimator
+from seismo_sbi.sbi.npe.networks.amplitude_embedding import AmplitudeTokenEmbedding
+from seismo_sbi.sbi.npe.training.legacy_checkpoints import remap_legacy_state_dict
+from seismo_sbi.sbi.npe.source_conditioning import (
     SourceConditioner,
     FiLM,
     relative_station_geometry,
@@ -485,7 +485,7 @@ class NPELightningModule(pl.LightningModule):
         ``lambda_mmd`` after ``warmup_epochs`` over ``ramp_epochs``; checkpoint selection stays on the
         NLL-only ``val_loss`` and the MMD is logged as ``train_mmd2`` / ``val_mmd2``.
         """
-        from .mmd import DEFAULT_BANDWIDTH_SCALES
+        from seismo_sbi.sbi.npe.training.mmd import DEFAULT_BANDWIDTH_SCALES
         cfg = dict(mmd_config or {})
         self._mmd_cfg = {
             "lambda_mmd": float(cfg.get("lambda_mmd", 0.05)),
@@ -536,7 +536,7 @@ class NPELightningModule(pl.LightningModule):
         estimator is noise-sensitive). Bandwidth = median heuristic on the pooled
         sub-batches, EMA-smoothed across steps, detached from the graph.
         """
-        from .mmd import median_bandwidth, rbf_mixture_mmd2_unbiased
+        from seismo_sbi.sbi.npe.training.mmd import median_bandwidth, rbf_mixture_mmd2_unbiased
         cfg = self._mmd_cfg
         n_real = self.mmd_real_context.shape[0]
         b = min(cfg["batch_size"], n_real)

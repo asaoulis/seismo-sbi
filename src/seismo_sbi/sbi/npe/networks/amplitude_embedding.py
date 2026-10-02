@@ -16,8 +16,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .fourier_features import RunningStandardizer, ScalarFourierEmbedding
-from .station_encoders import station_amplitudes
+from seismo_sbi.sbi.npe.networks.fourier_features import RunningStandardizer, ScalarFourierEmbedding
+from seismo_sbi.sbi.npe.networks.station_encoders import station_amplitudes
 
 _CONFIG_KEYS = {
     "mode", "per_component", "reference", "num_freqs", "sigma", "learnable_freqs", "scale",

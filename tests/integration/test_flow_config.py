@@ -19,7 +19,7 @@ import torch
 
 from pyknos.nflows import transforms
 
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
 pytestmark = pytest.mark.integration
 
@@ -87,7 +87,7 @@ def test_flow_hidden_width_can_be_decoupled_from_channels():
 def test_flow_config_round_trips_through_model_meta(tmp_path):
     """Saving + reloading via model_meta.json rebuilds the same-sized NDE head."""
     import json
-    from seismo_sbi.sbi.compression.ML.train import CompressionTrainer as CT
+    from seismo_sbi.sbi.npe.training.train import CompressionTrainer as CT
 
     trainer = _trainer(flow_config={"num_transforms": 8})
     # Mimic train()'s sidecar dump (without running a full epoch).

@@ -1,12 +1,12 @@
 """
-Unit tests for seismo_sbi.sbi.compression.ML.station_dropout — station-config
+Unit tests for seismo_sbi.sbi.npe.posterior_sampling — station-config
 selection / fractional dropout and the shared packed-subset sample loop. Pure
 numpy + a stub posterior; no trained model or pyrocko needed.
 """
 import numpy as np
 import pytest
 
-from seismo_sbi.sbi.compression.ML.station_dropout import (
+from seismo_sbi.sbi.npe.posterior_sampling import (
     StationConfig, make_dropout_configs, config_from_kept,
     sample_station_dropout_ensemble,
 )

@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn as nn
 
-from .fourier_features import ScalarFourierEmbedding
+from seismo_sbi.sbi.npe.networks.fourier_features import ScalarFourierEmbedding
 
 # Keys of the ``positional_encoding`` block read here; ``mode`` and ``inject_every_layer`` are
 # read by the transformer but validated with the rest.

@@ -2,7 +2,7 @@
 source = src/seismo_sbi
 omit =
     */plotting/*
-    */sbi/compression/ML/*
+    */sbi/npe/*
     */utils/ensemble_statistics.py
     */sbi/noises/noise.py
     */sbi/types/results.py

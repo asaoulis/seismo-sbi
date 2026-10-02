@@ -11,7 +11,7 @@ forward model is a matrix product. The pipeline auto-selects that simulator when
 every non-``moment_tensor`` parameter uses ``constant`` sampling.
 
 This is the **gate for new ML compression architectures**: register a new builder
-in ``EMBEDDING_NET_REGISTRY`` (see ``sbi/compression/ML/train.py``) and add it to
+in ``EMBEDDING_NET_REGISTRY`` (see ``sbi/npe/train.py``) and add it to
 ``ARCHITECTURES`` below; the test will train it for one epoch and assert the
 embedding-net -> flow path produces a finite log-probability.
 
@@ -23,7 +23,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer, EMBEDDING_NET_REGISTRY
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer, EMBEDDING_NET_REGISTRY
 from seismo_sbi.sbi.scalers import FlexibleScaler
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 from seismo_sbi.sbi.types.parameters import (
@@ -207,11 +207,11 @@ def test_train_one_epoch_returns_finite_logprob(kernel_pipeline, tmp_path, archi
     )
 
     assert model is not None
-    from seismo_sbi.sbi.compression.ML.seismogram_transformer import NPELightningModule
+    from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
     assert isinstance(model, NPELightningModule)
 
     # Pull one batch and check the flow's log-prob is finite.
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))
     model.eval()
@@ -229,7 +229,7 @@ def test_flow_config_and_constant_lr_one_epoch_and_round_trip(kernel_pipeline, t
     """
     import torch
     from pyknos.nflows import transforms
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
 
@@ -293,7 +293,7 @@ def test_amplitude_embedding_one_epoch(kernel_pipeline, tmp_path, mode):
         "amplitude embedding was not wired into the trained model"
     )
 
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))
     model.eval()
@@ -360,7 +360,7 @@ def test_conditioned_one_epoch(kernel_pipeline, tmp_path, inject):
     )
     assert model is not None
 
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))
     # Context is packed: (B, N*C*T + n_cond).
@@ -416,7 +416,7 @@ def test_amplitude_distance_snr_one_epoch(kernel_pipeline, tmp_path):
     assert model is not None
     assert model.flow._embedding_net.amplitude_embedding.uses_distance is True
 
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))
     model.eval()
@@ -436,7 +436,7 @@ def test_variable_stations_one_epoch(kernel_pipeline, tmp_path, coords_mode):
     packed alongside the seismograms.
     """
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import (
+    from seismo_sbi.sbi.npe.data.dataloading import (
         make_torch_dataloaders, StationSubsampler,
     )
 
@@ -502,7 +502,7 @@ def test_component_dropout_one_epoch(multicomp_kernel_pipeline, tmp_path):
     import torch
     from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
     from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = multicomp_kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -556,7 +556,7 @@ def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
     and produce a working model with a finite log-prob.
     """
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -611,7 +611,7 @@ def test_load_best_restores_amplitude_embedding(kernel_pipeline, tmp_path):
     reload into a default-constructed trainer (which has no amplitude embedding), and confirm
     it is restored and runs. Locks the inference-time persistence claim."""
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -663,7 +663,7 @@ def test_positional_encoding_one_epoch(kernel_pipeline, tmp_path):
     geometry + depth, injected every layer) under source-location conditioning yields a finite
     log-prob — the full encoder → RFF-posenc-conditioned transformer → flow path end-to-end."""
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -717,7 +717,7 @@ def test_load_best_restores_positional_encoding(kernel_pipeline, tmp_path):
     reload into a default-constructed trainer (which has no posenc), and confirm it is restored
     and runs. Uses the absolute (unconditioned) variant so no conditioning plumbing is needed."""
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -770,7 +770,7 @@ def test_pma_pooling_one_epoch(kernel_pipeline, tmp_path):
     encoder → axial transformer → PMA head → flow path end-to-end. Also asserts the head owns
     the seeds (in-block query tokens disabled)."""
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -822,7 +822,7 @@ def test_load_best_restores_pma_pooling(kernel_pipeline, tmp_path):
     into a default-constructed trainer (which has no head — legacy query-mean), and confirm the
     head is restored and runs."""
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -880,7 +880,7 @@ def test_gutenberg_richter_mt_prior_one_epoch(tmp_path):
     """
     import torch
     from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
     gr_closure = make_gutenberg_richter_mt_sampler(
         b_value=1.0, mw_min=2.0, mw_max=3.5, seed=0,
@@ -928,7 +928,7 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
     tiny so the test runs quickly on CPU.
     """
     import torch
-    from seismo_sbi.sbi.compression.ML.station_encoders import PER_STATION_ENCODER_REGISTRY
+    from seismo_sbi.sbi.npe.networks.station_encoders import PER_STATION_ENCODER_REGISTRY
 
     assert encoder_name in PER_STATION_ENCODER_REGISTRY, (
         f"Encoder '{encoder_name}' not registered in PER_STATION_ENCODER_REGISTRY"
@@ -973,7 +973,7 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
     assert model is not None
 
     # Pull one validation batch and check finite log-prob.
-    from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
     _, val_loader = make_torch_dataloaders(**dataloader_args)
     theta, x = next(iter(val_loader))
     model.eval()
@@ -985,7 +985,7 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
 
 
 # ---------------------------------------------------------------------------
-# Misspecification-robust MMD auxiliary loss (ml_mmd; sbi/compression/ML/mmd.py)
+# Misspecification-robust MMD auxiliary loss (ml_mmd; sbi/npe/mmd.py)
 # ---------------------------------------------------------------------------
 
 def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
@@ -1006,7 +1006,7 @@ def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
     armed = {}
 
     def _arm_mmd(trainer, dataloader_args):
-        from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+        from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
         _, val_loader = make_torch_dataloaders(**dataloader_args)
         _, x0 = next(iter(val_loader))                     # (B, N, C, T)
         shape = tuple(x0.shape[1:])
@@ -1035,7 +1035,7 @@ def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
     assert "val_loss" in metrics and torch.isfinite(metrics["val_loss"])
 
     # ---- default-off equivalence: an un-armed module has NO MMD state ----
-    from seismo_sbi.sbi.compression.ML.seismogram_transformer import NPELightningModule
+    from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
     plain = NPELightningModule(flow=model.flow)
     assert plain._mmd_cfg is None
     assert not hasattr(plain, "mmd_real_context")
@@ -1065,7 +1065,7 @@ def test_mmd_one_epoch_through_a_summary_bottleneck(kernel_pipeline, tmp_path):
     armed = {}
 
     def _arm_mmd(trainer, dataloader_args):
-        from seismo_sbi.sbi.compression.ML.dataloading import make_torch_dataloaders
+        from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
         _, val_loader = make_torch_dataloaders(**dataloader_args)
         _, x0 = next(iter(val_loader))
         shape = tuple(x0.shape[1:])
@@ -1102,7 +1102,7 @@ def test_mmd_one_epoch_through_a_summary_bottleneck(kernel_pipeline, tmp_path):
 
 def test_mmd_lambda_schedule():
     """Warmup -> linear ramp -> plateau schedule of the MMD weight."""
-    from seismo_sbi.sbi.compression.ML.seismogram_transformer import NPELightningModule
+    from seismo_sbi.sbi.npe.networks.seismogram_transformer import NPELightningModule
 
     class _Stub(NPELightningModule):
         def __init__(self):  # bypass flow construction; only the schedule is tested
@@ -1155,7 +1155,7 @@ def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline
       4. a missing source run RAISES instead of quietly starting from scratch.
     """
     import torch
-    from seismo_sbi.sbi.compression.ML.train import (
+    from seismo_sbi.sbi.npe.training.train import (
         load_warm_start_weights, find_best_checkpoint_path,
     )
 
@@ -1207,8 +1207,8 @@ def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline
 
 def _replace_the_folder_by_its_arrays(trainer, dataloader_args):
     """Hand the trainer an ArraySimulationDataset holding exactly what the folder holds."""
-    from seismo_sbi.sbi.compression.ML.array_dataset import ArraySimulationDataset
-    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+    from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
+    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
     from_files = TorchSimulationDataset(
         dataloader_args.pop("data_loader"), dataloader_args.pop("data_folder"),
         dataloader_args.pop("parameter_name_map"), None)

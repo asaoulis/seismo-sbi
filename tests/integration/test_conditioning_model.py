@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.seismogram_transformer import SeismogramTransformer
-from seismo_sbi.sbi.compression.ML.source_conditioning import pack_context
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer
+from seismo_sbi.sbi.npe.source_conditioning import pack_context
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
 pytestmark = pytest.mark.integration
 
@@ -169,7 +169,7 @@ def test_compression_trainer_log_prob_on_packed_context():
 
 def test_dataset_load_conditioning_extraction():
     """_load_conditioning concatenates the requested raw attrs in order."""
-    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
 
     class _StubLoader:
         def load_input_data(self, path):
@@ -187,7 +187,7 @@ def test_perturb_conditioning_applies_per_coordinate_gaussian():
     """v3 source-location uncertainty: _perturb_conditioning adds per-coordinate Gaussian noise
     (mean≈clean, std≈configured) and is a no-op when conditioning_noise_std is None."""
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
 
     ds = TorchSimulationDataset.__new__(TorchSimulationDataset)
     base = torch.tensor([36.5, 25.6, 8.0])

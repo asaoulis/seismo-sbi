@@ -14,9 +14,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
-from seismo_sbi.sbi.compression.ML.dataloading import variable_station_collate
-from seismo_sbi.sbi.compression.ML.station_dropout import (
+from seismo_sbi.sbi.npe.source_conditioning import pack_subset_observation
+from seismo_sbi.sbi.npe.data.dataloading import variable_station_collate
+from seismo_sbi.sbi.npe.posterior_sampling import (
     pack_subset_batch, robust_posterior_sample_batched, sample_subsets_batched)
 
 
@@ -162,7 +162,7 @@ def test_sample_subsets_batched_chunks_and_applies_scaler():
 def test_flow_sample_chunked_falls_back_for_non_nflows_estimator():
     """A stub estimator exposes none of the nflows internals: chunking must degrade to a
     plain ``est.sample`` rather than crashing."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import flow_sample_chunked
+    from seismo_sbi.sbi.npe.posterior_sampling import flow_sample_chunked
     est = _StubEstimator()
     ctx = torch.stack([torch.full((7,), 0.25), torch.full((7,), -0.5)])
     s = flow_sample_chunked(est, ctx, 6, chunk=2)
@@ -186,7 +186,7 @@ def test_flow_sample_chunked_matches_unchunked_on_a_real_flow():
     from nflows.distributions.normal import StandardNormal
     from nflows.transforms import (CompositeTransform,
                                    MaskedAffineAutoregressiveTransform)
-    from seismo_sbi.sbi.compression.ML.station_dropout import flow_sample_chunked
+    from seismo_sbi.sbi.npe.posterior_sampling import flow_sample_chunked
 
     torch.manual_seed(0)
     dim, ctx_dim, n = 3, 4, 4000
@@ -216,7 +216,7 @@ def test_flow_sample_chunked_matches_unchunked_on_a_real_flow():
 def test_flow_chunk_lets_a_batch_exceed_the_unchunked_call():
     """``flow_chunk`` is plumbed through ``robust_posterior_sample_batched``: the number of
     rows handed to the flow per call is capped by the chunk, not by num_samples."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import flow_sample_chunked  # noqa: F401
+    from seismo_sbi.sbi.npe.posterior_sampling import flow_sample_chunked  # noqa: F401
     est = _StubEstimator()
     post = _StubPosterior(est, lo=-1e9, hi=1e9)
     ctx = torch.stack([torch.full((7,), 0.25), torch.full((7,), -0.5)])
@@ -231,7 +231,7 @@ def test_sample_subsets_batched_auto_chunks_large_batches(monkeypatch):
     caller can raise ``max_batch`` without hitting the cuBLAS batched-solve cliff.
     (A stub estimator has no nflows internals, so the chunk is observed at the call
     boundary rather than through the stub.)"""
-    from seismo_sbi.sbi.compression.ML import station_dropout as sd
+    from seismo_sbi.sbi.npe import posterior_sampling as sd
 
     est = _StubEstimator()
     post = _StubPosterior(est, lo=-1e9, hi=1e9)
@@ -254,7 +254,7 @@ def test_sample_subsets_batched_auto_chunks_large_batches(monkeypatch):
 
 
 def test_sample_subsets_batched_explicit_flow_chunk_wins():
-    from seismo_sbi.sbi.compression.ML import station_dropout as sd
+    from seismo_sbi.sbi.npe import posterior_sampling as sd
     est = _StubEstimator()
     post = _StubPosterior(est, lo=-1e9, hi=1e9)
     items = [_item(3, C=1, T=2, seed=s) for s in range(4)]

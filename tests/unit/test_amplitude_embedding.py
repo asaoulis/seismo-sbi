@@ -10,7 +10,7 @@ Dependency-free / CPU.
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.amplitude_embedding import (
+from seismo_sbi.sbi.npe.networks.amplitude_embedding import (
     AmplitudeTokenEmbedding,
     DistanceDetrend,
 )

@@ -11,7 +11,7 @@ import math
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.fourier_features import (
+from seismo_sbi.sbi.npe.networks.fourier_features import (
     GaussianFourierFeatures,
     RunningStandardizer,
     ScalarFourierEmbedding,

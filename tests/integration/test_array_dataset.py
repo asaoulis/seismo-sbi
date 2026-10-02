@@ -12,8 +12,8 @@ from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
 from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.sbi.compression.ML.array_dataset import ArraySimulationDataset
-from seismo_sbi.sbi.compression.ML.dataloading import (
+from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
+from seismo_sbi.sbi.npe.data.dataloading import (
     StationSubsampler, TorchSimulationDataset, make_torch_dataloaders)
 
 TRACE_LENGTH = 40

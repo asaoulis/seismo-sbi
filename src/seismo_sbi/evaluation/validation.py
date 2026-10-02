@@ -79,7 +79,7 @@ def validation_dataset(sbi_pipeline, data_scaler, *, n_val: int):
     """``(dataset, val_idx)``: the simulation set with the training noise and augmentations, and
     the indices of its held-out tail (the last 10 %, at most ``n_val``).
     """
-    from seismo_sbi.sbi.compression.ML.dataloading import TorchSimulationDataset
+    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
     from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
 
     aug_chain, aug_params = build_augmentation_chain_from_parameters(
@@ -127,7 +127,7 @@ def sample_validation_posteriors(sbi_pipeline, posterior, data_scaler, ds, val_i
         and the first ``n_show`` examples as ``InversionData``.
     """
     import torch
-    from seismo_sbi.sbi.compression.ML.source_conditioning import pack_subset_observation
+    from seismo_sbi.sbi.npe.source_conditioning import pack_subset_observation
     from seismo_sbi.sbi.types.results import InversionData
 
     data_loader = sbi_pipeline.data_manager.data_loader

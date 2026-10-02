@@ -45,7 +45,7 @@ In Python, `train_NPE.py` reads:
 ```python
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.datasets.training_data import build_pipeline, generate_training_dataset, prepare_training_data
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer, attach_loggers
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer, attach_loggers
 from seismo_sbi.sbi.scalers import scaler_provenance
 
 config = SBI_Configuration.from_file("examples/configs/npe_example.yaml")
@@ -96,8 +96,8 @@ the augmentation, noise and scaling a simulation file gets, and `RealNoiseSample
 draws recorded noise windows held in memory:
 
 ```python
-from seismo_sbi.sbi.compression.ML.array_dataset import ArraySimulationDataset
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
 from seismo_sbi.sbi.scalers import FlexibleScaler, scaler_provenance
 

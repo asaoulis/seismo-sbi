@@ -112,7 +112,8 @@ Import each name from the module that defines it.
 | `nuisance_effects` | what a real recording does to a synthetic seismogram: amplitude, time-shift, dropout, scattering coda, anisotropy and dispersion effects, and the `PostProcessingChain` that applies them at simulation or training time |
 | `sbi` | the inference pipeline (`pipeline`, `configuration`, `training_configuration`), scalers and job runners |
 | `sbi.noises` | noise models: the Gaussian-likelihood covariances (diagonal, Toeplitz, theory-block), their estimator and samplers, and real-noise samplers for training |
-| `sbi.compression` | compression to one summary per parameter: derivative stencils and score compressors; `ML/` holds the neural compressors and NPE training |
+| `sbi.compression` | compression to one summary per parameter: derivative stencils and score compressors |
+| `sbi.npe` | neural posterior estimation on raw waveforms: the embedding net (`networks/`), the flow, the training data and loaders (`data/`), the trainer (`training/`) and posterior sampling for station subsets |
 | `sbi.inversion` | inversion of compressed data: Gaussian-likelihood sampling, neural posterior estimation and iterative least-squares source estimates |
 | `sbi.datasets` | training sets: prior draws simulated in parallel, their noisy compressed versions, and the data an NPE training run consumes |
 | `sbi.types` | typed records passed between pipeline stages |

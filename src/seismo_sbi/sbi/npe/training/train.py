@@ -13,10 +13,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .seismogram_transformer import SeismogramTransformer, NPELightningModule
-from .maf import build_nsf
-from .dataloading import make_torch_dataloaders
-from .utils import unpickling_torch_load
+from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer, NPELightningModule
+from seismo_sbi.sbi.npe.maf import build_nsf
+from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
+from seismo_sbi.sbi.npe.training.checkpoint_loading import unpickling_torch_load
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
@@ -437,7 +437,7 @@ def enable_mmd_loss(trainer, training, pipeline, data):
     mmd = training.mmd
     if not mmd.get("enabled", False):
         return
-    from .mmd_data import build_real_context, build_psim_loader
+    from seismo_sbi.sbi.npe.data.mmd_data import build_real_context, build_psim_loader
 
     clean_only = bool(mmd.get("clean_only", True))
     real_context = build_real_context(

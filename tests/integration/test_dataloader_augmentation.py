@@ -18,7 +18,7 @@ from seismo_sbi.nuisance_effects.amplitude_effect import AmplitudeErrorEffect
 from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect, InstrumentDropoutEffect
 from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.nuisance_effects.scattering_coda_effect import ScatteringCodaEffect
-from seismo_sbi.sbi.compression.ML.dataloading import (
+from seismo_sbi.sbi.npe.data.dataloading import (
     TorchSimulationDataset,
     make_torch_dataloader,
     StationSubsampler,

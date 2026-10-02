@@ -1,9 +1,9 @@
-"""Unit tests for the MMD auxiliary-loss estimator (seismo_sbi.sbi.compression.ML.mmd)."""
+"""Unit tests for the MMD auxiliary-loss estimator (seismo_sbi.sbi.npe.training.mmd)."""
 import numpy as np
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.mmd import (
+from seismo_sbi.sbi.npe.training.mmd import (
     DEFAULT_BANDWIDTH_SCALES,
     median_bandwidth,
     rbf_mixture_mmd2_unbiased,

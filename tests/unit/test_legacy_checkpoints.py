@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.legacy_checkpoints import (
+from seismo_sbi.sbi.npe.training.legacy_checkpoints import (
     is_legacy_state_dict, remap_legacy_state_dict,
 )
 
@@ -34,7 +34,7 @@ def test_a_current_state_dict_passes_through_untouched():
                     or (LV2_CHECKPOINTS / "checkpoints" / "best_model-LV2.ckpt").stat().st_size < 10_000,
                     reason="the LV2 checkpoint is not pulled from LFS")
 def test_the_lv2_checkpoint_loads_strictly_into_the_current_model():
-    from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+    from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
     path = LV2_CHECKPOINTS / "checkpoints" / "best_model-LV2.ckpt"
     state = torch.load(path, map_location="cpu", weights_only=False)["state_dict"]

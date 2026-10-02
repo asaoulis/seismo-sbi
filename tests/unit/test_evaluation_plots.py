@@ -257,7 +257,7 @@ def test_plot_ensemble_spread_summary_writes(tmp_path):
     pytest.importorskip("pyrocko")
     import matplotlib
     matplotlib.use("Agg")
-    from seismo_sbi.sbi.compression.ML.station_dropout import make_dropout_configs
+    from seismo_sbi.sbi.npe.posterior_sampling import make_dropout_configs
 
     names = [f"ST{i:02d}" for i in range(8)]
     cfgs = make_dropout_configs(names, keep_fraction=0.6, n_subsets=3,

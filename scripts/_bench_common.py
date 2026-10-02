@@ -142,7 +142,7 @@ def make_variable_station_batch(batch_size, n_master, components, trace_length, 
     """
     import numpy as np
     import torch
-    from seismo_sbi.sbi.compression.ML.dataloading import variable_station_collate
+    from seismo_sbi.sbi.npe.data.dataloading import variable_station_collate
 
     rng = np.random.default_rng(seed)
     C = len(components)

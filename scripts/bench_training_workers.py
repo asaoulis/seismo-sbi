@@ -27,7 +27,7 @@ for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
 
 import numpy as np
 
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 from seismo_sbi.sbi.scalers import FlexibleScaler
 
 from _bench_common import build_kernel_pipeline, default_augmentation_chain

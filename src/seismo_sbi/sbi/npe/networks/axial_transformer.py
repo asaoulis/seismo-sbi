@@ -11,9 +11,9 @@ import torch.nn as nn
 from typing import Optional
 import math
 
-from .positional_encoding import FourierStationPositionalEncoding
-from .pma_pooling import SetTransformerPMAHead
-from .fused_attention import build_mha
+from seismo_sbi.sbi.npe.networks.positional_encoding import FourierStationPositionalEncoding
+from seismo_sbi.sbi.npe.networks.pma_pooling import SetTransformerPMAHead
+from seismo_sbi.sbi.npe.networks.fused_attention import build_mha
 
 def sinusoidal_time_embedding(L: int, d_model: int, device=None):
     """

@@ -130,7 +130,7 @@ class VariableStationsConfig:
         """The dataloader's station subsampler, or ``None`` when every station is kept."""
         if not self.enabled:
             return None
-        from .compression.ML.dataloading import StationSubsampler
+        from seismo_sbi.sbi.npe.data.dataloading import StationSubsampler
         return StationSubsampler(keep_fraction=self.keep_fraction,
                                  min_stations=self.min_stations)
 
@@ -365,9 +365,9 @@ class TrainingConfiguration:
         """The split and batching of ``num_simulations`` samples into training and validation.
 
         These are the keyword arguments of
-        :func:`~seismo_sbi.sbi.compression.ML.dataloading.make_torch_dataloaders` that do not
+        :func:`~seismo_sbi.sbi.npe.data.dataloading.make_torch_dataloaders` that do not
         build the dataset; with ``dataset=`` added they are the ``dataloader_args`` of a training
-        run on an :class:`~seismo_sbi.sbi.compression.ML.array_dataset.ArraySimulationDataset`.
+        run on an :class:`~seismo_sbi.sbi.npe.data.array_dataset.ArraySimulationDataset`.
         """
         return {
             "train_max_index": int(self.batch.train_fraction * num_simulations),

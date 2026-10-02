@@ -13,16 +13,16 @@ import numpy as np
 import torch
 import pytest
 
-from seismo_sbi.sbi.compression.ML.source_conditioning import (
+from seismo_sbi.sbi.npe.source_conditioning import (
     pack_variable_context,
     unpack_variable_context,
     relative_station_geometry,
 )
-from seismo_sbi.sbi.compression.ML.dataloading import (
+from seismo_sbi.sbi.npe.data.dataloading import (
     StationSubsampler,
     variable_station_collate,
 )
-from seismo_sbi.sbi.compression.ML.seismogram_transformer import SeismogramTransformer
+from seismo_sbi.sbi.npe.networks.seismogram_transformer import SeismogramTransformer
 
 
 _COORDS = np.array(

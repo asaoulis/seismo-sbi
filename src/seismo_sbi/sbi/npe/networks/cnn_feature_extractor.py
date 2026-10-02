@@ -9,7 +9,7 @@ import torch
 
 from torch import nn
 
-from .station_encoders import normalize_trace, log_amp_channel
+from seismo_sbi.sbi.npe.networks.station_encoders import normalize_trace, log_amp_channel
 
 
 class SeismicTraceCNN(nn.Module):

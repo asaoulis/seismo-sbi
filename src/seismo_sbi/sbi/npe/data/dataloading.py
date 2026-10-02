@@ -15,7 +15,7 @@ from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.nuisance_effects.post_processing import apply_chain_to_array
 import numpy as np
 
-from .source_conditioning import pack_variable_context
+from seismo_sbi.sbi.npe.source_conditioning import pack_variable_context
 
 
 class StationSubsampler:
@@ -329,7 +329,7 @@ class TorchSimulationDataset(Dataset):
             )
 
         if source_vec is not None:
-            from .source_conditioning import pack_context
+            from seismo_sbi.sbi.npe.source_conditioning import pack_context
             x = pack_context(x, source_vec)
         return theta, x
 
@@ -508,7 +508,7 @@ def make_torch_dataloaders(
     """``(train_loader, val_loader)`` over one dataset, split at ``train_max_index``.
 
     The dataset arguments go to :class:`TorchSimulationDataset`; a ``dataset`` already built, such
-    as an :class:`~seismo_sbi.sbi.compression.ML.array_dataset.ArraySimulationDataset`, is split
+    as an :class:`~seismo_sbi.sbi.npe.data.array_dataset.ArraySimulationDataset`, is split
     as it is instead. ``val_batch_size`` defaults to ``train_batch_size``.
     """
     if val_batch_size is None:

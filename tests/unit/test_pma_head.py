@@ -12,7 +12,7 @@ combination; and config validation. Dependency-free / CPU.
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.pma_pooling import (
+from seismo_sbi.sbi.npe.networks.pma_pooling import (
     SetTransformerPMAHead,
     _CONFIG_KEYS,
 )

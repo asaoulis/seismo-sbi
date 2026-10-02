@@ -2,14 +2,14 @@
 
 :class:`ArraySimulationDataset` serves ``(theta, x)`` pairs the caller already holds through the
 same clean-data augmentation, noise draw, parameter scaling, post-noise augmentation and station
-selection as :class:`~seismo_sbi.sbi.compression.ML.dataloading.TorchSimulationDataset`, so a
+selection as :class:`~seismo_sbi.sbi.npe.data.dataloading.TorchSimulationDataset`, so a
 training run needs no HDF5 files on disk.
 """
 import numpy as np
 import torch
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from .dataloading import StationSubsampler, TorchSimulationDataset
+from seismo_sbi.sbi.npe.data.dataloading import StationSubsampler, TorchSimulationDataset
 
 
 class ArraySimulationDataset(TorchSimulationDataset):

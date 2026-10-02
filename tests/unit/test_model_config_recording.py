@@ -9,13 +9,13 @@ metadata-identical to a non-MMD one, leaving a lambda sweep unattributable after
 """
 import inspect
 
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
 
 def _trainer_config_after(initial):
     """Build only the merged-config state, without constructing the (heavy) model."""
     obj = CompressionTrainer.__new__(CompressionTrainer)
-    from seismo_sbi.sbi.compression.ML.train import DEFAULT_MODEL_CONFIG
+    from seismo_sbi.sbi.npe.training.train import DEFAULT_MODEL_CONFIG
     obj._model_config = {**DEFAULT_MODEL_CONFIG, "channels": 128, **(initial or {})}
     return obj
 
@@ -65,8 +65,8 @@ def test_enable_mmd_loss_registers_the_block_through_the_recorder(monkeypatch):
     """Wiring in the MMD loss must record its block, or the checkpoint cannot be attributed."""
     from types import SimpleNamespace
     import numpy as np
-    from seismo_sbi.sbi.compression.ML import mmd_data
-    from seismo_sbi.sbi.compression.ML.train import enable_mmd_loss
+    from seismo_sbi.sbi.npe.data import mmd_data
+    from seismo_sbi.sbi.npe.training.train import enable_mmd_loss
     from seismo_sbi.sbi.training_configuration import TrainingConfiguration
 
     monkeypatch.setattr(mmd_data, "build_real_context", lambda *a, **k: np.zeros((3, 2)))
@@ -95,7 +95,7 @@ def test_every_record_model_config_call_site_uses_keywords():
     level instead.
     """
     import re
-    from seismo_sbi.sbi.compression.ML import train as train_module
+    from seismo_sbi.sbi.npe.training import train as train_module
 
     calls = re.findall(r"\.record_model_config\(([^)]*)", inspect.getsource(train_module))
     assert calls, "expected at least one record_model_config call site"

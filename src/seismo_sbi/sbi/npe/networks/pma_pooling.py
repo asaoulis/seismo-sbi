@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn as nn
 
-from .fused_attention import build_mha
+from seismo_sbi.sbi.npe.networks.fused_attention import build_mha
 
 # Keys accepted in the ``pma_pooling`` config block (``enabled`` is stripped by the config parser
 # before the dict reaches the model). A single validator covers the whole block.

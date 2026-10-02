@@ -94,7 +94,7 @@ def build_ml_posterior(ckpt_dir, sbi_pipeline, dim=256):
     encoder (cnn / pno / tcn) reloads correctly.  Returns the sbi DirectPosterior.
     """
     import json as _json
-    from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
+    from seismo_sbi.sbi.npe.training.train import CompressionTrainer
 
     ckpt_dir = Path(ckpt_dir)
     components = sbi_pipeline.data_manager.data_loader.components

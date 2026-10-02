@@ -11,7 +11,7 @@ import math
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.positional_encoding import (
+from seismo_sbi.sbi.npe.networks.positional_encoding import (
     FourierStationPositionalEncoding,
     _CONFIG_KEYS,
 )

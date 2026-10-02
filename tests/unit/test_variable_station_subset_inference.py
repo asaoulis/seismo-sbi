@@ -14,7 +14,7 @@ import h5py
 import pytest
 import torch
 
-from seismo_sbi.sbi.compression.ML.source_conditioning import (
+from seismo_sbi.sbi.npe.source_conditioning import (
     pack_subset_observation,
     unpack_variable_context,
 )
@@ -64,7 +64,7 @@ def test_pack_subset_observation_validates_shapes():
 
 
 def _build_variable_station_net(n_master=4, C=3, T=16, latent=8):
-    from seismo_sbi.sbi.compression.ML.train import (
+    from seismo_sbi.sbi.npe.training.train import (
         _build_seismogram_transformer, DEFAULT_MODEL_CONFIG,
     )
     station_locations = torch.tensor(
@@ -220,7 +220,7 @@ class _IdentityScaler:
 def test_dropout_ensemble_threads_source_vec():
     """A conditioned model's per-event source_vec is packed into every station config's
     inference context (and round-trips out via unpack_variable_context)."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import (
+    from seismo_sbi.sbi.npe.posterior_sampling import (
         config_from_kept, sample_station_dropout_ensemble,
     )
 
@@ -249,7 +249,7 @@ def test_dropout_ensemble_threads_source_vec():
 
 def test_dropout_ensemble_unconditioned_has_no_source_vec():
     """With source_vec=None (unconditioned model) the packed context carries no source vector."""
-    from seismo_sbi.sbi.compression.ML.station_dropout import (
+    from seismo_sbi.sbi.npe.posterior_sampling import (
         config_from_kept, sample_station_dropout_ensemble,
     )
 

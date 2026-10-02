@@ -34,8 +34,8 @@ import numpy as np
 import torch
 import pytorch_lightning as pl
 
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer
-from seismo_sbi.sbi.compression.ML.dataloading import StationSubsampler
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer
+from seismo_sbi.sbi.npe.data.dataloading import StationSubsampler
 from seismo_sbi.sbi.scalers import FlexibleScaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain
 

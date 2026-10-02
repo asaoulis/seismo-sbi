@@ -12,7 +12,7 @@ import pytest
 import torch
 import yaml
 
-from seismo_sbi.sbi.compression.ML.train import CompressionTrainer, enable_mmd_loss
+from seismo_sbi.sbi.npe.training.train import CompressionTrainer, enable_mmd_loss
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration
 from seismo_sbi.utils.errors import InvalidConfiguration
 
@@ -31,7 +31,7 @@ def _load_fixture_configuration(fixture_name):
 
 def _stub_mmd_sources(monkeypatch):
     """Stand in for the real events and the simulation suite; only the recorded block matters."""
-    from seismo_sbi.sbi.compression.ML import mmd_data
+    from seismo_sbi.sbi.npe.data import mmd_data
     monkeypatch.setattr(mmd_data, "build_real_context", lambda *a, **k: torch.zeros((2, 4)))
     monkeypatch.setattr(mmd_data, "build_psim_loader",
                         lambda *a, **k: SimpleNamespace(dataset=[0]))
