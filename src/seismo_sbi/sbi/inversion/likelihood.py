@@ -96,10 +96,10 @@ def _report_convergence(chains):
         print(f"MCMC convergence: R-hat unavailable ({exc})", flush=True)
 
 
-def run_embarrassingly_parallel_simulations(num_parameters, log_probability,
-                                            burn_in, nsamples_per_walker,
-                                            initial_state, move_size,
-                                            return_sampler=False, return_log_prob=False, seed=None):
+def run_mcmc(num_parameters, log_probability,
+             burn_in, nsamples_per_walker,
+             initial_state, move_size,
+             return_sampler=False, return_log_prob=False, seed=None):
     if seed is not None:
         np.random.seed(seed)
 
@@ -178,7 +178,7 @@ def generate_samples(log_probability, ensemble, num_parameters, nsamples_per_wal
         with tqdm_joblib(tqdm(desc="Running MCMC chains: ", total=num_processes, position=0, leave=True)):
             with joblib.parallel_backend('loky', n_jobs=num_processes):
                 results = joblib.Parallel()(
-                    joblib.delayed(run_embarrassingly_parallel_simulations)(
+                    joblib.delayed(run_mcmc)(
                         num_parameters, log_probability, burn_in,
                         nsamples_per_walker,
                         initial_samples[i],   # <-- pass the correct initial state
