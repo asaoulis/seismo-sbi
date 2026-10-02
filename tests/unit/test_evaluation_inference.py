@@ -84,3 +84,29 @@ def test_build_ml_posterior_from_the_lv2_checkpoint():
     samples = posterior.sample((50,), observation, show_progress_bars=False).cpu().numpy()
 
     assert samples.shape == (50, 6) and np.all(np.isfinite(samples))
+
+
+@pytest.mark.requires_data
+@pytest.mark.skipif(not LV2_CHECKPOINT.is_file() or LV2_CHECKPOINT.stat().st_size < 1_000_000,
+                    reason="needs the LV2 checkpoint (git lfs pull)")
+def test_load_trained_posterior_samples_as_build_ml_posterior_does(monkeypatch):
+    import numpy as np
+    import torch
+
+    from seismo_sbi.evaluation.inference import build_ml_posterior, load_trained_posterior
+
+    monkeypatch.chdir(LV2_CHECKPOINTS.parent)
+    trained = load_trained_posterior("configs/LV2_continuity.yaml", LV2_CHECKPOINTS)
+    pipeline = SimpleNamespace(data_manager=trained.pipeline.data_manager,
+                               simulation_parameters=trained.pipeline.simulation_parameters,
+                               trace_length=200)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    observation = torch.as_tensor(np.random.default_rng(0).normal(scale=1e-6, size=(1, 5, 3, 200)),
+                                  dtype=torch.float32).to(device)
+    draws = []
+    for posterior in (trained.posterior, build_ml_posterior(LV2_CHECKPOINTS, pipeline)):
+        torch.manual_seed(0)
+        draws.append(posterior.sample((50,), observation, show_progress_bars=False).cpu().numpy())
+
+    np.testing.assert_array_equal(draws[0], draws[1])
+    assert trained.data_scaler.inverse_transform(draws[0]).shape == (50, 6)

@@ -1,21 +1,65 @@
 """Build the pipeline, posterior and observation an evaluation run needs.
 
-:func:`build_eval_pipeline` constructs the pipeline from a configuration,
+:func:`load_trained_posterior` gives the posterior, theta scaler and pipeline of a trained run;
+:func:`build_eval_pipeline` constructs a pipeline that also simulates the test jobs,
 :func:`build_ml_posterior` loads a trained model into a posterior, :func:`resolve_ckpt_dir`
 finds the checkpoint directory to load from, and :func:`load_real_observation` reads one named
 real event (:func:`load_observation` reads one event file).
 """
 from __future__ import annotations
 
+import json
 import logging
 from copy import deepcopy
 from pathlib import Path
+from typing import Any, NamedTuple
 
 import numpy as np
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
 logger = logging.getLogger(__name__)
+
+
+class TrainedPosterior(NamedTuple):
+    """A trained NPE ready for inference.
+
+    ``posterior`` samples the scaled parameters, in [0, 1]; ``data_scaler.inverse_transform`` maps
+    them to physical units. ``pipeline`` holds the receivers and the data loader an observation is
+    read with, and ``config`` is the parsed configuration of the run.
+    """
+
+    posterior: Any
+    data_scaler: Any
+    pipeline: Any
+    config: Any
+    run_directory: Path
+
+
+def load_trained_posterior(config_path, run_directory, *, strict=True) -> TrainedPosterior:
+    """The posterior, theta scaler and pipeline of a trained run; no simulation is read.
+
+    ``config_path`` is the configuration the run was trained with and ``run_directory`` the run,
+    or a directory holding exactly one run (see :func:`resolve_ckpt_dir`). The flow is rebuilt from
+    the run's ``model_meta.json``; the scaler is built from the configuration with the M0
+    convention the sidecar records and checked against the sidecar's scaling record, raising on a
+    mismatch unless ``strict`` is False.
+    """
+    from seismo_sbi.sbi.configuration import SBI_Configuration
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline
+    from seismo_sbi.sbi.npe.training.train import CompressionTrainer
+    from seismo_sbi.sbi.pipeline import SingleEventPipeline
+    from seismo_sbi.sbi.scalers import build_flexible_scaler, check_scaler_provenance
+
+    run_directory = resolve_ckpt_dir(run_directory)
+    posterior = CompressionTrainer.from_run_directory(run_directory).build_posterior()
+    model_meta = json.loads((run_directory / "model_meta.json").read_text())
+    config = SBI_Configuration.from_file(config_path)
+    pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
+    data_scaler = build_flexible_scaler(deepcopy(pipeline.parameters), config.raw_config,
+                                        model_meta=model_meta)
+    check_scaler_provenance(model_meta, data_scaler, strict=strict)
+    return TrainedPosterior(posterior, data_scaler, pipeline, config, run_directory)
 
 
 def build_eval_pipeline(config_path, *, setup_training_noise=False,
