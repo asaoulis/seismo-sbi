@@ -1,0 +1,70 @@
+{
+  "architecture": "seismogram_transformer",
+  "model_config": {
+    "layers": 4,
+    "nheads": 4,
+    "timeemb": 64,
+    "posemb": 64,
+    "channels": 256,
+    "theta_scaler": {
+      "moment_tensor": "linear",
+      "linear_bounds": {
+        "moment_tensor": [
+          [
+            -4e+16,
+            -4e+16,
+            -4e+16,
+            -4e+16,
+            -4e+16,
+            -4e+16
+          ],
+          [
+            4e+16,
+            4e+16,
+            4e+16,
+            4e+16,
+            4e+16,
+            4e+16
+          ]
+        ]
+      }
+    }
+  },
+  "flow_config": {
+    "num_transforms": 5,
+    "num_blocks": 2,
+    "dropout_probability": 0.0,
+    "use_batch_norm": true
+  },
+  "trace_length": 200,
+  "num_seismic_components": 3,
+  "num_dims": 6,
+  "latent_dim": 256,
+  "feature_length": 128,
+  "station_locations_shape": [
+    5,
+    2
+  ],
+  "station_locations": [
+    [
+      37.876221,
+      -122.23558
+    ],
+    [
+      38.03455,
+      -120.386513
+    ],
+    [
+      37.323631,
+      -119.318703
+    ],
+    [
+      39.554508,
+      -121.500359
+    ],
+    [
+      35.945171,
+      -120.541603
+    ]
+  ]
+}
