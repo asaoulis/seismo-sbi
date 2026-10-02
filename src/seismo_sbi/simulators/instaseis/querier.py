@@ -184,25 +184,3 @@ class InstaseisDBQuerier:
         )
 
         return instaseis_receiver
-    
-    def _apply_time_shift(self, seismograms, time_shift):
-        if time_shift !=0:
-            time_shift_direction_is_positive = (time_shift >=0)
-            num_elements_to_shift = round(self.sampling_rate * time_shift)
-            for component, seismogram_array in seismograms.items():
-                rolled_seismogram_component = np.roll(seismogram_array, num_elements_to_shift)
-                if time_shift_direction_is_positive:
-                    rolled_seismogram_component[:num_elements_to_shift] = 0
-                else:
-                    rolled_seismogram_component[num_elements_to_shift:] = 0
-
-                seismograms[component] = rolled_seismogram_component
-        return seismograms
-    
-    def _slice_seismograms(self, seismograms : dict, seismogram_duration):
-
-        new_length = (self._raw_seismogram_length * seismogram_duration) \
-                                            // self._raw_seismogram_duration_in_s
-        new_length = int(new_length)
-        for component, seismogram_array in seismograms.items():
-            seismograms[component] = seismogram_array[:new_length]

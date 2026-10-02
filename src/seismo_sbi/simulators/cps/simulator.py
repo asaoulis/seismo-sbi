@@ -82,17 +82,6 @@ class CPSSimulator(Simulator):
             
         return all_seismograms_map
 
-    def to_enu_convention(self, gf_tensor):
-        """Green's functions from ``(Z, E, N)`` to the ``(up, south, east)`` order the moment
-        tensor components use. Both are shaped ``(n_stations, 3, n_elements, n_samples)``.
-        """
-        Z = gf_tensor[:, 0, :, :]
-        N = gf_tensor[:, 2, :, :]
-        E = gf_tensor[:, 1, :, :]
-
-        U = Z
-        return np.stack([E, N, U], axis=1)
-    
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
         greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1 / CPS_SAMPLING_RATE_HZ, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)

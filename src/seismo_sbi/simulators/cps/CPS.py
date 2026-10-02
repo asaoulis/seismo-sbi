@@ -14,7 +14,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-DEG2M = 111.195e3
 TEN = 10
 
 def write_Model96(vel_model, fname):
@@ -54,7 +53,7 @@ def get_hashcode(dists_in_km, evdp_in_km, vmodel):
     random_bytes = uuid.uuid4().bytes
     return hashlib.md5(random_bytes).hexdigest()
 
-def perturb_model(vmodel, kappa, random_seed=None):
+def perturb_model(vmodel, kappa):
     '''Perturb the velocity model by adding random noise to it.'''
     perturb = vmodel.copy()
     if kappa < 1.: logger.warning('Warning: kappa is too small to make any perturbation')
