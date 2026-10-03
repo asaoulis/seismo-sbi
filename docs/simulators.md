@@ -87,22 +87,24 @@ Then make the model selectable from a configuration file:
 ```python
 from seismo_sbi.simulators.registry import register_simulator
 
-def build_specfem3d(simulation_parameters, simulator_config, pp_effects, data_flattening):
+def build_specfem3d(simulation_parameters, *, post_processing_effects):
     return Specfem3DSimulator(
         components=simulation_parameters.components,
         receivers=simulation_parameters.receivers,
         seismogram_duration_in_s=simulation_parameters.seismogram_duration,
         synthetics_processing=simulation_parameters.processing,
-        post_processing_effects=pp_effects,
+        post_processing_effects=post_processing_effects,
     )
 
 register_simulator("specfem3d", build_specfem3d)
 ```
 
 If that call is made before the pipeline is built, `simulation_type: specfem3d` in the
-`seismic_context` block selects the model. `simulator_config` is `(simulation_type, payload)`. The
-payload carries whatever the type needs beyond the parameters: the sensitivity kernels for
-`kernel`, the ensemble simulator for `theory_covariance`. Otherwise it is `None`. The
+`seismic_context` block selects the model. A builder receives the `SimulationParameters` and, by
+keyword, `post_processing_effects` (the nuisance effects to apply to every simulation), and
+returns the `Simulator`. The built-in `kernel` and `theory_covariance` types also receive their
+own inputs by keyword: `score_compression_data` (the sensitivity kernels), and
+`ensemble_simulator` with `data_flattening`. The
 [`custom_forward_model`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/custom_forward_model.ipynb)
 notebook registers a toy forward model and inverts with it.
 

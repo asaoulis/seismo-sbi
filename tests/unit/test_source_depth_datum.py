@@ -100,5 +100,5 @@ def test_simulator_wrapper_forwards_the_offset(monkeypatch):
                               syngine_address="ens", sampling_rate=1.0, processing={},
                               syngine_fiducial_address="fid", source_depth_offset_km=1.0)
     sw.GeneralSimulatorWrapper.select_and_initialise_simulator(
-        object.__new__(sw.GeneralSimulatorWrapper), ("instaseis_ensemble", None), sp)
+        object.__new__(sw.GeneralSimulatorWrapper), "instaseis_ensemble", sp)
     assert seen["source_depth_offset_km"] == 1.0

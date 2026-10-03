@@ -356,7 +356,8 @@ class TestNuisanceStageRouting:
         )
         wrapper = object.__new__(GeneralSimulatorWrapper)
         wrapper.set_simulation_objects(
-            ("kernel", scd), sim_params, mp, SimulationDataLoader(components=["Z"], receivers=receivers), {}
+            "kernel", sim_params, mp, SimulationDataLoader(components=["Z"], receivers=receivers), {},
+            score_compression_data=scd
         )
         return wrapper
 

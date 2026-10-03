@@ -393,8 +393,9 @@ class SBIPipeline:
 
         if only_moment_tensor_variable:
             self.simulator_wrapper.set_simulation_objects(
-                    ('kernel', score_compression_data), self.simulation_parameters, 
-                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler
+                    'kernel', self.simulation_parameters,
+                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler,
+                    score_compression_data=score_compression_data
                 )
 
     def generate_simulation_data(self, dataset_parameters : DatasetGenerationParameters):
@@ -545,8 +546,9 @@ class SingleEventPipeline(SBIPipeline):
 
         if only_moment_tensor_variable:
             self.simulator_wrapper.set_simulation_objects(
-                    ('kernel', score_compression_data), self.simulation_parameters, 
-                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler
+                    'kernel', self.simulation_parameters,
+                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler,
+                    score_compression_data=score_compression_data
                 )
             self.least_squares_solver.simulator = self.simulator_wrapper.simulator
 

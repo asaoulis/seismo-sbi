@@ -108,7 +108,7 @@ def _build_instaseis_multi_models(simulation_parameters):
     return models
 
 
-def _build_instaseis_ensemble(simulation_parameters, simulator_config, pp_effects, data_flattening):
+def _build_instaseis_ensemble(simulation_parameters, *, post_processing_effects):
     return InstaseisEnsembleSimulator(
                     instaseis_ensemble_dir=simulation_parameters.syngine_address,
                     instaseis_fiducial_loc=simulation_parameters.syngine_fiducial_address,
@@ -116,7 +116,7 @@ def _build_instaseis_ensemble(simulation_parameters, simulator_config, pp_effect
                     receivers=simulation_parameters.receivers,
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment,
                     resample_member_per_station=simulation_parameters.resample_member_per_station,
                     member_sampling=simulation_parameters.member_sampling,
@@ -124,29 +124,28 @@ def _build_instaseis_ensemble(simulation_parameters, simulator_config, pp_effect
                     source_depth_offset_km=simulation_parameters.source_depth_offset_km)
 
 
-def _build_instaseis(simulation_parameters, simulator_config, pp_effects, data_flattening):
+def _build_instaseis(simulation_parameters, *, post_processing_effects):
     return InstaseisSourceSimulator(simulation_parameters.syngine_address,
                                 components=simulation_parameters.components,
                                 receivers=simulation_parameters.receivers,
                                 seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                                 synthetics_processing=simulation_parameters.processing,
-                                post_processing_effects=pp_effects,
+                                post_processing_effects=post_processing_effects,
                                 stf_alignment=simulation_parameters.stf_alignment,
                                 source_depth_offset_km=simulation_parameters.source_depth_offset_km)
 
 
-def _build_kernel(simulation_parameters, simulator_config, pp_effects, data_flattening):
-    score_compression_data = simulator_config[1]
+def _build_kernel(simulation_parameters, *, post_processing_effects, score_compression_data=None):
     return FixedLocationKernelSimulator(score_compression_data,
                     components=simulation_parameters.components,
                     receivers=simulation_parameters.receivers,
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment)
 
 
-def _build_cps(simulation_parameters, simulator_config, pp_effects, data_flattening):
+def _build_cps(simulation_parameters, *, post_processing_effects):
     return CPSVariableKernelSimulator(
                     components=simulation_parameters.components,
                     receivers=simulation_parameters.receivers,
@@ -154,11 +153,11 @@ def _build_cps(simulation_parameters, simulator_config, pp_effects, data_flatten
                     synthetics_processing=simulation_parameters.processing,
                     gf_storage_root=simulation_parameters.cps_GFs_path,
                     cps_path=simulation_parameters.cps_path,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment)
 
 
-def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, data_flattening):
+def _build_cps_precomputed(simulation_parameters, *, post_processing_effects):
     return CPSPrecomputedSimulator(
                     fiducial_model_path=simulation_parameters.cps_GFs_fiducial_path,
                     components=simulation_parameters.components,
@@ -167,15 +166,12 @@ def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, 
                     synthetics_processing=simulation_parameters.processing,
                     gf_storage_root=simulation_parameters.cps_GFs_path,
                     cps_path=simulation_parameters.cps_path,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment)
 
 
-def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_effects, data_flattening):
-    if simulator_config[1] is not None:
-        models = simulator_config[1]
-    else:
-        models = _build_instaseis_multi_models(simulation_parameters)
+def _build_instaseis_multi_ensemble(simulation_parameters, *, post_processing_effects):
+    models = _build_instaseis_multi_models(simulation_parameters)
     if not models:
         raise ValueError(
             "simulation_type 'instaseis_multi_ensemble' requires a non-empty "
@@ -187,7 +183,7 @@ def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_
                     receivers=simulation_parameters.receivers,
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment,
                     resample_member_per_station=simulation_parameters.resample_member_per_station,
                     member_sampling=simulation_parameters.member_sampling,
@@ -195,15 +191,12 @@ def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_
                     source_depth_offset_km=simulation_parameters.source_depth_offset_km)
 
 
-def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_flattening):
-    if simulator_config[1] is not None:
-        models = simulator_config[1]
-    else:
-        models = _build_cps_multi_models_from_path(simulation_parameters)
+def _build_cps_multi(simulation_parameters, *, post_processing_effects):
+    models = _build_cps_multi_models_from_path(simulation_parameters)
     if not models:
         raise ValueError(
-            "simulation_type 'cps_multi' requires either explicit models "
-            "or a non-empty cps_multi_models_path in SimulationParameters."
+            "simulation_type 'cps_multi' requires a non-empty cps_multi_models_path "
+            "in SimulationParameters."
         )
     return MultiModelCPSSimulator(
                     models=models,
@@ -212,12 +205,11 @@ def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_f
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     cps_path=simulation_parameters.cps_path,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment)
 
 
-def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects, data_flattening):
-    ensemble_simulator = simulator_config[1]
+def _build_theory_covariance(simulation_parameters, *, post_processing_effects, ensemble_simulator, data_flattening):
     return EnsembleTheoryCovarianceEstimationSimulator(
                     simulator=ensemble_simulator,
                     data_flattening=data_flattening,
@@ -225,13 +217,12 @@ def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects
                     receivers=deepcopy(simulation_parameters.receivers),
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    post_processing_effects=pp_effects,
+                    post_processing_effects=post_processing_effects,
                     stf_alignment=simulation_parameters.stf_alignment)
 
 
 #: Forward-model builders, selectable by ``simulation_type``. Each takes the simulation
-#: parameters, the ``(name, payload)`` configuration tuple, the post-processing effects and the
-#: callable that flattens a simulation into a data vector, and returns a ``Simulator``.
+#: parameters and, by keyword, the post-processing effects and its own inputs, and returns a ``Simulator``.
 SIMULATOR_REGISTRY = {
     "instaseis": _build_instaseis,
     "instaseis_ensemble": _build_instaseis_ensemble,
@@ -245,22 +236,23 @@ SIMULATOR_REGISTRY = {
 
 
 def register_simulator(name: str, builder) -> None:
-    """Make ``name`` a valid ``simulation_type`` served by ``builder``."""
+    """Make ``name`` a valid ``simulation_type`` served by ``builder``.
+
+    ``builder(simulation_parameters, *, post_processing_effects)`` returns the ``Simulator``.
+    """
     SIMULATOR_REGISTRY[name] = builder
 
 
-def build_simulator(simulator_config, simulation_parameters, post_processing_effects=None,
-                    data_flattening=None):
-    """Build the simulator ``simulator_config[0]`` names.
+def build_simulator(name, simulation_parameters, post_processing_effects=None, **payload):
+    """Build the simulator the ``simulation_type`` ``name`` selects.
 
-    ``simulator_config`` is ``(simulation_type, payload)``; the payload is the kernel data, the
-    ensemble simulator or an explicit sub-model list, depending on the type.
+    ``payload`` is what the type needs beyond the simulation parameters: ``score_compression_data``
+    for ``kernel`` (None until a stencil has been run); ``ensemble_simulator`` and ``data_flattening`` (a simulation's outputs to a
+    flat data vector) for ``theory_covariance``; nothing for the others.
     """
-    name = simulator_config[0]
     builder = SIMULATOR_REGISTRY.get(name)
     if builder is None:
         raise NotImplementedError(
             f"Simulator {name} not implemented; known types are {sorted(SIMULATOR_REGISTRY)}"
         )
-    return builder(simulation_parameters, simulator_config, post_processing_effects or [],
-                   data_flattening)
+    return builder(simulation_parameters, post_processing_effects=post_processing_effects or [], **payload)

@@ -112,6 +112,6 @@ def test_a_kernel_simulator_swapped_in_keeps_the_configured_backends_convention(
     parameters = SimpleNamespace(nuisance={}, nuisance_effect_config={})
     wrapper = simulator_wrapper.GeneralSimulatorWrapper(simulation, parameters,
                                                         SimpleNamespace(convert_sim_data_to_array=None), {})
-    wrapper.set_simulation_objects(("kernel", None), simulation, parameters, None, {})
+    wrapper.set_simulation_objects("kernel", simulation, parameters, None, {}, score_compression_data=None)
     assert wrapper.simulator.stf_alignment == "peak"
     assert wrapper.stf_alignment == "onset"

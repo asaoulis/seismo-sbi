@@ -118,9 +118,9 @@ class DataManager:
         )
 
         if "theory_optimal_score" in compression_method_details:
-            simulator_config = ("theory_covariance", simulator_wrapper.simulator)
             covariance_simulator = simulator_wrapper.select_and_initialise_simulator(
-                simulator_config, simulation_parameters
+                "theory_covariance", simulation_parameters, ensemble_simulator=simulator_wrapper.simulator,
+                data_flattening=simulator_wrapper.data_loader_callable
             )
             covariance_simulator.seed = seed
 

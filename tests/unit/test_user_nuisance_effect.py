@@ -47,7 +47,7 @@ def parsed(stage):
 def test_a_registered_effect_runs_at_simulation(registered, monkeypatch):
     built = []
     monkeypatch.setattr(simulator_wrapper, "build_simulator",
-                        lambda config, parameters, effects, data_flattening=None:
+                        lambda name, parameters, effects, **payload:
                         built.extend(effects) or SimpleNamespace(execute_sim_and_save_outputs=None, stf_alignment="peak"))
     simulator_wrapper.GeneralSimulatorWrapper(
         SimpleNamespace(simulation_type="instaseis", sampling_rate=1.0), parsed("simulation"),

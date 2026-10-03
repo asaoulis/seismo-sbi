@@ -21,14 +21,15 @@ class GeneralSimulatorWrapper:
 
     def __init__(self, simulation_parameters: SimulationParameters,  parameters, data_loader, parameter_sampler):
 
-        default_config = (simulation_parameters.simulation_type, None)
-        self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, parameter_sampler)
         self.data_loader_callable = data_loader.convert_sim_data_to_array
+        self.set_simulation_objects(simulation_parameters.simulation_type, simulation_parameters, parameters, data_loader,
+                                    parameter_sampler)
         #: The configured forward model's source-time convention, which a kernel simulator built
         #: from its synthetics shares.
         self.stf_alignment = self.simulator.stf_alignment
 
-    def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, parameter_sampler):
+    def set_simulation_objects(self, simulator_name, simulation_parameters, parameters, data_loader, parameter_sampler,
+                               **payload):
 
         # Nuisances staged "training_augmentation" are folded in per batch by the dataloader.
         nuisance_stage = getattr(parameters, 'nuisance_stage', {})
@@ -44,16 +45,16 @@ class GeneralSimulatorWrapper:
             build_post_processing_chain(sim_staged_keys, effect_configs).effects
         )
         self.simulator = self.select_and_initialise_simulator(
-            simulator_config, simulation_parameters, post_processing_effects=post_processing_effects
+            simulator_name, simulation_parameters, post_processing_effects=post_processing_effects, **payload
         )
 
         self.simulation_save_callable = self.simulator.execute_sim_and_save_outputs
 
         self.simulation_callable = partial(self.input_output_simulation, parameters, data_loader, parameter_sampler, self.simulator)
 
-    def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
-        return build_simulator(simulator_config, simulation_parameters, post_processing_effects,
-                               data_flattening=getattr(self, "data_loader_callable", None))
+    def select_and_initialise_simulator(self, simulator_name, simulation_parameters, post_processing_effects=None,
+                                        **payload):
+        return build_simulator(simulator_name, simulation_parameters, post_processing_effects, **payload)
 
     def simulate_at(self, source, moment_tensor, *, stations=None, deterministic=True, stf_duration=None,
                     return_traces=False):

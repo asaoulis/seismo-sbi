@@ -43,7 +43,7 @@ class HomogeneousPWaveSimulator(Simulator):
         return seismograms
 
 
-def build_homogeneous_p_wave(simulation_parameters, simulator_config, post_processing_effects, data_flattening):
+def build_homogeneous_p_wave(simulation_parameters, *, post_processing_effects):
     return HomogeneousPWaveSimulator(
         components=simulation_parameters.components, receivers=simulation_parameters.receivers,
         seismogram_duration_in_s=simulation_parameters.seismogram_duration,
@@ -56,7 +56,7 @@ def homogeneous_p_wave():
     receivers = Receivers(receivers=[Receiver(37.6, -118.9, "XX", "ABOVE"), Receiver(38.0, -118.5, "XX", "AWAY")])
     parameters = SimulationParameters(receivers, "ZEN", 60.0, None, SAMPLING_RATE_HZ, {},
                                       simulation_type="test_homogeneous_p_wave")
-    yield build_simulator((parameters.simulation_type, None), parameters)
+    yield build_simulator(parameters.simulation_type, parameters)
     SIMULATOR_REGISTRY.pop("test_homogeneous_p_wave")
 
 
@@ -79,4 +79,13 @@ def test_unknown_simulation_type_raises():
     parameters = SimulationParameters(Receivers(receivers=[]), "Z", 10.0, None, 1.0, {}, simulation_type="no_such")
 
     with pytest.raises(NotImplementedError, match="no_such"):
-        build_simulator((parameters.simulation_type, None), parameters)
+        build_simulator(parameters.simulation_type, parameters)
+
+
+def test_a_configured_kernel_type_builds_before_its_kernels_exist():
+    from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
+
+    parameters = SimulationParameters(Receivers(receivers=[Receiver(37.6, -118.9, "XX", "ABOVE")]), "Z", 10.0, None,
+                                      1.0, {"sampling_rate": 1.0}, simulation_type="kernel")
+
+    assert isinstance(build_simulator(parameters.simulation_type, parameters), FixedLocationKernelSimulator)
