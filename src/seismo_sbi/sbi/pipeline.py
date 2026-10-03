@@ -335,10 +335,9 @@ class SBIPipeline:
     
     def load_test_noises(self, sbi_noise_model, test_noise_models):
         """Build the test-noise samplers (``test_noises``) and the training noise sampler."""
-        train_noise_level = sbi_noise_model['noise_level']
-
         for noise_type, noise_options in test_noise_models:
             if noise_type == "gaussian_noises":
+                train_noise_level = sbi_noise_model['noise_level']
                 noise_factor = noise_options
                 noise_callable =  self._build_lambda_noiselevel( noise_factor *train_noise_level)
                 self.test_noises[f"{noise_type}_x{noise_factor}"] = noise_callable

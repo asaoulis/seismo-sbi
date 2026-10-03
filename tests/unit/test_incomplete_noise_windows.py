@@ -162,3 +162,20 @@ def test_pipeline_passes_allow_incomplete_from_config(monkeypatch):
         stub.test_noises = {}
         load(stub, cfg, [])
         assert seen.get("allow_incomplete") is expected, cfg
+
+
+def test_real_noise_training_needs_no_noise_level(monkeypatch):
+    import seismo_sbi.sbi.pipeline as pipeline_mod
+
+    monkeypatch.setattr(pipeline_mod, "RealNoiseSampler", lambda *a, **kw: "sampler")
+
+    class _Stub:
+        simulation_parameters = object()
+        trace_length = 100
+        data_vector_length = 100
+        test_noises = {}
+
+    stub = _Stub()
+    pipeline_mod.SBIPipeline.load_test_noises(stub, {"type": "real_noise", "noise_catalogue_path": "/x"},
+                                              [("real_noise", "/x")])
+    assert stub.training_noise_sampler == "sampler" and stub.test_noises == {"real_noise": "sampler"}
