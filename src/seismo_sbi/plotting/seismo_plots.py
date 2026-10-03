@@ -141,15 +141,11 @@ class MisfitsPlotting:
             plt.show()
         plt.close()
     
-    def plot_ordered_stacked_traces(self, data_vector, synthetics, event_location, figname=None):
-        """
-        Plot all component traces, split across three columns (Z, E, N).
-        - Stations ordered by earliest P-arrival (top to bottom).
-        - One axis per component; traces vertically offset within each axis.
-        - Global amplitude normalization based on data.
-        - Slightly smaller figure (~30% smaller) to match other plots; minimal row spacing.
-        - Keep y tick labels only on first column; keep x tick labels only on 2nd and 3rd columns.
-        """
+    def plot_ordered_stacked_traces(self, data_vector, synthetics, event_location, figname=None,
+                                    components=('Z', 'E', 'N'), time_window_s=None):
+        """Observed (black) against synthetic (copper) traces, one column per entry of ``components``
+        (Z, E, N by default), stations ordered by P arrival from the top and scaled by the largest
+        observed amplitude drawn, over ``time_window_s`` = (start, end) in seconds when given."""
         # Order stations by arrival time
         arrivals = self._get_arrivals_dict(event_location)
         ordered_stations = sorted(arrivals.keys(), key=lambda k: arrivals[k])
@@ -169,17 +165,15 @@ class MisfitsPlotting:
         data_matrix = np.reshape(data_vector, (-1, time_series_length))
         synthetics_matrix = np.reshape(synthetics, (-1, time_series_length))
 
-        # Global normalization from data
-        max_abs = np.max(np.abs(data_matrix)) if data_matrix.size else 1.0
-        if max_abs == 0:
-            max_abs = 1.0
-
-        # Prepare per-component ordered lists
-        components = ['Z', 'E', 'N']
         ordered_by_comp = {
             comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
             for comp in components
         }
+
+        drawn = [trace_index_map[pair] for comp in components for pair in ordered_by_comp[comp]]
+        max_abs = np.max(np.abs(data_matrix[drawn])) if drawn else 1.0
+        if max_abs == 0:
+            max_abs = 1.0
 
         # Time axis
         t = np.arange(time_series_length) / float(self.sampling_rate)
@@ -188,8 +182,8 @@ class MisfitsPlotting:
         spacing = 0.9  # tighter stacking between rows
         height_base = 8.0
         height = 0.7 * height_base
-        width = 12.6* 1.2  # 30% smaller than 18.0
-        fig, axes = plt.subplots(1, 3, figsize=(width, height))
+        width = 5.04 * len(components)
+        fig, axes = plt.subplots(1, len(components), figsize=(width, height))
         if not isinstance(axes, np.ndarray):
             axes = np.array([axes])
 
@@ -212,6 +206,8 @@ class MisfitsPlotting:
             ax.set_yticks(offsets)
             ax.set_yticklabels([st for (st, _) in pairs])
             ax.set_xlabel('Time [s]')
+            if time_window_s is not None:
+                ax.set_xlim(time_window_s)
             # Add padding so largest trace does not clip; invert y so earliest arrivals at top
             amp_pad = 1.1
             ax.set_ylim([-amp_pad, (offsets[-1] + amp_pad) if n_traces > 0 else amp_pad])
@@ -223,10 +219,10 @@ class MisfitsPlotting:
 
         # Keep y tick labels only on first column; keep x tick labels on 2nd and 3rd only
         for i, ax in enumerate(axes):
-            if i == 0:
-                ax.tick_params(labelbottom=False)
-            else:
+            if i > 0:
                 ax.tick_params(labelleft=False)
+            elif len(axes) > 1:
+                ax.tick_params(labelbottom=False)
 
         # Remove y-axis label entirely
         for ax in axes:

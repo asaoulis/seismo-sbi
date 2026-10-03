@@ -33,18 +33,23 @@ class SBIPipelinePlotter:
         if "moment_tensor" in self.parameters.names.keys():
             self.reparametrised_plotter = MomentTensorReparametrised(data_scaler, self.parameters)
 
-    def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None, only_raw=False, savefig=True):
-            
+    def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, covariance = None, only_raw=False, savefig=True, vertical_only=False, time_window_s=None):
+        """Observed against synthetic traces of one job; ``vertical_only`` draws the vertical traces
+        alone, ordered by P arrival, in one figure. ``time_window_s`` = (start, end) in seconds limits
+        the stacked-trace figure to that part of the window."""
         figure_path = self.base_output_path / "./misfits"
         figure_path.mkdir(parents=True, exist_ok=True)
 
         misfits_plotter = MisfitsPlotting(receivers, 1, covariance)
         data_vector = single_job.data_vector
+        if vertical_only:
+            misfits_plotter.plot_ordered_stacked_traces(data_vector, synthetics, (*event_location, 20), figname=f"{figure_path}/stacked_{single_job.job_name}.png" if savefig else None, components=('Z',), time_window_s=time_window_s)
+            return
 
         plot_path = figure_path / f"./raw_{single_job.job_name}.png" if savefig else None
         misfits_plotter.raw_synthetic_misfits(data_vector, synthetics, figname=plot_path)
         print("Plotting raw misfits... ordered stacked traces.")
-        misfits_plotter.plot_ordered_stacked_traces(data_vector, synthetics, (*event_location, 20), figname=f"{figure_path}/stacked_{single_job.job_name}.png" if savefig else None)
+        misfits_plotter.plot_ordered_stacked_traces(data_vector, synthetics, (*event_location, 20), figname=f"{figure_path}/stacked_{single_job.job_name}.png" if savefig else None, time_window_s=time_window_s)
         try:
             if not only_raw:
                 plot_path = figure_path / f"./arrival_{single_job.job_name}.png" if savefig else None
