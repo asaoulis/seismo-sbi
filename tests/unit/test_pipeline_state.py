@@ -78,3 +78,18 @@ def test_the_real_trace_length_is_the_configured_duration_times_the_sampling_rat
         trace_lengths[sampling_rate_hz] = pipeline.data_manager.data_length
 
     assert trace_lengths == {1.0: 201, 0.5: 101}
+
+
+def test_load_configuration_takes_the_configured_seed_and_compression_methods(tmp_path, monkeypatch):
+    pipeline = _pipeline(tmp_path)
+    loaded = []
+    monkeypatch.setattr(SingleEventPipeline, "load_seismo_parameters",
+                        lambda self, *records: loaded.append(records))
+    config = SimpleNamespace(compression_methods=[("optimal_score", {})], sbi_seed=17,
+                             sim_parameters="sim", model_parameters="model", dataset_parameters="dataset")
+
+    pipeline.load_configuration(config)
+
+    assert pipeline.seed == 17
+    assert pipeline.compression_methods == [("optimal_score", {})]
+    assert loaded == [("sim", "model", "dataset")]

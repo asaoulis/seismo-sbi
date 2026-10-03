@@ -124,6 +124,16 @@ class SBIPipeline:
 
         self.data_manager = None
 
+    def load_configuration(self, config):
+        """Take the compression methods, the seed (``inference.sbi.seed``) and the seismic,
+        model and dataset parameters of a parsed
+        :class:`~seismo_sbi.sbi.configuration.SBI_Configuration`.
+        """
+        self.compression_methods = config.compression_methods
+        self.seed = config.sbi_seed
+        self.load_seismo_parameters(config.sim_parameters, config.model_parameters,
+                                    config.dataset_parameters)
+
     def load_seismo_parameters(self,
                                simulation_parameters : SimulationParameters, 
                                model_parameters : ModelParameters,
