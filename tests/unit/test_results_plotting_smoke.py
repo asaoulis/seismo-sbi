@@ -58,6 +58,21 @@ def test_the_reparametrised_corner_draws_each_reference_in_every_panel(tmp_path,
         assert all(colour in drawn for colour in reference_colours)
 
 
+def test_the_reparametrised_corner_labels_each_column_with_its_quantity():
+    from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
+
+    class _MomentTensorOnly:
+        def vector_to_simulation_inputs(self, vector, only_theta_fiducial=True):
+            return {"moment_tensor": vector}
+
+    m6 = np.array([[1.0, -0.2, -0.5, 0.3, 0.1, -0.4]]) * 1e16
+    converted, _ = MomentTensorReparametrised(None, _MomentTensorOnly()).convert_samples(m6, None, None)
+    gamma_deg, delta_deg = mts6_to_gamma_delta(m6)
+    names = [info.name for info in MomentTensorReparametrised.parameters_info]
+    assert converted[0, names.index("$\\gamma$")] == gamma_deg[0]
+    assert converted[0, names.index("$\\delta$")] == delta_deg[0]
+
+
 def test_vertical_only_misfits_are_one_figure(tmp_path):
     matplotlib.use("Agg")
 

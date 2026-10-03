@@ -65,8 +65,8 @@ class MomentTensorReparametrised:
 
                         
     parameters_info = [
-                        ParameterInformation("$\delta$", "°"),
-                        ParameterInformation("$\gamma$", '°'),
+                        ParameterInformation("$\gamma$", "°"),
+                        ParameterInformation("$\delta$", '°'),
                         ParameterInformation("$M_w$", ""),
                         ParameterInformation(r"$\textrm{strike}$", '°'),
                         ParameterInformation(r"$\textrm{dip}$", '°'),
