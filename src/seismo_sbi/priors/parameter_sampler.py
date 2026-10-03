@@ -48,6 +48,14 @@ def flatten_sample(values):
     return np.array(flat, dtype=object)
 
 class VelocityModelSampler:
+    """Perturbed copies of a layered velocity model shaped ``(6, n_layers)``. ``kappa`` is the
+    standard deviation of the perturbation in percent: per layer by default, or with ``"smooth"``
+    a fractional standard deviation of kappa/100 in the compressional and shear speeds, correlated
+    with depth over ``smooth_correlation_length_km``."""
+
+    #: Depth over which the smooth perturbations are correlated, in km.
+    smooth_correlation_length_km = 5.0
+
     perturbation_methods = {
         "default": perturb_model,
         "smooth": perturb_cps_model
@@ -60,7 +68,7 @@ class VelocityModelSampler:
         self.kwargs = {}
         if len(args) > 0 and args[0] == "smooth":
             self.perturbation_function = self.perturbation_methods["smooth"]
-            self.kwargs = {'corr_length_km': 5.0,
+            self.kwargs = {'corr_length_km': self.smooth_correlation_length_km,
                            'std_vp': kappa/100,
                            'std_vs': kappa/100,}
             logger.info(f"Using smooth perturbations with kappa={kappa}")
@@ -73,9 +81,12 @@ class VelocityModelSampler:
             yield self.perturbation_function(self.velocity_model, **self.kwargs)
 
 def velocity_model_sampler(velocity_model_args, num_samples):
-    """A generator of perturbed velocity models."""
-    velocity_model_path, kappa, *options = velocity_model_args
-    velocity_model = load_velocity_model(velocity_model_path)
+    """A generator of perturbed velocity models.
+
+    ``velocity_model_args`` is ``(velocity_model, kappa[, "smooth"])``, the model read by
+    :meth:`ParameterSampler.from_configuration`.
+    """
+    velocity_model, kappa, *options = velocity_model_args
     sampler = iter(VelocityModelSampler(velocity_model, kappa, num_samples, *options))
     return sampler
 
@@ -98,13 +109,18 @@ class ParameterSampler:
     @classmethod
     def from_configuration(cls, parameters, sampling_method):
         """The sampler ``sampling_method`` names for each parameter of ``parameters``: a key of
-        ``SAMPLERS`` or a catalogue-prior closure."""
+        ``SAMPLERS`` or a catalogue-prior closure. A ``velocity model`` parameter's bounds are
+        ``(path, kappa[, "smooth"])``; the model at ``path`` is read here."""
         samplers = {key: sampling_method[key] if callable(sampling_method[key]) else SAMPLERS[sampling_method[key]]
                     for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
         # A constant parameter fills len(fiducial) slots of the sample vector, not its two bounds.
         sampler_args = {key: (parameters.get_parameter_values(key) if sampler is constant_sampler
                               else parameters.bounds[key])
                         for key, sampler in samplers.items()}
+        for key, sampler in samplers.items():
+            if sampler is velocity_model_sampler:
+                velocity_model_path, kappa, *options = sampler_args[key]
+                sampler_args[key] = (load_velocity_model(velocity_model_path), kappa, *options)
         return cls(parameters, samplers, sampler_args)
 
     def draw_simulation_inputs(self, num_samples):
