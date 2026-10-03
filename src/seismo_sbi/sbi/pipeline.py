@@ -396,7 +396,7 @@ class SBIPipeline:
                     deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.dataset_generation_samplers
                 )
 
-    def generate_simulation_data(self, dataset_parameters : DatasetGenerationParameters, simulation_indices = None, priors = (None, None)):
+    def generate_simulation_data(self, dataset_parameters : DatasetGenerationParameters, simulation_indices = None):
 
         if simulation_indices is None:
             num_simulations = dataset_parameters.num_simulations
@@ -405,7 +405,7 @@ class SBIPipeline:
 
         dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.simulations_output_path + '/train', self.num_parallel_jobs,
                                              seed=self.seed)
-        dataset_generator.run_and_save_simulations(self.parameters, sampling_method, simulation_indices, priors=priors)
+        dataset_generator.run_and_save_simulations(self.parameters, sampling_method, simulation_indices)
         return dataset_generator
 
     def simulate_test_jobs(self, dataset_parameters : DatasetGenerationParameters, test_jobs : TestJobs):
@@ -687,7 +687,7 @@ class SingleEventPipeline(SBIPipeline):
         statistic_scaler = self.ground_truth_scaler
         x_0_scaled = statistic_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
 
-        dataset = self.generate_simulation_data(dataset_details, priors=priors)
+        dataset = self.generate_simulation_data(dataset_details)
         raw_compressed_dataset = self.data_manager.compress_dataset(
             compressor, param_names, self.simulations_output_path, self.training_noise_sampler,
             seed=self.seed

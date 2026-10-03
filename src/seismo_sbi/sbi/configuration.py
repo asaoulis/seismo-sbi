@@ -371,6 +371,11 @@ class SBI_Configuration:
             else:
                 self._append_to_noise_methods(noise_model, options)
 
+        for event_name, event_job in jobs_config["real_events"].items():
+            if isinstance(event_job, dict) and "priors" in event_job:
+                raise InvalidConfiguration(
+                    f"real_events.{event_name}.priors: a per-event prior is not supported; the prior is "
+                    "the parameters' bounds with simulations.sampling_method.")
         self.real_event_jobs = jobs_config["real_events"]
 
 

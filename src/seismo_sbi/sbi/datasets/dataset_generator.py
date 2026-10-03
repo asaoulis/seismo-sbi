@@ -149,29 +149,6 @@ def transform_sampling_func(sampling_func, transform_func):
 
 from itertools import chain
 
-from scipy.stats import truncnorm
-class TruncatedGaussianSampler:
-
-    def __init__(self, mean, cov, lower, upper):
-        std = np.sqrt(cov)
-        self.truncated_normal = truncnorm(
-            (lower - mean) / std,
-            (upper - mean) / std,
-            loc=mean,
-            scale=std
-        )
-        self.num_dims = len(mean)
-
-    def sampler(self, num_samples):
-        samples= self.truncated_normal.rvs(size=(num_samples, self.num_dims))
-        for sample in samples:
-            yield sample
-
-def truncated_gaussian_sampler(bounds, num_samples):
-    sampler = TruncatedGaussianSampler(*bounds)
-    for sample in sampler.sampler(num_samples):
-        yield sample
-
 from seismo_sbi.simulators.cps.CPS import perturb_model
 from seismo_sbi.simulators.cps.smooth_perturbations import perturb_cps_model
 
@@ -212,7 +189,6 @@ class DatasetGenerator(ParallelSimulationRunner):
 
     sampler_lookup_map = {"uniform": uniform_sampler,
                           "constant": constant_sampler,
-                          "truncated gaussian": truncated_gaussian_sampler,
                           "velocity model": velocity_model_sampler}
 
     def __init__(self, simulator, output_base_path, num_parallel_jobs=1, seed=None):
@@ -224,7 +200,7 @@ class DatasetGenerator(ParallelSimulationRunner):
         self.seed = seed
 
 
-    def run_and_save_simulations(self, parameters : ModelParameters, sampler_details, indices, sample_namer = None, priors= (None, None)):
+    def run_and_save_simulations(self, parameters : ModelParameters, sampler_details, indices, sample_namer = None):
         if sample_namer is None:
             sample_namer = self._sample_namer
         try:
@@ -232,15 +208,8 @@ class DatasetGenerator(ParallelSimulationRunner):
         except TypeError:
             num_samples = indices
 
-        samplers = self._create_sampler_generator_dict(parameters, sampler_details, priors=priors)
-        if priors[0] is None:
-            sampler_args = self._sampler_args(parameters, samplers)
-        else:
-            sampler_args = {key : (parameters.vector_to_simulation_inputs(priors[0])[key], 
-                                   parameters.vector_to_simulation_inputs(priors[1])[key],
-                                   parameters.bounds[key][0],
-                                   parameters.bounds[key][1]) 
-                                   for key in parameters.names.keys()}
+        samplers = self._create_sampler_generator_dict(parameters, sampler_details)
+        sampler_args = self._sampler_args(parameters, samplers)
 
         sampler_callable = lambda num_samples: zip(*[sampler(sampler_args[key], num_samples) for key, sampler in samplers.items()])
         
@@ -269,11 +238,8 @@ class DatasetGenerator(ParallelSimulationRunner):
         return DatasetGenerator.sampler_lookup_map[entry]
 
     @staticmethod
-    def _create_sampler_generator_dict(parameters : ModelParameters, sampler_details, priors = (None, None)):
-        if priors[0] is None:
-            samplers = {key : DatasetGenerator._resolve_sampler(sampler_details[key]) for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
-        else:
-            samplers = {key : DatasetGenerator.sampler_lookup_map['truncated gaussian'] for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
+    def _create_sampler_generator_dict(parameters : ModelParameters, sampler_details):
+        samplers = {key : DatasetGenerator._resolve_sampler(sampler_details[key]) for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
 
         return samplers
 
@@ -290,8 +256,8 @@ class DatasetGenerator(ParallelSimulationRunner):
                 for key, sampler in sampler_generators.items()}
 
     @staticmethod
-    def create_samplers(parameters : ModelParameters, sampler_details, priors = (None, None)):
-        sampler_generators = DatasetGenerator._create_sampler_generator_dict(parameters, sampler_details, priors)
+    def create_samplers(parameters : ModelParameters, sampler_details):
+        sampler_generators = DatasetGenerator._create_sampler_generator_dict(parameters, sampler_details)
         sampler_args = DatasetGenerator._sampler_args(parameters, sampler_generators)
         samplers = {key : partial(sampler, sampler_args[key]) for key, sampler in sampler_generators.items()}
 

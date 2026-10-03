@@ -73,7 +73,7 @@ class DataManager:
                 priors = (None, None)
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
-                priors = tuple(real_event_data['priors'])
+                priors = (None, None)
             D = self.load_simulation_vector(real_event_path)
             covariance_data = self.load_noise_parametrisation_data(real_event_path)
             for test_noise_name in test_noises.keys():

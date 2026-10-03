@@ -770,3 +770,10 @@ def test_from_file_replaces_the_output_directory_and_database_path(monkeypatch, 
         as_written.pipeline_parameters._replace(output_directory="x")
     assert moved.sim_parameters._replace(syngine_address="x", receivers=None) == \
         as_written.sim_parameters._replace(syngine_address="x", receivers=None)
+
+
+def test_a_per_event_prior_is_rejected_at_parse_time():
+    jobs = {"simulations": {"random_events": 0, "fixed_events": [], "custom_events": {}}, "plots": {},
+            "noise_models": {}, "real_events": {"event": {"path": "event.h5", "priors": [[0.0], [1.0]]}}}
+    with pytest.raises(InvalidConfiguration, match="per-event prior"):
+        SBI_Configuration().parse_jobs_config(jobs)
