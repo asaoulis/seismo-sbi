@@ -16,8 +16,8 @@ html_theme = "furo"
 exclude_patterns = ["_build"]
 
 examples = Path(__file__).parent / "_generated" / "examples"
-examples.mkdir(parents=True, exist_ok=True)
+shutil.rmtree(examples, ignore_errors=True)
+examples.mkdir(parents=True)
 for name in ("ridgecrest_obspy", "npe_flagship", "nuisances", "custom_forward_model", "02_noise_covariances_and_likelihood",
-             "03_npe_training_and_evaluation", "05_resolution_and_tradeoffs",
              "theory_errors_LV2", "azores_inversion"):
     shutil.copy(Path(__file__).parents[1] / "examples" / f"{name}.ipynb", examples)

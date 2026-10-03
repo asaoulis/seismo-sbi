@@ -83,12 +83,9 @@ Work through them in this order:
    Gaussian-likelihood covariance on synthetic noise, a theory-error covariance from an ensemble of
    Earth models, and the coverage of each score-compressed posterior on data from the reference Earth
    and from an Earth 1.5 % faster.
-6. [`03_npe_training_and_evaluation`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/03_npe_training_and_evaluation.ipynb): dataset
-   generation, training-time augmentation, training a neural compressor and flow, and the
-   validation, calibration (TARP) and evaluation plots.
-7. [`theory_errors_LV2`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb): theory-error SBI on the LV2 Long Valley
+6. [`theory_errors_LV2`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb): theory-error SBI on the LV2 Long Valley
    Caldera event, against the Gaussian likelihood. Needs CPS and the git-lfs checkpoint.
-8. [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb): the 13/01/2022 Azores event of
+7. [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb): the 13/01/2022 Azores event of
    [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238), a fixed-location moment-tensor
    inversion with SBI and the Gaussian likelihood, then the full 10-parameter moment tensor,
    location and origin time.

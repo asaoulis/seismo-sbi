@@ -11,8 +11,8 @@ further simulation. This is what builds whole moment-tensor catalogues.
 One YAML file drives training: the same blocks as an inversion (see
 [the configuration guide](configuration.md)) plus the `ml_*` blocks below.
 `examples/configs/npe_example.yaml` is a small complete example, and the
-[`03_npe_training_and_evaluation`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/03_npe_training_and_evaluation.ipynb)
-notebook runs it step by step.
+[`npe_flagship`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/npe_flagship.ipynb)
+notebook trains one with nuisances on a real event, from `examples/configs/npe_flagship.yaml`.
 
 ## Running a training
 

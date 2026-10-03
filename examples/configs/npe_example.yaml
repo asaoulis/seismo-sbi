@@ -1,7 +1,5 @@
 # Neural posterior estimation of a moment tensor on synthetic data: five Californian stations,
-# vertical component, 10 s PREM Instaseis database, white Gaussian noise. Driven by
-# examples/03_npe_training_and_evaluation.ipynb, which overrides the database path and the
-# output directory.
+# vertical component, 10 s PREM Instaseis database, white Gaussian noise.
 
 run_name: npe_example
 output_directory: './data/pipeline_outputs/npe_example'

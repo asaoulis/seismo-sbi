@@ -33,7 +33,7 @@ def markdown_headings(notebook_path):
 
 
 def test_the_examples_page_lists_notebooks():
-    assert len(listed_notebooks()) >= 9
+    assert len(listed_notebooks()) >= 7
 
 
 @pytest.mark.parametrize("name", listed_notebooks())

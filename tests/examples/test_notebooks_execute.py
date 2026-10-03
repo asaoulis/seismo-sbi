@@ -21,7 +21,6 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 REFERENCE = Path(__file__).with_name("notebook_outputs.json")
 INSTASEIS_DB = Path(os.environ.get("INSTASEIS_DB", "/data/shared/ROSA_PREM_10s_disc"))
-CPS_PROGRAM = Path(os.environ.get("CPS_PATH", ""), "hprep96")
 INSTASEIS_DB_20S = Path(os.environ.get("INSTASEIS_DB_20S", "/data/shared/prem_a_20s"))
 #: Relative tolerance on every printed number.
 RTOL = 1e-6
@@ -32,21 +31,17 @@ NOTEBOOKS = {
     "npe_flagship": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
     "custom_forward_model": [],
     "02_noise_covariances_and_likelihood": [INSTASEIS_DB],
-    "03_npe_training_and_evaluation": [INSTASEIS_DB],
-    "05_resolution_and_tradeoffs": [CPS_PROGRAM],
     "azores_inversion": [INSTASEIS_DB, REPO / "examples" / "data" / "azores"],
     "theory_errors_LV2": [REPO / "examples" / "data", REPO / "examples" / "ml-checkpoints"],
 }
 #: Notebook to about three times its usual running time in seconds; a cell still running after
 #: that long fails the notebook, so a hung worker pool fails fast.
 TIMEOUT_S = {"ridgecrest_obspy": 120, "nuisances": 1800, "npe_flagship": 2400, "custom_forward_model": 120, "02_noise_covariances_and_likelihood": 600,
-             "03_npe_training_and_evaluation": 2400,
-             "05_resolution_and_tradeoffs": 900, "azores_inversion": 2400, "theory_errors_LV2": 5400}
+             "azores_inversion": 2400, "theory_errors_LV2": 5400}
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
 #: they raise is compared.
-STOCHASTIC_CELLS = {"nuisances": {5, 6}, "npe_flagship": {5, 6, 8, 9, 10, 11}, "theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13, 17}, "azores_inversion": {2, 8, 11, 14},
-                    "03_npe_training_and_evaluation": {3, 4, 5}}
+STOCHASTIC_CELLS = {"nuisances": {5, 6}, "npe_flagship": {5, 6, 8, 9, 10, 11}, "theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13, 17}, "azores_inversion": {2, 8, 11, 14}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),
          re.compile(r"\d\d:\d\d(:\d\d)?"), re.compile(r"0x[0-9a-f]+"),
