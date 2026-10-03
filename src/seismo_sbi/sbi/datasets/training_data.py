@@ -153,7 +153,7 @@ def rescale_training_noise_to_event(pipeline, config):
             "parametrise it from.")
     real_noise_path = next(iter(config.real_event_jobs.values()))
     covariance_data = pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
-    pipeline.training_noise_sampler.rescale_to(covariance_data)
+    pipeline.rescale_training_noise(covariance_data)
 
 
 def preload_noise_cache(pipeline, cache):

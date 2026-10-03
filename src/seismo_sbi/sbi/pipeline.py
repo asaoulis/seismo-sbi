@@ -117,6 +117,9 @@ class SBIPipeline:
         self.extra_gradients = None
 
         self.training_noise_sampler = None
+        #: Whether the training noise is rescaled to each event's pre-event noise: False for white
+        #: ``gaussian`` noise and for ``real_noise`` with ``rescale: false``.
+        self.training_noise_follows_event = False
         self.test_noises = {}
 
         self.parameter_sampler = None
@@ -356,7 +359,10 @@ class SBIPipeline:
             
         
         train_noise_type =  sbi_noise_model['type']
-        
+        self.training_noise_follows_event = (
+            train_noise_type in ('gaussian_filtered', 'empirical_gaussian')
+            or (train_noise_type == 'real_noise' and sbi_noise_model.get('rescale', True)))
+
         if train_noise_type == 'gaussian':
             train_noise_level = sbi_noise_model['noise_level']
             self.training_noise_sampler = WhiteNoiseSampler(train_noise_level, self.data_vector_length)
@@ -365,16 +371,12 @@ class SBIPipeline:
             self.training_noise_sampler = self.data_cov_mat.create_sampler()
         elif train_noise_type == 'real_noise':
             noise_catalogue_path = sbi_noise_model['noise_catalogue_path']
-            # rescale=false freezes the sampler so it draws noise windows verbatim, never
-            # rescaled to one event's pre-event variance.
-            rescale = sbi_noise_model.get('rescale', True)
             # allow_incomplete zero-fills stations a window lacks; valid only with variable-station
             # training, which masks them out.
             allow_incomplete = sbi_noise_model.get('allow_incomplete', False)
             self.training_noise_sampler = RealNoiseSampler(self.simulation_parameters,
                                                            noise_catalogue_path,
                                                            self.trace_length,
-                                                           freeze_scale=not rescale,
                                                            allow_incomplete=allow_incomplete)
         elif train_noise_type == 'empirical_gaussian':
             self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
@@ -383,6 +385,12 @@ class SBIPipeline:
                 f"Unknown inference.sbi.noise_model type {train_noise_type!r}: expected one of "
                 "'gaussian', 'gaussian_filtered', 'real_noise' or 'empirical_gaussian'.")
 
+
+    def rescale_training_noise(self, covariance_data):
+        """Rescale the training noise to one event's pre-event noise ``covariance_data``
+        ``{station: {component: autocovariance}}``, unless the noise model keeps its own level."""
+        if self.training_noise_follows_event:
+            self.training_noise_sampler.rescale_to(covariance_data)
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
         """Run the derivative stencils the compression methods need; returns the compression data."""
@@ -565,7 +573,7 @@ class SingleEventPipeline(SBIPipeline):
             self.parameters = deepcopy(original_parameters)
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
-                self.training_noise_sampler.rescale_to(covariance)
+                self.rescale_training_noise(covariance)
 
             plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
 

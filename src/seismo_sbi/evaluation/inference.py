@@ -128,7 +128,7 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
             raise ValueError("setup_training_noise requires a jobs.real_events entry.")
         real_noise_path = next(iter(config.real_event_jobs.values()))
         cov_data = sbi_pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
-        sbi_pipeline.training_noise_sampler.rescale_to(cov_data)
+        sbi_pipeline.rescale_training_noise(cov_data)
 
     return config, sbi_pipeline, original_parameters
 

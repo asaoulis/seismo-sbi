@@ -22,7 +22,7 @@ class RealNoiseSampler(NoiseSampler):
     """
 
     def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None,
-                 freeze_scale: bool = False, allow_incomplete: bool = False):
+                 allow_incomplete: bool = False):
         """``simulation_parameters`` supplies the receivers and components; ``directory`` holds one
         HDF5 noise window per file, or is None when the windows are given in memory
         (:meth:`from_windows`).
@@ -55,9 +55,6 @@ class RealNoiseSampler(NoiseSampler):
         self._presence_cache = None
         self._presence_bits = None
 
-        # When True the sampler draws windows verbatim and never rescales them to one event's
-        # pre-event variance, which is what training amortised over events needs.
-        self.freeze_scale = freeze_scale
         #: ``{station: {component: variance}}`` the draws are rescaled to, or None.
         self.target_variances = None
 
@@ -83,14 +80,13 @@ class RealNoiseSampler(NoiseSampler):
         every component each receiver records, in receiver order, as :meth:`draw` returns
         them. ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; with
         it a draw carries its window's row of ``present`` as with ``allow_incomplete``, and the
-        rows are zero where a station is absent. Windows are drawn as recorded, never rescaled.
+        rows are zero where a station is absent. Windows are drawn as recorded.
         """
         simulation_parameters = SimulationParameters(
             receivers=receivers, components=components, seismogram_duration=None,
             syngine_address=None, sampling_rate=None, processing={},
         )
-        sampler = cls(simulation_parameters, None, freeze_scale=True,
-                      allow_incomplete=present is not None)
+        sampler = cls(simulation_parameters, None, allow_incomplete=present is not None)
         sampler._noise_cache = np.ascontiguousarray(noise_windows)
         if present is not None:
             sampler._presence_cache = np.ascontiguousarray(present, dtype=bool)
@@ -263,7 +259,5 @@ class RealNoiseSampler(NoiseSampler):
 
     def rescale_to(self, covariance_data):
         """Rescale later draws to the pre-event variances of ``covariance_data``
-        ``{station: {component: autocovariance}}``; no-op if ``freeze_scale``."""
-        if self.freeze_scale:
-            return
+        ``{station: {component: autocovariance}}``."""
         self.target_variances = pre_event_variances(covariance_data)

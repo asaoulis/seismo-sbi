@@ -67,7 +67,7 @@ for damping in [0.0, 0.1]:
     for single_job in job_data:
         sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
         if covariance is not None:
-            sbi_pipeline.training_noise_sampler.rescale_to(covariance)
+            sbi_pipeline.rescale_training_noise(covariance)
 
         plotter = SBIPipelinePlotter(sbi_pipeline.job_outputs_path / f"{test_noise}", sbi_pipeline.parameters)
 

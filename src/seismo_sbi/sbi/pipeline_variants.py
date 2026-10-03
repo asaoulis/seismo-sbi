@@ -35,7 +35,7 @@ class MultiEventPipeline(SingleEventPipeline):
         for i, single_job in enumerate(job_data):
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
-                self.training_noise_sampler.rescale_to(covariance)
+                self.rescale_training_noise(covariance)
 
             if theta0_dict is not None:
                 theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
@@ -139,7 +139,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
 
                     sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
                     if covariance is not None:
-                        self.training_noise_sampler.rescale_to(covariance)
+                        self.rescale_training_noise(covariance)
 
                     SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
 
@@ -214,7 +214,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
         for single_job in job_data:
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
-                self.training_noise_sampler.rescale_to(covariance)
+                self.rescale_training_noise(covariance)
 
             plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
 

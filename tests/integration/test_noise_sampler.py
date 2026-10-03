@@ -1,10 +1,13 @@
 """Integration tests: RealNoiseSampler loads H5 catalogue and returns correctly-shaped vectors."""
 
+from types import SimpleNamespace
+
 import h5py
 import numpy as np
 import pytest
 
 from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
+from seismo_sbi.sbi.pipeline import SBIPipeline
 from seismo_sbi.sbi.types.parameters import SimulationParameters
 
 from tests.conftest import TRACE_LEN
@@ -106,36 +109,34 @@ class TestRealNoiseSampler:
         assert "STA1" in misc
 
 
-class TestRealNoiseSamplerFreezeScale:
-    """freeze_scale=True is the generic-event mode: rescale_to is a
-    no-op so draws are never rescaled to a single event's pre-event variance."""
+class TestTrainingNoiseFollowsTheEvent:
+    """The noise model decides whether the pipeline rescales its training noise to an event's
+    pre-event noise: recorded noise by default, never with ``rescale: false`` or white noise."""
 
-    def _sampler(self, receivers, noise_catalogue_dir, freeze_scale):
-        return RealNoiseSampler(
-            simulation_parameters=_make_sim_params(receivers),
-            directory=noise_catalogue_dir,
-            freeze_scale=freeze_scale,
-        )
+    @staticmethod
+    def _pipeline(receivers, noise_model, noise_catalogue_dir):
+        stub = SimpleNamespace(simulation_parameters=_make_sim_params(receivers), trace_length=TRACE_LEN,
+                               data_vector_length=TRACE_LEN, test_noises={})
+        SBIPipeline.load_test_noises(stub, {"noise_catalogue_path": noise_catalogue_dir, **noise_model}, [])
+        return stub
 
-    def test_default_is_unfrozen(self, receivers, noise_catalogue_dir):
-        sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
-        assert sampler.freeze_scale is False
+    def _event_covariance(self, stub):
+        return RealNoiseSampler(stub.simulation_parameters, None).data_loader.load_misc_data(
+            sorted(stub.training_noise_sampler.noise_paths)[0])
 
-    def test_frozen_ignores_a_rescale_target(self, receivers, noise_catalogue_dir):
-        sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=True)
-        misc = sampler.draw_with_covariance().covariance_data
-        sampler.rescale_to(misc)
-        assert sampler.target_variances is None
-        result = sampler.draw()
-        assert result.covariance_data is None
-        assert result.noise.shape == (TRACE_LEN,)
+    @pytest.mark.parametrize("noise_model, follows", [({"type": "real_noise"}, True),
+                                                      ({"type": "real_noise", "rescale": False}, False)])
+    def test_recorded_noise_follows_the_event_unless_rescale_is_off(self, receivers, noise_catalogue_dir,
+                                                                    noise_model, follows):
+        stub = self._pipeline(receivers, noise_model, noise_catalogue_dir)
+        SBIPipeline.rescale_training_noise(stub, self._event_covariance(stub))
+        assert (stub.training_noise_sampler.target_variances is not None) is follows
+        assert (stub.training_noise_sampler.draw().covariance_data is not None) is follows
 
-    def test_unfrozen_sets_the_rescale_target(self, receivers, noise_catalogue_dir):
-        sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
-        misc = sampler.draw_with_covariance().covariance_data
-        sampler.rescale_to(misc)
-        assert sampler.target_variances is not None
-        assert sampler.draw().covariance_data is not None
+    def test_white_noise_keeps_its_level(self, receivers, noise_catalogue_dir):
+        stub = self._pipeline(receivers, {"type": "gaussian", "noise_level": 2.0}, noise_catalogue_dir)
+        SBIPipeline.rescale_training_noise(stub, {"STA1": {"Z": np.array([1.0])}})
+        assert stub.training_noise_sampler.noise_level == 2.0
 
 
 class TestRealNoiseSamplerShortWindowSkip:
