@@ -26,7 +26,7 @@ def test_a_new_pipeline_declares_its_state(tmp_path):
 
 def test_the_pipeline_keeps_the_configured_receiver_time_shifts(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline_module, "GeneralSimulatorWrapper", _StubSimulatorWrapper)
-    monkeypatch.setattr(pipeline_module.DatasetGenerator, "create_samplers", staticmethod(lambda *args: {}))
+    monkeypatch.setattr(pipeline_module.ParameterSampler, "from_configuration", classmethod(lambda *args: None))
     receivers = Receivers(receivers=[Receiver(37.0, -118.0, "XX", "AAA"), Receiver(38.0, -119.0, "XX", "BBB")])
     receivers.set_time_shifts({"AAA": 3})
     parameters = ModelParameters()
@@ -66,7 +66,7 @@ def test_multi_event_real_jobs_are_read_at_the_configured_trace_length():
 
 def test_the_real_trace_length_is_the_configured_duration_times_the_sampling_rate(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline_module, "GeneralSimulatorWrapper", _StubSimulatorWrapper)
-    monkeypatch.setattr(pipeline_module.DatasetGenerator, "create_samplers", staticmethod(lambda *args: {}))
+    monkeypatch.setattr(pipeline_module.ParameterSampler, "from_configuration", classmethod(lambda *args: None))
     receivers = Receivers(receivers=[Receiver(37.0, -118.0, "XX", "AAA")])
     parameters = ModelParameters()
     parameters.theta_fiducial = {"moment_tensor": [1e15] * 6}
@@ -93,3 +93,30 @@ def test_load_configuration_takes_the_configured_seed_and_compression_methods(tm
     assert pipeline.seed == 17
     assert pipeline.compression_methods == [("optimal_score", {})]
     assert loaded == [("sim", "model", "dataset")]
+
+
+def test_training_sources_are_drawn_from_the_bounds_and_sampling_method_at_generation(tmp_path, monkeypatch):
+    captured = []
+
+    class _CapturingGenerator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run_and_save_simulations(self, simulation_inputs, output_paths):
+            captured.extend(zip(simulation_inputs, output_paths))
+
+    monkeypatch.setattr(pipeline_module, "DatasetGenerator", _CapturingGenerator)
+    pipeline = _pipeline(tmp_path)
+    pipeline.simulator_wrapper = _StubSimulatorWrapper()
+    pipeline.parameters = ModelParameters()
+    pipeline.parameters.names = {"moment_tensor": ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"]}
+    pipeline.parameters.theta_fiducial = {"moment_tensor": [1e15] * 6}
+    pipeline.parameters.bounds = {"moment_tensor": [[-1e17] * 6, [1e17] * 6]}
+    pipeline.parameter_sampler = pipeline_module.ParameterSampler.from_configuration(
+        pipeline.parameters, {"moment_tensor": "constant"})
+    pipeline.parameters.bounds["moment_tensor"] = [[0.0] * 6, [1e15] * 6]
+
+    pipeline.generate_simulation_data(SimpleNamespace(num_simulations=4, sampling_method={"moment_tensor": "uniform"}))
+
+    assert [path for _, path in captured] == [f"{pipeline.simulations_output_path}/train/sim_{i}.h5" for i in range(4)]
+    assert all(0.0 <= value <= 1e15 for inputs, _ in captured for value in inputs["moment_tensor"])

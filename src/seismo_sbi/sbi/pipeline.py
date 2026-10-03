@@ -42,6 +42,7 @@ from .scalers import FlexibleScaler
 from .datasets.dataset_compressor import DatasetCompressor
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
+from seismo_sbi.priors.parameter_sampler import ParameterSampler
 from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator
 
 from .data_manager import DataManager
@@ -117,7 +118,7 @@ class SBIPipeline:
         self.training_noise_sampler = None
         self.test_noises = {}
 
-        self.dataset_generation_samplers = None
+        self.parameter_sampler = None
         self.data_cov_mat = None
         self.empirical_cov_mat = None
         self.adaptive_covariance = None
@@ -148,13 +149,13 @@ class SBIPipeline:
         self.simulation_parameters = simulation_parameters
 
         sampling_method = dataset_parameters.sampling_method
-        self.dataset_generation_samplers = DatasetGenerator.create_samplers(self.parameters, sampling_method)
+        self.parameter_sampler = ParameterSampler.from_configuration(self.parameters, sampling_method)
 
         self.num_dim = model_parameters.parameter_to_vector('theta_fiducial').shape[0]
 
         data_loader = SimulationDataLoader(simulation_parameters.components, simulation_parameters.receivers)
 
-        self.simulator_wrapper = GeneralSimulatorWrapper(simulation_parameters, self.parameters, data_loader, self.dataset_generation_samplers)
+        self.simulator_wrapper = GeneralSimulatorWrapper(simulation_parameters, self.parameters, data_loader, self.parameter_sampler)
 
         dataset_compressor = DatasetCompressor(data_loader, self.simulator_wrapper.simulation_save_callable, self.num_parallel_jobs, downsampled_length)
         data_length = compute_data_vector_length(simulation_parameters.seismogram_duration, simulation_parameters.sampling_rate) + 1
@@ -393,28 +394,27 @@ class SBIPipeline:
         if only_moment_tensor_variable:
             self.simulator_wrapper.set_simulation_objects(
                     ('kernel', score_compression_data), self.simulation_parameters, 
-                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.dataset_generation_samplers
+                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler
                 )
 
-    def generate_simulation_data(self, dataset_parameters : DatasetGenerationParameters, simulation_indices = None):
+    def generate_simulation_data(self, dataset_parameters : DatasetGenerationParameters):
+        """Simulate ``num_simulations`` training sources drawn from the current bounds with
+        ``dataset_parameters.sampling_method``, written to ``<simulations_output_path>/train/sim_<i>.h5``."""
+        num_simulations = dataset_parameters.num_simulations
+        parameter_sampler = ParameterSampler.from_configuration(self.parameters, dataset_parameters.sampling_method)
+        output_paths = [self.simulations_output_path + f'/train/sim_{i}.h5' for i in range(num_simulations)]
 
-        if simulation_indices is None:
-            num_simulations = dataset_parameters.num_simulations
-            simulation_indices = (0, num_simulations)
-        sampling_method = dataset_parameters.sampling_method
-
-        dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.simulations_output_path + '/train', self.num_parallel_jobs,
+        dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.num_parallel_jobs,
                                              seed=self.seed)
-        dataset_generator.run_and_save_simulations(self.parameters, sampling_method, simulation_indices)
-        return dataset_generator
+        dataset_generator.run_and_save_simulations(parameter_sampler.draw_simulation_inputs(num_simulations), output_paths)
 
     def simulate_test_jobs(self, dataset_parameters : DatasetGenerationParameters, test_jobs : TestJobs):
         """Simulate the random, fixed-mechanism and custom test events; returns their HDF5 paths."""
-        sampling_method = dataset_parameters.sampling_method
-        dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.simulations_output_path + '/test', self.num_parallel_jobs)
+        parameter_sampler = ParameterSampler.from_configuration(self.parameters, dataset_parameters.sampling_method)
+        dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.num_parallel_jobs)
 
-        test_sample_namer = lambda num_samples: (self.simulations_output_path + f"/random_event_{i}.h5" for i in range(num_samples))
-        dataset_generator.run_and_save_simulations(self.parameters, sampling_method, test_jobs.random_events, sample_namer=test_sample_namer)
+        random_event_paths = [self.simulations_output_path + f"/random_event_{i}.h5" for i in range(test_jobs.random_events)]
+        dataset_generator.run_and_save_simulations(parameter_sampler.draw_simulation_inputs(test_jobs.random_events), random_event_paths)
 
         test_jobs_paths = []
         if len(test_jobs.fixed_events):
@@ -427,7 +427,7 @@ class SBIPipeline:
         dataset_generator.run_parallel_simulations(custom_job_args)
 
         custom_job_sim_paths = [Path(job_name) for _, job_name in custom_job_args]
-        test_jobs_sim_paths = [Path(sim_args) for sim_args in test_sample_namer(test_jobs.random_events)]
+        test_jobs_sim_paths = [Path(path) for path in random_event_paths]
 
         test_jobs_paths  +=  test_jobs_sim_paths + custom_job_sim_paths
 
@@ -546,7 +546,7 @@ class SingleEventPipeline(SBIPipeline):
         if only_moment_tensor_variable:
             self.simulator_wrapper.set_simulation_objects(
                     ('kernel', score_compression_data), self.simulation_parameters, 
-                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.dataset_generation_samplers
+                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler
                 )
             self.least_squares_solver.simulator = self.simulator_wrapper.simulator
 
@@ -687,12 +687,11 @@ class SingleEventPipeline(SBIPipeline):
         statistic_scaler = self.ground_truth_scaler
         x_0_scaled = statistic_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
 
-        dataset = self.generate_simulation_data(dataset_details)
+        self.generate_simulation_data(dataset_details)
         raw_compressed_dataset = self.data_manager.compress_dataset(
             compressor, param_names, self.simulations_output_path, self.training_noise_sampler,
             seed=self.seed
         )
-        dataset.clear_all_outputs()
 
         train_data = torch.Tensor(self.scale_dataset(raw_compressed_dataset, self.ground_truth_scaler, statistic_scaler))
         train_data, raw_compressed_dataset = self.clean_train_data(train_data, raw_compressed_dataset)

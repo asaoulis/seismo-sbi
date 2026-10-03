@@ -241,8 +241,8 @@ class SBI_Configuration:
     def _normalise_sampling_method(sampling_method):
         """Resolve dict-form ``sampling_method`` entries into built samplers.
 
-        String entries pass through unchanged (looked up in ``DatasetGenerator.sampler_lookup_map``
-        later). A dict entry selects a catalogue-driven prior: its ``type`` names a factory in
+        String entries pass through unchanged (looked up in
+        ``seismo_sbi.priors.parameter_sampler.SAMPLERS`` later). A dict entry selects a catalogue-driven prior: its ``type`` names a factory in
         :data:`SAMPLER_FACTORIES`, any ``catalogue`` path is loaded into an ``EventCatalogue``, and
         the factory builds the ``(args, num_samples)`` sampler.
         """

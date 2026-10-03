@@ -10,7 +10,6 @@ from copy import copy
 
 import numpy as np
 
-from seismo_sbi.sbi.datasets.dataset_generator import flatten_sample
 from seismo_sbi.nuisance_effects.post_processing import (
     PostProcessingChain, build_post_processing_chain, with_sampling_rate)
 from seismo_sbi.simulators.registry import build_simulator
@@ -20,16 +19,16 @@ from seismo_sbi.sbi.configuration import ModelParameters, SimulationParameters
 
 class GeneralSimulatorWrapper:
 
-    def __init__(self, simulation_parameters: SimulationParameters,  parameters, data_loader, samplers):
+    def __init__(self, simulation_parameters: SimulationParameters,  parameters, data_loader, parameter_sampler):
 
         default_config = (simulation_parameters.simulation_type, None)
-        self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, samplers)
+        self.set_simulation_objects(default_config, simulation_parameters, parameters, data_loader, parameter_sampler)
         self.data_loader_callable = data_loader.convert_sim_data_to_array
         #: The configured forward model's source-time convention, which a kernel simulator built
         #: from its synthetics shares.
         self.stf_alignment = self.simulator.stf_alignment
 
-    def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, samplers):
+    def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, parameter_sampler):
 
         # Nuisances staged "training_augmentation" are folded in per batch by the dataloader.
         nuisance_stage = getattr(parameters, 'nuisance_stage', {})
@@ -50,7 +49,7 @@ class GeneralSimulatorWrapper:
 
         self.simulation_save_callable = self.simulator.execute_sim_and_save_outputs
 
-        self.simulation_callable = partial(self.input_output_simulation, parameters, data_loader, samplers, self.simulator)
+        self.simulation_callable = partial(self.input_output_simulation, parameters, data_loader, parameter_sampler, self.simulator)
 
     def select_and_initialise_simulator(self, simulator_config, simulation_parameters, post_processing_effects=None):
         return build_simulator(simulator_config, simulation_parameters, post_processing_effects,
@@ -88,12 +87,11 @@ class GeneralSimulatorWrapper:
         data_vector = per_trace.flatten()
         return (data_vector, traces) if return_traces else data_vector
 
-    def input_output_simulation(self, parameters : ModelParameters, data_loader : SimulationDataLoader, samplers, simulator, theta, **kwargs):
+    def input_output_simulation(self, parameters : ModelParameters, data_loader : SimulationDataLoader, parameter_sampler, simulator, theta, **kwargs):
         if len(theta.shape) == 1:
             theta = theta.reshape(1,-1)
         theta_fiducial_map = parameters.vector_to_parameters(theta[0], 'theta_fiducial')
-        nuisance_draws = [next(samplers[key](1)) for key in parameters.nuisance.keys()]
-        sampled_nuisance = parameters.vector_to_nuisance_inputs(flatten_sample(nuisance_draws))
+        sampled_nuisance = parameter_sampler.draw_nuisance_inputs()
         inputs_map = {**theta_fiducial_map, **sampled_nuisance, **kwargs}
         return data_loader.convert_sim_data_to_array(
                     {"outputs": simulator.run_simulation(inputs_map)[1]}

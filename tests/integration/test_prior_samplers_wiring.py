@@ -1,14 +1,13 @@
-"""Integration test: catalogue-prior closures flow through the dataset generator.
+"""Integration test: catalogue-prior closures flow through the parameter sampler.
 
-Exercises the exact sampler composition that
-``DatasetGenerator.run_and_save_simulations`` performs (resolve sampler -> zip per
-parameter -> flatten -> ``vector_to_simulation_inputs``) without needing a forward
-simulator, plus the kernel-simulator fast-path flag logic in the pipeline.
+Draws simulation inputs with ``ParameterSampler`` (resolve sampler -> zip per parameter ->
+flatten -> ``vector_to_simulation_inputs``) without needing a forward simulator, plus the
+kernel-simulator fast-path flag logic in the pipeline.
 """
 
 import numpy as np
 
-from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator, transform_sampling_func
+from seismo_sbi.priors.parameter_sampler import SAMPLERS, ParameterSampler
 from seismo_sbi.sbi.types.parameters import ModelParameters
 from seismo_sbi.priors.catalogue import EventCatalogue
 from seismo_sbi.priors.samplers import (
@@ -57,18 +56,7 @@ def test_dict_form_closures_compose_into_theta():
             b_value=1.0, mw_min=1.0, mw_max=5.0, seed=0),
     }
 
-    # mirror run_and_save_simulations' composition
-    samplers = DatasetGenerator._create_sampler_generator_dict(params, sampling_method)
-    assert all(callable(s) for s in samplers.values())
-
-    sampler_args = params.bounds
-    sampler_callable = lambda n: zip(
-        *[s(sampler_args[k], n) for k, s in samplers.items()]
-    )
-    transformer = transform_sampling_func(
-        sampler_callable, lambda v: params.vector_to_simulation_inputs(v)
-    )
-    out = list(transformer(8))
+    out = ParameterSampler.from_configuration(params, sampling_method).draw_simulation_inputs(8)
     assert len(out) == 8
     for inputs in out:
         assert set(inputs.keys()) == {"source_location", "moment_tensor"}
@@ -81,10 +69,10 @@ def test_dict_form_closures_compose_into_theta():
 
 def test_resolve_sampler_passthrough_and_lookup():
     closure = make_gutenberg_richter_mt_sampler(b_value=1.0, mw_min=1.0, mw_max=5.0)
-    assert DatasetGenerator._resolve_sampler(closure) is closure
-    # string still resolves to a built-in
-    assert DatasetGenerator._resolve_sampler("constant") is \
-        DatasetGenerator.sampler_lookup_map["constant"]
+    sampler = ParameterSampler.from_configuration(
+        _params_with_source_and_mt(), {"source_location": "constant", "moment_tensor": closure})
+    assert sampler.samplers["moment_tensor"] is closure
+    assert sampler.samplers["source_location"] is SAMPLERS["constant"]
 
 
 def test_kernel_fastpath_flag_logic():

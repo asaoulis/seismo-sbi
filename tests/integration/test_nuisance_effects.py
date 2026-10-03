@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
-from functools import partial
 
 import numpy as np
 import pytest
@@ -42,6 +41,7 @@ from seismo_sbi.nuisance_effects.dropout_effects import InstrumentDropoutEffect
 from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.nuisance_effects.scattering_coda_effect import ScatteringCodaEffect
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.priors.parameter_sampler import ParameterSampler, constant_sampler
 from seismo_sbi.sbi.simulator_wrapper import GeneralSimulatorWrapper
 from seismo_sbi.sbi.types.parameters import ModelParameters
 
@@ -94,10 +94,6 @@ def _make_receivers(*station_names):
     ])
 
 
-def _constant_sampler(value, n):
-    for _ in range(n):
-        yield value
-
 
 def _make_mt_model_parameters(nuisance: dict | None = None):
     mp = ModelParameters()
@@ -111,9 +107,10 @@ def _make_mt_model_parameters(nuisance: dict | None = None):
     return mp
 
 
-def _call_io_sim(parameters, data_loader, samplers, simulator, theta, **kwargs):
+def _call_io_sim(parameters, data_loader, nuisance_values, simulator, theta, **kwargs):
+    parameter_sampler = ParameterSampler(parameters, {key: constant_sampler for key in nuisance_values}, nuisance_values)
     return GeneralSimulatorWrapper.input_output_simulation(
-        None, parameters, data_loader, samplers, simulator, theta, **kwargs
+        None, parameters, data_loader, parameter_sampler, simulator, theta, **kwargs
     )
 
 
@@ -488,8 +485,8 @@ class TestKernelSimulatorWithNuisanceChain:
 class TestInputOutputSimulationWithNuisance:
     """Verify that nuisance effects propagate through the complete wrapper path."""
 
-    def _make_samplers(self, extra: dict | None = None):
-        base = {"source_location": partial(_constant_sampler, np.array(_SOURCE_LOC))}
+    def _make_nuisance_values(self, extra: dict | None = None):
+        base = {"source_location": np.array(_SOURCE_LOC)}
         if extra:
             base.update(extra)
         return base
@@ -511,14 +508,14 @@ class TestInputOutputSimulationWithNuisance:
         mp_base = _make_mt_model_parameters()
         mp_amp = _make_mt_model_parameters(nuisance={"amplitude_error": 1.0})
 
-        samplers_base = self._make_samplers()
-        samplers_amp = self._make_samplers(
-            extra={"amplitude_error": partial(_constant_sampler, np.array(1.0))}
+        nuisance_values_base = self._make_nuisance_values()
+        nuisance_values_amp = self._make_nuisance_values(
+            extra={"amplitude_error": np.array(1.0)}
         )
 
         theta = np.array([1e14] * 6)
-        result_base = _call_io_sim(mp_base, loader, samplers_base, sim_baseline, theta)
-        result_amp = _call_io_sim(mp_amp, loader, samplers_amp, sim_scaled, theta)
+        result_base = _call_io_sim(mp_base, loader, nuisance_values_base, sim_baseline, theta)
+        result_amp = _call_io_sim(mp_amp, loader, nuisance_values_amp, sim_scaled, theta)
 
         assert not np.allclose(result_base, result_amp), (
             "amplitude_error nuisance must produce a different flat output vector"
@@ -535,11 +532,11 @@ class TestInputOutputSimulationWithNuisance:
         )
         loader = SimulationDataLoader(components=["Z"], receivers=one_station)
         mp = _make_mt_model_parameters(nuisance={"instrument_dropout": 1.0})
-        samplers = self._make_samplers(
-            extra={"instrument_dropout": partial(_constant_sampler, np.array(1.0))}
+        nuisance_values = self._make_nuisance_values(
+            extra={"instrument_dropout": np.array(1.0)}
         )
         theta = np.array([1e14] * 6)
-        result = _call_io_sim(mp, loader, samplers, sim, theta)
+        result = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         assert np.allclose(result, 0.0), "Dropout probability 1 must zero the full output"
 
     def test_no_nuisance_backward_compat(self, one_station):
@@ -548,11 +545,11 @@ class TestInputOutputSimulationWithNuisance:
         sim_new = MockSimulator(one_station, amplitude=1.0)  # empty chain by default
         loader = SimulationDataLoader(components=["Z"], receivers=one_station)
         mp = _make_mt_model_parameters()
-        samplers = self._make_samplers()
+        nuisance_values = self._make_nuisance_values()
         theta = np.array([1e14] * 6)
 
-        result_old = _call_io_sim(mp, loader, samplers, sim_old, theta)
-        result_new = _call_io_sim(mp, loader, samplers, sim_new, theta)
+        result_old = _call_io_sim(mp, loader, nuisance_values, sim_old, theta)
+        result_new = _call_io_sim(mp, loader, nuisance_values, sim_new, theta)
 
         assert np.allclose(result_old, result_new), (
             "Backward compat: empty chain must produce identical output to no-chain baseline"
@@ -573,12 +570,12 @@ class TestInputOutputSimulationWithNuisance:
         )
         loader = SimulationDataLoader(components=["Z"], receivers=two_stations)
         mp = _make_mt_model_parameters(nuisance={"amplitude_error": 0.0, "instrument_dropout": 0.0})
-        samplers = self._make_samplers(extra={
-            "amplitude_error": partial(_constant_sampler, np.array(0.0)),
-            "instrument_dropout": partial(_constant_sampler, np.array(0.0)),
+        nuisance_values = self._make_nuisance_values(extra={
+            "amplitude_error": np.array(0.0),
+            "instrument_dropout": np.array(0.0),
         })
         theta = np.array([1e14] * 6)
-        result = _call_io_sim(mp, loader, samplers, sim, theta)
+        result = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         # Both effects are no-ops → output should equal baseline amplitude
         assert np.allclose(result, 1.0)
 
@@ -597,12 +594,12 @@ class TestInputOutputSimulationWithNuisance:
         )
         loader = SimulationDataLoader(components=["Z"], receivers=two_stations)
         mp = _make_mt_model_parameters(nuisance={"amplitude_error": 1.0, "instrument_dropout": 0.0})
-        samplers = self._make_samplers(extra={
-            "amplitude_error": partial(_constant_sampler, np.array(1.0)),
-            "instrument_dropout": partial(_constant_sampler, np.array(0.0)),
+        nuisance_values = self._make_nuisance_values(extra={
+            "amplitude_error": np.array(1.0),
+            "instrument_dropout": np.array(0.0),
         })
         theta = np.array([1e14] * 6)
-        result = _call_io_sim(mp, loader, samplers, sim, theta)
+        result = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         # All traces were 1.0 * 3.0 = 3.0; dropout was 0 so nothing zeroed
         assert np.allclose(result, 3.0)
 
@@ -811,17 +808,17 @@ class TestTimeShiftEffectIntegration:
         )
         loader = SimulationDataLoader(components=["Z"], receivers=one_station)
         mp = _make_mt_model_parameters(nuisance={"time_shift_error": 1.0})
-        samplers = {
-            "source_location": partial(_constant_sampler, np.array(_SOURCE_LOC)),
-            "time_shift_error": partial(_constant_sampler, np.array(1.0)),
+        nuisance_values = {
+            "source_location": np.array(_SOURCE_LOC),
+            "time_shift_error": np.array(1.0),
         }
         theta = np.array([1e14] * 6)
 
         # Collect multiple outputs — with prob=1 they should change across seeds
         np.random.seed(99)
-        result_a = _call_io_sim(mp, loader, samplers, sim, theta)
+        result_a = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         np.random.seed(100)
-        result_b = _call_io_sim(mp, loader, samplers, sim, theta)
+        result_b = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         # With non-zero sigma at least one of two draws should differ from the ramp
         ramp_flat = np.arange(TRACE_LEN, dtype=float)
         assert (not np.allclose(result_a, ramp_flat)) or (not np.allclose(result_b, ramp_flat)), (
@@ -974,18 +971,18 @@ class TestScatteringCodaEffectIntegration:
         )
         loader = SimulationDataLoader(components=["Z"], receivers=one_station)
         mp = _make_mt_model_parameters(nuisance={"scattering_coda": 1.0})
-        samplers = {
-            "source_location": partial(_constant_sampler, np.array(_SOURCE_LOC)),
-            "scattering_coda": partial(_constant_sampler, np.array(1.0)),
+        nuisance_values = {
+            "source_location": np.array(_SOURCE_LOC),
+            "scattering_coda": np.array(1.0),
         }
         theta = np.array([1e14] * 6)
         t = np.linspace(0, 2 * np.pi, TRACE_LEN)
         sine_flat = np.sin(t)
 
         np.random.seed(77)
-        result_a = _call_io_sim(mp, loader, samplers, sim, theta)
+        result_a = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         np.random.seed(78)
-        result_b = _call_io_sim(mp, loader, samplers, sim, theta)
+        result_b = _call_io_sim(mp, loader, nuisance_values, sim, theta)
 
         assert (not np.allclose(result_a, sine_flat)) or (not np.allclose(result_b, sine_flat)), (
             "scattering_coda=1.0 must change the flat output in input_output_simulation"

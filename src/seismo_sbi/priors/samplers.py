@@ -1,8 +1,8 @@
 """Catalogue-driven sampler factories for dataset generation.
 
-Each factory returns a closure with the dataset generator's sampler signature
-``f(args, num_samples)``, where ``args`` is ``parameters.bounds[key]``, yielding one sample per
-iteration, so it drops straight into the generator's lookup map.
+Each factory returns a closure with the sampler signature of
+:mod:`~seismo_sbi.priors.parameter_sampler`, ``f(args, num_samples)``, where ``args`` is
+``parameters.bounds[key]``, yielding one sample per iteration.
 :func:`make_catalogue_location_sampler` gives a source-location kernel density over a catalogue
 and :func:`make_gutenberg_richter_mt_sampler` a truncated-GR moment with a uniform orientation.
 """

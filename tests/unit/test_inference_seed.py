@@ -65,14 +65,10 @@ def test_sbi_seed_is_read_from_the_inference_block():
 
 
 def simulation_job_args(seed):
-    generator = DatasetGenerator(simulator=None, output_base_path="unused", seed=seed)
+    generator = DatasetGenerator(simulator=None, seed=seed)
     captured = []
     generator.run_parallel_simulations = captured.extend
-    generator._create_sampler_generator_dict = lambda parameters, details: {
-        "moment_tensor": lambda args, num_samples: (np.zeros(6) for _ in range(num_samples))}
-    generator._sampler_args = lambda parameters, samplers: {"moment_tensor": None}
-    generator._create_sampler_transformer = lambda parameters: lambda sample: {"source_location": [0, 0, 1, 0]}
-    generator.run_and_save_simulations(None, {}, 3, sample_namer=lambda n: (f"sim_{i}" for i in range(n)))
+    generator.run_and_save_simulations([{"source_location": [0, 0, 1, 0]}] * 3, [f"sim_{i}" for i in range(3)])
     return captured
 
 

@@ -10,11 +10,7 @@ import numpy as np
 import pytest
 from copy import deepcopy
 
-from seismo_sbi.sbi.datasets.dataset_generator import (
-    DatasetGenerator,
-    flatten_sample,
-    transform_sampling_func,
-)
+from seismo_sbi.priors.parameter_sampler import ParameterSampler, flatten_sample
 from seismo_sbi.sbi.types.parameters import ModelParameters
 from seismo_sbi.sbi.simulator_wrapper import GeneralSimulatorWrapper
 from seismo_sbi.simulators.receivers import Receiver, Receivers
@@ -57,25 +53,11 @@ def _parameters():
     return params
 
 
-class _CapturingGenerator(DatasetGenerator):
-    """Records the simulation inputs instead of running the forward model."""
-
-    def __init__(self):
-        super().__init__(lambda *args, **kwargs: None, output_base_path="/unused")
-        self.captured = []
-
-    def run_parallel_simulations(self, simulation_job_args_list):
-        self.captured = [inputs for inputs, _ in simulation_job_args_list]
-
-
 def _generated_inputs(num_samples=8, seed=0, sampling_method=None):
     params = _parameters()
-    generator = _CapturingGenerator()
     np.random.seed(seed)
-    generator.run_and_save_simulations(
-        params, sampling_method or _SAMPLING_METHOD, (0, num_samples)
-    )
-    return generator.captured
+    sampler = ParameterSampler.from_configuration(params, sampling_method or _SAMPLING_METHOD)
+    return sampler.draw_simulation_inputs(num_samples)
 
 
 def test_each_nuisance_receives_its_own_configured_value():
@@ -95,20 +77,20 @@ def test_sampled_nuisance_after_a_constant_spans_its_bounds():
 
 def test_sample_vector_length_equals_the_register_slots():
     params = _parameters()
-    samplers = DatasetGenerator.create_samplers(params, _SAMPLING_METHOD)
-    draw = [next(sampler(1)) for sampler in samplers.values()]
+    sampler = ParameterSampler.from_configuration(params, _SAMPLING_METHOD)
+    draw = [next(draw_one(sampler.sampler_args[key], 1)) for key, draw_one in sampler.samplers.items()]
     n_slots = 6 + sum(len(fiducial) for fiducial in _NUISANCE_FIDUCIALS.values())
     assert len(flatten_sample(draw)) == n_slots
 
 
 def _forward_path_inputs(params, sampling_method):
     """The nuisance map ``input_output_simulation`` hands the simulator."""
-    samplers = DatasetGenerator.create_samplers(params, sampling_method)
+    sampler = ParameterSampler.from_configuration(params, sampling_method)
     receivers = Receivers(receivers=[Receiver(0.0, 0.0, "XX", "STA1", ["Z"])])
     simulator = MockSimulator(receivers)
     GeneralSimulatorWrapper.input_output_simulation(
         None, params, SimulationDataLoader(components=["Z"], receivers=receivers),
-        samplers, simulator, np.array(params.theta_fiducial["moment_tensor"]),
+        sampler, simulator, np.array(params.theta_fiducial["moment_tensor"]),
     )
     return simulator.received_inputs
 
