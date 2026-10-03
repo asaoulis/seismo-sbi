@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from seismo_sbi.sbi.datasets.dataset_generator import ParallelSimulationRunner
+from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator
 from seismo_sbi.sbi.datasets.training_data import generate_training_dataset
 from seismo_sbi.utils.environment import log_progress_to_stdout
 
@@ -19,7 +19,7 @@ def restore_library_logging():
 
 def test_the_skipped_simulations_line_reaches_stdout(restore_library_logging, capsys):
     log_progress_to_stdout()
-    ParallelSimulationRunner._guard_against_excessive_skips([True, False, True, True, True])
+    DatasetGenerator._guard_against_excessive_skips([True, False, True, True, True])
 
     assert capsys.readouterr().out == (
         "[dataset_generator] 1/5 simulations skipped (20.00%) after exhausting retries.\n")

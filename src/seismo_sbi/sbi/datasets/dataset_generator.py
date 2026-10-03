@@ -6,7 +6,6 @@ each simulation is written to.
 """
 
 import logging
-from abc import ABC, abstractmethod
 import joblib
 import traceback
 
@@ -17,12 +16,14 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-class ParallelSimulationRunner(ABC):
+class DatasetGenerator:
 
-    def __init__(self, simulator, num_parallel_jobs):
+    def __init__(self, simulator, num_parallel_jobs=1, seed=None):
 
         self.simulator = self._error_handling_wrapper(simulator)
         self.num_parallel_jobs = num_parallel_jobs
+        #: Seeds each simulation's ensemble-member draw when set; None leaves the draws unseeded.
+        self.seed = seed
 
     def _error_handling_wrapper(self, simulation_callable, num_attempts = 3):
 
@@ -52,9 +53,15 @@ class ParallelSimulationRunner(ABC):
         
         return _error_handled_simulation_callable
     
-    @abstractmethod
-    def run_and_save_simulations(self, input_generator, num_parallel_jobs=1):
-        pass
+    def run_and_save_simulations(self, simulation_inputs, output_paths):
+        """Simulate each input map of ``simulation_inputs`` and write it to the matching path of
+        ``output_paths``."""
+        simulation_job_args_list = list(zip(simulation_inputs, output_paths))
+        if self.seed is not None:
+            member_seeds = worker_seeds(self.seed, len(simulation_job_args_list), "training members")
+            simulation_job_args_list = [({**inputs, "seed": member_seed}, path) for (inputs, path), member_seed
+                                        in zip(simulation_job_args_list, member_seeds)]
+        self.run_parallel_simulations(simulation_job_args_list)
 
     def run_parallel_simulations(self, simulation_job_args_list):
 
@@ -102,22 +109,3 @@ class ParallelSimulationRunner(ABC):
                 "out-of-domain source draws."
             )
 
-
-class DatasetGenerator(ParallelSimulationRunner):
-
-    def __init__(self, simulator, num_parallel_jobs=1, seed=None):
-        super().__init__(simulator, num_parallel_jobs)
-
-        self.num_parallel_jobs = num_parallel_jobs
-        #: Seeds each simulation's ensemble-member draw when set; None leaves the draws unseeded.
-        self.seed = seed
-
-    def run_and_save_simulations(self, simulation_inputs, output_paths):
-        """Simulate each input map of ``simulation_inputs`` and write it to the matching path of
-        ``output_paths``."""
-        simulation_job_args_list = list(zip(simulation_inputs, output_paths))
-        if self.seed is not None:
-            member_seeds = worker_seeds(self.seed, len(simulation_job_args_list), "training members")
-            simulation_job_args_list = [({**inputs, "seed": member_seed}, path) for (inputs, path), member_seed
-                                        in zip(simulation_job_args_list, member_seeds)]
-        self.run_parallel_simulations(simulation_job_args_list)

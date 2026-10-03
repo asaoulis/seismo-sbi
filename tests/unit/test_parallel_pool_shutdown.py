@@ -4,13 +4,8 @@ import sys
 
 from joblib.externals.loky import reusable_executor
 
-from seismo_sbi.sbi.datasets.dataset_generator import ParallelSimulationRunner
+from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator
 from seismo_sbi.utils.parallel import gc_paused_in_notebooks
-
-
-class _Runner(ParallelSimulationRunner):
-    def run_and_save_simulations(self, input_generator, num_parallel_jobs=1):
-        pass
 
 
 def _square(value):
@@ -18,7 +13,7 @@ def _square(value):
 
 
 def test_parallel_simulations_kill_the_pool_they_ran_on():
-    _Runner(_square, num_parallel_jobs=2).run_parallel_simulations([(1,), (2,), (3,)])
+    DatasetGenerator(_square, num_parallel_jobs=2).run_parallel_simulations([(1,), (2,), (3,)])
 
     executor = reusable_executor._executor
     assert executor._flags.shutdown
