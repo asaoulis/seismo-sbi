@@ -4,7 +4,8 @@ Each notebook runs in a copy of ``examples/`` under a temporary directory, with 
 the repository linked in, so nothing it writes lands in the checkout. Every number a code cell
 prints is compared with ``notebook_outputs.json``, as is which cells raise. A notebook that is
 broken today is recorded broken, so the test also notices the day it is repaired. After a
-deliberate change, rewrite the reference with ``python tests/examples/test_notebooks_execute.py``.
+deliberate change, rewrite the reference with ``python tests/examples/test_notebooks_execute.py``,
+which also stores each executed notebook's outputs in ``examples/`` without progress bars.
 """
 import hashlib
 import json
@@ -51,6 +52,7 @@ MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"
          re.compile(r"\d\d:\d\d(:\d\d)?"), re.compile(r"0x[0-9a-f]+"),
          re.compile(r"\d+%\|[^\n]*")]
 NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
+PROGRESS_BAR = re.compile(r"it/s|s/it|\?it|\d+%\|")
 
 
 def mirror_repository(root: Path) -> Path:
@@ -115,6 +117,27 @@ def summarise(notebook) -> list:
     return summary
 
 
+def without_progress_bars(notebook):
+    """``notebook`` with its stderr streams, progress-bar lines and execution timings removed: the
+    outputs stored in ``examples/``."""
+    for cell in notebook.cells:
+        cell.metadata.pop("execution", None)
+        if cell.cell_type != "code":
+            continue
+        kept = []
+        for output in cell.outputs:
+            if output.get("output_type") == "stream":
+                if output.get("name") == "stderr":
+                    continue
+                output["text"] = "".join(line for line in output["text"].splitlines(keepends=True)
+                                         if not PROGRESS_BAR.search(line))
+                if not output["text"].strip():
+                    continue
+            kept.append(output)
+        cell.outputs = kept
+    return notebook
+
+
 def mismatches(summary: list, reference: list, stochastic=()) -> list:
     """One line per code cell whose exception or printed numbers differ from the reference.
 
@@ -153,6 +176,20 @@ def test_the_notebook_prints_what_it_printed_before(name, tmp_path, monkeypatch)
     assert input_checksums() == inputs_before, "the notebook changed the checkout's examples/data"
 
 
+
+def test_stored_outputs_keep_printed_results_and_drop_progress_bars():
+    import nbformat
+
+    cell = nbformat.v4.new_code_cell("run()")
+    cell.outputs = [nbformat.v4.new_output("stream", name="stderr", text="warning\n"),
+                    nbformat.v4.new_output("stream", name="stdout",
+                                           text="Running: 50%|##   | 1/2 [00:01<00:01, 1.0it/s]\nMw 6.24\n"),
+                    nbformat.v4.new_output("stream", name="stdout", text="\r 3/10 [00:02<00:05, 1.4s/it]\n")]
+    cell.metadata["execution"] = {"iopub.execute_input": "2026-10-03T10:00:00"}
+    stored = without_progress_bars(nbformat.v4.new_notebook(cells=[cell])).cells[0]
+    assert [output["text"] for output in stored.outputs] == ["Mw 6.24\n"]
+    assert "execution" not in stored.metadata
+
 if __name__ == "__main__":
     import tempfile
 
@@ -160,8 +197,12 @@ if __name__ == "__main__":
     os.environ["INSTASEIS_DB_20S"] = str(INSTASEIS_DB_20S)
     names = sys.argv[1:] or list(NOTEBOOKS)
     stored = json.loads(REFERENCE.read_text()) if REFERENCE.exists() else {}
+    import nbformat
+
     for name in names:
         with tempfile.TemporaryDirectory() as scratch:
-            stored[name] = summarise(execute(name, Path(scratch)))
+            notebook = execute(name, Path(scratch))
+        stored[name] = summarise(notebook)
+        nbformat.write(without_progress_bars(notebook), REPO / "examples" / f"{name}.ipynb")
         print(name, [cell["error"] for cell in stored[name]])
     REFERENCE.write_text(json.dumps(stored, indent=1) + "\n")
