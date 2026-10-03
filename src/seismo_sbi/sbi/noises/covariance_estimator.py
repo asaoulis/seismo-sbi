@@ -67,9 +67,9 @@ class EmpiricalCovarianceEstimator:
 
     def __init__(self, data_directory, receivers, components, track = False, covariance_exp_tapering = True,
                  verbose = True):
-        """``data_directory`` holds one HDF5 noise window per file (``outputs/{station}/{component}``);
-        :meth:`estimate_from_windows` takes the windows as an array instead. ``verbose`` prints
-        progress.
+        """``data_directory`` holds one HDF5 noise window per file (``outputs/{station}/{component}``),
+        or is None when :meth:`estimate_from_windows` is given the windows as an array instead.
+        ``verbose`` prints progress.
         """
         self.data_directory = data_directory
         self.receivers = receivers
@@ -81,7 +81,8 @@ class EmpiricalCovarianceEstimator:
 
         self.data_loader = SimulationDataLoader(self.components, receivers)
 
-        self._precomputed_covariance_path = self.data_directory / f'_{self.components}_covariance_matrix.npy'
+        self._precomputed_covariance_path = (None if data_directory is None else
+                                             self.data_directory / f'_{self.components}_covariance_matrix.npy')
     
     def compute_stationwise_covariances(self, reload = False):
         if self._precomputed_covariance_path.exists() and not reload:
