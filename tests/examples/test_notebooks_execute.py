@@ -32,7 +32,6 @@ NOTEBOOKS = {
     "01_forward_models_and_receivers": [INSTASEIS_DB, CPS_PROGRAM],
     "02_noise_covariances_and_likelihood": [INSTASEIS_DB],
     "03_npe_training_and_evaluation": [INSTASEIS_DB],
-    "04_source_conventions": [INSTASEIS_DB],
     "05_resolution_and_tradeoffs": [CPS_PROGRAM],
     "azores_inversion": [INSTASEIS_DB, REPO / "examples" / "data" / "azores"],
     "theory_errors_LV2": [REPO / "examples" / "data", REPO / "examples" / "ml-checkpoints"],
@@ -40,7 +39,7 @@ NOTEBOOKS = {
 #: Notebook to about three times its usual running time in seconds; a cell still running after
 #: that long fails the notebook, so a hung worker pool fails fast.
 TIMEOUT_S = {"ridgecrest_obspy": 120, "nuisances": 1800, "npe_flagship": 2400, "01_forward_models_and_receivers": 300, "02_noise_covariances_and_likelihood": 600,
-             "03_npe_training_and_evaluation": 2400, "04_source_conventions": 300,
+             "03_npe_training_and_evaluation": 2400,
              "05_resolution_and_tradeoffs": 900, "azores_inversion": 2400, "theory_errors_LV2": 5400}
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether

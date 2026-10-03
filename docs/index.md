@@ -10,6 +10,7 @@ training
 simulators
 obspy
 configuration
+conventions
 examples
 api/index
 ```
