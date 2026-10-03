@@ -10,6 +10,8 @@ for every station it does have. These tests pin that: absent stations are zero-f
 reported via a mask, the station draw is restricted to that mask, and the default path is
 byte-identical to the old behaviour.
 """
+from types import SimpleNamespace
+
 import h5py
 import numpy as np
 import pytest
@@ -152,7 +154,7 @@ def test_pipeline_passes_allow_incomplete_from_config(monkeypatch):
 
     for cfg, expected in (
         ({"type": "real_noise", "noise_level": 0.0, "noise_catalogue_path": "/x",
-          "allow_incomplete": True}, True),
+          "allow_incomplete": True, "rescale": False}, True),
         ({"type": "real_noise", "noise_level": 0.0, "noise_catalogue_path": "/x",
           "allow_incomplete": False}, False),
         ({"type": "real_noise", "noise_level": 0.0, "noise_catalogue_path": "/x"}, False),
@@ -179,3 +181,13 @@ def test_real_noise_training_needs_no_noise_level(monkeypatch):
     pipeline_mod.SBIPipeline.load_test_noises(stub, {"type": "real_noise", "noise_catalogue_path": "/x"},
                                               [("real_noise", "/x")])
     assert stub.training_noise_sampler == "sampler" and stub.test_noises == {"real_noise": "sampler"}
+
+
+def test_incomplete_windows_cannot_be_rescaled_to_an_event():
+    import seismo_sbi.sbi.pipeline as pipeline_mod
+    from seismo_sbi.utils.errors import InvalidConfiguration
+
+    stub = SimpleNamespace(simulation_parameters=object(), trace_length=100, data_vector_length=100, test_noises={})
+    with pytest.raises(InvalidConfiguration, match="allow_incomplete needs rescale: false"):
+        pipeline_mod.SBIPipeline.load_test_noises(
+            stub, {"type": "real_noise", "noise_catalogue_path": "/x", "allow_incomplete": True}, [])

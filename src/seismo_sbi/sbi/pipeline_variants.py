@@ -84,8 +84,9 @@ class MultiEventPipeline(SingleEventPipeline):
 
     def create_job_data(self, test_jobs_paths, real_event_jobs):
 
-        job_data = {test_noise_name:{} for test_noise_name in self.test_noises.keys()}
         job_data = []
+        # Every test event's noise is rescaled to the first event's, so every job carries its covariance.
+        first_event_covariances = {}
 
         for i, sim_path in enumerate(test_jobs_paths):
             theta0 = self.data_manager.load_model_parameter_vector(sim_path)
@@ -93,6 +94,7 @@ class MultiEventPipeline(SingleEventPipeline):
             for test_noise_name, synthetic_noise_sampler in self.test_noises.items():
                 if i == 0:
                     noise = synthetic_noise_sampler.draw_with_covariance()
+                    first_event_covariances[test_noise_name] = noise.covariance_data
                     if noise.covariance_data is not None:
                         synthetic_noise_sampler.rescale_to(noise.covariance_data)
                 else:
@@ -103,7 +105,7 @@ class MultiEventPipeline(SingleEventPipeline):
                             test_noise_name,
                             D + noise.noise, 
                             theta0,
-                            covariance=noise.covariance_data)
+                            covariance=first_event_covariances[test_noise_name])
                     )
 
         # Real events are truncated to the configured trace length, derived from the seismogram

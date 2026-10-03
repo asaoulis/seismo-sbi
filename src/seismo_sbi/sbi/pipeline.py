@@ -374,6 +374,11 @@ class SBIPipeline:
             # allow_incomplete zero-fills stations a window lacks; valid only with variable-station
             # training, which masks them out.
             allow_incomplete = sbi_noise_model.get('allow_incomplete', False)
+            if allow_incomplete and self.training_noise_follows_event:
+                raise InvalidConfiguration(
+                    "inference.sbi.noise_model: allow_incomplete needs rescale: false. Rescaling a noise "
+                    "window to an event needs the pre-event variance of every station, which an "
+                    "incomplete window lacks.")
             self.training_noise_sampler = RealNoiseSampler(self.simulation_parameters,
                                                            noise_catalogue_path,
                                                            self.trace_length,

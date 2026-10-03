@@ -1,6 +1,9 @@
 """The state a pipeline declares, and the receiver time shifts it keeps from its configuration."""
 from types import SimpleNamespace
 
+import h5py
+import numpy as np
+
 import pytest
 
 from seismo_sbi.sbi import pipeline as pipeline_module
@@ -128,3 +131,39 @@ def test_training_sources_are_drawn_from_the_bounds_and_sampling_method_at_gener
 def test_an_unknown_training_noise_model_is_rejected(tmp_path):
     with pytest.raises(InvalidConfiguration, match="noise_model type 'laplace'"):
         _pipeline(tmp_path).load_test_noises({"type": "laplace", "noise_level": 1.0}, [])
+
+
+def test_every_multi_event_test_job_carries_the_covariance_its_noise_was_rescaled_to(tmp_path):
+    from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
+    from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline
+
+    receivers = Receivers(receivers=[Receiver(0.0, 0.0, "XX", "AAA", ["Z"])])
+    for window in range(4):
+        with h5py.File(tmp_path / f"window_{window}.h5", "w") as noise_file:
+            noise_file.create_dataset("outputs/AAA/Z", data=np.full(8, float(window + 1)))
+            noise_file.create_dataset("misc/AAA/Z", data=np.array([float(window + 1) ** 2, 0.5]))
+    sampler = RealNoiseSampler(SimulationParameters(receivers, "Z", 8.0, None, 1.0, {}), tmp_path, 8)
+
+    class _DataManager:
+        data_loader = SimpleNamespace(data_length=None)
+        data_length = 8
+
+        def load_model_parameter_vector(self, path):
+            return None
+
+        def load_simulation_vector(self, path):
+            return np.zeros(8)
+
+        def _create_job_data_from_real_events(self, real_event_jobs, test_noises):
+            return []
+
+    pipeline = MultiEventPipeline.__new__(MultiEventPipeline)
+    pipeline.data_manager = _DataManager()
+    pipeline.test_noises = {"real_noise": sampler}
+    np.random.seed(0)
+    jobs = pipeline.create_job_data([tmp_path / f"sim_{k}.h5" for k in range(6)], {})
+
+    first_covariance = jobs[0].covariance
+    first_level = jobs[0].data_vector[0]
+    assert all(job.covariance is first_covariance for job in jobs)
+    assert all(np.allclose(job.data_vector, first_level) for job in jobs)
