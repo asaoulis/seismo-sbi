@@ -8,7 +8,8 @@ from seismo_sbi.sbi.compression.gaussian import GaussianCompressor
 from seismo_sbi.sbi.noises.covariance_estimator import EmpiricalCovarianceEstimator
 from seismo_sbi.sbi.noises.diagonal_covariances import DiagonalEmpiricalCovariance, ScalarEmpiricalCovariance
 from seismo_sbi.sbi.noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
-from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalKolbCovariance
+from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalEmpiricalCovariance, BlockDiagonalKolbCovariance
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 from tests.unit.test_covariance_characterisation import (
     BLOCK_SIZE, autocovariances, make_receivers, synthetic_problem, theory_covariance_blocks,
     variances, write_noise_windows,
@@ -99,3 +100,14 @@ def test_scalar_loss_closure_uses_its_own_inverse_variance():
     ScalarEmpiricalCovariance(2.0)
     assert closure(residual) == -0.5 * 4 / 0.25
 
+
+
+def test_empirical_block_covariance_takes_an_autocovariance_longer_than_the_trace():
+    rng = np.random.default_rng(6)
+    autocovariance = np.exp(-np.arange(601) / 30.0) * (1 + 0.01 * rng.normal(size=601))
+    receivers = Receivers(receivers=[Receiver(0.0, 0.0, "XX", "STA", ["Z"])])
+
+    from_long = BlockDiagonalEmpiricalCovariance({"STA": {"Z": autocovariance.copy()}}, receivers, 176, num_jobs=1)
+    from_cut = BlockDiagonalEmpiricalCovariance({"STA": {"Z": autocovariance[:176].copy()}}, receivers, 176, num_jobs=1)
+
+    np.testing.assert_array_equal(from_long.covariance_matrix_arrays, from_cut.covariance_matrix_arrays)

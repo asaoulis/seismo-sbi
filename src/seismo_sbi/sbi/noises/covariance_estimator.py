@@ -178,11 +178,13 @@ class EmpiricalCovarianceEstimator:
         return station_component_covariances
     @staticmethod
     def taper_covariances(station_component_covariances, data_len=None, fit_length=30, ols_fit=True, return_fit= False):
-        """Exponentially taper each autocovariance in place; ``data_len`` defaults to each one's length."""
+        """Exponentially taper each autocovariance in place over its first ``data_len`` lags (all of
+        them when None); a longer autocovariance is cut to ``data_len`` lags."""
         for receiver in station_component_covariances.keys():
             for component in station_component_covariances[receiver].keys():
                 covar_data = station_component_covariances[receiver][component]
                 x = np.arange(0, len(covar_data) if data_len is None else data_len)
+                covar_data = covar_data[:len(x)]
 
                 if ols_fit:
                     scaled_data = np.log(np.abs(covar_data))
