@@ -23,6 +23,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.npe.training.train import CompressionTrainer, EMBEDDING_NET_REGISTRY
 from seismo_sbi.sbi.scalers import FlexibleScaler
 from seismo_sbi.utils.seismograms import compute_data_vector_length
@@ -144,7 +145,7 @@ def _train_one_epoch(pipeline, data_vector_length, architecture, tmp_path, data_
     if data_scaler is None:
         data_scaler = FlexibleScaler(pipeline.parameters)
 
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
 
     train_max_index = int(0.9 * _NUM_SIMS)
     dataloader_args = {
@@ -336,7 +337,7 @@ def test_conditioned_one_epoch(kernel_pipeline, tmp_path, inject):
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
 
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
 
@@ -394,7 +395,7 @@ def test_amplitude_distance_snr_one_epoch(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     conditioning_param_map = {"source_location": ["latitude", "longitude", "depth"]}
@@ -456,7 +457,7 @@ def test_variable_stations_one_epoch(kernel_pipeline, tmp_path, coords_mode):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
 
@@ -520,7 +521,7 @@ def test_component_dropout_one_epoch(multicomp_kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
 
@@ -574,7 +575,7 @@ def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     dataloader_args = {
@@ -629,7 +630,7 @@ def test_load_best_restores_amplitude_embedding(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     dataloader_args = {
@@ -681,7 +682,7 @@ def test_positional_encoding_one_epoch(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     conditioning_param_map = {"source_location": ["latitude", "longitude", "depth"]}
@@ -735,7 +736,7 @@ def test_load_best_restores_positional_encoding(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     dataloader_args = {
@@ -788,7 +789,7 @@ def test_pma_pooling_one_epoch(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     dataloader_args = {
@@ -840,7 +841,7 @@ def test_load_best_restores_pma_pooling(kernel_pipeline, tmp_path):
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
     dataloader_args = {
@@ -951,7 +952,7 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     data_scaler = FlexibleScaler(pipeline.parameters)
 
-    synthetic_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    synthetic_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     train_max_index = int(0.9 * _NUM_SIMS)
 

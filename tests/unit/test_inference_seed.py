@@ -5,6 +5,7 @@ from seismo_sbi.sbi.inversion import likelihood
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.datasets.dataset_compressor import DatasetCompressor
 from seismo_sbi.sbi.datasets.dataset_generator import DatasetGenerator
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.utils.parallel import worker_seeds
 
 DATA_VECTOR_LENGTH = 8
@@ -37,7 +38,7 @@ class FirstTwoSamples:
 def compressed_dataset(seed, num_parallel_jobs):
     compressor = DatasetCompressor(data_loader=None, simulator=None, num_parallel_jobs=num_parallel_jobs)
     compressor.load_compressor_and_noise_model(FirstTwoSamples(),
-                                               lambda: np.random.normal(size=DATA_VECTOR_LENGTH))
+                                               WhiteNoiseSampler(1.0, DATA_VECTOR_LENGTH))
     compressor.load_sim = lambda sim_path, param_names: (np.array([float(sim_path)]),
                                                          np.zeros(DATA_VECTOR_LENGTH))
     return compressor.compress_dataset(["1", "2", "3", "4"], {}, seed=seed)

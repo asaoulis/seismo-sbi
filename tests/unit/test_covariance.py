@@ -48,7 +48,7 @@ def test_gaussian_noise_sampler_output_shape(receivers):
         data_vector_length=n,
         cov_blocks=[cov_block],
     )
-    noise, meta = sampler()
+    noise, _, meta = sampler.draw()
     assert noise.shape == (n,)
 
 
@@ -61,7 +61,7 @@ def test_gaussian_noise_sampler_zero_mean_distribution(receivers):
         data_vector_length=n,
         cov_blocks=[cov_block],
     )
-    samples = np.array([sampler()[0] for _ in range(500)])
+    samples = np.array([sampler.draw().noise for _ in range(500)])
     assert np.abs(samples.mean()) < 0.2
 
 
@@ -108,7 +108,7 @@ def test_filtered_covariance_creates_sampler(receivers):
         num_jobs=1,
     )
     sampler = cov.create_sampler()
-    noise, _ = sampler()
+    noise = sampler.draw().noise
     assert noise.shape == (BLOCK_SIZE,)
 
 

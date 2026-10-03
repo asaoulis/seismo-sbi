@@ -477,7 +477,7 @@ class TestSbiIngestionWithNewApiH5:
             directory=h5_dir,
             data_length=DATA_VECTOR_LEN,
         )
-        noise_vec = sampler()
+        noise_vec = sampler.draw().noise
         expected_len = len(available) * 3 * DATA_VECTOR_LEN
         assert noise_vec.shape == (expected_len,), (
             f"Expected noise vector length {expected_len}, got {noise_vec.shape}"

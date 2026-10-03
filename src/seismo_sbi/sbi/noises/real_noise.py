@@ -9,13 +9,14 @@ import numpy as np
 
 from seismo_sbi.sbi.configuration import SimulationParameters
 from seismo_sbi.sbi.noises.covariance_base import station_component_value
+from seismo_sbi.sbi.noises.noise_samplers import NoiseDraw, NoiseSampler
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader, component_alias
 
 
-class RealNoiseSampler:
+class RealNoiseSampler(NoiseSampler):
     """Draw recorded noise windows as data-vector noise.
 
-    Each call picks one window from ``directory`` covering every model station (or, with
+    Each draw picks one window from ``directory`` covering every model station (or, with
     ``allow_incomplete``, whichever it covers) and returns it flattened in receiver order,
     optionally rescaled to the variances set by :meth:`set_adaptive_covariance_with_misc_data`.
     """
@@ -27,8 +28,8 @@ class RealNoiseSampler:
         (:meth:`from_windows`).
 
         With ``allow_incomplete`` False a window missing any model station is skipped. With it True the
-        window is used for the stations it has: absent stations are zero-filled and ``__call__`` returns
-        ``(noise_vector, present_mask)`` for the caller to mask out, which is meaningful only with
+        window is used for the stations it has: absent stations are zero-filled and each draw carries
+        the stations it holds in ``present`` for the caller to mask out, which is meaningful only with
         variable-station training. Whole windows are always drawn intact, preserving the inter-station
         noise coherence real at microseism periods.
         """
@@ -82,9 +83,9 @@ class RealNoiseSampler:
         """A sampler drawing uniformly from ``noise_windows`` held in memory.
 
         ``noise_windows`` is ``(n_windows, data_vector_length)``: each row one window's traces for
-        every component each receiver records, in receiver order, as :meth:`__call__` returns
+        every component each receiver records, in receiver order, as :meth:`draw` returns
         them. ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; with
-        it a call returns ``(noise_vector, present_mask)`` as with ``allow_incomplete``, and the
+        it a draw carries its window's row of ``present`` as with ``allow_incomplete``, and the
         rows are zero where a station is absent. Windows are drawn as recorded, never rescaled.
         """
         simulation_parameters = SimulationParameters(
@@ -144,7 +145,7 @@ class RealNoiseSampler:
         return np.array(list(Path(directory).glob('*.h5')))
 
     def preload_cache(self, max_workers: int = 16, dtype=np.float32):
-        """Load every valid noise window into ``self._noise_cache`` ``(n_valid, L)``; ``__call__`` then
+        """Load every valid noise window into ``self._noise_cache`` ``(n_valid, L)``; :meth:`draw` then
         returns a uniformly random row.
 
         Windows whose flattened length differs from the data-vector length (missing stations or data
@@ -196,65 +197,61 @@ class RealNoiseSampler:
               f"({gb:.2f} GB, {np.dtype(dtype).name}) in {_t.perf_counter() - t0:.1f}s — "
               f"per-sample HDF5 noise read removed.")
 
-    def __call__(self, noise_path = None, no_rescale = False, noise_index = None):
+    def draw(self):
+        """A noise window for a training sample.
 
-        # Fast path: in-RAM pool for the generic ML draw (random window, no rescale). Returns a
-        # uniformly random cached window — distributionally identical to the on-disk random draw.
-        if (self._noise_cache is not None and not no_rescale
-                and self.adaptive_covariance is None
-                and noise_path is None and noise_index is None):
+        A random row of the in-memory pool when it is preloaded and no rescale target is set;
+        otherwise a random window read from disk, rescaled to the target variances when they are
+        set, its recorded covariance data then coming with it.
+        """
+        if self._noise_cache is not None and self.adaptive_covariance is None:
             row = np.random.randint(0, self._noise_cache.shape[0])
-            if self.allow_incomplete:
-                return self._noise_cache[row], self._presence_cache[row]
-            return self._noise_cache[row]
+            present = self._presence_cache[row] if self.allow_incomplete else None
+            return NoiseDraw(self._noise_cache[row], present)
+        window_path, noise, present = self._usable_window(None)
+        if self.allow_incomplete or self.adaptive_covariance is None:
+            return NoiseDraw(noise, present)
+        covariance_data = self.data_loader.load_misc_data(window_path)
+        noise = self._load_noise_file(window_path, scale_dict=self.calculate_scales(covariance_data))
+        return NoiseDraw(noise, None, covariance_data)
 
-        for _ in range(len(self.noise_paths) + 1):
-            if noise_index is not None:
-                noise_path = self.noise_paths[noise_index % len(self.noise_paths)]
-            if noise_path is None:
-                noise_index = np.random.randint(0, len(self.noise_paths))
-                noise_path = self.noise_paths[noise_index]
-            noise = self._read_window(noise_path, no_rescale)
+    def draw_with_covariance(self, window_index=None):
+        """The window at ``window_index`` (a random one when None) as recorded, never rescaled or
+        taken from the in-memory pool, with its recorded covariance data."""
+        window_path, noise, present = self._usable_window(window_index)
+        if self.allow_incomplete:
+            return NoiseDraw(noise, present)
+        return NoiseDraw(noise, None, self.data_loader.load_misc_data(window_path))
+
+    def _usable_window(self, window_index):
+        """``(path, noise, present)`` of the first usable window from ``window_index`` on, a random
+        start when None, walking at most once round the pool."""
+        if window_index is None:
+            window_index = np.random.randint(0, len(self.noise_paths))
+        for offset in range(len(self.noise_paths) + 1):
+            window_path = self.noise_paths[(window_index + offset) % len(self.noise_paths)]
+            noise, present = self._read_window(window_path)
             if noise is not None:
-                return noise
-            # An unusable window: walk on to the next one, or draw afresh when it was requested by path.
-            noise_path = None
-            noise_index = None if noise_index is None else noise_index + 1
+                return window_path, noise, present
         raise RuntimeError(
             f"RealNoiseSampler: no noise window matched the expected data-vector length "
             f"{self._expected_length} after scanning all {len(self.noise_paths)} windows.")
 
-    def _read_window(self, noise_path, no_rescale):
-        """The draw from the window at ``noise_path``, or None when the window is unusable: no model
-        station at all, a model station missing, or a trace shorter than the data vector needs."""
+    def _read_window(self, window_path):
+        """``(noise, present)`` read from the window at ``window_path``, or ``(None, None)`` when it
+        is unusable: no model station at all, a model station missing, or a trace shorter than the
+        data vector needs."""
         if self.allow_incomplete:
-            noise_realisations, present = self.data_loader.load_flattened_simulation_vector_with_presence(
-                noise_path)
-            if not present.any():
-                return None
-            return noise_realisations, present
+            noise, present = self.data_loader.load_flattened_simulation_vector_with_presence(window_path)
+            return (noise, present) if present.any() else (None, None)
         try:
-            noise_realisations = self._load_noise_file(noise_path)
+            noise = self._load_noise_file(window_path)
         except KeyError:
-            return None
-        if self._expected_length is not None and noise_realisations.size != self._expected_length:
-            return None
+            return None, None
+        if self._expected_length is not None and noise.size != self._expected_length:
+            return None, None
+        return noise, None
 
-        if no_rescale:
-            misc_data = self.data_loader.load_misc_data(noise_path)
-            noise_realisations = self._load_noise_file(noise_path)
-            return noise_realisations, misc_data
-        elif self.adaptive_covariance is  None:
-            noise_realisations = self._load_noise_file(noise_path)
-            return noise_realisations
-        else:
-            misc_data = self.data_loader.load_misc_data(noise_path)
-            scales = self.calculate_scales(misc_data)
-            noise_realisations = self._load_noise_file(noise_path, scale_dict = scales)
-            return noise_realisations, misc_data
-
-
-    
     def _load_noise_file(self, path : Path, *args, **kwargs):
         return self.data_loader.load_flattened_simulation_vector(path, *args, **kwargs)
     

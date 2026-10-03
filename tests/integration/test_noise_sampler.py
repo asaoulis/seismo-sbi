@@ -36,74 +36,72 @@ class TestRealNoiseSampler:
     def test_finds_noise_files(self):
         assert len(self.sampler.noise_paths) == 5
 
-    def test_call_returns_array(self):
-        result = self.sampler()
-        # Without no_rescale or adaptive_covariance, returns only the noise vector
-        assert isinstance(result, np.ndarray)
-        assert result.shape == (self.expected_len,)
+    def test_draw_returns_the_noise_alone(self):
+        result = self.sampler.draw()
+        assert isinstance(result.noise, np.ndarray)
+        assert result.noise.shape == (self.expected_len,)
+        assert result.present is None and result.covariance_data is None
 
     def test_call_multiple_times(self):
         for _ in range(3):
-            result = self.sampler()
+            result = self.sampler.draw().noise
             assert result.shape == (self.expected_len,)
 
-    def test_no_rescale_returns_tuple(self):
-        result = self.sampler(no_rescale=True)
-        assert isinstance(result, tuple)
-        noise, misc = result
+    def test_draw_with_covariance_carries_the_window_covariance(self):
+        noise, _, misc = self.sampler.draw_with_covariance()
         assert noise.shape == (self.expected_len,)
+        assert misc is not None
 
     def test_misc_data_contains_station(self):
-        noise, misc = self.sampler(no_rescale=True)
+        noise, _, misc = self.sampler.draw_with_covariance()
         assert "STA1" in misc
 
     def test_misc_data_contains_component(self):
-        noise, misc = self.sampler(no_rescale=True)
+        noise, _, misc = self.sampler.draw_with_covariance()
         assert "Z" in misc["STA1"]
 
     def test_misc_data_variance_positive(self):
-        noise, misc = self.sampler(no_rescale=True)
+        noise, _, misc = self.sampler.draw_with_covariance()
         variance = misc["STA1"]["Z"]
         assert float(np.squeeze(variance)) > 0
 
     def test_noise_is_finite(self):
-        result = self.sampler()
+        result = self.sampler.draw().noise
         assert np.all(np.isfinite(result))
 
     def test_specific_noise_index(self):
         """Requesting a specific index should return a fixed noise realisation."""
-        noise_a = self.sampler(noise_index=0)
-        noise_b = self.sampler(noise_index=0)
+        noise_a = self.sampler.draw_with_covariance(window_index=0).noise
+        noise_b = self.sampler.draw_with_covariance(window_index=0).noise
         assert np.allclose(noise_a, noise_b)
 
     def test_different_indices_differ(self):
         """Different noise files should produce different realisations (with high prob.)."""
-        n0 = self.sampler(noise_index=0)
-        n1 = self.sampler(noise_index=1)
+        n0 = self.sampler.draw_with_covariance(window_index=0).noise
+        n1 = self.sampler.draw_with_covariance(window_index=1).noise
         assert not np.allclose(n0, n1)
 
     def test_preload_cache_draws_from_same_pool(self):
         """The opt-in in-RAM cache returns ONLY genuine catalogue windows (distribution-identical
         to the on-disk random draw) and correctly-shaped, finite vectors."""
         # Gather every on-disk window by index for a membership check.
-        on_disk = [np.asarray(self.sampler(noise_index=i)) for i in range(len(self.sampler.noise_paths))]
+        on_disk = [self.sampler.draw_with_covariance(window_index=i).noise for i in range(len(self.sampler.noise_paths))]
         self.sampler.preload_cache(max_workers=4)
         assert self.sampler._noise_cache is not None
         assert self.sampler._noise_cache.shape[1] == self.expected_len
         # Every cached draw must EQUAL one of the on-disk windows (drawn from the same pool).
         for _ in range(12):
-            v = self.sampler()
+            v = self.sampler.draw().noise
             assert v.shape == (self.expected_len,)
             assert np.all(np.isfinite(v))
             assert any(np.allclose(v, w, rtol=1e-5, atol=0) for w in on_disk), (
                 "cached noise draw is not a genuine catalogue window"
             )
 
-    def test_preload_cache_no_rescale_still_reads_disk(self):
-        """The cache only serves the generic random draw; explicit no_rescale/index paths still hit
-        disk (so misc-data / adaptive behaviour is unchanged)."""
+    def test_draw_with_covariance_reads_disk_after_preloading(self):
+        """The cache only serves the training draw; a draw with its covariance still reads the window."""
         self.sampler.preload_cache(max_workers=4)
-        noise, misc = self.sampler(no_rescale=True)   # must still return the (vector, misc) tuple
+        noise, _, misc = self.sampler.draw_with_covariance()
         assert noise.shape == (self.expected_len,)
         assert "STA1" in misc
 
@@ -125,23 +123,19 @@ class TestRealNoiseSamplerFreezeScale:
 
     def test_frozen_ignores_set_adaptive_covariance(self, receivers, noise_catalogue_dir):
         sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=True)
-        _, misc = sampler(no_rescale=True)
+        misc = sampler.draw_with_covariance().covariance_data
         sampler.set_adaptive_covariance_with_misc_data(misc)
-        # No-op: adaptive_covariance stays None, so __call__ takes the un-rescaled branch and
-        # returns a plain array (not the rescaled (noise, misc) tuple).
         assert sampler.adaptive_covariance is None
-        result = sampler()
-        assert isinstance(result, np.ndarray)
-        assert result.shape == (TRACE_LEN,)
+        result = sampler.draw()
+        assert result.covariance_data is None
+        assert result.noise.shape == (TRACE_LEN,)
 
     def test_unfrozen_sets_adaptive_covariance(self, receivers, noise_catalogue_dir):
         sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
-        _, misc = sampler(no_rescale=True)
+        misc = sampler.draw_with_covariance().covariance_data
         sampler.set_adaptive_covariance_with_misc_data(misc)
-        # Legacy single-event behaviour: covariance is set and __call__ returns the rescaled tuple.
         assert sampler.adaptive_covariance is not None
-        result = sampler()
-        assert isinstance(result, tuple)
+        assert sampler.draw().covariance_data is not None
 
 
 class TestRealNoiseSamplerShortWindowSkip:
@@ -177,14 +171,15 @@ class TestRealNoiseSamplerShortWindowSkip:
         self._write_window(tmp_path / "short.h5", receivers, TRACE_LEN // 2)
         sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
         for _ in range(50):
-            noise = sampler()
+            noise = sampler.draw().noise
             assert noise.shape == (TRACE_LEN,)   # never the truncated short window
 
     def test_explicit_short_path_falls_back(self, tmp_path, receivers):
         self._write_window(tmp_path / "good.h5", receivers, TRACE_LEN)
         self._write_window(tmp_path / "short.h5", receivers, TRACE_LEN // 2)
         sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
-        noise = sampler(noise_path=tmp_path / "short.h5")
+        short_index = [path.name for path in sampler.noise_paths].index("short.h5")
+        noise = sampler.draw_with_covariance(window_index=short_index).noise
         assert noise.shape == (TRACE_LEN,)       # skipped to the good window
 
     def test_all_short_raises(self, tmp_path, receivers):
@@ -193,7 +188,7 @@ class TestRealNoiseSamplerShortWindowSkip:
         self._write_window(tmp_path / "short1.h5", receivers, TRACE_LEN // 3)
         sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
         with pytest.raises(RuntimeError):
-            sampler()
+            sampler.draw()
 
 
 def test_from_receivers_draws_what_the_simulation_parameters_constructor_draws(receivers, noise_catalogue_dir):
@@ -204,9 +199,9 @@ def test_from_receivers_draws_what_the_simulation_parameters_constructor_draws(r
 
     assert list(from_receivers.noise_paths) == list(from_parameters.noise_paths)
     np.random.seed(4)
-    expected = from_parameters()
+    expected = from_parameters.draw().noise
     np.random.seed(4)
-    np.testing.assert_array_equal(from_receivers(), expected)
+    np.testing.assert_array_equal(from_receivers.draw().noise, expected)
 
 
 def test_from_windows_draws_whole_rows_of_the_given_windows(receivers):
@@ -214,7 +209,7 @@ def test_from_windows_draws_whole_rows_of_the_given_windows(receivers):
     sampler = RealNoiseSampler.from_windows(windows, receivers, "Z")
     assert sampler.noise_paths.size == 0
     np.random.seed(0)
-    draws = [sampler() for _ in range(20)]
+    draws = [sampler.draw().noise for _ in range(20)]
     assert all(draw.shape == (TRACE_LEN,) for draw in draws)
     assert {int(draw[0]) // TRACE_LEN for draw in draws} <= {0, 1, 2, 3}
     assert all(np.array_equal(draw, windows[int(draw[0]) // TRACE_LEN]) for draw in draws)
@@ -225,7 +220,7 @@ def test_from_windows_with_presence_returns_the_window_and_its_stations(receiver
     present = np.array([[True], [False], [True]])
     sampler = RealNoiseSampler.from_windows(windows, receivers, "Z", present=present)
     assert sampler.allow_incomplete
-    noise, mask = sampler()
+    noise, mask, _ = sampler.draw()
     assert noise.shape == (TRACE_LEN,) and mask.shape == (1,)
     assert sampler.subset_window_count([0]) == 2
 
@@ -237,5 +232,5 @@ def test_a_pool_of_mostly_unusable_windows_still_finds_the_usable_one(tmp_path, 
     TestRealNoiseSamplerShortWindowSkip._write_window(tmp_path / "good.h5", receivers, TRACE_LEN)
     sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
     good_index = [path.name for path in sampler.noise_paths].index("good.h5")
-    noise = sampler(noise_index=good_index + 1)
+    noise = sampler.draw_with_covariance(window_index=good_index + 1).noise
     assert noise.shape == (TRACE_LEN,)

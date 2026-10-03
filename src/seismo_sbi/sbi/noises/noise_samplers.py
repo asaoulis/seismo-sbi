@@ -1,16 +1,59 @@
-"""Gaussian noise samplers drawing from block-diagonal covariances.
+"""Noise samplers: the noise a training sample or a synthetic test event gets.
 
-``GaussianNoiseSampler`` draws from Cholesky factors of the per-trace blocks and can rescale each
-block to a measured variance; ``BlockGaussianSampler`` draws from precomputed factors. Both draw
-with ``draw_block_noise``.
+Every sampler is a :class:`NoiseSampler` returning a :class:`NoiseDraw`. ``WhiteNoiseSampler``
+draws independent Gaussian noise of one level, ``GaussianNoiseSampler`` draws from Cholesky
+factors of block-diagonal covariances and can rescale each block to a measured variance, and
+``BlockGaussianSampler`` draws from precomputed factors.
 """
+from abc import ABC, abstractmethod
+from typing import NamedTuple, Optional
+
 import numpy as np
 from scipy.linalg import toeplitz
 
 from seismo_sbi.sbi.noises.covariance_base import station_component_value
 
 
-class GaussianNoiseSampler:
+class NoiseDraw(NamedTuple):
+    """One noise realisation.
+
+    ``noise`` is ``(data_vector_length,)``. ``present`` ``(n_stations,)`` marks the stations a
+    recorded window holds, or is None unless the sampler draws incomplete windows.
+    ``covariance_data`` describes the noise, or is None when the sampler holds none: a recorded
+    window's ``{station: {component: autocovariance}}`` (lag 0 the variance), or the data a
+    Gaussian covariance was built from.
+    """
+    noise: np.ndarray
+    present: Optional[np.ndarray] = None
+    covariance_data: Optional[object] = None
+
+
+class NoiseSampler(ABC):
+    """A source of data-vector noise: :meth:`draw` for a training sample, :meth:`draw_with_covariance`
+    for a synthetic test event, whose inversion needs the covariance describing its noise."""
+
+    @abstractmethod
+    def draw(self) -> NoiseDraw:
+        """One noise realisation for a training sample."""
+
+    def draw_with_covariance(self) -> NoiseDraw:
+        """One noise realisation with the covariance data that describes it."""
+        return self.draw()
+
+
+class WhiteNoiseSampler(NoiseSampler):
+    """Independent Gaussian noise of standard deviation ``noise_level`` on each of
+    ``data_vector_length`` samples."""
+
+    def __init__(self, noise_level, data_vector_length):
+        self.noise_level = noise_level
+        self.data_vector_length = data_vector_length
+
+    def draw(self):
+        return NoiseDraw(np.random.normal(0, self.noise_level * np.ones((self.data_vector_length))))
+
+
+class GaussianNoiseSampler(NoiseSampler):
     """Gaussian sampler that owns covariance and can be adapted.
 
     This class is intended mainly for the block-diagonal covariances where each
@@ -77,16 +120,10 @@ class GaussianNoiseSampler:
             return float(val.ravel()[0])
         return float(val)
 
-    def __call__(self, *args, **kwargs):
-        """Draw a sample from the current covariance.
-
-        Returns
-        -------
-        noise_vector : np.ndarray, shape (n_total,)
-        meta : dict or None
-            ``station_component_covariances``, if the sampler was given it.
-        """
-        return draw_block_noise(self.Ls, self.block_sizes), self.station_component_covariances
+    def draw(self):
+        """A draw from the current covariance, with ``station_component_covariances`` (None if the
+        sampler was not given it) as its covariance data."""
+        return NoiseDraw(draw_block_noise(self.Ls, self.block_sizes), None, self.station_component_covariances)
 
     def set_adaptive_covariance_with_misc_data(self, misc_data):
         """Adapt Toeplitz columns and covariance blocks using misc_data.
@@ -119,14 +156,16 @@ class GaussianNoiseSampler:
         self._build_cholesky()
 
 
-class BlockGaussianSampler:
+class BlockGaussianSampler(NoiseSampler):
+    """Block-diagonal Gaussian noise from precomputed Cholesky factors ``Ls`` of blocks of ``block_sizes``."""
+
     def __init__(self, Ls, block_sizes, station_component_covariances):
         self.Ls = Ls
         self.block_sizes = block_sizes
         self.station_component_covariances = station_component_covariances
 
-    def __call__(self, *args, **kwargs):
-        return draw_block_noise(self.Ls, self.block_sizes), self.station_component_covariances
+    def draw(self):
+        return NoiseDraw(draw_block_noise(self.Ls, self.block_sizes), None, self.station_component_covariances)
 
 
 def draw_block_noise(cholesky_factors, block_sizes):

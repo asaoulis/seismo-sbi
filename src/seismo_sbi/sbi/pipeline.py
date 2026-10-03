@@ -24,6 +24,7 @@ from .types.fixed_jobs import FixedEventJobs
 
 from .compression.gaussian import GaussianCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
 
+from .noises.noise_samplers import WhiteNoiseSampler
 from .noises.real_noise import RealNoiseSampler
 from .noises.diagonal_covariances import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance
 from .noises.toeplitz_covariances import (
@@ -222,7 +223,7 @@ class SBIPipeline:
                     cov_mat_config,
                     self.trace_length,
                 )
-                _, cov_data = sampler(noise_index=0, no_rescale=True)
+                cov_data = sampler.draw_with_covariance(window_index=0).covariance_data
                 self.empirical_cov_mat = self.create_covariance_matrix(cov_matrix_option, cov_data)
 
             compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
@@ -340,8 +341,8 @@ class SBIPipeline:
             if noise_type == "gaussian_noises":
                 train_noise_level = sbi_noise_model['noise_level']
                 noise_factor = noise_options
-                noise_callable =  self._build_lambda_noiselevel( noise_factor *train_noise_level)
-                self.test_noises[f"{noise_type}_x{noise_factor}"] = noise_callable
+                self.test_noises[f"{noise_type}_x{noise_factor}"] = WhiteNoiseSampler(
+                    noise_factor * train_noise_level, self.data_vector_length)
             elif noise_type == "gaussian_filtered":
                 cov = self.data_cov_mat
                 self.test_noises[noise_type] = cov.create_sampler()
@@ -359,7 +360,7 @@ class SBIPipeline:
         
         if train_noise_type == 'gaussian':
             train_noise_level = sbi_noise_model['noise_level']
-            self.training_noise_sampler = lambda : np.random.normal(0, train_noise_level *np.ones((self.data_vector_length)))
+            self.training_noise_sampler = WhiteNoiseSampler(train_noise_level, self.data_vector_length)
         elif train_noise_type == 'gaussian_filtered':
             train_noise_level = sbi_noise_model['noise_level']
             self.training_noise_sampler = self.data_cov_mat.create_sampler()
@@ -379,9 +380,6 @@ class SBIPipeline:
         elif train_noise_type == 'empirical_gaussian':
             self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
 
-
-    def _build_lambda_noiselevel(self, noise_level, **kwargs):
-        return lambda no_rescale: np.random.normal(0, noise_level *np.ones((self.data_vector_length)))
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
         """Run the derivative stencils the compression methods need; returns the compression data."""

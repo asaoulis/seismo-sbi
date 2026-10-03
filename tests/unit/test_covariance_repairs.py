@@ -18,7 +18,7 @@ from tests.unit.test_covariance_characterisation import (
 
 def test_scalar_sampler_draws_white_noise_of_the_data_length():
     np.random.seed(3)
-    noise, _ = ScalarEmpiricalCovariance(0.5, data_vector_length=20000).create_sampler()()
+    noise = ScalarEmpiricalCovariance(0.5, data_vector_length=20000).create_sampler().draw().noise
     assert noise.shape == (20000,)
     assert abs(noise.std() - 0.5) < 0.01
 
@@ -26,7 +26,7 @@ def test_scalar_sampler_draws_white_noise_of_the_data_length():
 def test_diagonal_sampler_draws_each_trace_at_its_variance():
     covariance = DiagonalEmpiricalCovariance(autocovariances(BLOCK_SIZE), make_receivers(), BLOCK_SIZE)
     np.random.seed(4)
-    noise = np.stack([covariance.create_sampler()()[0] for _ in range(2000)])
+    noise = np.stack([covariance.create_sampler().draw().noise for _ in range(2000)])
     assert noise.shape == (2000, 6 * BLOCK_SIZE)
     np.testing.assert_allclose(noise.var(axis=0).reshape(6, BLOCK_SIZE).mean(axis=1),
                                covariance.covariance_matrix[::BLOCK_SIZE], rtol=0.05)

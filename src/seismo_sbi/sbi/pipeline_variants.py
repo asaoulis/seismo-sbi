@@ -92,26 +92,18 @@ class MultiEventPipeline(SingleEventPipeline):
             D = self.data_manager.load_simulation_vector(sim_path)
             for test_noise_name, synthetic_noise_sampler in self.test_noises.items():
                 if i == 0:
-                    noise = synthetic_noise_sampler(no_rescale=True)
-                    if isinstance(noise, tuple):
-                        noise, covariance_data = noise
-                        self.test_noises[test_noise_name].set_adaptive_covariance_with_misc_data(covariance_data)
-                    else:
-                        covariance_data = None
-
+                    noise = synthetic_noise_sampler.draw_with_covariance()
+                    if noise.covariance_data is not None:
+                        synthetic_noise_sampler.set_adaptive_covariance_with_misc_data(noise.covariance_data)
                 else:
-                    noise = synthetic_noise_sampler(no_rescale=False)
-                    if isinstance(noise, tuple):
-                        noise, covariance_data = noise
-                    else:
-                        covariance_data = None
+                    noise = synthetic_noise_sampler.draw()
 
                 job_data.append(
                     JobData(sim_path.stem, 
                             test_noise_name,
-                            D + noise, 
+                            D + noise.noise, 
                             theta0,
-                            covariance=covariance_data)
+                            covariance=noise.covariance_data)
                     )
 
         # Real events are truncated to the configured trace length, derived from the seismogram

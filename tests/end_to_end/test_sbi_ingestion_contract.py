@@ -145,25 +145,25 @@ class TestRealNoiseSamplerWithSyntheticH5:
     def test_finds_h5_files(self):
         assert len(self.sampler.noise_paths) >= 1
 
-    def test_call_returns_array(self):
-        result = self.sampler()
+    def test_draw_returns_array(self):
+        result = self.sampler.draw().noise
         assert isinstance(result, np.ndarray)
         assert result.shape == (EXPECTED_FLAT_LEN,)
 
-    def test_no_rescale_returns_noise_and_misc(self):
-        noise, misc = self.sampler(no_rescale=True)
+    def test_draw_with_covariance_returns_noise_and_misc(self):
+        noise, _, misc = self.sampler.draw_with_covariance()
         assert noise.shape == (EXPECTED_FLAT_LEN,)
         assert isinstance(misc, dict)
         for sta in STATIONS:
             assert sta in misc
 
     def test_noise_is_finite(self):
-        result = self.sampler()
+        result = self.sampler.draw().noise
         assert np.all(np.isfinite(result))
 
     def test_reproducible_at_fixed_index(self):
-        a = self.sampler(noise_index=0)
-        b = self.sampler(noise_index=0)
+        a = self.sampler.draw_with_covariance(window_index=0).noise
+        b = self.sampler.draw_with_covariance(window_index=0).noise
         np.testing.assert_array_equal(a, b)
 
 
@@ -263,7 +263,7 @@ class TestAdaptiveCovarianceScaling:
 
     def test_scale_factor_one_when_variances_match(self):
         """When adaptive_covariance equals the h5 misc, all scale factors are 1.0."""
-        noise, misc = self.sampler(no_rescale=True)
+        misc = self.sampler.draw_with_covariance().covariance_data
         scales = self.sampler.calculate_scales(misc)
         for sta, comps in scales.items():
             for comp, s in comps.items():
@@ -273,7 +273,7 @@ class TestAdaptiveCovarianceScaling:
 
     def test_scaled_noise_shape_unchanged(self):
         """Adaptive rescaling does not change the output vector shape."""
-        result, misc = self.sampler()
+        result = self.sampler.draw().noise
         assert result.shape == (EXPECTED_FLAT_LEN,)
 
 

@@ -2063,26 +2063,26 @@ class TestRealNoiseSamplerWithCatalogueNoise:
         assert len(self.sampler.noise_paths) >= 1
 
     def test_call_returns_correct_shape(self):
-        result = self.sampler()
+        result = self.sampler.draw().noise
         assert isinstance(result, np.ndarray)
         assert result.shape == (self.expected_flat_len,)
 
     def test_noise_is_finite(self):
-        result = self.sampler()
+        result = self.sampler.draw().noise
         assert np.all(np.isfinite(result)), "Noise vector contains NaN/Inf"
 
     def test_noise_is_nonzero(self):
-        result = self.sampler()
+        result = self.sampler.draw().noise
         assert np.any(result != 0.0), "Noise vector is all zeros"
 
-    def test_no_rescale_returns_noise_and_misc(self):
-        noise, misc = self.sampler(no_rescale=True)
+    def test_draw_with_covariance_returns_noise_and_misc(self):
+        noise, _, misc = self.sampler.draw_with_covariance()
         assert noise.shape == (self.expected_flat_len,)
         assert isinstance(misc, dict)
 
     def test_reproducible_at_fixed_index(self):
-        a = self.sampler(noise_index=0)
-        b = self.sampler(noise_index=0)
+        a = self.sampler.draw_with_covariance(window_index=0).noise
+        b = self.sampler.draw_with_covariance(window_index=0).noise
         np.testing.assert_array_equal(a, b)
 
 

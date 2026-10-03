@@ -51,17 +51,13 @@ class DataManager:
             theta0 = self.load_model_parameter_vector(sim_path)
             D = self.load_simulation_vector(sim_path)
             for test_noise_name, synthetic_noise_sampler in test_noises.items():
-                noise = synthetic_noise_sampler(no_rescale=True)
-                if isinstance(noise, tuple):
-                    noise, covariance_data = noise
-                else:
-                    covariance_data = None
+                noise = synthetic_noise_sampler.draw_with_covariance()
                 synthetic_jobs.append(
                     JobData(sim_path.stem, 
                             test_noise_name,
-                            D + noise, 
+                            D + noise.noise, 
                             theta0,
-                            covariance=covariance_data)
+                            covariance=noise.covariance_data)
                     )
         return synthetic_jobs
 

@@ -16,6 +16,7 @@ import pytest
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 from seismo_sbi.sbi.datasets.training_data import TrainingData
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.scalers import FlexibleScaler
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration
 
@@ -126,7 +127,7 @@ def launcher_run(tmp_path_factory):
     pipeline, _, data_vector_length = _build_kernel_pipeline(tmp_path)
     # The kernel fixture writes its simulations into a 'train' subfolder.
     pipeline.simulations_output_path = pipeline.simulations_output_path + "/train"
-    pipeline.training_noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    pipeline.training_noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
 
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
     simulation_paths = sorted(Path(pipeline.simulations_output_path).glob("*.h5"))

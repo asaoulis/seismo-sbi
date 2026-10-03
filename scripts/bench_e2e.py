@@ -35,6 +35,7 @@ import torch
 import pytorch_lightning as pl
 
 from seismo_sbi.sbi.npe.training.train import CompressionTrainer
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.npe.data.dataloading import StationSubsampler
 from seismo_sbi.sbi.scalers import FlexibleScaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain
@@ -165,7 +166,7 @@ def main():
             "data_loader": pipeline.data_manager.data_loader,
             "data_folder": pipeline.simulations_output_path + "/train",
             "parameter_name_map": pipeline.parameters.names,
-            "synthetic_noise_model_sampler": (lambda: np.random.normal(0.0, 1.0, dvl)),
+            "synthetic_noise_model_sampler": WhiteNoiseSampler(1.0, dvl),
             "augmentation_chain": chain,
             "augmentation_nuisance_params": params,
             "data_scaler": data_scaler,

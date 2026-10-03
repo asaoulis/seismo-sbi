@@ -24,8 +24,19 @@ from seismo_sbi.sbi.npe.data.dataloading import (
     StationSubsampler,
     _seed_worker,
 )
+from seismo_sbi.sbi.noises.noise_samplers import NoiseDraw, NoiseSampler
 
 TRACE_LEN = 32
+
+
+class _FixedNoise(NoiseSampler):
+    """The same noise array on every draw."""
+
+    def __init__(self, noise):
+        self.noise = noise
+
+    def draw(self):
+        return NoiseDraw(self.noise.copy())
 
 
 def _receivers():
@@ -51,7 +62,7 @@ def _make_dataset(augmentation_chain, augmentation_nuisance_params, D_clean):
     ds.augmentation_nuisance_params = augmentation_nuisance_params or {}
     ds.paths = ["dummy.h5"]
     # Zero noise → x == (possibly augmented) D, isolating the augmentation effect.
-    ds.synthetic_noise_model_sampler = lambda: np.zeros((2, TRACE_LEN))
+    ds.synthetic_noise_model_sampler = _FixedNoise(np.zeros((2, TRACE_LEN)))
     ds._load_sim = lambda path: (np.array([]), D_clean.copy())
     return ds
 
@@ -180,7 +191,7 @@ def test_make_torch_dataloader_applies_augmentation_end_to_end(tmp_path):
         data_loader=loader,
         data_folder=str(tmp_path),
         parameter_name_map={},
-        synthetic_noise_model_sampler=lambda: np.zeros((2, TRACE_LEN)),  # zero noise
+        synthetic_noise_model_sampler=_FixedNoise(np.zeros((2, TRACE_LEN))),  # zero noise
         augmentation_chain=chain,
         augmentation_nuisance_params={"amplitude_error": 1.0},
         batch_size=2,
@@ -203,7 +214,7 @@ def test_make_torch_dataloader_no_chain_is_clean(tmp_path):
     )
     dl = make_torch_dataloader(
         data_loader=loader, data_folder=str(tmp_path), parameter_name_map={},
-        synthetic_noise_model_sampler=lambda: np.zeros((2, TRACE_LEN)),
+        synthetic_noise_model_sampler=_FixedNoise(np.zeros((2, TRACE_LEN))),
         augmentation_chain=None, batch_size=1, shuffle=False, num_workers=0,
     )
     _, x = next(iter(dl))
@@ -278,7 +289,7 @@ def _make_post_noise_dataset(post_chain, post_params, D_clean, station_subsample
     ds.station_coords = receivers.get_station_locations_array()
     ds.paths = ["dummy.h5"]
     # Constant NON-ZERO noise on present channels (zero-filled for absent ones by the loader).
-    ds.synthetic_noise_model_sampler = lambda: np.full((_N_PRESENT, TRACE_LEN), _NOISE_LEVEL)
+    ds.synthetic_noise_model_sampler = _FixedNoise(np.full((_N_PRESENT, TRACE_LEN), _NOISE_LEVEL))
     ds._load_sim = lambda path: (np.array([]), D_clean.copy())
     return ds
 

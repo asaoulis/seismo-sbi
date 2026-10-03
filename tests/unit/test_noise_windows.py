@@ -44,7 +44,7 @@ def test_noise_windows_feed_the_sampler_and_the_estimator():
     noise_windows, present = noise_windows_from_stream(continuous_stream(), receivers(), 200.0, 1.0,
                                                        avoid_windows_utc=[EVENT], buffer_s=120.0, step_s=300.0)
 
-    noise_vector, present_mask = RealNoiseSampler.from_windows(noise_windows, receivers(), "ZEN", present=present)()
+    noise_vector, present_mask, _ = RealNoiseSampler.from_windows(noise_windows, receivers(), "ZEN", present=present).draw()
     assert noise_vector.shape == (1206,) and present_mask[0]
     covariances = EmpiricalCovarianceEstimator(None, receivers(), "ZEN", covariance_exp_tapering=False,
                                                verbose=False).estimate_from_windows(noise_windows, present)

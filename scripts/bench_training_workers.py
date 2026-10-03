@@ -28,6 +28,7 @@ for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
 import numpy as np
 
 from seismo_sbi.sbi.npe.training.train import CompressionTrainer
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.scalers import FlexibleScaler
 
 from _bench_common import build_kernel_pipeline, default_augmentation_chain
@@ -78,7 +79,7 @@ def main():
             "data_loader": pipeline.data_manager.data_loader,
             "data_folder": pipeline.simulations_output_path + "/train",
             "parameter_name_map": pipeline.parameters.names,
-            "synthetic_noise_model_sampler": (lambda: np.random.normal(0.0, 1.0, dvl)),
+            "synthetic_noise_model_sampler": WhiteNoiseSampler(1.0, dvl),
             "augmentation_chain": aug_chain,
             "augmentation_nuisance_params": aug_params,
             "data_scaler": data_scaler,

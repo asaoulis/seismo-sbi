@@ -251,13 +251,9 @@ class TorchSimulationDataset(Dataset):
     def _add_noise(self, D):
         """``(x, noise_present)``: ``D`` plus one noise draw, and the stations the noise window
         carried (``None`` unless the sampler allows incomplete windows)."""
-        noise = self.synthetic_noise_model_sampler()
-        noise_present = None
-        if isinstance(noise, tuple):
-            noise, second = noise
-            if getattr(self.synthetic_noise_model_sampler, "allow_incomplete", False):
-                noise_present = np.asarray(second, dtype=bool)
-        noise = np.asarray(noise)
+        draw = self.synthetic_noise_model_sampler.draw()
+        noise_present = None if draw.present is None else np.asarray(draw.present, dtype=bool)
+        noise = np.asarray(draw.noise)
         noise_rows = self.data_loader.zero_fill_unused_components(
             noise.reshape(-1, D.shape[-1]), D.shape[-1]
         )

@@ -15,6 +15,7 @@ from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
 from seismo_sbi.sbi.npe.data.dataloading import (
     StationSubsampler, TorchSimulationDataset, make_torch_dataloaders)
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 
 TRACE_LENGTH = 40
 COMPONENTS = "ZEN"
@@ -48,8 +49,7 @@ def _write_simulations(folder):
                     station.create_dataset(component, data=rng.normal(size=TRACE_LENGTH))
 
 
-def _noise():
-    return np.random.normal(0.0, 0.1, 8 * TRACE_LENGTH)
+_noise = WhiteNoiseSampler(0.1, 8 * TRACE_LENGTH)
 
 
 class _AffineScaler:

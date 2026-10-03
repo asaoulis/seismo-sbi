@@ -84,7 +84,7 @@ def measure_closures(covariance, residual, inverse_metadata, block_size):
 
 def draws(sampler, n_draws=3):
     np.random.seed(7)
-    return np.stack([sampler()[0] for _ in range(n_draws)])
+    return np.stack([sampler.draw().noise for _ in range(n_draws)])
 
 
 def measure_scalar():

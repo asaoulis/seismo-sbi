@@ -107,9 +107,7 @@ class DatasetCompressor:
         inputs, D = self.load_sim(sim_path, param_names)
         if sim_seed is not None:
             np.random.seed(sim_seed)
-        noise = self.synthetic_noise_model_sampler()
-        if isinstance(noise, tuple):
-            noise, _ = noise
+        noise = self.synthetic_noise_model_sampler.draw().noise
         compressed_representation = self.compressor.compress_data_vector(D + noise, matmul_callable=matmul_callable)
         return np.concatenate([inputs, compressed_representation])
 

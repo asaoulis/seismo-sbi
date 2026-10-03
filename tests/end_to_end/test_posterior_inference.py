@@ -46,6 +46,7 @@ from tests.end_to_end.test_pipeline_simulators import (
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.types.parameters import (
     DatasetGenerationParameters,
     SimulationParameters,
@@ -302,9 +303,7 @@ def _build_inference_setup(tmp, sim_params, model_params, dataset_params, data_v
         compression_data_extras=(cd_raw, None),
     )
 
-    pipeline.training_noise_sampler = lambda: np.random.normal(
-        0, sigma, pipeline.data_vector_length
-    )
+    pipeline.training_noise_sampler = WhiteNoiseSampler(sigma, pipeline.data_vector_length)
 
     D_obs = _make_test_observation(compressor, sigma)
     return dict(

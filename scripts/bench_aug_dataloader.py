@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain, apply_chain_to_array
+from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.npe.data.dataloading import (
     TorchSimulationDataset,
     make_torch_dataloaders,
@@ -39,7 +40,7 @@ def _time(fn, iters, warmup=3):
 
 def _make_dataset(pipeline, data_vector_length, aug_chain, aug_params, components):
     data_loader = pipeline.data_manager.data_loader
-    noise_sampler = lambda: np.random.normal(0.0, 1.0, data_vector_length)
+    noise_sampler = WhiteNoiseSampler(1.0, data_vector_length)
     return TorchSimulationDataset(
         data_loader=data_loader,
         data_folder=pipeline.simulations_output_path + "/train",
@@ -165,7 +166,7 @@ def main():
                     data_loader=pipeline.data_manager.data_loader,
                     data_folder=pipeline.simulations_output_path + "/train",
                     parameter_name_map=pipeline.parameters.names,
-                    synthetic_noise_model_sampler=lambda: np.random.normal(0.0, 1.0, dvl),
+                    synthetic_noise_model_sampler=WhiteNoiseSampler(1.0, dvl),
                     augmentation_chain=aug_chain,
                     augmentation_nuisance_params=aug_params,
                     train_max_index=train_max,
