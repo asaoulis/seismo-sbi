@@ -374,7 +374,9 @@ class _FakeQuerierEnsemble(InstaseisEnsembleSimulator):
 
     def _open_querier(self, db_path):
         self.open_calls.append(db_path)
-        return _FakeQuerier(db_path, self._trace_len)
+        querier = _FakeQuerier(db_path, self._trace_len)
+        querier.depth_offset_km = self.source_depth_offset_km
+        return querier
 
 
 @pytest.fixture
@@ -477,6 +479,14 @@ class TestQuerierCache:
         for _ in range(20):
             sim.generic_point_source_simulation(_src())
         assert len(sim.open_calls) <= 3
+
+    def test_simulators_with_different_depth_offsets_do_not_share_a_querier(self, receivers5):
+        first = _FakeQuerierEnsemble(receivers5, members=range(2))
+        second = _FakeQuerierEnsemble(receivers5, members=range(2))
+        second._processing_signature = first._processing_signature
+        second.source_depth_offset_km = 1.0
+        assert first._cached_querier(0) is not second._cached_querier(0)
+        assert second._cached_querier(0).depth_offset_km == 1.0
 
     def test_lru_eviction_respects_maxsize(self, receivers5, monkeypatch):
         import seismo_sbi.simulators.instaseis.ensemble as ens_mod

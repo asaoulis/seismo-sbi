@@ -21,7 +21,7 @@ from .querier import SYNTHETICS_PRE_EVENT_PAD_S, InstaseisDBQuerier
 PER_STATION_SEED_STRIDE = 10_000
 
 #: Open database handles, keyed by ``(pid, db_path, seismogram_length, processing_signature,
-#: stf_alignment)``.
+#: source_depth_offset_km, stf_alignment)``.
 _QUERIER_CACHE = OrderedDict()
 
 #: Cap on :data:`_QUERIER_CACHE`; ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides the default.
@@ -115,7 +115,7 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     def _cached_querier(self, db_path) -> InstaseisDBQuerier:
         """An open querier for ``db_path``."""
         key = (os.getpid(), str(db_path), self.seismogram_length, self._processing_signature,
-               self.stf_alignment)
+               self.source_depth_offset_km, self.stf_alignment)
         querier = _QUERIER_CACHE.get(key)
         if querier is None:
             querier = self._open_querier(db_path)
