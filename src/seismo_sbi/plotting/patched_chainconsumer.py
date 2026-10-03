@@ -54,6 +54,7 @@ class CustomPlotter(Plotter):
         blind=None,
         watermark=None,
         log_scales=None,
+        references=None,
     ):  # pragma: no cover
         """ Plot the chain!
 
@@ -96,6 +97,9 @@ class CustomPlotter(Plotter):
             Whether or not to use a log scale on any given axis. Can be a list of True/False, a list of param
             names to set to true, a dictionary of param names with true/false
             or just a bool (just `True` would set everything to log scales).
+        references : list[tuple[dict, dict]], optional
+            Points drawn in every two-parameter panel: each a ``{parameter: value}`` location and
+            the ``matplotlib`` scatter style to draw it with.
 
         Returns
         -------
@@ -245,6 +249,8 @@ class CustomPlotter(Plotter):
                         self._plot_points(ax, subgroups, markers, marker_sizes, marker_alphas, p1, p2)
 
                     self._add_truth(ax, truth, p1, py=p2)
+                    for location, style in references or []:
+                        ax.scatter(location[p2], location[p1], edgecolors="black", linewidths=0.8, zorder=20, **style)
 
         colors = [c.config["color"] for c in chains]
         plot_points = [c.config["plot_point"] for c in chains]

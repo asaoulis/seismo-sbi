@@ -110,11 +110,17 @@ class MomentTensorReparametrised:
 
 
 
-    def plot_chain_consumer(self, samples_theta0_dict, custom_processing = None, *args, **kwargs):
+    def plot_chain_consumer(self, samples_theta0_dict, custom_processing = None, *args, extra_references=None, **kwargs):
+        """Corner plot of the ensembles reparametrised as lune angles, Mw and one nodal plane.
+        ``extra_references`` ``{label: vector}``, in the samples' units, are converted like a sample
+        (the same nodal-plane choice) and drawn as markers. Returns the figure."""
         converted_chain_dict = self.convert_chain_dict(samples_theta0_dict, custom_processing)
+        converted_references = {label: self.convert_samples(np.asarray(vector, dtype=float)[None], None, custom_processing)[0][0]
+                                for label, vector in (extra_references or {}).items()}
 
         with warning_logging_disabled():
-            self.chain_plotter.plot_chain_consumer(converted_chain_dict,  *args, **kwargs)
+            return self.chain_plotter.plot_chain_consumer(converted_chain_dict, *args,
+                                                          extra_references=converted_references, **kwargs)
 
     def convert_chain_dict(self, samples_theta0_dict, custom_processing):
         converted_chain_dict = {}
@@ -140,6 +146,7 @@ LUNE_REFERENCE_STYLES = [
     {"marker": "s", "color": "dodgerblue",  "s": 200},
     {"marker": "^", "color": "magenta",     "s": 230},
     {"marker": "P", "color": "darkorange",  "s": 230},
+    {"marker": "D", "color": "limegreen",   "s": 170},
 ]
 
 
@@ -306,7 +313,12 @@ class PosteriorPlotter:
             plt.show()
         plt.close()
 
-    def plot_chain_consumer(self, inversion_data, kde=True, extents=None, inverse=False, figsave= None, tick_font_size=30, *args, **kwargs):
+    def plot_chain_consumer(self, inversion_data, kde=True, extents=None, inverse=False, figsave= None, tick_font_size=30,
+                            extra_references=None, *args, **kwargs):
+        """Corner plot of each ``name: (theta0, samples, ...)`` ensemble in ``inversion_data``, the first
+        one's ``theta0`` as the truth lines. ``extra_references`` ``{label: vector}``, in the samples'
+        units, are drawn as markers in every two-parameter panel with the lune's reference styles and
+        listed in a legend. Returns the figure."""
         plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
         colors = LUNE_ENSEMBLE_COLORS
 
@@ -336,15 +348,39 @@ class PosteriorPlotter:
         c_plot.configure_truth(lw=2)
         scale = 2.8*self.num_dim
 
-        fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=extents)
+        references = self._chain_consumer_references(extra_references or {}, parameters_label)
+        fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=extents,
+                                  references=[(location, style) for _, location, style in references])
         fig.align_labels() 
+        if references:
+            self._add_chain_consumer_legend(fig, list(scaled_data_dict), references)
 
         if figsave is None:
             plt.show()
         else:
             fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
         plt.close()
-    
+        return fig
+
+    def _chain_consumer_references(self, extra_references, parameters_label):
+        """``(label, {parameter label: value}, scatter style)`` for each reference vector, in plotting units."""
+        references = []
+        for j, (label, vector) in enumerate(extra_references.items()):
+            style = LUNE_REFERENCE_STYLES[j % len(LUNE_REFERENCE_STYLES)]
+            location = self._transform_to_plotting_units(np.asarray(vector, dtype=float).reshape(1, -1))[0]
+            references.append((label, dict(zip(parameters_label, location)),
+                               {"marker": style["marker"], "color": style["color"], "s": 0.6 * style["s"]}))
+        return references
+
+    @staticmethod
+    def _add_chain_consumer_legend(fig, chain_names, references):
+        handles = [plt.Line2D([], [], color=LUNE_ENSEMBLE_COLORS[i % len(LUNE_ENSEMBLE_COLORS)], lw=4)
+                   for i in range(len(chain_names))]
+        handles += [plt.Line2D([], [], ls="", marker=style["marker"], color=style["color"], markeredgecolor="black",
+                               markersize=18) for _, _, style in references]
+        labels = list(chain_names) + [label for label, _, _ in references]
+        fig.legend(handles, labels, loc="upper right", bbox_to_anchor=(0.98, 0.98), fontsize=34, frameon=False)
+
     def plot_lunes(self, inversion_data, num_samples=250, plot_beachballs=True, figsave=None, legend=True, extra_references=None, reference_label=None, primary_reference=None):
 
         # Project ensembles onto the standard Tape & Tape lune (Hammer) and scatter
