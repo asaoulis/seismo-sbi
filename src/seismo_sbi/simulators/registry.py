@@ -21,6 +21,18 @@ from .cps.simulator import (
 )
 
 
+def _sub_receivers(station_to_receiver, station_names, where):
+    """The receivers of ``station_names``, looked up in ``station_to_receiver``; ``where`` names the
+    configuration entry in the error for a station that is not among the receivers."""
+    sub_receivers_list = []
+    for sta in station_names:
+        try:
+            sub_receivers_list.append(station_to_receiver[sta])
+        except KeyError:
+            raise KeyError(f"Station '{sta}' in {where} not found in global receivers list")
+    return Receivers(receivers=sub_receivers_list)
+
+
 def _build_cps_multi_models_from_path(simulation_parameters):
     """Sub-model dicts read from the JSON file ``cps_multi_models_path`` names.
 
@@ -50,17 +62,7 @@ def _build_cps_multi_models_from_path(simulation_parameters):
                 f"Entry {idx} in {cfg_path} must be an object/dict, got {type(cfg)}"
             )
 
-        station_names = cfg.get("receivers", [])
-        sub_receivers_list = []
-        for sta in station_names:
-            try:
-                sub_receivers_list.append(station_to_receiver[sta])
-            except KeyError:
-                raise KeyError(
-                    f"Station '{sta}' in {cfg_path} (entry {idx}) not found in global receivers list"
-                )
-
-        sub_receivers = Receivers(receivers=sub_receivers_list)
+        sub_receivers = _sub_receivers(station_to_receiver, cfg.get("receivers", []), f"{cfg_path} (entry {idx})")
         model_cfg = {
             "receivers": sub_receivers,
             "cps_GFs_path": cfg["cps_GFs_path"],
@@ -77,7 +79,7 @@ def _build_instaseis_multi_models(simulation_parameters):
     ``receivers`` (a list of station names). The database paths are kept inline as YAML string
     leaves so a cluster orchestrator can rewrite them to its own archive.
     """
-    cfg_list = getattr(simulation_parameters, "instaseis_multi_models", None)
+    cfg_list = simulation_parameters.instaseis_multi_models
     if not cfg_list:
         return None
 
@@ -96,18 +98,8 @@ def _build_instaseis_multi_models(simulation_parameters):
                 f"Entry {idx} in instaseis_multi_models must be an object/dict, got {type(cfg)}"
             )
 
-        station_names = cfg.get("receivers", [])
-        sub_receivers_list = []
-        for sta in station_names:
-            try:
-                sub_receivers_list.append(station_to_receiver[sta])
-            except KeyError:
-                raise KeyError(
-                    f"Station '{sta}' in instaseis_multi_models (entry {idx}) "
-                    "not found in global receivers list"
-                )
-
-        sub_receivers = Receivers(receivers=sub_receivers_list)
+        sub_receivers = _sub_receivers(station_to_receiver, cfg.get("receivers", []),
+                                       f"instaseis_multi_models (entry {idx})")
         models.append({
             "receivers": sub_receivers,
             "ensemble_dir": cfg["ensemble_dir"],
@@ -125,12 +117,11 @@ def _build_instaseis_ensemble(simulation_parameters, simulator_config, pp_effect
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None),
-                    resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
-                    member_sampling=getattr(simulation_parameters, "member_sampling", None),
-                    sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
-                    source_depth_offset_km=getattr(
-                        simulation_parameters, "source_depth_offset_km", 0.0))
+                    stf_alignment=simulation_parameters.stf_alignment,
+                    resample_member_per_station=simulation_parameters.resample_member_per_station,
+                    member_sampling=simulation_parameters.member_sampling,
+                    sector_lambda=simulation_parameters.sector_lambda,
+                    source_depth_offset_km=simulation_parameters.source_depth_offset_km)
 
 
 def _build_instaseis(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -140,9 +131,8 @@ def _build_instaseis(simulation_parameters, simulator_config, pp_effects, data_f
                                 seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                                 synthetics_processing=simulation_parameters.processing,
                                 post_processing_effects=pp_effects,
-                                stf_alignment=getattr(simulation_parameters, "stf_alignment", None),
-                                source_depth_offset_km=getattr(
-                                    simulation_parameters, "source_depth_offset_km", 0.0))
+                                stf_alignment=simulation_parameters.stf_alignment,
+                                source_depth_offset_km=simulation_parameters.source_depth_offset_km)
 
 
 def _build_kernel(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -153,7 +143,7 @@ def _build_kernel(simulation_parameters, simulator_config, pp_effects, data_flat
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
+                    stf_alignment=simulation_parameters.stf_alignment)
 
 
 def _build_cps(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -163,9 +153,9 @@ def _build_cps(simulation_parameters, simulator_config, pp_effects, data_flatten
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     gf_storage_root=simulation_parameters.cps_GFs_path,
-                    cps_path=getattr(simulation_parameters, 'cps_path', None),
+                    cps_path=simulation_parameters.cps_path,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
+                    stf_alignment=simulation_parameters.stf_alignment)
 
 
 def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -176,9 +166,9 @@ def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, 
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     gf_storage_root=simulation_parameters.cps_GFs_path,
-                    cps_path=getattr(simulation_parameters, 'cps_path', None),
+                    cps_path=simulation_parameters.cps_path,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
+                    stf_alignment=simulation_parameters.stf_alignment)
 
 
 def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -198,12 +188,11 @@ def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None),
-                    resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
-                    member_sampling=getattr(simulation_parameters, "member_sampling", None),
-                    sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
-                    source_depth_offset_km=getattr(
-                        simulation_parameters, "source_depth_offset_km", 0.0))
+                    stf_alignment=simulation_parameters.stf_alignment,
+                    resample_member_per_station=simulation_parameters.resample_member_per_station,
+                    member_sampling=simulation_parameters.member_sampling,
+                    sector_lambda=simulation_parameters.sector_lambda,
+                    source_depth_offset_km=simulation_parameters.source_depth_offset_km)
 
 
 def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -222,9 +211,9 @@ def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_f
                     receivers=simulation_parameters.receivers,
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    cps_path=getattr(simulation_parameters, 'cps_path', None),
+                    cps_path=simulation_parameters.cps_path,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
+                    stf_alignment=simulation_parameters.stf_alignment)
 
 
 def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -237,7 +226,7 @@ def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     post_processing_effects=pp_effects,
-                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
+                    stf_alignment=simulation_parameters.stf_alignment)
 
 
 #: Forward-model builders, selectable by ``simulation_type``. Each takes the simulation

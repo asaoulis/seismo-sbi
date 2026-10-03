@@ -352,6 +352,7 @@ class TestNuisanceStageRouting:
                 "sampling_rate": 1.0,
                 "filter": {"type": "bandpass", "freqmin": 0.01, "freqmax": 0.1},
             },
+            stf_alignment=None,
         )
         wrapper = object.__new__(GeneralSimulatorWrapper)
         wrapper.set_simulation_objects(
