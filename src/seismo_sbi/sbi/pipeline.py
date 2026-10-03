@@ -762,12 +762,13 @@ class SingleEventPipeline(SBIPipeline):
 
                     
         new_bounds = np.sort(new_bounds, axis=0)
-        old_bounds = self.parameters.parameter_to_vector('bounds', only_theta_fiducial=True)
         lower_bound_inputs = self.parameters.vector_to_simulation_inputs(new_bounds[0], only_theta_fiducial=True)
         upper_bound_inputs = self.parameters.vector_to_simulation_inputs(new_bounds[1], only_theta_fiducial=True)
-        # use old bounds if new bounds are outside old bounds
-        lower_bound_inputs = {param: np.maximum(lower_bound_inputs[param], old_bounds[0][i]) for i, param in enumerate(self.parameters.names)}
-        upper_bound_inputs = {param: np.minimum(upper_bound_inputs[param], old_bounds[1][i]) for i, param in enumerate(self.parameters.names)}
+        # The Fisher box never reaches outside each parameter's configured bounds.
+        lower_bound_inputs = {param: np.maximum(lower_bound_inputs[param], np.asarray(self.parameters.bounds[param][0], dtype=float))
+                              for param in self.parameters.names}
+        upper_bound_inputs = {param: np.minimum(upper_bound_inputs[param], np.asarray(self.parameters.bounds[param][1], dtype=float))
+                              for param in self.parameters.names}
 
         for parameter in lower_bound_inputs.keys():
             if parameter == 'source_location':
