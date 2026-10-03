@@ -85,6 +85,26 @@ The [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/mai
 and [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb)
 notebooks show the two nuisance stages.
 
+## Your own nuisance effect
+
+A nuisance the library does not have is a subclass of
+`seismo_sbi.nuisance_effects.seismogram_effect.SeismogramEffect`, registered once before the
+configuration is parsed:
+
+```python
+from seismo_sbi.nuisance_effects.post_processing import register_nuisance_effect
+
+register_nuisance_effect("station_gain_error", StationGainEffect,
+                         stages=("simulation", "training_augmentation"))
+```
+
+Its constructor takes the extra keys of the configuration's `nuisance.station_gain_error` block
+(and `sampling_rate`, in samples per second, with `needs_sampling_rate=True`). Its `__call__`
+takes a `{station: {component: trace}}` dict, the receivers and the active nuisance values,
+reads `nuisance_params["station_gain_error"]`, returns a new dict, and returns the input unchanged
+when the key is absent. The block's `stage` then picks where it runs, among the stages it was
+registered for.
+
 ## Training on arrays
 
 Simulations made elsewhere train the same flow without being written as HDF5 files. An

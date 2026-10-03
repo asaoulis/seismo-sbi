@@ -77,6 +77,31 @@ CONDITIONING_AUGMENTABLE_KEYS: tuple[str, ...] = (
 )
 
 
+#: The stages a nuisance effect can run at.
+STAGES = ("simulation", "training_augmentation", "training_augmentation_post_noise")
+
+
+def register_nuisance_effect(key: str, effect: type, *, stages=("simulation",),
+                             needs_sampling_rate: bool = False) -> None:
+    """Make ``key`` a nuisance a configuration can name, applied by ``effect`` at ``stages``.
+
+    ``effect`` subclasses :class:`~seismo_sbi.nuisance_effects.seismogram_effect.SeismogramEffect`.
+    Its constructor takes the extra keys of the configuration's nuisance block for ``key``, plus
+    ``sampling_rate`` (samples per second) when ``needs_sampling_rate``; its ``__call__`` maps a
+    ``{station: {component: trace}}`` dict and the receivers to a new dict, reading its activation
+    value from ``nuisance_params[key]`` and returning the input unchanged when the key is absent.
+    Raises ``ValueError`` for a key already registered or a stage not in :data:`STAGES`.
+    """
+    if key in EFFECT_REGISTRY:
+        raise ValueError(f"nuisance key {key!r} is already registered")
+    unknown = [stage for stage in stages if stage not in STAGES]
+    if unknown or not stages:
+        raise ValueError(f"stages must be a non-empty selection of {STAGES}, got {stages!r}")
+    if not (isinstance(effect, type) and issubclass(effect, SeismogramEffect)):
+        raise ValueError(f"{effect!r} is not a SeismogramEffect subclass")
+    EFFECT_REGISTRY[key] = NuisanceEffect(effect, tuple(stages), needs_sampling_rate)
+
+
 def effect_keys_at(stage: str) -> tuple:
     """The nuisance keys whose effect may run at ``stage``."""
     return tuple(key for key, entry in EFFECT_REGISTRY.items() if stage in entry.stages)
