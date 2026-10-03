@@ -11,7 +11,7 @@ from typing import NamedTuple, Optional
 import numpy as np
 from scipy.linalg import toeplitz
 
-from seismo_sbi.sbi.noises.covariance_base import station_component_value
+from seismo_sbi.sbi.noises.covariance_base import pre_event_variances, station_component_value
 
 
 class NoiseDraw(NamedTuple):
@@ -64,10 +64,8 @@ class GaussianNoiseSampler(NoiseSampler):
     - cov_blocks: full covariance blocks (shape [n_blocks, block_size, block_size])
     - Ls: Cholesky factors for each block, recomputed when covariance changes
 
-    set_adaptive_covariance_with_misc_data(misc_data) expects misc_data to be a
-    nested dict misc_data[station][component] with *actual* variance per
-    station-component. It rescales each Toeplitz column so that col[0] matches
-    the new variance, and updates cov_blocks and Ls accordingly.
+    :meth:`rescale_to` rescales each Toeplitz column so that col[0] matches a
+    measured pre-event variance, and updates cov_blocks and Ls accordingly.
     """
 
     def __init__(self, receivers, data_vector_length,
@@ -113,41 +111,29 @@ class GaussianNoiseSampler(NoiseSampler):
         self.Ls = Ls
         self.block_sizes = [L.shape[0] for L in self.Ls]
 
-    def _get_target_variance(self, misc_data, station, component):
-        """Extract scalar variance from misc_data[station][component]."""
-        val = station_component_value(misc_data, station, component)
-        if hasattr(val, "size") and val.size > 1:
-            return float(val.ravel()[0])
-        return float(val)
-
     def draw(self):
         """A draw from the current covariance, with ``station_component_covariances`` (None if the
         sampler was not given it) as its covariance data."""
         return NoiseDraw(draw_block_noise(self.Ls, self.block_sizes), None, self.station_component_covariances)
 
-    def set_adaptive_covariance_with_misc_data(self, misc_data):
-        """Adapt Toeplitz columns and covariance blocks using misc_data.
+    def rescale_to(self, covariance_data):
+        """Rescale each block to the pre-event variance in ``covariance_data``
+        ``{station: {component: autocovariance}}``, keeping its correlation structure.
 
-        For each block (station, component), let c be its Toeplitz first
-        column. We compute a scale factor s such that
-
-            (s * c)[0] == target_variance
-
-        where target_variance is read from misc_data[station][component]. The
-        entire Toeplitz column is scaled by s, which scales the full block and
-        hence preserves its correlation structure while adjusting its marginal
-        variance.
+        The Toeplitz column ``c`` of each (station, component) block is scaled by ``s`` with
+        ``(s * c)[0]`` equal to the target variance, which scales the whole block.
         """
         if self.toeplitz_cols is None or self.cov_blocks is None or not self.receiver_components:
             return
 
+        target_variances = pre_event_variances(covariance_data)
         scaled_cols = []
         for (station, comp), col in zip(self.receiver_components, self.toeplitz_cols):
             c0 = col[0]
             if c0 == 0:
                 scaled_cols.append(col)
                 continue
-            target_var = self._get_target_variance(misc_data, station, comp)
+            target_var = float(station_component_value(target_variances, station, comp))
             scale = target_var / c0
             scaled_cols.append(col * scale)
         self.toeplitz_cols = np.asarray(scaled_cols, dtype=float)

@@ -107,7 +107,7 @@ class TestRealNoiseSampler:
 
 
 class TestRealNoiseSamplerFreezeScale:
-    """freeze_scale=True is the generic-event mode: set_adaptive_covariance_with_misc_data is a
+    """freeze_scale=True is the generic-event mode: rescale_to is a
     no-op so draws are never rescaled to a single event's pre-event variance."""
 
     def _sampler(self, receivers, noise_catalogue_dir, freeze_scale):
@@ -121,20 +121,20 @@ class TestRealNoiseSamplerFreezeScale:
         sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
         assert sampler.freeze_scale is False
 
-    def test_frozen_ignores_set_adaptive_covariance(self, receivers, noise_catalogue_dir):
+    def test_frozen_ignores_a_rescale_target(self, receivers, noise_catalogue_dir):
         sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=True)
         misc = sampler.draw_with_covariance().covariance_data
-        sampler.set_adaptive_covariance_with_misc_data(misc)
-        assert sampler.adaptive_covariance is None
+        sampler.rescale_to(misc)
+        assert sampler.target_variances is None
         result = sampler.draw()
         assert result.covariance_data is None
         assert result.noise.shape == (TRACE_LEN,)
 
-    def test_unfrozen_sets_adaptive_covariance(self, receivers, noise_catalogue_dir):
+    def test_unfrozen_sets_the_rescale_target(self, receivers, noise_catalogue_dir):
         sampler = self._sampler(receivers, noise_catalogue_dir, freeze_scale=False)
         misc = sampler.draw_with_covariance().covariance_data
-        sampler.set_adaptive_covariance_with_misc_data(misc)
-        assert sampler.adaptive_covariance is not None
+        sampler.rescale_to(misc)
+        assert sampler.target_variances is not None
         assert sampler.draw().covariance_data is not None
 
 

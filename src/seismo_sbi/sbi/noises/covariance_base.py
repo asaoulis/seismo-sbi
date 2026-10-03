@@ -2,9 +2,12 @@
 
 ``EmpiricalCovariance`` fixes the interface every covariance offers: the log-likelihood of a
 residual, C⁻¹ times a vector, a loss callable and a noise sampler. ``station_component_value``
-reads one trace's entry from a ``{station: {component: value}}`` dict.
+reads one trace's entry from a ``{station: {component: value}}`` dict, and
+``pre_event_variances`` the variance from each trace's pre-event autocovariance.
 """
 from abc import ABC, abstractmethod
+
+import numpy as np
 
 from seismo_sbi.simulators.simulation_io import component_alias
 
@@ -47,3 +50,10 @@ def station_component_value(station_component_values, station_name, component):
         return station_component_values[station_name][component]
     except KeyError:
         return station_component_values[station_name][component_alias(component)]
+
+
+def pre_event_variances(covariance_data):
+    """``{station: {component: variance}}``: lag 0 of each autocovariance in ``covariance_data``
+    ``{station: {component: autocovariance}}``; an entry that is already a variance is kept."""
+    return {station: {component: np.ravel(autocovariance)[0] for component, autocovariance in components.items()}
+            for station, components in covariance_data.items()}

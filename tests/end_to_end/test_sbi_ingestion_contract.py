@@ -235,36 +235,27 @@ class TestComponentFallbackAndOrdering:
 
 
 class TestAdaptiveCovarianceScaling:
-    """RealNoiseSampler.calculate_scales uses /misc variance to rescale noise."""
+    """RealNoiseSampler.variance_ratios uses the /misc variance to rescale noise."""
 
     @pytest.fixture(autouse=True)
     def setup(self, event_h5):
         receivers = _build_receivers()
         sim_params = _build_sim_params(receivers)
-        # Inject a known adaptive covariance (twice the h5 variance → scale = 2)
-        misc_path = event_h5
         from seismo_sbi.simulators.simulation_io import SimulationDataLoader
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
-        misc = loader.load_misc_data(misc_path)
-
-        # Build an adaptive covariance that equals the h5 misc (scale → 1.0 for all)
-        adaptive_cov = {}
-        for sta, comps in misc.items():
-            adaptive_cov[sta] = {}
-            for comp, val in comps.items():
-                adaptive_cov[sta][comp] = [float(np.atleast_1d(val).flat[0])]
+        misc = loader.load_misc_data(event_h5)
 
         self.sampler = RealNoiseSampler(
             simulation_parameters=sim_params,
             directory=event_h5.parent,
-            adaptive_covariance=adaptive_cov,
         )
+        self.sampler.rescale_to(misc)
         self.event_h5 = event_h5
 
     def test_scale_factor_one_when_variances_match(self):
-        """When adaptive_covariance equals the h5 misc, all scale factors are 1.0."""
+        """When the rescale target is the h5 misc itself, every variance ratio is 1.0."""
         misc = self.sampler.draw_with_covariance().covariance_data
-        scales = self.sampler.calculate_scales(misc)
+        scales = self.sampler.variance_ratios(misc)
         for sta, comps in scales.items():
             for comp, s in comps.items():
                 assert abs(float(s) - 1.0) < 0.01, (

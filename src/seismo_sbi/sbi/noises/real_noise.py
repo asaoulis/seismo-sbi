@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from seismo_sbi.sbi.configuration import SimulationParameters
-from seismo_sbi.sbi.noises.covariance_base import station_component_value
+from seismo_sbi.sbi.noises.covariance_base import pre_event_variances, station_component_value
 from seismo_sbi.sbi.noises.noise_samplers import NoiseDraw, NoiseSampler
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader, component_alias
 
@@ -18,10 +18,10 @@ class RealNoiseSampler(NoiseSampler):
 
     Each draw picks one window from ``directory`` covering every model station (or, with
     ``allow_incomplete``, whichever it covers) and returns it flattened in receiver order,
-    optionally rescaled to the variances set by :meth:`set_adaptive_covariance_with_misc_data`.
+    optionally rescaled to the variances set by :meth:`rescale_to`.
     """
 
-    def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None, adaptive_covariance= None,
+    def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None,
                  freeze_scale: bool = False, allow_incomplete: bool = False):
         """``simulation_parameters`` supplies the receivers and components; ``directory`` holds one
         HDF5 noise window per file, or is None when the windows are given in memory
@@ -58,11 +58,8 @@ class RealNoiseSampler(NoiseSampler):
         # When True the sampler draws windows verbatim and never rescales them to one event's
         # pre-event variance, which is what training amortised over events needs.
         self.freeze_scale = freeze_scale
-        self.adaptive_covariance = adaptive_covariance
-        if self.adaptive_covariance is not None:
-            for receiver in self.adaptive_covariance.keys():
-                for component in self.adaptive_covariance[receiver].keys():
-                    self.adaptive_covariance[receiver][component] = self.adaptive_covariance[receiver][component][0]
+        #: ``{station: {component: variance}}`` the draws are rescaled to, or None.
+        self.target_variances = None
 
         if directory is not None:
             print(f"Found {len(self.noise_paths)} noise realisations.")
@@ -149,8 +146,8 @@ class RealNoiseSampler(NoiseSampler):
         returns a uniformly random row.
 
         Windows whose flattened length differs from the data-vector length (missing stations or data
-        gaps) are skipped as the on-disk path skips them. Only the generic path (``adaptive_covariance``
-        None, no rescaling) draws from the cache.
+        gaps) are skipped as the on-disk path skips them. Only a draw without a rescale target
+        (``target_variances`` None) comes from the cache.
         """
         from concurrent.futures import ThreadPoolExecutor
         from tqdm import tqdm
@@ -204,15 +201,15 @@ class RealNoiseSampler(NoiseSampler):
         otherwise a random window read from disk, rescaled to the target variances when they are
         set, its recorded covariance data then coming with it.
         """
-        if self._noise_cache is not None and self.adaptive_covariance is None:
+        if self._noise_cache is not None and self.target_variances is None:
             row = np.random.randint(0, self._noise_cache.shape[0])
             present = self._presence_cache[row] if self.allow_incomplete else None
             return NoiseDraw(self._noise_cache[row], present)
         window_path, noise, present = self._usable_window(None)
-        if self.allow_incomplete or self.adaptive_covariance is None:
+        if self.allow_incomplete or self.target_variances is None:
             return NoiseDraw(noise, present)
         covariance_data = self.data_loader.load_misc_data(window_path)
-        noise = self._load_noise_file(window_path, scale_dict=self.calculate_scales(covariance_data))
+        noise = self._load_noise_file(window_path, scale_dict=self.variance_ratios(covariance_data))
         return NoiseDraw(noise, None, covariance_data)
 
     def draw_with_covariance(self, window_index=None):
@@ -255,31 +252,18 @@ class RealNoiseSampler(NoiseSampler):
     def _load_noise_file(self, path : Path, *args, **kwargs):
         return self.data_loader.load_flattened_simulation_vector(path, *args, **kwargs)
     
-    def calculate_scales(self, misc_data):
-        scales = {}
-        for receiver in misc_data.keys():
-            scales[receiver] = {}
-            for component in misc_data[receiver].keys():
-                noise_instance_variance = misc_data[receiver][component] if misc_data[receiver][component].size == 1 else misc_data[receiver][component][0]
-                data_noise_variance = station_component_value(self.adaptive_covariance, receiver, component)
-  
+    def variance_ratios(self, covariance_data):
+        """``{station: {component: ratio}}``: each trace's pre-event variance in a window's
+        ``covariance_data`` over the target variance it is rescaled to; the trace is divided by
+        the square root of its ratio."""
+        window_variances = pre_event_variances(covariance_data)
+        return {station: {component: variance / station_component_value(self.target_variances, station, component)
+                          for component, variance in components.items()}
+                for station, components in window_variances.items()}
 
-                ratio = noise_instance_variance / data_noise_variance
-                scales[receiver][component] = ratio
-
-        return scales
-    
-    def set_adaptive_covariance_with_misc_data(self, misc_data):
-        """Rescale later draws to the per-trace variances in ``misc_data``; no-op if ``freeze_scale``."""
+    def rescale_to(self, covariance_data):
+        """Rescale later draws to the pre-event variances of ``covariance_data``
+        ``{station: {component: autocovariance}}``; no-op if ``freeze_scale``."""
         if self.freeze_scale:
-            # Generic-event mode: ignore any attempt to rescale noise to one event's variance
-            # (train_NPE.py and a few pipeline score-compression spots call this unconditionally).
             return
-        adaptive_covariance = {}
-        for receiver in misc_data.keys():
-            adaptive_covariance[receiver] = {}
-            for component in misc_data[receiver].keys():
-                noise_instance_variance = misc_data[receiver][component] if misc_data[receiver][component].size == 1 else misc_data[receiver][component][0]
-                adaptive_covariance[receiver][component] = [noise_instance_variance]
-            
-        self.adaptive_covariance = adaptive_covariance
+        self.target_variances = pre_event_variances(covariance_data)

@@ -65,8 +65,8 @@ def test_gaussian_noise_sampler_zero_mean_distribution(receivers):
     assert np.abs(samples.mean()) < 0.2
 
 
-def test_gaussian_noise_sampler_adaptive_covariance(receivers):
-    """Scaling via set_adaptive_covariance_with_misc_data changes the variance."""
+def test_gaussian_noise_sampler_rescales_to_a_variance(receivers):
+    """Scaling via rescale_to changes the variance."""
     n = BLOCK_SIZE
     sigma_initial = 1.0
     cov_block = np.eye(n) * sigma_initial ** 2
@@ -78,7 +78,7 @@ def test_gaussian_noise_sampler_adaptive_covariance(receivers):
     )
     sigma_new = 3.0
     misc_data = {"STA1": {"Z": sigma_new ** 2}}
-    sampler.set_adaptive_covariance_with_misc_data(misc_data)
+    sampler.rescale_to(misc_data)
     assert np.isclose(sampler.toeplitz_cols[0, 0], sigma_new ** 2)
 
 

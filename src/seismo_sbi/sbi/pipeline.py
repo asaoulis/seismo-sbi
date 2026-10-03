@@ -122,7 +122,6 @@ class SBIPipeline:
         self.parameter_sampler = None
         self.data_cov_mat = None
         self.empirical_cov_mat = None
-        self.adaptive_covariance = None
 
         self.data_manager = None
 
@@ -566,7 +565,7 @@ class SingleEventPipeline(SBIPipeline):
             self.parameters = deepcopy(original_parameters)
             sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
             if covariance is not None:
-                self.training_noise_sampler.set_adaptive_covariance_with_misc_data(covariance)
+                self.training_noise_sampler.rescale_to(covariance)
 
             plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
 

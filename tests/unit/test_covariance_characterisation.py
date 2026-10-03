@@ -154,7 +154,7 @@ def measure_samplers():
         variances(), receivers=make_receivers(), data_vector_length=BLOCK_SIZE, num_jobs=1).covariance_matrix_arrays
     sampler = GaussianNoiseSampler(make_receivers(), BLOCK_SIZE, cov_blocks=blocks)
     values = {"gaussian_draws": draws(sampler)}
-    sampler.set_adaptive_covariance_with_misc_data(
+    sampler.rescale_to(
         {station: {component: np.array([2.0 + j]) for j, component in enumerate(["Z", "1", "2"])}
          for station in STATIONS})
     values["adapted_first_rows"] = sampler.cov_blocks[:, 0, :]
