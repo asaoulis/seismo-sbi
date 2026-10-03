@@ -2,8 +2,9 @@
 
 :class:`Simulator` turns a source-parameter dictionary into a map of seismograms: it builds the
 moment tensor and source location, calls the backend's ``generic_point_source_simulation``,
-applies the per-station time shifts and runs the post-processing chain. A backend subclasses it
-and implements that one method.
+applies the per-station time shifts and runs the post-processing chain. A backend subclasses it,
+implements that one method and sets ``pre_event_pad_s``, the seconds its seismograms start before
+the origin time.
 """
 
 from abc import ABC, abstractmethod
@@ -39,6 +40,9 @@ def point_source_parameters(source: GenericPointSource) -> dict:
 
 
 class Simulator(ABC):
+
+    #: Seconds each seismogram starts before the origin time; None when the backend does not fix it.
+    pre_event_pad_s = None
 
     def __init__(
         self,

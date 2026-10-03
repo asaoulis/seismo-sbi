@@ -13,7 +13,7 @@ import numpy as np
 
 from ..gf_ensemble import GFEnsembleSimulator
 from ..sources import GenericPointSource
-from .querier import InstaseisDBQuerier
+from .querier import SYNTHETICS_PRE_EVENT_PAD_S, InstaseisDBQuerier
 
 
 #: Stride the seed is offset by per station under per-station member resampling, so each station
@@ -47,6 +47,8 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     independent member per station, which is the faithful model when the members are
     path-specific 1-D models. ``use_fiducial=True`` always overrides both.
     """
+
+    pre_event_pad_s = SYNTHETICS_PRE_EVENT_PAD_S
 
     def __init__(self, instaseis_ensemble_dir, instaseis_fiducial_loc, *args,
                  resample_member_per_station=False, member_sampling=None,

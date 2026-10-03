@@ -38,6 +38,8 @@ def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
     return [Mnn, Mee, Mdd, Mne, Mnd, Med]
 
 class CPSSimulator(Simulator):
+
+    pre_event_pad_s = 0.0
     
     def __init__(self, gf_storage_root=None, cps_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -6,6 +6,7 @@ regions lives in :class:`~seismo_sbi.simulators.multi_region.MultiModelSimulator
 
 from ..multi_region import MultiModelSimulator
 from .ensemble import InstaseisEnsembleSimulator
+from .querier import SYNTHETICS_PRE_EVENT_PAD_S
 
 
 class InstaseisMultiModelSimulator(MultiModelSimulator):
@@ -17,6 +18,8 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
     ``resample_member_per_station`` is forwarded to every region built here; a pre-built
     simulator keeps the flag it was built with.
     """
+
+    pre_event_pad_s = SYNTHETICS_PRE_EVENT_PAD_S
 
     def __init__(self, models, *args, resample_member_per_station=False, member_sampling=None,
                  sector_lambda=None, **kwargs):

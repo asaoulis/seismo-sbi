@@ -56,6 +56,8 @@ Subclass `simulators.base.Simulator` and implement one method:
 from seismo_sbi.simulators.base import Simulator
 
 class Specfem3DSimulator(Simulator):
+    pre_event_pad_s = 0.0  # seconds each trace starts before the origin time
+
     def generic_point_source_simulation(self, source, **kwargs):
         ...  # returns {station_name: {component: np.ndarray}}
 ```
@@ -66,6 +68,8 @@ tensor whose `.components` are `m_rr, m_tt, m_pp, m_rt, m_rp, m_tp` in N.m. The 
 simulate are the `Receivers` handed to `__init__`, iterated with `self.receivers.iterate()`;
 each trace has `seismogram_duration_in_s * sampling_rate` samples. The method must accept the
 keyword arguments `velocity_model`, `stf_duration` and `use_fiducial`, and may ignore them.
+`pre_event_pad_s` states where the origin falls in each trace (60 s for the Instaseis backends,
+0 for CPS); `simulators.synthetic_stream.seismogram_map_to_stream` needs it to time-stamp the traces.
 
 The station time shifts and the nuisance effects are applied to its output for you.
 
