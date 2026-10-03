@@ -46,7 +46,7 @@ simulations:
 compression: 
 
   optimal_score:
-    empirical_block:  './data/noise/azores_event_samples'
+    empirical_block:  '../examples/data/azores/noise_screened'
 
 inference:
   sbi:
@@ -55,8 +55,7 @@ inference:
 
     noise_model: 
       type: 'real_noise'
-      noise_catalogue_path: './data/noise/azores_event_samples'
-      noise_level: 3.e-6
+      noise_catalogue_path: '../examples/data/azores/noise_screened'
 
   likelihood: 
     run: True
@@ -69,13 +68,13 @@ inference:
 
 jobs:
   real_events: 
-    real_north: ./data/events/azores_event_event_filtered_1hz.h5
+    real_north: ../examples/data/azores/events/azores_event_event_filtered_1hz.h5
   simulations:
     random_events: 0
     fixed_events: []
     custom_events: {}
   noise_models:
-    real_noise: './data/noise/azores_event_samples'
+    real_noise: '../examples/data/azores/noise_screened'
   plots:
     async_plotting: True
     test_posteriors: 

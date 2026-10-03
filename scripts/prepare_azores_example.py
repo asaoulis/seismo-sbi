@@ -1,39 +1,24 @@
-"""Prepare the Azores example data (event waveform + noise dataset) for the SBI pipeline.
+"""Download and prepare the Azores example data: the event waveform and a screened noise pool.
 
-The 13/01/2022 Azores event is recorded by the Portuguese ``PM`` network (IPMA / CIVISA).
-``PM`` data is **not** served by the usual federated FDSN nodes (IRIS / ORFEUS / EIDA-routing
-all return "no data"); it is openly available from IPMA's own FDSN web service at
-``http://ceida.ipma.pt``.  That is the default ``--provider`` below.
-
-This single script downloads the waveforms + instrument responses directly from the IPMA node,
-removes the instrument response (to displacement), band-pass filters and resamples to match the
-synthetic processing in the YAML config, and writes HDF5 files in the exact schema the pipeline
-reads (``SimulationSaver`` -> ``outputs/{station}/{Z,1,2}`` + ``misc/{station}/{Z,1,2}``):
-
-    <output_dir>/events/azores_event_event_filtered_1hz.h5   # the real event
-    <output_dir>/noise/<YYYY.MM.DD.HH.MM>.h5                  # a few hundred noise windows
-
-``misc`` holds the autocovariance of the ``--cov_window`` seconds immediately preceding each
-window, computed with the same estimator as ``export_to_sbi_h5``, so the
-empirical/score covariances are consistent.
-
-Example
--------
-    python prepare_azores_example.py \
-        --output_dir ../examples/data/azores \
-        --stations_file configs/azores/azores_stations.txt \
-        --noise_start 2022-01-10 --noise_end 2022-01-13 --num_noise 300 --n_jobs 8
+The ``PM`` network (IPMA/CIVISA) is served only by IPMA's FDSN node (``--provider``). Each window is
+response-removed to displacement, band-passed and resampled as the synthetics are, and written to
+``<output_dir>/events/`` and ``<output_dir>/noise/``; the noise windows that hold no earthquake are
+copied to ``<output_dir>/noise_screened/``. BART (a Lennartz LE-3D/20s) records instrument noise at
+25-50 s, so ``azores_components.json`` gives it no components.
 """
 import argparse
+import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import h5py
 import numpy as np
 import obspy
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
+from seismo_sbi.data_handling.preprocessing.noise_windows import quiet_window_mask
 # SimulationSaver guarantees the on-disk schema the pipeline reads.
 from seismo_sbi.simulators.simulation_io import SimulationSaver
 from seismo_sbi.utils.seismograms import compute_data_vector_length
@@ -186,8 +171,34 @@ def download_and_process_day(day, stations, inv_map, args):
     return processed
 
 
+def write_screened_noise_pool(noise_dir, screened_dir):
+    """Copy the windows of ``noise_dir`` that hold no earthquake into ``screened_dir``."""
+    windows = sorted(noise_dir.glob("*.h5"))
+    with h5py.File(windows[0], "r") as first_window:
+        stations = sorted(first_window["outputs"])
+    vertical_rms = np.zeros((len(windows), len(stations)))
+    for row, window in enumerate(windows):
+        with h5py.File(window, "r") as traces:
+            vertical_rms[row] = [np.sqrt(np.mean(traces["outputs"][station]["Z"][()] ** 2)) for station in stations]
+    screened_dir.mkdir(parents=True, exist_ok=True)
+    for stale in screened_dir.glob("*.h5"):
+        stale.unlink()
+    keep = quiet_window_mask(vertical_rms)
+    for window in (window for window, kept in zip(windows, keep) if kept):
+        shutil.copy2(window, screened_dir / window.name)
+    print(f"Screened noise pool: kept {keep.sum()} of {len(windows)} windows in {screened_dir}", flush=True)
+
+
 def main():
     args = parse_args()
+    download_event_and_noise(args)
+    screened_dir = args.output_dir / "noise_screened"
+    if not args.event_only and (args.force or not any(screened_dir.glob("*.h5"))):
+        write_screened_noise_pool(args.output_dir / "noise", screened_dir)
+
+
+def download_event_and_noise(args):
+    """Write the event file and the noise windows, unless they are already on disk."""
     stations = load_stations(args.stations_file)
     stations_components = {sta: comps_for_station(sta) for sta, _ in stations}
     event_time = datetime.fromisoformat(args.event_time)
@@ -232,8 +243,13 @@ def main():
 
     if args.event_only:
         return
+    write_noise_windows(args, stations, stations_components, inv_map, processed, event_day)
 
-    # ---- Noise dataset ----
+
+def write_noise_windows(args, stations, stations_components, inv_map, processed, event_day):
+    """Write one noise window every ``--cadence`` seconds of the noise period, clear of the event."""
+    event_time = datetime.fromisoformat(args.event_time)
+    noise_dir = args.output_dir / "noise"
     d0 = datetime.fromisoformat(args.noise_start).date()
     d1 = datetime.fromisoformat(args.noise_end).date()
     days = [d0 + timedelta(days=i) for i in range((d1 - d0).days + 1)]

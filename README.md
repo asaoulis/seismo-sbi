@@ -98,7 +98,7 @@ The Azores notebook's first cell downloads and prepares its data:
 cd scripts
 python prepare_azores_example.py --output_dir ../examples/data/azores
 ```
-This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus a few-hundred-window noise dataset under `examples/data/azores/`.
+This downloads the IPMA/CIVISA `PM`-network land-station data from IPMA's FDSN node (`http://ceida.ipma.pt`, the only open source for this network), removes the instrument response, filters and resamples, and writes the event waveform plus 300 noise windows under `examples/data/azores/`, keeping in `noise_screened/` the windows that hold no earthquake.
 
 ## How it works
 
