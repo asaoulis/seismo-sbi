@@ -37,12 +37,13 @@ class DatasetCompressor:
 
 
     def run_derivative_stencil_for_compression_data(self, parameters,
-                                                    stencil_output_folder, use_fiducial=True, **kwargs):
-
+                                                    stencil_output_folder, use_fiducial=True, simulator=None, **kwargs):
+        """The score-compression data from a derivative stencil run with ``simulator`` (a callable
+        that simulates and saves), or with this compressor's own simulator when None."""
         derivative_stencil = DerivativeStencil(parameters, stencil_output_folder, use_fiducial=use_fiducial)
         
         score_compression_data = derivative_stencil.calculate_score_compression_data(
-                                    self.simulator,
+                                    self.simulator if simulator is None else simulator,
                                     self.data_loader.load_flattened_simulation_vector,
                                     self.num_parallel_jobs,
                                     **kwargs)

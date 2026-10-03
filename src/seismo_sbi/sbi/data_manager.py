@@ -109,7 +109,6 @@ class DataManager:
         skip_cov_gradients=True,
         seed=None,
     ):
-        from copy import deepcopy
         compression_method_details = [cm[0] for cm in compression_methods]
         extra_gradients = None
 
@@ -124,12 +123,9 @@ class DataManager:
             )
             covariance_simulator.seed = seed
 
-            dummy_datamanager = deepcopy(self)
-            dummy_datamanager.dataset_compressor.simulator = (
-                covariance_simulator.execute_sim_and_save_outputs
-            )
-            extra_gradients = dummy_datamanager.compute_compression_data_from_stencil(
-                model_parameters, use_fiducial=False, skip_gradients=skip_cov_gradients
+            extra_gradients = self.compute_compression_data_from_stencil(
+                model_parameters, use_fiducial=False, simulator=covariance_simulator.execute_sim_and_save_outputs,
+                skip_gradients=skip_cov_gradients
             )
 
         return score_compression_data, extra_gradients
