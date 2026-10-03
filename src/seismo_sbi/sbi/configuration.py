@@ -14,8 +14,7 @@ from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES, ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.nuisance_effects.post_processing import (
-    CONDITIONING_AUGMENTABLE_KEYS, EFFECT_REGISTRY, effect_keys_at)
+from seismo_sbi.nuisance_effects.post_processing import CONDITIONING_AUGMENTABLE_KEYS, EFFECT_REGISTRY
 from seismo_sbi.priors.catalogue import load_catalogue
 from seismo_sbi.priors.samplers import (
     make_catalogue_location_sampler,
@@ -77,10 +76,6 @@ class SBI_Configuration:
     #: and stored in ``ModelParameters.nuisance_effect_config``.
     _STANDARD_NUISANCE_KEYS = frozenset({"fiducial", "bounds", "stage"})
 
-    #: Valid values for a nuisance block's optional ``stage`` key.
-    _NUISANCE_STAGES = frozenset({
-        "simulation", "training_augmentation", "training_augmentation_post_noise",
-    })
 
     compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score"]
     test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
@@ -181,8 +176,6 @@ class SBI_Configuration:
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")
         
         nuisance_config = config["nuisance"]
-        augmentable_keys = effect_keys_at("training_augmentation")
-        post_noise_keys = effect_keys_at("training_augmentation_post_noise")
         for parameter_type in nuisance_config.keys():
             if parameter_type in SBI_Configuration.known_parameter_types():
                 parameter_values = nuisance_config[parameter_type]
@@ -192,47 +185,7 @@ class SBI_Configuration:
                     self.model_parameters.nuisance[parameter_type] = parameter_values["fiducial"]
                 self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
 
-                # ``stage``: "simulation" (default, baked into the dataset) or "training_augmentation"
-                # (applied per batch in the dataloader).
-                stage = parameter_values.get("stage", "simulation")
-                if stage not in SBI_Configuration._NUISANCE_STAGES:
-                    allowed = ', '.join(sorted(SBI_Configuration._NUISANCE_STAGES))
-                    raise InvalidConfiguration(
-                        f"Invalid stage {stage!r} for nuisance {parameter_type}. "
-                        f"Only [ {allowed} ] allowed"
-                    )
-                if (stage == "training_augmentation"
-                        and parameter_type not in augmentable_keys
-                        and parameter_type not in CONDITIONING_AUGMENTABLE_KEYS):
-                    allowed = ', '.join(augmentable_keys + CONDITIONING_AUGMENTABLE_KEYS)
-                    raise InvalidConfiguration(
-                        f"Nuisance {parameter_type} cannot use stage 'training_augmentation' "
-                        f"(only Category-2 post-processing effects + conditioning-vector "
-                        f"augmentations [ {allowed} ] are augmentation-eligible; simulator-level "
-                        f"nuisances must be baked in)."
-                    )
-                if stage == "training_augmentation_post_noise" and parameter_type not in post_noise_keys:
-                    allowed = ', '.join(post_noise_keys)
-                    raise InvalidConfiguration(
-                        f"Nuisance {parameter_type} cannot use stage "
-                        f"'training_augmentation_post_noise' (only post-noise effects "
-                        f"[ {allowed} ] are eligible)."
-                    )
-                # Component dropout must leave exact zeros, so it is valid only after noise is added.
-                if parameter_type in post_noise_keys and stage != "training_augmentation_post_noise":
-                    raise InvalidConfiguration(
-                        f"Nuisance {parameter_type} must use stage "
-                        f"'training_augmentation_post_noise' (it zeros channels after noise so "
-                        f"they are exactly zero); got stage {stage!r}."
-                    )
-                # Conditioning augmentations perturb the dataloader's conditioning vector, which the simulator
-                # cannot bake, so they are valid only as training_augmentation.
-                if parameter_type in CONDITIONING_AUGMENTABLE_KEYS and stage != "training_augmentation":
-                    raise InvalidConfiguration(
-                        f"Nuisance {parameter_type} must use stage 'training_augmentation' (it "
-                        f"perturbs the source-location conditioning vector in the ML dataloader); "
-                        f"got stage {stage!r}."
-                    )
+                stage = SBI_Configuration._nuisance_stage(parameter_type, parameter_values)
                 self.model_parameters.nuisance_stage[parameter_type] = stage
 
                 # Any YAML key beyond the standard keys is effect-level
@@ -247,6 +200,25 @@ class SBI_Configuration:
                 allowed_types = ', '.join(SBI_Configuration.known_parameter_types())
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")
     
+    @staticmethod
+    def _nuisance_stage(parameter_type, parameter_values):
+        """The ``stage`` a nuisance block asks for (``"simulation"`` when absent), checked against
+        the stages its key allows: those of its registered effect, the training augmentation for a
+        conditioning-vector nuisance, and the simulation for any other nuisance.
+        """
+        stage = parameter_values.get("stage", "simulation")
+        if parameter_type in EFFECT_REGISTRY:
+            allowed = EFFECT_REGISTRY[parameter_type].stages
+        elif parameter_type in CONDITIONING_AUGMENTABLE_KEYS:
+            allowed = ("training_augmentation",)
+        else:
+            allowed = ("simulation",)
+        if stage not in allowed:
+            raise InvalidConfiguration(
+                f"Nuisance {parameter_type} cannot use stage {stage!r}; it can use "
+                f"[ {', '.join(allowed)} ].")
+        return stage
+
     def _unpack_parameter_values(self, parameter_type, parameter_values):
 
         self.model_parameters.names[parameter_type] = SBI_Configuration.param_names_map[parameter_type]
