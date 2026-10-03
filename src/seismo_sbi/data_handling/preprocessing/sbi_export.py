@@ -1,21 +1,21 @@
-"""Write preprocessed streams to the HDF5 format the rest of the library reads.
+"""Turn preprocessed obspy streams into the data the pipeline reads, in memory or as HDF5.
 
-:func:`stream_to_seismogram_map` turns an obspy ``Stream`` into the ``{station: {component:
-waveform}}`` map the simulators produce, and :func:`export_to_sbi_h5` writes it. The schema matches what ``SimulationSaver.dump_data_as_hdf5`` produces, so ``RealNoiseSampler``
-and ``SimulationDataLoader`` consume these files unchanged. Channel keys on disk are ``Z``,
-``1`` and ``2``, never ``E`` or ``N``. Each array is ``compute_data_vector_length(duration, sr)
-+ 1`` samples long, the slice being inclusive. The autocorrelation in ``/misc`` is taken over
-the pre-event window and averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -1)``.
+:func:`observation_from_stream` gives an event's data vector and station presence mask from a
+``Stream``; :func:`event_seismogram_map` and :func:`pre_event_autocorrelations` give the ``{station:
+{component: waveform}}`` event window and the pre-event noise autocorrelations that
+:func:`export_to_sbi_h5` writes in the ``SimulationSaver`` schema. Channel keys are ``Z``, ``1`` (east)
+and ``2`` (north); a window holds ``compute_data_vector_length(duration, sr) + 1`` samples.
 """
 
 from datetime import timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 from obspy import Stream, UTCDateTime
 
-from seismo_sbi.simulators.simulation_io import SimulationSaver, component_alias
+from seismo_sbi.simulators.receivers import Receivers
+from seismo_sbi.simulators.simulation_io import SimulationDataLoader, SimulationSaver, component_alias
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
@@ -112,6 +112,25 @@ def pre_event_autocorrelations(stream: Stream, station_names: List[str], event_s
         if sta_misc:
             variance_dict[sta] = sta_misc
     return variance_dict
+
+
+def observation_from_stream(stream: Stream, receivers: Receivers, event_window, sampling_rate_hz: float,
+                            stacked: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+    """``(data_vector, present_mask)`` of a processed ``stream`` over ``event_window = (t_start, t_end)``,
+    identical to reading back the event file :func:`export_to_sbi_h5` writes from the same stream.
+
+    ``stream`` must already be filtered and resampled to ``sampling_rate_hz``. ``data_vector`` is
+    ``(n_traces * n_samples,)`` in receiver order, or ``(n_stations, n_components, n_samples)`` when
+    ``stacked``, with ``n_samples = compute_data_vector_length(t_end - t_start, sampling_rate_hz) + 1``.
+    ``present_mask`` is a boolean per receiver; a station without all three components in the window
+    is absent and its samples are zeros.
+    """
+    station_names = [receiver.station_name for receiver in receivers]
+    seismogram_map = event_seismogram_map(stream, station_names, event_window, sampling_rate_hz)
+    duration_s = UTCDateTime(event_window[1]) - UTCDateTime(event_window[0])
+    n_samples = compute_data_vector_length(duration_s, sampling_rate_hz) + 1
+    loader = SimulationDataLoader("".join(receivers.receivers[0].components), receivers, data_length=n_samples)
+    return loader.convert_sim_data_to_array_with_presence({"outputs": seismogram_map}, stacked=stacked)
 
 
 def export_to_sbi_h5(

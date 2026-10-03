@@ -1,13 +1,16 @@
 """In-memory seismogram maps and obspy streams become the same arrays as the HDF5 files."""
+from datetime import timedelta
+
 import numpy as np
 import pytest
 from obspy import Stream, Trace, UTCDateTime
 
 from seismo_sbi.data_handling.preprocessing.sbi_export import (
-    _rename_component, export_to_sbi_h5, stream_to_seismogram_map)
+    _rename_component, export_to_sbi_h5, observation_from_stream, pre_event_autocorrelations,
+    stream_to_seismogram_map)
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.simulation_io import (
-    SimulationDataLoader, SimulationSaver, seismogram_map_to_array)
+    SimulationDataLoader, SimulationSaver, component_alias, seismogram_map_to_array)
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 N_SAMPLES = 16
@@ -142,3 +145,48 @@ def test_event_window_has_n_plus_one_samples_at_20_hz():
 
     assert [trace.stats.npts for trace in sliced] == [607, 607, 607]
     assert _exact_end_time(start, start + 30.3, 20.0) - start == pytest.approx(30.3)
+
+
+def test_observation_from_stream_equals_the_exported_file_read_back(tmp_path):
+    t_start = UTCDateTime(2020, 1, 1)
+    stream = synthetic_stream(["AAA", "BBB"], t_start - 60)
+    event_window = (t_start, t_start + 30)
+    path = tmp_path / "event.h5"
+    export_to_sbi_h5(stream, ["ZZZ", "AAA", "BBB"], event_window, path, sampling_rate=1.0)
+    receivers = Receivers.from_arrays(["ZZZ", "AAA", "BBB"], ["XX"] * 3, [0.0, 1.0, 2.0], [0.0, 1.0, 2.0])
+
+    from_file, file_mask = SimulationDataLoader("ZEN", receivers, data_length=31) \
+        .load_flattened_simulation_vector_with_presence(path)
+    in_memory, memory_mask = observation_from_stream(stream, receivers, event_window, sampling_rate_hz=1.0)
+
+    assert np.array_equal(in_memory, from_file)
+    assert memory_mask.tolist() == file_mask.tolist() == [False, True, True]
+
+
+def test_observation_from_stream_returns_the_window_of_each_trace_in_receiver_order():
+    t_start = UTCDateTime(2020, 1, 1)
+    stream = synthetic_stream(["AAA", "BBB"], t_start - 60)
+    receivers = Receivers.from_arrays(["BBB", "AAA"], ["XX", "XX"], [0.0, 1.0], [0.0, 1.0])
+
+    stacked, mask = observation_from_stream(stream, receivers, (t_start, t_start + 30), 1.0, stacked=True)
+
+    expected = [[stream.select(station=station, channel=f"BH{component}")[0].data[60:91]
+                 for component in "ZEN"] for station in ("BBB", "AAA")]
+    assert np.array_equal(stacked, np.array(expected))
+    assert mask.all()
+
+
+def test_pre_event_autocorrelations_are_the_exported_misc_group(tmp_path):
+    t_start = UTCDateTime(2020, 1, 1)
+    stream = synthetic_stream(["AAA", "BBB"], t_start - 60)
+    path = tmp_path / "event.h5"
+    export_to_sbi_h5(stream, ["AAA", "BBB"], (t_start, t_start + 30), path, sampling_rate=1.0,
+                     covariance_window=timedelta(seconds=40))
+    receivers = Receivers.from_arrays(["AAA", "BBB"], ["XX", "XX"], [0.0, 1.0], [0.0, 1.0])
+
+    from_file = SimulationDataLoader("ZEN", receivers).load_misc_data(path)
+    in_memory = pre_event_autocorrelations(stream, ["AAA", "BBB"], t_start, covariance_window_s=40.0)
+
+    for station, components in from_file.items():
+        for component, autocorrelation in components.items():
+            assert np.array_equal(in_memory[station][component_alias(component)], autocorrelation)
