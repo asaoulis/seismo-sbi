@@ -2,6 +2,7 @@
 
 ```{toctree}
 :maxdepth: 1
+_generated/examples/ridgecrest_obspy
 _generated/examples/01_forward_models_and_receivers
 _generated/examples/02_noise_covariances_and_likelihood
 _generated/examples/03_npe_training_and_evaluation

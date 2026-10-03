@@ -21,10 +21,12 @@ REPO = Path(__file__).resolve().parents[2]
 REFERENCE = Path(__file__).with_name("notebook_outputs.json")
 INSTASEIS_DB = Path(os.environ.get("INSTASEIS_DB", "/data/shared/ROSA_PREM_10s_disc"))
 CPS_PROGRAM = Path(os.environ.get("CPS_PATH", ""), "hprep96")
+INSTASEIS_DB_20S = Path(os.environ.get("INSTASEIS_DB_20S", "/data/shared/prem_a_20s"))
 #: Relative tolerance on every printed number.
 RTOL = 1e-6
 #: Notebook to the local inputs it needs; a missing one skips the notebook.
 NOTEBOOKS = {
+    "ridgecrest_obspy": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
     "01_forward_models_and_receivers": [INSTASEIS_DB, CPS_PROGRAM],
     "02_noise_covariances_and_likelihood": [INSTASEIS_DB],
     "03_npe_training_and_evaluation": [INSTASEIS_DB],
@@ -37,7 +39,7 @@ NOTEBOOKS = {
 }
 #: Notebook to about three times its usual running time in seconds; a cell still running after
 #: that long fails the notebook, so a hung worker pool fails fast.
-TIMEOUT_S = {"01_forward_models_and_receivers": 300, "02_noise_covariances_and_likelihood": 600,
+TIMEOUT_S = {"ridgecrest_obspy": 120, "01_forward_models_and_receivers": 300, "02_noise_covariances_and_likelihood": 600,
              "03_npe_training_and_evaluation": 2400, "04_source_conventions": 300,
              "05_resolution_and_tradeoffs": 900,
              "nuisance_parameters_demo": 600,
@@ -143,6 +145,7 @@ def mismatches(summary: list, reference: list, stochastic=()) -> list:
 @pytest.mark.parametrize("name", list(NOTEBOOKS))
 def test_the_notebook_prints_what_it_printed_before(name, tmp_path, monkeypatch):
     monkeypatch.setenv("INSTASEIS_DB", str(INSTASEIS_DB))
+    monkeypatch.setenv("INSTASEIS_DB_20S", str(INSTASEIS_DB_20S))
     missing = [str(path) for path in NOTEBOOKS[name] if not path.exists()]
     if missing:
         pytest.skip(f"needs {missing}")
@@ -157,6 +160,7 @@ if __name__ == "__main__":
     import tempfile
 
     os.environ["INSTASEIS_DB"] = str(INSTASEIS_DB)
+    os.environ["INSTASEIS_DB_20S"] = str(INSTASEIS_DB_20S)
     names = sys.argv[1:] or list(NOTEBOOKS)
     stored = json.loads(REFERENCE.read_text()) if REFERENCE.exists() else {}
     for name in names:

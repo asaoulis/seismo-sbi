@@ -61,23 +61,28 @@ The notebooks under `examples/` are the quickest way in. They run headless, and 
 [documentation site](https://asaoulis.github.io/seismo-sbi/) renders them with their outputs.
 Work through them in this order:
 
-1. [`01_forward_models_and_receivers`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/01_forward_models_and_receivers.ipynb): receivers,
+1. [`ridgecrest_obspy`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/ridgecrest_obspy.ipynb): the 2019
+   Ridgecrest foreshock (Mw 6.4) from ObsPy objects to a moment tensor and back: FDSN event, stations and
+   waveforms, the observation and its noise covariance from the `Stream`, least squares and the Gaussian-likelihood
+   posterior, synthetics as a `Stream`, the posterior as QuakeML. Runs offline from `examples/data/ridgecrest`;
+   needs an Instaseis database resolving 20 s (`INSTASEIS_DB_20S`, such as `prem_a_20s`).
+2. [`01_forward_models_and_receivers`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/01_forward_models_and_receivers.ipynb): receivers,
    the Instaseis, CPS and kernel forward models, a toy forward model plugged in through the
    registry, and the post-processing chain. Synthetic inputs; needs `INSTASEIS_DB` and `CPS_PATH`.
-2. [`02_noise_covariances_and_likelihood`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/02_noise_covariances_and_likelihood.ipynb): every
+3. [`02_noise_covariances_and_likelihood`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/02_noise_covariances_and_likelihood.ipynb): every
    Gaussian-likelihood covariance on synthetic noise, the noise samplers, score compression, and
    MCMC with each covariance checked against the analytical posterior.
-3. [`03_npe_training_and_evaluation`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/03_npe_training_and_evaluation.ipynb): dataset
+4. [`03_npe_training_and_evaluation`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/03_npe_training_and_evaluation.ipynb): dataset
    generation, training-time augmentation, training a neural compressor and flow, and the
    validation, calibration (TARP) and evaluation plots.
-4. [`theory_errors_LV2`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb): theory-error SBI on the LV2 Long Valley
+5. [`theory_errors_LV2`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb): theory-error SBI on the LV2 Long Valley
    Caldera event, against the Gaussian likelihood. Needs CPS and the git-lfs checkpoint.
-5. [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_parameters_demo.ipynb): nuisance parameters drawn
+6. [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_parameters_demo.ipynb): nuisance parameters drawn
    at simulation time, the source time function's duration and the post-processing effects
    (amplitude, dropout, time shift).
-6. [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb): the same effects
+7. [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb): the same effects
    applied in the dataloader as training-time augmentation.
-7. [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb): the 13/01/2022 Azores event of
+8. [`azores_inversion`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/azores_inversion.ipynb): the 13/01/2022 Azores event of
    [Saoulis et al. (2024)](https://arxiv.org/abs/2410.23238), a fixed-location moment-tensor
    inversion with SBI and the Gaussian likelihood, then the full 10-parameter moment tensor,
    location and origin time.
