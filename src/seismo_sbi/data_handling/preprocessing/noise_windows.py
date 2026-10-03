@@ -4,7 +4,8 @@
 :func:`~seismo_sbi.data_handling.preprocessing.sbi_export.observation_from_stream` lays out an event:
 ``(n_windows, n_traces * n_samples)`` rows in receiver order with a ``(n_windows, n_stations)``
 presence mask, the layout ``RealNoiseSampler.from_windows`` and
-``EmpiricalCovarianceEstimator.estimate_from_windows`` take.
+``EmpiricalCovarianceEstimator.estimate_from_windows`` take. :func:`quiet_window_mask` screens a
+pool of windows for the earthquakes it holds.
 """
 from datetime import timedelta
 from typing import Optional, Sequence, Tuple
@@ -49,3 +50,15 @@ def noise_windows_from_stream(stream: Stream, receivers: Receivers, window_lengt
             present_masks.append(present)
     return (np.array(rows).reshape(len(rows), row_length),
             np.array(present_masks, dtype=bool).reshape(len(present_masks), len(receivers)))
+
+
+def quiet_window_mask(vertical_rms: np.ndarray, max_rms_ratio: float = 5.0) -> np.ndarray:
+    """Which windows of a recorded noise pool to keep: ``False`` where any station's vertical rms
+    exceeds ``max_rms_ratio`` times that station's median over the pool, as it does when an
+    earthquake falls inside a noise window.
+
+    :param vertical_rms: ``(n_windows, n_stations)`` rms of each window's vertical trace.
+    :returns: ``(n_windows,)`` boolean, ``True`` for a window kept.
+    """
+    station_median_rms = np.median(vertical_rms, axis=0)
+    return np.all(vertical_rms <= max_rms_ratio * station_median_rms, axis=1)
