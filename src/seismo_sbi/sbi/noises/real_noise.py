@@ -196,7 +196,7 @@ class RealNoiseSampler:
               f"({gb:.2f} GB, {np.dtype(dtype).name}) in {_t.perf_counter() - t0:.1f}s — "
               f"per-sample HDF5 noise read removed.")
 
-    def __call__(self, noise_path = None, no_rescale = False, noise_index = None, _attempts = 0):
+    def __call__(self, noise_path = None, no_rescale = False, noise_index = None):
 
         # Fast path: in-RAM pool for the generic ML draw (random window, no rescale). Returns a
         # uniformly random cached window — distributionally identical to the on-disk random draw.
@@ -208,39 +208,37 @@ class RealNoiseSampler:
                 return self._noise_cache[row], self._presence_cache[row]
             return self._noise_cache[row]
 
-        if _attempts > len(self.noise_paths):
-            raise RuntimeError(
-                f"RealNoiseSampler: no noise window matched the expected data-vector length "
-                f"{self._expected_length} after scanning all {len(self.noise_paths)} windows.")
-        if noise_index is not None:
-            # Wrap: the retry below increments noise_index, which would otherwise run off the
-            # end at the last window.
-            noise_path = self.noise_paths[noise_index % len(self.noise_paths)]
-        if noise_path is None:
-            noise_index = np.random.randint(0, len(self.noise_paths))
-            noise_path = self.noise_paths[noise_index]
-        # A retry moves to the next window when walking sequentially, or draws afresh when the
-        # window was requested by path.
-        next_index = None if noise_index is None else noise_index + 1
+        for _ in range(len(self.noise_paths) + 1):
+            if noise_index is not None:
+                noise_path = self.noise_paths[noise_index % len(self.noise_paths)]
+            if noise_path is None:
+                noise_index = np.random.randint(0, len(self.noise_paths))
+                noise_path = self.noise_paths[noise_index]
+            noise = self._read_window(noise_path, no_rescale)
+            if noise is not None:
+                return noise
+            # An unusable window: walk on to the next one, or draw afresh when it was requested by path.
+            noise_path = None
+            noise_index = None if noise_index is None else noise_index + 1
+        raise RuntimeError(
+            f"RealNoiseSampler: no noise window matched the expected data-vector length "
+            f"{self._expected_length} after scanning all {len(self.noise_paths)} windows.")
+
+    def _read_window(self, noise_path, no_rescale):
+        """The draw from the window at ``noise_path``, or None when the window is unusable: no model
+        station at all, a model station missing, or a trace shorter than the data vector needs."""
         if self.allow_incomplete:
             noise_realisations, present = self.data_loader.load_flattened_simulation_vector_with_presence(
                 noise_path)
             if not present.any():
-                # Degenerate window (no model station at all): fall through to the next one.
-                return self.__call__(noise_path=None, no_rescale=no_rescale,
-                                     noise_index=next_index, _attempts=_attempts + 1)
+                return None
             return noise_realisations, present
         try:
             noise_realisations = self._load_noise_file(noise_path)
         except KeyError:
-            # this window lacks one of the event's stations; try the next one.
-            return self.__call__(noise_path = None, no_rescale = no_rescale,
-                                 noise_index=next_index, _attempts=_attempts + 1)
-        # Skip windows on a station data gap: one trace is short, so the flattened vector
-        # would not broadcast against the data vector.
+            return None
         if self._expected_length is not None and noise_realisations.size != self._expected_length:
-            return self.__call__(noise_path = None, no_rescale = no_rescale,
-                                 noise_index=next_index, _attempts=_attempts + 1)
+            return None
 
         if no_rescale:
             misc_data = self.data_loader.load_misc_data(noise_path)

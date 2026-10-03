@@ -228,3 +228,14 @@ def test_from_windows_with_presence_returns_the_window_and_its_stations(receiver
     noise, mask = sampler()
     assert noise.shape == (TRACE_LEN,) and mask.shape == (1,)
     assert sampler.subset_window_count([0]) == 2
+
+
+def test_a_pool_of_mostly_unusable_windows_still_finds_the_usable_one(tmp_path, receivers):
+    for window in range(1500):
+        with h5py.File(tmp_path / f"empty_{window:04d}.h5", "w") as noise_file:
+            noise_file.create_group("outputs")
+    TestRealNoiseSamplerShortWindowSkip._write_window(tmp_path / "good.h5", receivers, TRACE_LEN)
+    sampler = RealNoiseSampler(_make_sim_params(receivers), tmp_path, data_length=TRACE_LEN)
+    good_index = [path.name for path in sampler.noise_paths].index("good.h5")
+    noise = sampler(noise_index=good_index + 1)
+    assert noise.shape == (TRACE_LEN,)
