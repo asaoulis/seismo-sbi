@@ -53,4 +53,5 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
             member_sampling=getattr(self, 'member_sampling', None),
             sector_lambda=getattr(self, 'sector_lambda', None),
             source_depth_offset_km=getattr(self, 'source_depth_offset_km', 0.0),
+            stf_alignment=self.configured_stf_alignment,
         )

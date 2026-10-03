@@ -47,6 +47,9 @@ class SimulationParameters(NamedTuple):
     #: Depth offset (km, positive down) added only at the Green's-function call, for a model
     #: whose free surface is not the catalogue's datum; 0.0 means they coincide.
     source_depth_offset_km: float = 0.0
+    #: ``"peak"`` or ``"onset"``: whether the source time is the centroid or the start of the
+    #: moment-rate function; None is the forward model's own convention.
+    stf_alignment: Optional[str] = None
     #: Each station draws its own 1-D ensemble member per event, instead of one shared member.
     resample_member_per_station: bool = False
     #: Ensemble member sampling: None or 'per_event' (one member for all stations), 'per_station',

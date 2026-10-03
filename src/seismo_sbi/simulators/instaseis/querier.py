@@ -13,7 +13,7 @@ import numpy as np
 from datetime import timedelta
 
 from ..receivers import Receiver
-from ..sources import GenericPointSource, _gcmt_half_duration, build_stf_sliprate
+from ..sources import STF_ALIGNMENTS, GenericPointSource, _gcmt_half_duration, build_stf_sliprate, sliprate_centroid_s
 from ..spectral_filter import filter_and_shift
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
@@ -84,20 +84,26 @@ def keep_inverse_mapping_out_of_the_numba_disk_cache():
 class InstaseisDBQuerier:
 
     def __init__(self, instaseis_model_loc, processing_config, seismogram_duration_in_s = None,
-                 source_depth_offset_km: float = 0.0) -> None:
+                 source_depth_offset_km: float = 0.0, stf_alignment: str = "peak") -> None:
         """``source_depth_offset_km`` is the distance, positive downwards in km, from the
         model's free surface to the datum the catalogue measures depth from.
 
         Instaseis measures source depth from the free surface, which need not be sea level. The
         offset is applied only at the handoff to Instaseis, so everything upstream stays in the
         catalogue's own datum. It defaults to zero, the two being the same.
+
+        ``stf_alignment`` is ``"peak"`` (the source time is the centroid of the moment-rate
+        function) or ``"onset"`` (its start); it matters only for a triangular source time function.
         """
         keep_inverse_mapping_out_of_the_numba_disk_cache()
         self.instaseis_database = instaseis.open_db(instaseis_model_loc)
         self.preprocessing = SyntheticsPreprocessing(processing_config)
         self._seismogram_duration_in_s = seismogram_duration_in_s
         self.source_depth_offset_km = float(source_depth_offset_km)
-        
+        if stf_alignment not in STF_ALIGNMENTS:
+            raise ValueError(f"stf_alignment must be one of {STF_ALIGNMENTS}, got {stf_alignment!r}")
+        self.stf_alignment = stf_alignment
+
         self.sampling_rate = self._get_db_attribute('sampling_rate')
         self._raw_seismogram_duration_in_s = self._get_db_attribute('length')
         self._raw_seismogram_length = self._get_db_attribute('npts')
@@ -138,7 +144,8 @@ class InstaseisDBQuerier:
         """An Instaseis source with its sliprate set, from a ``GenericPointSource``.
 
         ``stf_duration`` is ``None`` for a Dirac, or a multiplicative factor on the GCMT
-        half-duration this source's scalar moment predicts, giving a triangular sliprate.
+        half-duration this source's scalar moment predicts, giving a triangular sliprate whose
+        centroid (``"peak"``) or start (``"onset"``) sits at the source time.
         """
         location = source.source_location
         m_tensor = source.moment_tensor.components
@@ -170,7 +177,10 @@ class InstaseisDBQuerier:
         sliprate = build_stf_sliprate(stf_duration, self._dt, gcmt_half_duration=gcmt_t_half)
         # build_stf_sliprate already carries unit moment under the sum*dt convention; letting
         # Instaseis normalise with np.trapz would double a boundary-spike Dirac.
-        instaseis_source.set_sliprate(sliprate, self._dt, time_shift=location.time_shift, normalize=False)
+        onset_s = location.time_shift
+        if self.stf_alignment == "peak":
+            onset_s -= sliprate_centroid_s(sliprate, self._dt)
+        instaseis_source.set_sliprate(sliprate, self._dt, time_shift=onset_s, normalize=False)
 
         return instaseis_source
     

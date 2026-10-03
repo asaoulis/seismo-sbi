@@ -24,7 +24,8 @@ class TrainingData:
 
     ``station_locations`` has shape (n_stations, n_coordinates); ``trace_length`` is the
     per-trace sample count; the two augmentation chains are applied to a training sample before
-    and after sensor noise is added.
+    and after sensor noise is added. ``stf_alignment`` is the forward model's source-time
+    convention (:attr:`~seismo_sbi.simulators.base.Simulator.stf_alignment`).
     """
 
     simulation_paths: list
@@ -36,6 +37,7 @@ class TrainingData:
     augmentation_nuisance_params: dict
     post_noise_chain: object
     post_noise_nuisance_params: dict
+    stf_alignment: str = "peak"
 
 
 def build_pipeline(config, config_path, num_simulations=None, pipeline_class=None):
@@ -129,6 +131,7 @@ def prepare_training_data(pipeline, config, simulation_paths, training):
         augmentation_nuisance_params=augmentation_nuisance_params,
         post_noise_chain=post_noise_chain,
         post_noise_nuisance_params=post_noise_nuisance_params,
+        stf_alignment=pipeline.simulator_wrapper.simulator.stf_alignment,
     )
 
 

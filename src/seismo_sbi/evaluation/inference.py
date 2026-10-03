@@ -43,11 +43,12 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     or a directory holding exactly one run (see :func:`resolve_ckpt_dir`). The flow is rebuilt from
     the run's ``model_meta.json``; the scaler is built from the configuration with the M0
     convention the sidecar records and checked against the sidecar's scaling record, raising on a
-    mismatch unless ``strict`` is False.
+    mismatch unless ``strict`` is False. The pipeline's forward model places the source time on
+    the moment-rate function as the run was trained (:func:`recorded_stf_alignment`).
     """
     from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.datasets.training_data import build_pipeline
-    from seismo_sbi.sbi.npe.training.train import CompressionTrainer
+    from seismo_sbi.sbi.npe.training.train import CompressionTrainer, recorded_stf_alignment
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
     from seismo_sbi.sbi.scalers import build_flexible_scaler, check_scaler_provenance
 
@@ -55,6 +56,7 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     posterior = CompressionTrainer.from_run_directory(run_directory).build_posterior()
     model_meta = json.loads((run_directory / "model_meta.json").read_text())
     config = SBI_Configuration.from_file(config_path)
+    config.sim_parameters = config.sim_parameters._replace(stf_alignment=recorded_stf_alignment(model_meta))
     pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
     data_scaler = build_flexible_scaler(deepcopy(pipeline.parameters), config.raw_config,
                                         model_meta=model_meta)
@@ -138,7 +140,7 @@ def build_ml_posterior(ckpt_dir, sbi_pipeline, dim=256):
     encoder (cnn / pno / tcn) reloads correctly.  Returns the sbi DirectPosterior.
     """
     import json as _json
-    from seismo_sbi.sbi.npe.training.train import CompressionTrainer
+    from seismo_sbi.sbi.npe.training.train import CompressionTrainer, recorded_stf_alignment
 
     ckpt_dir = Path(ckpt_dir)
     components = sbi_pipeline.data_manager.data_loader.components

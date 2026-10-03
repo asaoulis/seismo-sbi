@@ -3,7 +3,8 @@
 A :class:`GenericPointSource` pairs a :class:`SourceLocation` with a moment tensor, either the
 six components (``m_rr, m_tt, m_pp, m_rt, m_rp, m_tp``, in N.m) or an isotropic magnitude.
 :func:`build_stf_sliprate` builds the unit-moment sliprate handed to the forward model: a Dirac
-by default, or a triangle whose half-duration scales the GCMT law.
+by default, or a triangle whose half-duration scales the GCMT law. Under the ``"peak"`` alignment the
+source time is the centroid of the moment-rate function; under ``"onset"`` it is its start.
 """
 
 import numpy as np
@@ -56,6 +57,10 @@ class GenericPointSource(NamedTuple):
 
     source_location : SourceLocation
     moment_tensor : MomentTensor
+
+#: Where a source time sits on its moment-rate function: ``"peak"`` (its centroid, the peak of a
+#: triangle) or ``"onset"`` (its start).
+STF_ALIGNMENTS = ("peak", "onset")
 
 #: Shortest sliprate array Instaseis accepts, in samples.
 _MIN_STF_SAMPLES: int = 1000
@@ -138,3 +143,13 @@ def build_stf_sliprate(
     if not area > 0.0:
         return _unit_moment_dirac(dt)
     return sliprate / area
+
+
+def sliprate_centroid_s(sliprate: np.ndarray, dt: float) -> float:
+    """Centroid time in s, after the sliprate's first sample, of a sliprate sampled every ``dt`` s.
+
+    Zero for the Dirac of :func:`build_stf_sliprate`; for its triangle, the peak of the sampled
+    moment rate, which a source under the ``"peak"`` alignment places at the source time.
+    """
+    sliprate = np.asarray(sliprate, dtype=float)
+    return float(np.sum(np.arange(len(sliprate)) * dt * sliprate) / np.sum(sliprate))

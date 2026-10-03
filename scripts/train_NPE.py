@@ -21,7 +21,6 @@ from seismo_sbi.sbi.datasets.training_data import (build_pipeline, generate_trai
                                           prepare_training_data, preload_noise_cache)
 from seismo_sbi.sbi.npe.training.train import (CompressionTrainer, apply_warm_start,
                                                  attach_loggers, enable_mmd_loss)
-from seismo_sbi.sbi.scalers import scaler_provenance
 
 
 def parse_arguments():
@@ -58,9 +57,7 @@ def main():
         return
 
     data = prepare_training_data(pipeline, config, simulation_paths, training)
-    trainer = CompressionTrainer.from_configuration(
-        training, data.components, data.station_locations, data.trace_length,
-        scaler_provenance(data.data_scaler))
+    trainer = CompressionTrainer.from_training_data(training, data)
     enable_mmd_loss(trainer, training, pipeline, data)
 
     if args.stage == 'meta':

@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 
 from .receivers import Receivers
 from .simulation_io import SimulationSaver
-from .sources import GenericPointSource, SimpleMomentTensor, GeneralMomentTensor, SourceLocation
+from .sources import STF_ALIGNMENTS, GenericPointSource, SimpleMomentTensor, GeneralMomentTensor, SourceLocation
 from seismo_sbi.utils.errors import InvalidConfiguration
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
@@ -52,7 +52,13 @@ class Simulator(ABC):
         synthetics_processing,
         post_processing_effects=None,
         source_depth_offset_km: float = 0.0,
+        stf_alignment=None,
     ):
+        """``stf_alignment`` is ``"peak"`` or ``"onset"`` (see :attr:`stf_alignment`); None is the
+        backend's own convention."""
+        if stf_alignment is not None and stf_alignment not in STF_ALIGNMENTS:
+            raise InvalidConfiguration(f"stf_alignment must be one of {STF_ALIGNMENTS}, got {stf_alignment!r}")
+        self.configured_stf_alignment = stf_alignment
         self.components = components
         self.receivers = receivers
         self.seismogram_length = seismogram_duration_in_s
@@ -61,6 +67,12 @@ class Simulator(ABC):
         # is the model's free surface.
         self.source_depth_offset_km = float(source_depth_offset_km)
         self.post_processing_chain = PostProcessingChain(post_processing_effects or [])
+
+    @property
+    def stf_alignment(self) -> str:
+        """Where the source time sits on the moment-rate function: ``"peak"`` (its centroid) or
+        ``"onset"`` (its start). A trained network's sidecar records it."""
+        return self.configured_stf_alignment or "peak"
 
     @abstractmethod
     def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):

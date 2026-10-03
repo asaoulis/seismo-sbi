@@ -191,12 +191,13 @@ class CompressionTrainer:
         :class:`~seismo_sbi.sbi.datasets.training_data.TrainingData` of
         :func:`~seismo_sbi.sbi.datasets.training_data.prepare_training_data`.
 
-        The recording geometry, trace length and parameter scaling come from ``data``;
-        ``model_config_overrides`` are as in :meth:`from_configuration`.
+        The recording geometry, trace length, parameter scaling and the forward model's
+        source-time convention come from ``data``; ``model_config_overrides`` are as in
+        :meth:`from_configuration`.
         """
         return cls.from_configuration(training, data.components, data.station_locations,
                                       data.trace_length, scaler_provenance(data.data_scaler),
-                                      **model_config_overrides)
+                                      **{"stf_alignment": data.stf_alignment, **model_config_overrides})
 
     @classmethod
     def from_run_directory(cls, run_directory):
@@ -409,6 +410,16 @@ class CompressionTrainer:
                     device=device,
                 )
         return posterior
+
+
+def recorded_stf_alignment(meta: dict) -> str:
+    """The source-time convention, ``"peak"`` or ``"onset"``, the run of a parsed ``model_meta.json``
+    was trained with; a record that predates the convention is ``"onset"``.
+
+    The sidecar records the forward model's convention when training starts, so a run trained on
+    simulation files written before the ``"peak"`` convention existed is recorded as ``"peak"``.
+    """
+    return meta.get("model_config", {}).get("stf_alignment", "onset")
 
 
 def create_best_checkpoint_callback(output_path):

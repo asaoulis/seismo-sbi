@@ -19,6 +19,7 @@ def _querier(offset):
     q = object.__new__(InstaseisDBQuerier)
     q._dt = 0.5
     q.source_depth_offset_km = float(offset)
+    q.stf_alignment = "peak"
     return q
 
 

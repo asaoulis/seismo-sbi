@@ -33,6 +33,10 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         self.num_jobs = internal_jobs
         self.receivers.set_time_shifts({rec.station_name: 0 for rec in self.simulator.receivers.iterate()})
 
+    @property
+    def stf_alignment(self) -> str:
+        return self.simulator.stf_alignment
+
     def generic_point_source_simulation(self, source, **kwargs):
         members = list(self.simulator.members)
         member_seeds = worker_seeds(self.seed, self.num_realisations, "ensemble members")

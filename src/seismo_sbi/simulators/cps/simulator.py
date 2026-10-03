@@ -38,11 +38,18 @@ def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
     return [Mnn, Mee, Mdd, Mne, Mnd, Med]
 
 class CPSSimulator(Simulator):
+    """CPS forward models. Every Green's function carries hpulse96's parabolic pulse of base 4 s
+    (``-p -l 1`` at 1 s sampling), which starts at the source time and peaks 2 s after it, so the
+    source time is the onset; ``stf_duration`` is not applied."""
 
     pre_event_pad_s = 0.0
-    
+
     def __init__(self, gf_storage_root=None, cps_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.configured_stf_alignment not in (None, "onset"):
+            raise InvalidConfiguration(
+                "CPS Green's functions carry a fixed pulse that starts at the source time; "
+                f"seismic_context.stf_alignment must be 'onset' or absent, got {self.configured_stf_alignment!r}")
         sampling_rate_hz = float(self.synthetics_processing.get('sampling_rate', CPS_SAMPLING_RATE_HZ))
         if sampling_rate_hz != CPS_SAMPLING_RATE_HZ:
             raise InvalidConfiguration(
@@ -58,6 +65,10 @@ class CPSSimulator(Simulator):
         self.cps_path = cps_path
         self.synthetics_summary = lambda x: x
     
+    @property
+    def stf_alignment(self) -> str:
+        return "onset"
+
     def generic_point_source_simulation(self, source: GenericPointSource, **kwargs):
         if source.source_location.time_shift != 0:
             raise InvalidConfiguration(

@@ -70,6 +70,9 @@ each trace has `seismogram_duration_in_s * sampling_rate` samples. The method mu
 keyword arguments `velocity_model`, `stf_duration` and `use_fiducial`, and may ignore them.
 `pre_event_pad_s` states where the origin falls in each trace (60 s for the Instaseis backends,
 0 for CPS); `simulators.synthetic_stream.seismogram_map_to_stream` needs it to time-stamp the traces.
+The source time is the centroid of the moment-rate function (`stf_alignment` is `"peak"`); a
+model whose source time function starts at the source time overrides the `stf_alignment` property
+to return `"onset"`, as CPS does.
 
 The station time shifts and the nuisance effects are applied to its output for you.
 

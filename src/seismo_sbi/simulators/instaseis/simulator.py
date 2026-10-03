@@ -20,14 +20,14 @@ class InstaseisSourceSimulator(Simulator):
         self.sampling_rate = float(InstaseisDBQuerier(self.instaseis_model_loc,
                                                       self.synthetics_processing,
                                                        self.seismogram_length,
-                                                       self.source_depth_offset_km).sampling_rate)
+                                                       self.source_depth_offset_km, self.stf_alignment).sampling_rate)
 
     def generic_point_source_simulation(self, source: GenericPointSource, *, stf_duration=None, **kwargs):
 
         instaseis_db_querier = InstaseisDBQuerier(self.instaseis_model_loc,
                                                   self.synthetics_processing,
                                                     self.seismogram_length,
-                                                    self.source_depth_offset_km)
+                                                    self.source_depth_offset_km, self.stf_alignment)
 
         all_seismograms_map = {}
         for receiver in self.receivers.iterate():

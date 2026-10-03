@@ -123,12 +123,14 @@ def test_from_training_data_builds_the_trainer_a_caller_would_assemble_by_hand()
     training = replace(TrainingConfiguration.from_yaml_block({"ml_architecture": "cnn"}), model_dim=32)
     data = SimpleNamespace(components="ZEN", trace_length=101,
                            station_locations=np.array([[37.0, -118.0], [38.0, -119.0]]),
-                           data_scaler=FlexibleScaler.from_bounds({"moment_tensor": ([-1.0] * 6, [1.0] * 6)}))
+                           data_scaler=FlexibleScaler.from_bounds({"moment_tensor": ([-1.0] * 6, [1.0] * 6)}),
+                           stf_alignment="peak")
     torch.manual_seed(0)
     by_hand = CompressionTrainer(
         data.components, data.station_locations, channels=32, latent_dim=32,
         trace_length=data.trace_length,
-        model_config={**training.to_model_config(scaler_provenance(data.data_scaler)), "layers": 1},
+        model_config={**training.to_model_config(scaler_provenance(data.data_scaler)), "stf_alignment": "peak",
+                      "layers": 1},
         lr=training.optimizer.lr)
     torch.manual_seed(0)
     from_data = CompressionTrainer.from_training_data(training, data, layers=1)

@@ -125,6 +125,7 @@ def _build_instaseis_ensemble(simulation_parameters, simulator_config, pp_effect
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None),
                     resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
                     member_sampling=getattr(simulation_parameters, "member_sampling", None),
                     sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
@@ -139,6 +140,7 @@ def _build_instaseis(simulation_parameters, simulator_config, pp_effects, data_f
                                 seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                                 synthetics_processing=simulation_parameters.processing,
                                 post_processing_effects=pp_effects,
+                                stf_alignment=getattr(simulation_parameters, "stf_alignment", None),
                                 source_depth_offset_km=getattr(
                                     simulation_parameters, "source_depth_offset_km", 0.0))
 
@@ -150,7 +152,8 @@ def _build_kernel(simulation_parameters, simulator_config, pp_effects, data_flat
                     receivers=simulation_parameters.receivers,
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    post_processing_effects=pp_effects)
+                    post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
 
 
 def _build_cps(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -161,7 +164,8 @@ def _build_cps(simulation_parameters, simulator_config, pp_effects, data_flatten
                     synthetics_processing=simulation_parameters.processing,
                     gf_storage_root=simulation_parameters.cps_GFs_path,
                     cps_path=getattr(simulation_parameters, 'cps_path', None),
-                    post_processing_effects=pp_effects)
+                    post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
 
 
 def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -173,7 +177,8 @@ def _build_cps_precomputed(simulation_parameters, simulator_config, pp_effects, 
                     synthetics_processing=simulation_parameters.processing,
                     gf_storage_root=simulation_parameters.cps_GFs_path,
                     cps_path=getattr(simulation_parameters, 'cps_path', None),
-                    post_processing_effects=pp_effects)
+                    post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
 
 
 def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -193,6 +198,7 @@ def _build_instaseis_multi_ensemble(simulation_parameters, simulator_config, pp_
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None),
                     resample_member_per_station=getattr(simulation_parameters, "resample_member_per_station", False),
                     member_sampling=getattr(simulation_parameters, "member_sampling", None),
                     sector_lambda=getattr(simulation_parameters, "sector_lambda", None),
@@ -217,7 +223,8 @@ def _build_cps_multi(simulation_parameters, simulator_config, pp_effects, data_f
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
                     cps_path=getattr(simulation_parameters, 'cps_path', None),
-                    post_processing_effects=pp_effects)
+                    post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
 
 
 def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects, data_flattening):
@@ -229,7 +236,8 @@ def _build_theory_covariance(simulation_parameters, simulator_config, pp_effects
                     receivers=deepcopy(simulation_parameters.receivers),
                     seismogram_duration_in_s=simulation_parameters.seismogram_duration,
                     synthetics_processing=simulation_parameters.processing,
-                    post_processing_effects=pp_effects)
+                    post_processing_effects=pp_effects,
+                    stf_alignment=getattr(simulation_parameters, "stf_alignment", None))
 
 
 #: Forward-model builders, selectable by ``simulation_type``. Each takes the simulation
