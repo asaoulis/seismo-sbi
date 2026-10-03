@@ -40,11 +40,20 @@ class IterativeLeastSquaresSolver:
 
     @error_handling_wrapper(num_attempts=3)
     def solve_least_squares(self, observation, compressor, single_step = True, return_history = False):
-        iterations = self.least_squares_configuration.max_iterations if not single_step else 2
-        damping = self.least_squares_configuration.damping_factor if not single_step else 0
-        adaptive = self.least_squares_configuration.dynamic_damping
+        """Levenberg-Marquardt iterations towards the maximum-likelihood source.
 
-        misfit = np.inf
+        Each iteration recomputes the score compression at the current model and takes a damped
+        Gauss-Newton step. A step that raises chi^2 is rejected: the model returns to the last
+        accepted point and the damping grows tenfold. An accepted step divides the damping by ten
+        (with ``dynamic_damping``; otherwise the damping is kept), and the iterations stop once
+        an accepted step lowers chi^2 by less than ``chi2_tolerance`` of its value. With
+        ``single_step`` two undamped Gauss-Newton steps are taken and nothing is rejected.
+        Returns the compression data (and extra gradients) at the final model.
+        """
+        configuration = self.least_squares_configuration
+        iterations = configuration.max_iterations if not single_step else 2
+        damping = configuration.damping_factor if not single_step else 0
+
         new_parameters = deepcopy(self.model_parameters)
         model_params = new_parameters.parameter_to_vector('theta_fiducial', True)
         true_priors = deepcopy(compressor.prior_mean), deepcopy(compressor.prior_covariance)
@@ -54,53 +63,48 @@ class IterativeLeastSquaresSolver:
         best_params_vec = None
         best_iter = -1
         all_steps = [model_params]
-        
-        for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
-            # Step 1: Compute gradients
+        accepted = None
 
+        for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
                                                                                                           seed=self.seed)
             scaling_factors = self._create_scaling_vector(new_parameters)
             scaling_factors = np.ones_like(scaling_factors)
-
-            if true_priors[0] is not None:
-                scaled_priors = (true_priors[0] * scaling_factors, true_priors[1] * scaling_factors**2)
-                compressor.set_priors(scaled_priors)
-            if extra_gradients is not None:
-                compressor.C.set_covariance(extra_gradients)
-            compressor.set_compression_variables(score_compression_data)
-            
+            self._set_compressor(compressor, score_compression_data, extra_gradients, true_priors, scaling_factors)
             misfit_new = compressor.compute_misfit(observation)
             # Keep track of best model before applying update
             if misfit_new < best_chi2:
                 best_chi2 = misfit_new
                 best_params_vec = np.copy(model_params)
                 best_iter = it
-            
-            if adaptive and not single_step:
-                if misfit_new > 0.99 * misfit:
-                    damping *= 1.2
-                else:
-                    damping /= 1.5
-                misfit = misfit_new
-            print(f"chi^2: {misfit_new:.5f}, damping lambda: {damping:.3f}", flush=True)
-            
-            # Step 4: Compute the update step using the Gauss-Newton method
+
+            if not single_step and accepted is not None and misfit_new > accepted["chi2"]:
+                damping *= 10.0
+                print(f"chi^2: {misfit_new:.5f} rose; step rejected, damping lambda: {damping:.3f}", flush=True)
+                model_params = np.copy(accepted["model_params"])
+                new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
+                self._set_compressor(compressor, accepted["score_compression_data"], accepted["extra_gradients"],
+                                     true_priors, scaling_factors)
+            else:
+                converged = (accepted is not None
+                             and accepted["chi2"] - misfit_new <= configuration.chi2_tolerance * accepted["chi2"])
+                if not single_step and accepted is not None and configuration.dynamic_damping:
+                    damping /= 10.0
+                accepted = {"chi2": misfit_new, "model_params": np.copy(model_params),
+                            "score_compression_data": score_compression_data, "extra_gradients": extra_gradients}
+                print(f"chi^2: {misfit_new:.5f}, damping lambda: {damping:.3f}", flush=True)
+                if not single_step and converged:
+                    break
+
             theta_MLE = compressor.compute_theta_MLE(observation, damping=damping)
-            
-            # Step 5: Update the model parameters
+
             model_params = theta_MLE / scaling_factors
-            theta_MLE_map =  {**new_parameters.vector_to_parameters(model_params, 'theta_fiducial')}
-            update = 'New MLE:\n' + "\n".join(
-                f"{k}: [{', '.join(f'{v_i:.3e}' if abs(v_i) < 1e-3 or abs(v_i) >= 1e3 else f'{v_i:.3f}' for v_i in v)}]" 
-                for k, v in theta_MLE_map.items()
-            )
-            print(update, flush=True)
+            print(self._describe_step(new_parameters.vector_to_parameters(model_params, 'theta_fiducial')), flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
             all_steps.append(deepcopy(model_params))
 
         # Optionally use the best (lowest chi^2) model found during the iterations
-        if self.least_squares_configuration.use_best_model and best_params_vec is not None:
+        if configuration.use_best_model and best_params_vec is not None:
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(best_params_vec, 'theta_fiducial')
             print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
         final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
@@ -109,6 +113,23 @@ class IterativeLeastSquaresSolver:
             return final_score_compression_data, extra_gradients
         else:
             return final_score_compression_data, extra_gradients, all_steps
+
+    @staticmethod
+    def _describe_step(theta_MLE_map):
+        """The printed lines of one step: ``New MLE:`` and each parameter block's values."""
+        return 'New MLE:\n' + "\n".join(
+            f"{k}: [{', '.join(f'{v_i:.3e}' if abs(v_i) < 1e-3 or abs(v_i) >= 1e3 else f'{v_i:.3f}' for v_i in v)}]"
+            for k, v in theta_MLE_map.items()
+        )
+
+    @staticmethod
+    def _set_compressor(compressor, score_compression_data, extra_gradients, true_priors, scaling_factors):
+        """Point ``compressor`` at the score compression of one model."""
+        if true_priors[0] is not None:
+            compressor.set_priors((true_priors[0] * scaling_factors, true_priors[1] * scaling_factors**2))
+        if extra_gradients is not None:
+            compressor.C.set_covariance(extra_gradients)
+        compressor.set_compression_variables(score_compression_data)
 
     def _create_scaling_vector(self, model_parameters):
         scaling_factors = []

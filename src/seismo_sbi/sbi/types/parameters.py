@@ -63,6 +63,8 @@ class IterativeLeastSquaresParameters(NamedTuple):
     dynamic_damping : bool = True
     mcmc_chain_for_mle : int = 0
     use_best_model : bool = True  # Use the lowest-chi^2 model at the end
+    #: Stop once an accepted step lowers chi^2 by less than this fraction.
+    chi2_tolerance : float = 1e-4
 
 class DatasetGenerationParameters(NamedTuple):
 
