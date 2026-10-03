@@ -117,9 +117,19 @@ def summarise(notebook) -> list:
     return summary
 
 
+def as_displayed(text: str) -> str:
+    """``text`` as a terminal shows it, without progress bars: each line is what follows its last
+    carriage return."""
+    lines = []
+    for line in text.split("\n"):
+        shown = [segment for segment in line.split("\r") if segment]
+        lines.append(shown[-1] if shown else "")
+    return "\n".join(line for line in lines if not PROGRESS_BAR.search(line))
+
+
 def without_progress_bars(notebook):
-    """``notebook`` with its stderr streams, progress-bar lines and execution timings removed: the
-    outputs stored in ``examples/``."""
+    """``notebook`` with its stderr streams, progress bars (lines and widgets) and execution timings
+    removed, and each cell's printed text as one stream: the outputs stored in ``examples/``."""
     for cell in notebook.cells:
         cell.metadata.pop("execution", None)
         if cell.cell_type != "code":
@@ -129,12 +139,17 @@ def without_progress_bars(notebook):
             if output.get("output_type") == "stream":
                 if output.get("name") == "stderr":
                     continue
-                output["text"] = "".join(line for line in output["text"].splitlines(keepends=True)
-                                         if not PROGRESS_BAR.search(line))
-                if not output["text"].strip():
+                if kept and kept[-1].get("output_type") == "stream":
+                    kept[-1]["text"] += output["text"]
                     continue
+            elif PROGRESS_BAR.search(output.get("data", {}).get("text/plain", "")):
+                continue
             kept.append(output)
-        cell.outputs = kept
+        for output in kept:
+            if output.get("output_type") == "stream":
+                output["text"] = as_displayed(output["text"])
+        cell.outputs = [output for output in kept
+                        if output.get("output_type") != "stream" or output["text"].strip()]
     return notebook
 
 
@@ -184,10 +199,13 @@ def test_stored_outputs_keep_printed_results_and_drop_progress_bars():
     cell.outputs = [nbformat.v4.new_output("stream", name="stderr", text="warning\n"),
                     nbformat.v4.new_output("stream", name="stdout",
                                            text="Running: 50%|##   | 1/2 [00:01<00:01, 1.0it/s]\nMw 6.24\n"),
-                    nbformat.v4.new_output("stream", name="stdout", text="\r 3/10 [00:02<00:05, 1.4s/it]\n")]
+                    nbformat.v4.new_output("stream", name="stdout", text="\r 3/10 [00:02<00:05, 1.4s/it]\n"),
+                    nbformat.v4.new_output("display_data", data={"text/plain": "Drawing:  0%|  | 0/10 [00:00<?, ?it/s]"}),
+                    nbformat.v4.new_output("stream", name="stdout", text="\r Epochs trained: 1"),
+                    nbformat.v4.new_output("stream", name="stdout", text="\r Epochs trained: 2\r Converged.\n")]
     cell.metadata["execution"] = {"iopub.execute_input": "2026-10-03T10:00:00"}
     stored = without_progress_bars(nbformat.v4.new_notebook(cells=[cell])).cells[0]
-    assert [output["text"] for output in stored.outputs] == ["Mw 6.24\n"]
+    assert [output["text"] for output in stored.outputs] == ["Mw 6.24\n Converged.\n"]
     assert "execution" not in stored.metadata
 
 if __name__ == "__main__":
