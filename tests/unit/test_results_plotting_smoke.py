@@ -3,6 +3,7 @@ observed against synthetic traces."""
 from pathlib import Path
 
 import matplotlib
+import matplotlib.collections
 import numpy as np
 
 from seismo_sbi.plotting.distributions import LUNE_REFERENCE_STYLES, MomentTensorReparametrised
@@ -41,7 +42,7 @@ def test_the_reparametrised_corner_draws_each_reference_in_every_panel(tmp_path,
     parameters = SBI_Configuration.from_file("configs/npe_example.yaml").model_parameters
     rng = np.random.default_rng(0)
     truth = np.array([3.0, -2.0, -1.0, 1.5, -0.5, 2.0]) * 1e16
-    references = {"agency A": truth * 1.05, "agency B": truth + 2e15}
+    references = {"agency A": truth * 1.3, "agency B": truth + 2e15}
 
     figure = MomentTensorReparametrised(None, parameters).plot_chain_consumer(
         {"posterior": (None, truth + rng.normal(scale=2e15, size=(400, 6)), None, None)},
@@ -53,9 +54,11 @@ def test_the_reparametrised_corner_draws_each_reference_in_every_panel(tmp_path,
     panels = [ax for ax in figure.axes if ax.get_visible() and len(ax.lines) == 0 and ax.collections]
     assert len(panels) == 15
     for ax in panels:
-        drawn = [tuple(c.get_facecolor()[0]) for c in ax.collections
-                 if len(c.get_offsets()) == 1 and len(c.get_facecolor())]
-        assert all(colour in drawn for colour in reference_colours)
+        drawn = [c for c in ax.collections if type(c) is matplotlib.collections.PathCollection]
+        assert all(colour in [tuple(c.get_facecolor()[0]) for c in drawn] for colour in reference_colours)
+        for point in drawn:
+            x, y = point.get_offsets()[0]
+            assert ax.get_xlim()[0] < x < ax.get_xlim()[1] and ax.get_ylim()[0] < y < ax.get_ylim()[1]
 
 
 def test_the_reparametrised_corner_labels_each_column_with_its_quantity():

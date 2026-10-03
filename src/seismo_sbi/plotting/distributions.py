@@ -353,7 +353,10 @@ class PosteriorPlotter:
         scale = 2.8*self.num_dim
 
         references = self._chain_consumer_references(extra_references or {}, parameters_label)
-        fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=extents,
+        plot_extents = extents
+        if references and extents is None:
+            plot_extents = self._extents_holding_references(scaled_data_dict, references, parameters_label)
+        fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=plot_extents,
                                   references=[(location, style) for _, location, style in references])
         fig.align_labels() 
         if references:
@@ -375,6 +378,17 @@ class PosteriorPlotter:
             references.append((label, dict(zip(parameters_label, location)),
                                {"marker": style["marker"], "color": style["color"], "s": 0.6 * style["s"]}))
         return references
+
+    @staticmethod
+    def _extents_holding_references(scaled_data_dict, references, parameters_label, margin=0.08):
+        """Axis ranges spanning the 0.5-99.5 percentiles of every ensemble and every reference, widened by ``margin``."""
+        extents = {}
+        for k, label in enumerate(parameters_label):
+            values = [np.percentile(samples[:, k], [0.5, 99.5]) for samples, _ in scaled_data_dict.values()]
+            values += [[location[label]] for _, location, _ in references]
+            low, high = min(np.min(v) for v in values), max(np.max(v) for v in values)
+            extents[label] = (low - margin * (high - low), high + margin * (high - low))
+        return extents
 
     @staticmethod
     def _add_chain_consumer_legend(fig, chain_names, references):
