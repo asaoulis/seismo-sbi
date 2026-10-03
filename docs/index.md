@@ -8,6 +8,7 @@
 pipeline
 training
 simulators
+obspy
 configuration
 examples
 api/index

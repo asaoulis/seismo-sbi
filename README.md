@@ -145,7 +145,7 @@ configuration and calls one library entry point. Run any of them with `--help` f
 
 ## Preparing real data
 
-Preparing real seismic data for the SBI pipeline requires three steps: downloading raw waveforms and instrument responses, building event and noise h5 catalogues, and pointing the YAML config at the results.  All intermediate files are standard obspy formats (`.mseed` + StationXML); HDF5 is produced only at the final boundary step.
+Preparing real seismic data for the SBI pipeline requires three steps: downloading raw waveforms and instrument responses, building event and noise h5 catalogues, and pointing the YAML config at the results.  All intermediate files are standard obspy formats (`.mseed` + StationXML); HDF5 is produced only at the final boundary step. To work from ObsPy objects in memory instead (a `Stream`, an `Inventory`, an `Origin`) and get a posterior back as a QuakeML `Event`, see [docs/obspy.md](docs/obspy.md).
 
 ### 1. Download
 
