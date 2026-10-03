@@ -131,7 +131,7 @@ def prepare_training_data(pipeline, config, simulation_paths, training):
         augmentation_nuisance_params=augmentation_nuisance_params,
         post_noise_chain=post_noise_chain,
         post_noise_nuisance_params=post_noise_nuisance_params,
-        stf_alignment=pipeline.simulator_wrapper.simulator.stf_alignment,
+        stf_alignment=pipeline.simulator_wrapper.stf_alignment,
     )
 
 

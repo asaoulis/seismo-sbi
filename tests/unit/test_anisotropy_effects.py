@@ -202,7 +202,7 @@ def test_a_configuration_turns_on_both_anisotropy_effects_at_simulation(monkeypa
     built = []
     monkeypatch.setattr(simulator_wrapper, "build_simulator",
                         lambda config, parameters, effects, data_flattening=None:
-                        built.extend(effects) or SimpleNamespace(execute_sim_and_save_outputs=None))
+                        built.extend(effects) or SimpleNamespace(execute_sim_and_save_outputs=None, stf_alignment="peak"))
     simulation = SimpleNamespace(simulation_type="instaseis", sampling_rate=2.0)
     simulator_wrapper.GeneralSimulatorWrapper(simulation, config.model_parameters,
                                               SimpleNamespace(convert_sim_data_to_array=None), {})

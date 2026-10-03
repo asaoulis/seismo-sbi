@@ -98,3 +98,20 @@ def test_dirac_and_triangle_at_the_same_source_time_peak_within_half_a_sample():
         lags_s[alignment] = (k + vertex - (len(dirac) - 1)) / processing["sampling_rate"]
     assert abs(lags_s["peak"]) < 0.5 / processing["sampling_rate"]
     assert lags_s["onset"] > 0.5 * DT_S
+
+
+def test_a_kernel_simulator_swapped_in_keeps_the_configured_backends_convention(monkeypatch):
+    from types import SimpleNamespace
+
+    from seismo_sbi.sbi import simulator_wrapper
+
+    backends = iter([SimpleNamespace(stf_alignment="onset", execute_sim_and_save_outputs=None),
+                     SimpleNamespace(stf_alignment="peak", execute_sim_and_save_outputs=None)])
+    monkeypatch.setattr(simulator_wrapper, "build_simulator", lambda *args, **kwargs: next(backends))
+    simulation = SimpleNamespace(simulation_type="cps", sampling_rate=1.0)
+    parameters = SimpleNamespace(nuisance={}, nuisance_effect_config={})
+    wrapper = simulator_wrapper.GeneralSimulatorWrapper(simulation, parameters,
+                                                        SimpleNamespace(convert_sim_data_to_array=None), {})
+    wrapper.set_simulation_objects(("kernel", None), simulation, parameters, None, {})
+    assert wrapper.simulator.stf_alignment == "peak"
+    assert wrapper.stf_alignment == "onset"
