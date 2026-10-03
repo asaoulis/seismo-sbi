@@ -81,14 +81,14 @@ def stream_to_seismogram_map(stream: Stream, station_names: List[str], t_start, 
     return seismogram_map
 
 
-def event_seismogram_map(stream: Stream, station_names: List[str], event_window, sampling_rate: float) -> dict:
+def event_seismogram_map(stream: Stream, station_names: List[str], event_window, sampling_rate_hz: float) -> dict:
     """``{station: {component: waveform}}`` over ``event_window = (t_start, t_end)`` for the
     stations of ``station_names`` that have all three components, each trace
-    ``compute_data_vector_length(t_end - t_start, sampling_rate) + 1`` samples long.
+    ``compute_data_vector_length(t_end - t_start, sampling_rate_hz) + 1`` samples long.
     """
     t_start = UTCDateTime(event_window[0])
     t_end = UTCDateTime(event_window[1])
-    exact_end = _exact_end_time(t_start, t_end, sampling_rate)
+    exact_end = _exact_end_time(t_start, t_end, sampling_rate_hz)
 
     return {station: traces for station, traces
             in stream_to_seismogram_map(stream, station_names, t_start, exact_end).items()
