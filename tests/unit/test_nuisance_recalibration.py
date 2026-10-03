@@ -178,7 +178,7 @@ class TestDispersionSpread:
         return DispersionSpreadEffect(**base)
 
     def test_registered_and_zero_is_identity(self):
-        assert EFFECT_REGISTRY["dispersion_spread"] is DispersionSpreadEffect
+        assert EFFECT_REGISTRY["dispersion_spread"].effect is DispersionSpreadEffect
         recs = _receivers([(0, 9.0)])
         m = _map(recs, signal=True)
         out = self._eff()(m, recs, dispersion_spread=0.0)
@@ -240,11 +240,10 @@ class TestDispersionSpread:
         # both stations at the same distance → identical tau → identical traces
         assert np.allclose(out["S0"]["Z"], out["S1"]["Z"])
 
-    def test_chain_injects_sampling_rate_via_wrapper_list(self):
-        from seismo_sbi.sbi import simulator_wrapper as sw
-        import inspect
-        src = inspect.getsource(sw.GeneralSimulatorWrapper.set_simulation_objects)
-        assert "'dispersion_spread'" in src
+    def test_the_simulation_chain_passes_it_the_sampling_rate(self):
+        from seismo_sbi.nuisance_effects.post_processing import with_sampling_rate
+        configs = with_sampling_rate(["dispersion_spread"], {"dispersion_spread": {"octaves": 3}}, 2.0)
+        assert configs["dispersion_spread"] == {"octaves": 3, "sampling_rate": 2.0}
 
 
 # ---------------------------------------------------------------------------

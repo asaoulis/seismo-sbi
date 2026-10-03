@@ -14,11 +14,7 @@ from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES, ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.nuisance_effects.post_processing import (
-    AUGMENTABLE_EFFECT_KEYS,
-    POST_NOISE_EFFECT_KEYS,
-    CONDITIONING_AUGMENTABLE_KEYS,
-)
+from seismo_sbi.nuisance_effects.post_processing import CONDITIONING_AUGMENTABLE_KEYS, effect_keys_at
 from seismo_sbi.priors.catalogue import load_catalogue
 from seismo_sbi.priors.samplers import (
     make_catalogue_location_sampler,
@@ -178,6 +174,8 @@ class SBI_Configuration:
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")
         
         nuisance_config = config["nuisance"]
+        augmentable_keys = effect_keys_at("training_augmentation")
+        post_noise_keys = effect_keys_at("training_augmentation_post_noise")
         for parameter_type in nuisance_config.keys():
             if parameter_type in SBI_Configuration.parameter_types:
                 parameter_values = nuisance_config[parameter_type]
@@ -197,24 +195,24 @@ class SBI_Configuration:
                         f"Only [ {allowed} ] allowed"
                     )
                 if (stage == "training_augmentation"
-                        and parameter_type not in AUGMENTABLE_EFFECT_KEYS
+                        and parameter_type not in augmentable_keys
                         and parameter_type not in CONDITIONING_AUGMENTABLE_KEYS):
-                    allowed = ', '.join(AUGMENTABLE_EFFECT_KEYS + CONDITIONING_AUGMENTABLE_KEYS)
+                    allowed = ', '.join(augmentable_keys + CONDITIONING_AUGMENTABLE_KEYS)
                     raise InvalidConfiguration(
                         f"Nuisance {parameter_type} cannot use stage 'training_augmentation' "
                         f"(only Category-2 post-processing effects + conditioning-vector "
                         f"augmentations [ {allowed} ] are augmentation-eligible; simulator-level "
                         f"nuisances must be baked in)."
                     )
-                if stage == "training_augmentation_post_noise" and parameter_type not in POST_NOISE_EFFECT_KEYS:
-                    allowed = ', '.join(POST_NOISE_EFFECT_KEYS)
+                if stage == "training_augmentation_post_noise" and parameter_type not in post_noise_keys:
+                    allowed = ', '.join(post_noise_keys)
                     raise InvalidConfiguration(
                         f"Nuisance {parameter_type} cannot use stage "
                         f"'training_augmentation_post_noise' (only post-noise effects "
                         f"[ {allowed} ] are eligible)."
                     )
                 # Component dropout must leave exact zeros, so it is valid only after noise is added.
-                if parameter_type in POST_NOISE_EFFECT_KEYS and stage != "training_augmentation_post_noise":
+                if parameter_type in post_noise_keys and stage != "training_augmentation_post_noise":
                     raise InvalidConfiguration(
                         f"Nuisance {parameter_type} must use stage "
                         f"'training_augmentation_post_noise' (it zeros channels after noise so "

@@ -7,6 +7,7 @@ The augmentation builders and ``apply_chain_to_array`` run the same effects in t
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import numpy as np
@@ -41,33 +42,32 @@ class PostProcessingChain:
         return result
 
 
-#: Nuisance parameter key to effect class; a new effect is registered here.
-EFFECT_REGISTRY: dict[str, type[SeismogramEffect]] = {
-    "amplitude_error": AmplitudeErrorEffect,
-    "instrument_dropout": InstrumentDropoutEffect,
-    "time_shift_error": TimeShiftErrorEffect,
-    "scattering_coda": ScatteringCodaEffect,
-    "component_dropout": ComponentDropoutEffect,
-    "azimuthal_anisotropy": AzimuthalAnisotropyEffect,
-    "shear_wave_splitting": ShearSplittingEffect,
-    "dispersion_spread": DispersionSpreadEffect,
+@dataclass(frozen=True)
+class NuisanceEffect:
+    """How one nuisance key acts: the effect class built for it, the stages it may run at
+    (``"simulation"``, ``"training_augmentation"``, ``"training_augmentation_post_noise"``), and
+    whether its constructor takes the ``sampling_rate`` in samples per second.
+    """
+
+    effect: type
+    stages: tuple
+    needs_sampling_rate: bool = False
+
+
+_SIMULATED_OR_AUGMENTED = ("simulation", "training_augmentation")
+
+#: Nuisance parameter key to the effect it builds; the one table every stage reads.
+EFFECT_REGISTRY: dict[str, NuisanceEffect] = {
+    "amplitude_error": NuisanceEffect(AmplitudeErrorEffect, _SIMULATED_OR_AUGMENTED),
+    "instrument_dropout": NuisanceEffect(InstrumentDropoutEffect, _SIMULATED_OR_AUGMENTED),
+    "time_shift_error": NuisanceEffect(TimeShiftErrorEffect, _SIMULATED_OR_AUGMENTED, True),
+    "scattering_coda": NuisanceEffect(ScatteringCodaEffect, _SIMULATED_OR_AUGMENTED),
+    # Must run after the noise is added, so a dropped channel is exactly zero.
+    "component_dropout": NuisanceEffect(ComponentDropoutEffect, ("training_augmentation_post_noise",)),
+    "azimuthal_anisotropy": NuisanceEffect(AzimuthalAnisotropyEffect, ("simulation",), True),
+    "shear_wave_splitting": NuisanceEffect(ShearSplittingEffect, ("simulation",), True),
+    "dispersion_spread": NuisanceEffect(DispersionSpreadEffect, ("simulation",), True),
 }
-
-
-#: Nuisance keys eligible for pre-noise training augmentation, folded into the clean signal.
-AUGMENTABLE_EFFECT_KEYS: tuple[str, ...] = (
-    "amplitude_error",
-    "instrument_dropout",
-    "time_shift_error",
-    "scattering_coda",
-)
-
-
-#: Nuisance keys eligible for post-noise augmentation, applied to the data plus noise.
-#: ``component_dropout`` must run there so a dropped channel is exactly zero.
-POST_NOISE_EFFECT_KEYS: tuple[str, ...] = (
-    "component_dropout",
-)
 
 
 #: Nuisance keys that augment the source-location conditioning vector rather than the
@@ -77,11 +77,22 @@ CONDITIONING_AUGMENTABLE_KEYS: tuple[str, ...] = (
 )
 
 
-#: The effect keys eligible at each augmentation stage.
-_STAGE_EFFECT_KEYS: dict[str, tuple[str, ...]] = {
-    "training_augmentation": AUGMENTABLE_EFFECT_KEYS,
-    "training_augmentation_post_noise": POST_NOISE_EFFECT_KEYS,
-}
+def effect_keys_at(stage: str) -> tuple:
+    """The nuisance keys whose effect may run at ``stage``."""
+    return tuple(key for key, entry in EFFECT_REGISTRY.items() if stage in entry.stages)
+
+
+def with_sampling_rate(nuisance_keys, effect_configs: Optional[dict], sampling_rate) -> dict:
+    """``effect_configs`` with ``sampling_rate`` added for every key in ``nuisance_keys`` whose
+    effect takes it; the caller's dicts are not changed. A ``sampling_rate`` of None adds nothing.
+    """
+    configs = dict(effect_configs or {})
+    if sampling_rate is None:
+        return configs
+    for key in nuisance_keys:
+        if key in EFFECT_REGISTRY and EFFECT_REGISTRY[key].needs_sampling_rate:
+            configs[key] = {**configs.get(key, {}), "sampling_rate": sampling_rate}
+    return configs
 
 
 # Map <-> stacked-array adapter (lets the SAME effects run in the dataloader)
@@ -156,19 +167,16 @@ def build_augmentation_chain(
     staged at ``stage`` and eligible there are included. Each key's activation value in
     ``nuisance_params`` is its configured fiducial scalar; the magnitudes live in
     ``effect_configs``, and the effects draw their own randomness per call. ``sampling_rate``
-    in samples per second is injected into the shift effect. An empty selection gives an empty
+    in samples per second is passed to the effects that take it. An empty selection gives an empty
     chain, which the dataloader treats as no augmentation.
     """
-    configs = dict(effect_configs or {})
-    eligible = _STAGE_EFFECT_KEYS.get(stage, ())
+    eligible = effect_keys_at(stage)
     aug_keys = [
         key for key in nuisance
         if key in eligible
         and nuisance_stage.get(key, "simulation") == stage
     ]
-    if "time_shift_error" in aug_keys and sampling_rate is not None:
-        configs["time_shift_error"] = dict(configs.get("time_shift_error", {}))
-        configs["time_shift_error"]["sampling_rate"] = sampling_rate
+    configs = with_sampling_rate(aug_keys, effect_configs, sampling_rate)
 
     chain = build_post_processing_chain(aug_keys, configs)
     # The configured fiducial value, not a hardcoded 1.0, which would perturb every station.
@@ -201,7 +209,7 @@ def build_post_processing_chain(
     """
     configs = effect_configs or {}
     effects = [
-        EFFECT_REGISTRY[key](**configs.get(key, {}))
+        EFFECT_REGISTRY[key].effect(**configs.get(key, {}))
         for key in nuisance_keys
         if key in EFFECT_REGISTRY
     ]

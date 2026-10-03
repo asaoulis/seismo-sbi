@@ -166,8 +166,8 @@ class TestShearSplittingEffect:
 
 class TestRegistryAndChain:
     def test_keys_registered(self):
-        assert EFFECT_REGISTRY["azimuthal_anisotropy"] is AzimuthalAnisotropyEffect
-        assert EFFECT_REGISTRY["shear_wave_splitting"] is ShearSplittingEffect
+        assert EFFECT_REGISTRY["azimuthal_anisotropy"].effect is AzimuthalAnisotropyEffect
+        assert EFFECT_REGISTRY["shear_wave_splitting"].effect is ShearSplittingEffect
 
     def test_chain_construction_and_identity_at_zero(self):
         chain = build_post_processing_chain(

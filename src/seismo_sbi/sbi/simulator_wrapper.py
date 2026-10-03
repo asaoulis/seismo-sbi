@@ -11,7 +11,8 @@ from copy import copy
 import numpy as np
 
 from seismo_sbi.sbi.datasets.dataset_generator import flatten_sample
-from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain, build_post_processing_chain
+from seismo_sbi.nuisance_effects.post_processing import (
+    PostProcessingChain, build_post_processing_chain, with_sampling_rate)
 from seismo_sbi.simulators.registry import build_simulator
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.configuration import ModelParameters, SimulationParameters
@@ -27,26 +28,15 @@ class GeneralSimulatorWrapper:
 
     def set_simulation_objects(self, simulator_config, simulation_parameters, parameters, data_loader, samplers):
 
-        # Copied so the parsed configuration is not mutated.
-        effect_configs = dict(getattr(parameters, 'nuisance_effect_config', {}))
-
         # Nuisances staged "training_augmentation" are folded in per batch by the dataloader.
         nuisance_stage = getattr(parameters, 'nuisance_stage', {})
         sim_staged_keys = [
             key for key in parameters.nuisance.keys()
             if nuisance_stage.get(key, "simulation") == "simulation"
         ]
-
-        # Shift-based effects need the sampling rate to turn seconds into samples.
-        for _shift_key in ('time_shift_error', 'azimuthal_anisotropy',
-                           'shear_wave_splitting', 'dispersion_spread'):
-            if _shift_key in sim_staged_keys:
-                effect_configs[_shift_key] = dict(
-                    effect_configs.get(_shift_key, {})
-                )
-                effect_configs[_shift_key]['sampling_rate'] = (
-                    simulation_parameters.sampling_rate
-                )
+        effect_configs = with_sampling_rate(sim_staged_keys,
+                                            getattr(parameters, 'nuisance_effect_config', {}),
+                                            simulation_parameters.sampling_rate)
 
         post_processing_effects = list(
             build_post_processing_chain(sim_staged_keys, effect_configs).effects

@@ -1001,7 +1001,7 @@ class TestScatteringCodaEffect:
     def test_registry_membership(self):
         from seismo_sbi.nuisance_effects.post_processing import EFFECT_REGISTRY
         assert "scattering_coda" in EFFECT_REGISTRY
-        assert EFFECT_REGISTRY["scattering_coda"] is ScatteringCodaEffect
+        assert EFFECT_REGISTRY["scattering_coda"].effect is ScatteringCodaEffect
 
     def test_build_via_effect_configs(self):
         """build_post_processing_chain forwards a fixed alpha via effect_configs."""
@@ -1374,5 +1374,5 @@ class TestPostNoiseStageRouting:
         assert "component_dropout" not in params
 
     def test_component_dropout_in_post_noise_keys(self):
-        assert "component_dropout" in post_processing.POST_NOISE_EFFECT_KEYS
-        assert "component_dropout" not in post_processing.AUGMENTABLE_EFFECT_KEYS
+        assert "component_dropout" in post_processing.effect_keys_at("training_augmentation_post_noise")
+        assert "component_dropout" not in post_processing.effect_keys_at("training_augmentation")
