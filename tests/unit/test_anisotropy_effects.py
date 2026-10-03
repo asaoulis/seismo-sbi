@@ -182,3 +182,31 @@ class TestRegistryAndChain:
         m = _pulse_map(RECS)
         out = chain(m, RECS, {"azimuthal_anisotropy": 0.0, "shear_wave_splitting": 0.0})
         assert out is m
+
+
+def test_a_configuration_turns_on_both_anisotropy_effects_at_simulation(monkeypatch):
+    from types import SimpleNamespace
+
+    import seismo_sbi.sbi.simulator_wrapper as simulator_wrapper
+    from seismo_sbi.sbi.configuration import SBI_Configuration
+
+    config = SBI_Configuration()
+    config.parse_parameters({
+        "inference": {"moment_tensor": {"fiducial": [1e13] * 6, "stencil_deltas": [1e10] * 6,
+                                        "bounds": [[-5e13] * 6, [5e13] * 6]}},
+        "nuisance": {
+            "azimuthal_anisotropy": {"fiducial": [1.0], "bounds": [0.0, 2.0], "fast_azimuth_deg": 30.0},
+            "shear_wave_splitting": {"fiducial": [1.0], "bounds": [0.0, 2.0], "delay_s": 0.2},
+        },
+    })
+    built = []
+    monkeypatch.setattr(simulator_wrapper, "build_simulator",
+                        lambda config, parameters, effects, data_flattening=None:
+                        built.extend(effects) or SimpleNamespace(execute_sim_and_save_outputs=None))
+    simulation = SimpleNamespace(simulation_type="instaseis", sampling_rate=2.0)
+    simulator_wrapper.GeneralSimulatorWrapper(simulation, config.model_parameters,
+                                              SimpleNamespace(convert_sim_data_to_array=None), {})
+
+    assert [type(effect) for effect in built] == [AzimuthalAnisotropyEffect, ShearSplittingEffect]
+    assert all(effect._sampling_rate == 2.0 for effect in built)
+    assert built[0]._fast_az == 30.0

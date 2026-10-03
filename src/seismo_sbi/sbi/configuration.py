@@ -14,7 +14,8 @@ from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES, ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.nuisance_effects.post_processing import CONDITIONING_AUGMENTABLE_KEYS, effect_keys_at
+from seismo_sbi.nuisance_effects.post_processing import (
+    CONDITIONING_AUGMENTABLE_KEYS, EFFECT_REGISTRY, effect_keys_at)
 from seismo_sbi.priors.catalogue import load_catalogue
 from seismo_sbi.priors.samplers import (
     make_catalogue_location_sampler,
@@ -117,6 +118,12 @@ class SBI_Configuration:
                                     'jobs': self.parse_jobs_config}
 
     @classmethod
+    def known_parameter_types(cls):
+        """Every parameter a configuration may name: :attr:`parameter_types` and every nuisance key
+        with a registered effect."""
+        return cls.parameter_types + [key for key in EFFECT_REGISTRY if key not in cls.parameter_types]
+
+    @classmethod
     def from_file(cls, config_file, *, output_directory=None, database_path=None):
         """Parse ``config_file`` into a configuration object.
 
@@ -165,19 +172,19 @@ class SBI_Configuration:
 
         parameters_config = config["inference"]
         for parameter_type in parameters_config.keys():
-            if parameter_type in SBI_Configuration.parameter_types:
+            if parameter_type in SBI_Configuration.known_parameter_types():
                 parameter_values =parameters_config[parameter_type] 
                 self._unpack_parameter_values(parameter_type, parameter_values )
                 self._add_parameter_information(parameter_type, parameter_values['bounds'])
             else:
-                allowed_types = ', '.join(SBI_Configuration.parameter_types)
+                allowed_types = ', '.join(SBI_Configuration.known_parameter_types())
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")
         
         nuisance_config = config["nuisance"]
         augmentable_keys = effect_keys_at("training_augmentation")
         post_noise_keys = effect_keys_at("training_augmentation_post_noise")
         for parameter_type in nuisance_config.keys():
-            if parameter_type in SBI_Configuration.parameter_types:
+            if parameter_type in SBI_Configuration.known_parameter_types():
                 parameter_values = nuisance_config[parameter_type]
                 if parameter_type == 'velocity_model':
                     self.model_parameters.nuisance[parameter_type] = load_velocity_model(parameter_values["fiducial"])
@@ -237,7 +244,7 @@ class SBI_Configuration:
                 if effect_cfg:
                     self.model_parameters.nuisance_effect_config[parameter_type] = effect_cfg
             else:
-                allowed_types = ', '.join(SBI_Configuration.parameter_types)
+                allowed_types = ', '.join(SBI_Configuration.known_parameter_types())
                 raise InvalidConfiguration(f"Invalid parameter type {parameter_type}. Only [ {allowed_types} ] allowed")
     
     def _unpack_parameter_values(self, parameter_type, parameter_values):
