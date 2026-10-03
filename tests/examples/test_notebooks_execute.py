@@ -28,6 +28,7 @@ RTOL = 1e-6
 NOTEBOOKS = {
     "ridgecrest_obspy": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
     "nuisances": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
+    "npe_flagship": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
     "01_forward_models_and_receivers": [INSTASEIS_DB, CPS_PROGRAM],
     "02_noise_covariances_and_likelihood": [INSTASEIS_DB],
     "03_npe_training_and_evaluation": [INSTASEIS_DB],
@@ -38,13 +39,13 @@ NOTEBOOKS = {
 }
 #: Notebook to about three times its usual running time in seconds; a cell still running after
 #: that long fails the notebook, so a hung worker pool fails fast.
-TIMEOUT_S = {"ridgecrest_obspy": 120, "nuisances": 1800, "01_forward_models_and_receivers": 300, "02_noise_covariances_and_likelihood": 600,
+TIMEOUT_S = {"ridgecrest_obspy": 120, "nuisances": 1800, "npe_flagship": 2400, "01_forward_models_and_receivers": 300, "02_noise_covariances_and_likelihood": 600,
              "03_npe_training_and_evaluation": 2400, "04_source_conventions": 300,
              "05_resolution_and_tradeoffs": 900, "azores_inversion": 2400, "theory_errors_LV2": 5400}
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
 #: they raise is compared.
-STOCHASTIC_CELLS = {"nuisances": {5, 6}, "theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13, 17}, "azores_inversion": {2, 8, 11, 14},
+STOCHASTIC_CELLS = {"nuisances": {5, 6}, "npe_flagship": {5, 6, 8, 9, 10, 11}, "theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13, 17}, "azores_inversion": {2, 8, 11, 14},
                     "02_noise_covariances_and_likelihood": {7}, "03_npe_training_and_evaluation": {3, 4, 5}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),

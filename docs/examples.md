@@ -3,6 +3,7 @@
 ```{toctree}
 :maxdepth: 1
 _generated/examples/ridgecrest_obspy
+_generated/examples/npe_flagship
 _generated/examples/nuisances
 _generated/examples/01_forward_models_and_receivers
 _generated/examples/02_noise_covariances_and_likelihood

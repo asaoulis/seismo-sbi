@@ -1,0 +1,132 @@
+# A neural posterior for the 2019 Ridgecrest foreshock (Mw 6.4) at eight regional stations,
+# 20-50 s, 0.5 Hz, trained with the source position and time, travel-time errors, site and path
+# amplitudes, scattered coda and missing stations as nuisances. Driven by examples/npe_flagship.ipynb,
+# which sets the database and the output directory and draws the training noise from the stations'
+# own pre-event noise covariance.
+
+run_name: npe_flagship
+output_directory: './data/pipeline_outputs/npe_flagship'
+job_name: results
+generate_dataset: True
+num_jobs: 8
+skip_compression_data: True
+
+ml_architecture: tcn
+ml_encoder:
+  channels: 16
+  n_blocks: 2
+  kernel_size: 3
+  downsample: 4
+ml_optimizer:
+  lr: 3.e-3
+ml_batch:
+  train: 128
+  val: 512
+  num_workers: 2
+  train_fraction: 0.9
+ml_cache:
+  sims: true
+  preload_workers: 1
+ml_scaler:
+  moment_tensor: scale_shape
+  mt_log_decades: auto
+ml_variable_stations:
+  enabled: true
+  keep_fraction: [0.375, 1.0]
+  min_stations: 3
+  station_coords_mode: absolute
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZEN'
+  stations_path: './configs/npe_flagship_stations.txt'
+  station_components_path: './configs/npe_flagship_components.json'
+  seismogram_duration: 350
+  sampling_rate: 0.5
+  syngine_address: '/data/shared/prem_a_20s'
+  processing:
+    filter_sampling_rate: 1.0
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 0.5
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [m_rr, m_tt, m_pp, m_rt, m_rp, m_tp] (N m)
+      fiducial: [0.0, -5.e+18, 5.e+18, 0.0, 0.0, 0.0]
+      stencil_deltas: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      bounds: [[-4.e+19, -4.e+19, -4.e+19, -4.e+19, -4.e+19, -4.e+19],
+               [4.e+19, 4.e+19, 4.e+19, 4.e+19, 4.e+19, 4.e+19]]
+  nuisance:
+    source_location:
+      #         [latitude, longitude, depth_km, centroid time after the hypocentral origin time s]
+      fiducial: [35.705, -117.504, 11.0, 7.5]
+      bounds: [[35.555, -117.689, 2.0, 0.0],
+               [35.855, -117.319, 20.0, 15.0]]
+    time_shift_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      # per-station scatter of the cross-correlation lags of the data against PREM (s)
+      gaussian_sigma: {PDM: 2.5, SCI2: 2.5, SMR: 2.0, PACP: 1.0, WELL: 1.5, Q09A: 2.0, SHP: 1.0,
+                       BPH05: 2.0}
+      stage: simulation
+    amplitude_error:
+      fiducial: [1.0]
+      bounds: [0.0, 1.0]
+      distribution: lognormal
+      log_sigma_dex: 0.25
+      per_component: true
+      always_on: true
+      stage: training_augmentation
+    scattering_coda:
+      fiducial: [0.4]
+      bounds: [0.0, 1.0]
+      alpha_range: [0.2, 0.6]
+      mode: "stahler"
+      coda_fraction: 0.25
+      stage: simulation
+    component_dropout:
+      fiducial: [0.05]
+      bounds: [0.0, 1.0]
+      stage: training_augmentation_post_noise
+
+simulations:
+  num_simulations: 10000
+  sampling_method:
+    moment_tensor:
+      type: gutenberg_richter
+      b_value: 1.0
+      mw_min: 5.9
+      mw_max: 6.9
+    source_location: "uniform"
+    time_shift_error: "constant"
+    amplitude_error: "constant"
+    scattering_coda: "constant"
+    component_dropout: "constant"
+
+compression: {}
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian'
+      noise_level: 5.e-7
+  likelihood:
+    run: False
+
+jobs:
+  real_events: {}
+  simulations:
+    random_events: 10000
+    fixed_events: []
+    custom_events: {}
+  noise_models: {}
+  plots:
+    disable_plotting: True
