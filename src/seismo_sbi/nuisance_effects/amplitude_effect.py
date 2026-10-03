@@ -9,7 +9,7 @@ from typing import Optional
 
 import numpy as np
 
-from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect
+from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect, per_station, station_value
 
 
 class AmplitudeErrorEffect(SeismogramEffect):
@@ -24,7 +24,8 @@ class AmplitudeErrorEffect(SeismogramEffect):
     ``per_component`` draws once per trace rather than once per station. Measured per-trace
     amplitude errors of regional records against one-dimensional synthetics are log-normal at
     about 0.3 dex and independent between a station's components, which is what those two
-    switches express.
+    switches express. ``scale_range`` and ``log_sigma_dex`` take a ``{station: value}`` map as
+    well as one value, with a ``"default"`` entry for the stations it does not name.
     """
 
     #: Default lower bound of the per-station scale factor distribution.
@@ -45,7 +46,8 @@ class AmplitudeErrorEffect(SeismogramEffect):
         always_on: bool = False,
     ) -> None:
         if scale_range is not None:
-            self._scale_low, self._scale_high = float(scale_range[0]), float(scale_range[1])
+            self._scale_low = per_station(scale_range, lambda pair: float(pair[0]))
+            self._scale_high = per_station(scale_range, lambda pair: float(pair[1]))
         else:
             self._scale_low = self.DEFAULT_SCALE_LOW
             self._scale_high = self.DEFAULT_SCALE_HIGH
@@ -55,26 +57,29 @@ class AmplitudeErrorEffect(SeismogramEffect):
                 f"distribution must be one of {self.VALID_DISTRIBUTIONS}; got {distribution!r}"
             )
         self._log_sigma = (
-            float(log_sigma_dex) if log_sigma_dex is not None else self.DEFAULT_LOG_SIGMA_DEX
+            per_station(log_sigma_dex) if log_sigma_dex is not None else self.DEFAULT_LOG_SIGMA_DEX
         )
-        if self._log_sigma < 0.0:
+        widths = self._log_sigma.values() if isinstance(self._log_sigma, dict) else [self._log_sigma]
+        if min(widths) < 0.0:
             raise ValueError("log_sigma_dex must be >= 0")
         self._per_component = bool(per_component)
         self._always_on = bool(always_on)
 
-    def _draw_scale(self, multiplier: float) -> float:
-        """One amplitude scale factor; the uniform distribution ignores ``multiplier``."""
+    def _draw_scale(self, multiplier: float, station: str) -> float:
+        """One amplitude scale factor at ``station``; the uniform distribution ignores ``multiplier``."""
         if self._distribution == "lognormal":
-            return float(10.0 ** (multiplier * self._log_sigma * np.random.normal()))
-        return float(np.random.uniform(self._scale_low, self._scale_high))
+            log_sigma = station_value(self._log_sigma, station, self.DEFAULT_LOG_SIGMA_DEX)
+            return float(10.0 ** (multiplier * log_sigma * np.random.normal()))
+        return float(np.random.uniform(station_value(self._scale_low, station, self.DEFAULT_SCALE_LOW),
+                                       station_value(self._scale_high, station, self.DEFAULT_SCALE_HIGH)))
 
-    def _scale_components(self, components: dict, multiplier: float) -> dict:
+    def _scale_components(self, components: dict, multiplier: float, station: str) -> dict:
         if self._per_component:
             return {
-                comp: trace.astype(np.float64) * self._draw_scale(multiplier)
+                comp: trace.astype(np.float64) * self._draw_scale(multiplier, station)
                 for comp, trace in components.items()
             }
-        scale = self._draw_scale(multiplier)
+        scale = self._draw_scale(multiplier, station)
         return {comp: trace.astype(np.float64) * scale for comp, trace in components.items()}
 
     def __call__(
@@ -93,11 +98,11 @@ class AmplitudeErrorEffect(SeismogramEffect):
             if multiplier == 0.0:
                 return seismograms_map
             return {
-                station: self._scale_components(components, multiplier)
+                station: self._scale_components(components, multiplier, station)
                 for station, components in seismograms_map.items()
             }
 
-        def _scale(components):
-            return self._scale_components(components, 1.0)
+        def _scale(components, station):
+            return self._scale_components(components, 1.0, station)
 
         return self._apply_per_station_gated(seismograms_map, amplitude_error, _scale)

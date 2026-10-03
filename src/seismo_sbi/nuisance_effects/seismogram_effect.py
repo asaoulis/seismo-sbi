@@ -33,7 +33,8 @@ class SeismogramEffect(ABC):
 
     @staticmethod
     def _apply_per_station_gated(seismograms_map: dict, probability, transform) -> dict:
-        """Apply ``transform`` to each station independently with the given probability.
+        """Apply ``transform(components, station)`` to each station independently with the given
+        probability.
 
         ``probability`` is clipped to ``[0, 1]``; a station that does not fire is copied through
         as float64. The gate is drawn before whatever ``transform`` draws, which fixes the order
@@ -43,7 +44,7 @@ class SeismogramEffect(ABC):
         result = {}
         for station, components in seismograms_map.items():
             if np.random.uniform() < p:
-                result[station] = transform(components)
+                result[station] = transform(components, station)
             else:
                 result[station] = {
                     comp: trace.astype(np.float64) for comp, trace in components.items()
@@ -75,6 +76,26 @@ class SeismogramEffect(ABC):
             _, dist = _bearing_and_distance_km(source_latlon[0], source_latlon[1], r.latitude, r.longitude)
             out[r.station_name] = dist if distance_cap_km is None else min(dist, distance_cap_km)
         return out
+
+
+def per_station(value, convert=float):
+    """A configured value as one number for every station or a ``{station: number}`` map.
+
+    A scalar is converted and returned as is; a map has each entry converted, and may hold a
+    ``"default"`` entry for the stations it does not name (see :func:`station_value`).
+    """
+    if isinstance(value, dict):
+        return {station: convert(entry) for station, entry in value.items()}
+    return convert(value)
+
+
+def station_value(value, station, fallback):
+    """``value`` at ``station``: a scalar applies to every station; a map gives the stations it
+    names their entry and every other station its ``"default"`` entry, else ``fallback``.
+    """
+    if isinstance(value, dict):
+        return value.get(station, value.get("default", fallback))
+    return value
 
 
 def _bearing_and_distance_km(src_lat, src_lon, sta_lat, sta_lon):

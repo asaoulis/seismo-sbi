@@ -85,6 +85,18 @@ The [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/mai
 and [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb)
 notebooks show the two nuisance stages.
 
+A station known to be worse than the rest gets its own setting: `amplitude_error`'s
+`scale_range` and `log_sigma_dex` and `time_shift_error`'s `gaussian_sigma` take a map from
+station name to value, with a `default` for the others.
+
+```yaml
+nuisance:
+  time_shift_error:
+    fiducial: [1.0]
+    bounds: [0.0, 1.0]
+    gaussian_sigma: {PKD: 2.0, default: 0.5}   # seconds
+```
+
 ## Your own nuisance effect
 
 A nuisance the library does not have is a subclass of

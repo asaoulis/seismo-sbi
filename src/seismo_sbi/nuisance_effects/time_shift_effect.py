@@ -10,7 +10,7 @@ from typing import Optional
 import numpy as np
 
 from seismo_sbi.nuisance_effects.lanczos_shift import _shift_components
-from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect
+from seismo_sbi.nuisance_effects.seismogram_effect import SeismogramEffect, per_station, station_value
 
 
 class TimeShiftErrorEffect(SeismogramEffect):
@@ -21,6 +21,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
     bias and is drawn once per call, from ``uniform(-uniform_offset, uniform_offset)`` or,
     under ``common_offset_dist='gaussian'``, from ``N(0, common_offset_sigma)``; measured
     array-wide offsets are peaked at zero rather than flat. Positive shifts delay.
+    ``gaussian_sigma`` takes a ``{station: width in s}`` map as well as one width, with a
+    ``"default"`` entry for the stations it does not name.
 
     ``sigma_per_1000km`` and ``distance_cap_km`` grow the per-station width with path length
     and need the source location; zero keeps it flat. ``sampling_rate`` in samples per second
@@ -66,7 +68,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
             else self.DEFAULT_UNIFORM_OFFSET
         )
         self._sigma = (
-            float(gaussian_sigma)
+            per_station(gaussian_sigma)
             if gaussian_sigma is not None
             else self.DEFAULT_GAUSSIAN_SIGMA
         )
@@ -100,7 +102,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
             return {}
         distances = self._station_distances_km(receivers, self._resolve_source(source_location),
                                                self._distance_cap)
-        return {station: self._sigma + self._sigma_per_1000km * d / 1000.0
+        return {station: station_value(self._sigma, station, self.DEFAULT_GAUSSIAN_SIGMA)
+                + self._sigma_per_1000km * d / 1000.0
                 for station, d in distances.items()}
 
     def __call__(
@@ -132,7 +135,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
         result = {}
         for station, components in seismograms_map.items():
             station_shift_s = common_offset_s + np.random.normal(
-                0.0, station_sigma.get(station, self._sigma))
+                0.0, station_sigma.get(station, station_value(self._sigma, station,
+                                                              self.DEFAULT_GAUSSIAN_SIGMA)))
             shift_samples = station_shift_s * self._sampling_rate
             comps = list(components)
             if not comps:

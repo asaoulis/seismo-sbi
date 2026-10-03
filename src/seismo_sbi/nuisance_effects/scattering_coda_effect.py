@@ -292,7 +292,7 @@ class ScatteringCodaEffect(SeismogramEffect):
             return self._apply_distance_mode(seismograms_map, receivers,
                                              scattering_coda, source_location)
 
-        def _coda(components):
+        def _coda(components, station):
             alpha = np.random.uniform(self._alpha_low, self._alpha_high)
             return {comp: self._filter_trace(trace, alpha) for comp, trace in components.items()}
 

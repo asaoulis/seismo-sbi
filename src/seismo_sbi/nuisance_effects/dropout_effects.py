@@ -28,7 +28,7 @@ class InstrumentDropoutEffect(SeismogramEffect):
         if instrument_dropout is None:
             return seismograms_map
 
-        def _zero(components):
+        def _zero(components, station):
             return {comp: np.zeros_like(trace, dtype=np.float64) for comp, trace in components.items()}
 
         return self._apply_per_station_gated(seismograms_map, instrument_dropout, _zero)
