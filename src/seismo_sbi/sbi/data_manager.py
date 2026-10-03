@@ -24,7 +24,7 @@ class DataManager:
         self.dataset_compressor = dataset_compressor
         self.data_length = data_length
 
-    def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler = None,
+    def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler,
                          seed = None):
         """Compress every simulation under ``simulations_output_path/train``, in file-name order;
         ``seed`` fixes each simulation's noise draw.

@@ -379,6 +379,10 @@ class SBIPipeline:
                                                            allow_incomplete=allow_incomplete)
         elif train_noise_type == 'empirical_gaussian':
             self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
+        else:
+            raise InvalidConfiguration(
+                f"Unknown inference.sbi.noise_model type {train_noise_type!r}: expected one of "
+                "'gaussian', 'gaussian_filtered', 'real_noise' or 'empirical_gaussian'.")
 
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):

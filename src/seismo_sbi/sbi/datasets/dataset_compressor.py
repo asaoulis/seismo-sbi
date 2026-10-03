@@ -27,12 +27,9 @@ class DatasetCompressor:
         self.compressor = None
         self.synthetic_noise_model_sampler = None
 
-    def load_compressor_and_noise_model(self, compressor : Compressor, synthetic_noise_model_sampler = None):
+    def load_compressor_and_noise_model(self, compressor : Compressor, synthetic_noise_model_sampler):
 
         self.compressor = compressor
-        if synthetic_noise_model_sampler is None:
-            synthetic_noise_model_sampler = self.compressor.create_covariance_matrix_sampler()
-
         self.synthetic_noise_model_sampler = synthetic_noise_model_sampler
 
 

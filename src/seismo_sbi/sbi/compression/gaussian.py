@@ -64,12 +64,6 @@ class GaussianCompressor(Compressor):
         self.Fisher_mat = self._compute_Fisher_matrix()
         self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
 
-    def create_covariance_matrix_sampler(self):
-        if self.is_diag:
-            return lambda : np.random.normal(0, np.diag(self.C.covariance_matrix))
-        else:
-            return lambda : np.random.multivariate_normal(self.C.covariance_matrix)
-
     def _compute_Fisher_matrix(self):
         # assume a special case of dC/dtheta = 0 throughout
 

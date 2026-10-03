@@ -1,10 +1,13 @@
 """The state a pipeline declares, and the receiver time shifts it keeps from its configuration."""
 from types import SimpleNamespace
 
+import pytest
+
 from seismo_sbi.sbi import pipeline as pipeline_module
 from seismo_sbi.sbi.pipeline import SingleEventPipeline
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, SimulationParameters
 from seismo_sbi.simulators.receivers import Receiver, Receivers
+from seismo_sbi.utils.errors import InvalidConfiguration
 
 
 class _StubSimulatorWrapper:
@@ -120,3 +123,8 @@ def test_training_sources_are_drawn_from_the_bounds_and_sampling_method_at_gener
 
     assert [path for _, path in captured] == [f"{pipeline.simulations_output_path}/train/sim_{i}.h5" for i in range(4)]
     assert all(0.0 <= value <= 1e15 for inputs, _ in captured for value in inputs["moment_tensor"])
+
+
+def test_an_unknown_training_noise_model_is_rejected(tmp_path):
+    with pytest.raises(InvalidConfiguration, match="noise_model type 'laplace'"):
+        _pipeline(tmp_path).load_test_noises({"type": "laplace", "noise_level": 1.0}, [])
