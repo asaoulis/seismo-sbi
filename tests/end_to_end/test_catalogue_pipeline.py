@@ -587,7 +587,7 @@ class TestNoiseCatalogueQualityGate:
       (a zero signal filtered and resampled is still zero), so those tests run
       end-to-end without mocking.
     - NaN and flat-period corruption cannot survive an mseed integer round-trip,
-      so those tests patch ``_prepare_stream`` to inject the corruption *after*
+      so those tests patch ``prepare_stream`` to inject the corruption *after*
       loading and processing, simulating what would happen with e.g. a bad
       response removal.  This still exercises the quality-gate wiring.
     """
@@ -640,7 +640,7 @@ class TestNoiseCatalogueQualityGate:
         """NaN injected post-processing (via mock) is caught by the quality gate."""
         from seismo_sbi.data_handling.preprocessing import noise_catalogue as cat_module
 
-        original_prepare = cat_module._prepare_stream
+        original_prepare = cat_module.prepare_stream
 
         def inject_nan(stream, *args, **kwargs):
             result = original_prepare(stream, *args, **kwargs)
@@ -648,7 +648,7 @@ class TestNoiseCatalogueQualityGate:
                 tr.data[len(tr.data) // 2] = np.nan
             return result
 
-        with patch.object(cat_module, "_prepare_stream", side_effect=inject_nan):
+        with patch.object(cat_module, "prepare_stream", side_effect=inject_nan):
             written = self._build_noise(
                 synthetic_data["data_dir"],
                 synthetic_data["station_networks"],
@@ -662,7 +662,7 @@ class TestNoiseCatalogueQualityGate:
         """Inf injected post-processing is caught by the quality gate."""
         from seismo_sbi.data_handling.preprocessing import noise_catalogue as cat_module
 
-        original_prepare = cat_module._prepare_stream
+        original_prepare = cat_module.prepare_stream
 
         def inject_inf(stream, *args, **kwargs):
             result = original_prepare(stream, *args, **kwargs)
@@ -670,7 +670,7 @@ class TestNoiseCatalogueQualityGate:
                 tr.data[0] = np.inf
             return result
 
-        with patch.object(cat_module, "_prepare_stream", side_effect=inject_inf):
+        with patch.object(cat_module, "prepare_stream", side_effect=inject_inf):
             written = self._build_noise(
                 synthetic_data["data_dir"],
                 synthetic_data["station_networks"],
@@ -684,7 +684,7 @@ class TestNoiseCatalogueQualityGate:
         """Flat period injected post-processing is caught by the quality gate."""
         from seismo_sbi.data_handling.preprocessing import noise_catalogue as cat_module
 
-        original_prepare = cat_module._prepare_stream
+        original_prepare = cat_module.prepare_stream
 
         def inject_flat(stream, *args, **kwargs):
             result = original_prepare(stream, *args, **kwargs)
@@ -694,7 +694,7 @@ class TestNoiseCatalogueQualityGate:
                 tr.data[n // 4 : n // 4 + n // 3] = -99.0
             return result
 
-        with patch.object(cat_module, "_prepare_stream", side_effect=inject_flat):
+        with patch.object(cat_module, "prepare_stream", side_effect=inject_flat):
             written = self._build_noise(
                 synthetic_data["data_dir"],
                 synthetic_data["station_networks"],
@@ -709,7 +709,7 @@ class TestNoiseCatalogueQualityGate:
         """Raising max_flat_fraction lets a borderline flat window through."""
         from seismo_sbi.data_handling.preprocessing import noise_catalogue as cat_module
 
-        original_prepare = cat_module._prepare_stream
+        original_prepare = cat_module.prepare_stream
 
         def inject_10pct_flat(stream, *args, **kwargs):
             result = original_prepare(stream, *args, **kwargs)
@@ -718,7 +718,7 @@ class TestNoiseCatalogueQualityGate:
                 tr.data[0 : max(1, n // 10)] = 50.0  # ~10% flat
             return result
 
-        with patch.object(cat_module, "_prepare_stream", side_effect=inject_10pct_flat):
+        with patch.object(cat_module, "prepare_stream", side_effect=inject_10pct_flat):
             written_strict = self._build_noise(
                 synthetic_data["data_dir"],
                 synthetic_data["station_networks"],
@@ -726,7 +726,7 @@ class TestNoiseCatalogueQualityGate:
                 max_flat_fraction=0.05,
             )
 
-        with patch.object(cat_module, "_prepare_stream", side_effect=inject_10pct_flat):
+        with patch.object(cat_module, "prepare_stream", side_effect=inject_10pct_flat):
             written_lenient = self._build_noise(
                 synthetic_data["data_dir"],
                 synthetic_data["station_networks"],

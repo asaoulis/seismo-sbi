@@ -89,7 +89,7 @@ def build_event_catalogue(
     cov_window = timedelta(seconds=covariance_window_s)
     pre_event = timedelta(seconds=pre_event_window_s)
 
-    eff_data_dir, inventory, remove_resp, eff_pre, eff_filt = _setup_data_source(
+    eff_data_dir, inventory, remove_resp, eff_pre, eff_filt = setup_data_source(
         events=events,
         data_dir=data_dir,
         stationxml_dir=stationxml_dir,
@@ -117,13 +117,13 @@ def build_event_catalogue(
         t_end = t_start + duration
 
         try:
-            stream, good_stations = _load_window(
+            stream, good_stations = load_window(
                 eff_data_dir, station_networks, t_start, t_end, duration, channel_glob,
             )
             if not stream or not good_stations:
                 return out_path, False, "no_data"
 
-            proc = _prepare_stream(
+            proc = prepare_stream(
                 stream, use_daily_processing, inventory, remove_resp,
                 eff_pre, eff_filt, sampling_rate,
             )
@@ -156,13 +156,13 @@ def build_event_catalogue(
         joblib.delayed(_process_event)(ev) for ev in events
     )
 
-    _write_errors(error_log, [(p.name, r) for p, ok, r in results if not ok])
+    write_errors(error_log, [(p.name, r) for p, ok, r in results if not ok])
     return [p for p, ok, _ in results if ok]
 
 
 # --- Shared internal helpers ---
 
-def _setup_data_source(
+def setup_data_source(
     events,
     data_dir: Path,
     stationxml_dir: Optional[Path],
@@ -206,7 +206,7 @@ def _setup_data_source(
         return data_dir, inv, inv is not None, prefilter_kwargs, filter_kwargs
 
 
-def _prepare_stream(stream, use_daily_processing, inventory, remove_response,
+def prepare_stream(stream, use_daily_processing, inventory, remove_response,
                     prefilter_kwargs, filter_kwargs, sampling_rate):
     """Merge a loaded stream, applying deconvolution only when needed.
 
@@ -242,7 +242,7 @@ def _load_inventory_safe(stationxml_dir):
         return None
 
 
-def _load_window(data_dir, station_networks, t_start, t_end, duration, channel_glob):
+def load_window(data_dir, station_networks, t_start, t_end, duration, channel_glob):
     """Load waveforms for all stations covering [t_start - cov - pad, t_end + pad]."""
     pad_s = 60
     t0_load = t_start - timedelta(seconds=duration.total_seconds() + pad_s)
@@ -274,7 +274,8 @@ def _event_id(event) -> str:
     return t.strftime("%Y%m%dT%H%M%S")
 
 
-def _write_errors(error_log, failures: list) -> None:
+def write_errors(error_log, failures: list) -> None:
+    """Append the ``(window name, reason)`` pairs in ``failures`` to the CSV at ``error_log``."""
     if not error_log or not failures:
         return
     with open(error_log, "a", newline="") as f:

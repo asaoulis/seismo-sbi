@@ -16,10 +16,10 @@ from typing import List, Optional, Tuple
 import joblib
 
 from seismo_sbi.data_handling.preprocessing.catalogue_builder import (
-    _load_window,
-    _prepare_stream,
-    _setup_data_source,
-    _write_errors,
+    load_window,
+    prepare_stream,
+    setup_data_source,
+    write_errors,
 )
 from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
 from seismo_sbi.data_handling.preprocessing.quality import partition_window_quality
@@ -92,7 +92,7 @@ def build_noise_catalogue(
     duration = timedelta(seconds=duration_s)
     cov_window = duration
 
-    eff_data_dir, inventory, remove_resp, eff_pre, eff_filt = _setup_data_source(
+    eff_data_dir, inventory, remove_resp, eff_pre, eff_filt = setup_data_source(
         events=None,  # not used for noise
         data_dir=data_dir,
         stationxml_dir=stationxml_dir,
@@ -131,13 +131,13 @@ def build_noise_catalogue(
             return out_path, True, "already_exists"
 
         try:
-            stream, good_stations = _load_window(
+            stream, good_stations = load_window(
                 eff_data_dir, station_networks, t_start, t_end, duration, channel_glob,
             )
             if not stream or not good_stations:
                 return out_path, False, "no_data"
 
-            proc = _prepare_stream(
+            proc = prepare_stream(
                 stream, use_daily_processing, inventory, remove_resp,
                 eff_pre, eff_filt, sampling_rate,
             )
@@ -171,7 +171,7 @@ def build_noise_catalogue(
         for t_start, t_end in noise_windows
     )
 
-    _write_errors(error_log, [(p.name, r) for p, ok, r in results if not ok])
+    write_errors(error_log, [(p.name, r) for p, ok, r in results if not ok])
     return [p for p, ok, _ in results if ok]
 
 
