@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ml = ["torch>=2.2", "sbi==0.21.0", "pytorch_lightning", "tarp==0.1.0", "deprecation"]
+ml = ["torch>=2.2", "sbi==0.21.0", "arviz<1", "pytorch_lightning", "tarp==0.1.0", "deprecation"]
 plotting = ["ChainConsumer==0.34.0", "scienceplots"]
 notebooks = ["jupyter", "ipykernel"]
 test = ["pytest>=7", "pytest-cov"]
