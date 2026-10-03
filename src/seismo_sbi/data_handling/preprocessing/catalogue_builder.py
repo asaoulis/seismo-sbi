@@ -178,10 +178,9 @@ def setup_data_source(
     channel_glob: str,
     n_jobs: int,
 ):
-    """The data source the windows are sliced from: ``(data_dir, inventory, remove_response,
-    prefilter_kwargs, filter_kwargs)``.
+    """The data source the windows are sliced from.
 
-    With ``use_daily_processing`` the daily files are produced first and the response and filter
+    Returns ``(data_dir, inventory, remove_response, prefilter_kwargs, filter_kwargs)``. With ``use_daily_processing`` the daily files are produced first and the response and filter
     are already applied, so the inventory and filter arguments come back None; otherwise the raw
     directory, the inventory and the filter arguments are returned for slicing to apply.
     """
