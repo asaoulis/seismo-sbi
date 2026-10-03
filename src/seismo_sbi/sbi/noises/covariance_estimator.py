@@ -97,18 +97,29 @@ class EmpiricalCovarianceEstimator:
 
         return station_component_covariances
 
-    def estimate_from_windows(self, noise_windows):
+    def estimate_from_windows(self, noise_windows, present=None):
         """Per-trace autocovariances ``{station: {component: (n_samples,)}}`` from noise windows
-        held in memory, ``(n_windows, n_traces, n_samples)`` with traces in receiver order and
-        each station's components in the loader's order; tapered like the directory path.
+        held in memory, ``(n_windows, n_traces, n_samples)`` or the flat ``(n_windows, n_traces *
+        n_samples)`` rows :meth:`~seismo_sbi.sbi.noises.real_noise.RealNoiseSampler.from_windows`
+        takes, with traces in receiver order and each station's components in the loader's order;
+        tapered like the directory path.
+
+        ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; an absent
+        station's traces are skipped, as the directory path skips a station missing from a file.
         """
+        noise_windows = np.asarray(noise_windows)
+        n_traces = len(self.receivers.receivers) * len(self.components)
+        noise_windows = noise_windows.reshape(noise_windows.shape[0], n_traces, -1)
+        if present is None:
+            present = np.ones((noise_windows.shape[0], len(self.receivers.receivers)), dtype=bool)
         station_component_deviations = self._new_running_deviations()
-        for window in np.asarray(noise_windows):
+        for window, window_present in zip(noise_windows, present):
             trace = 0
-            for receiver in self.receivers.iterate():
+            for receiver, receiver_present in zip(self.receivers.iterate(), window_present):
                 for component in self.components:
-                    station_component_deviations[receiver.station_name][component].update(
-                        self._autocovariance_of_window(window[trace]))
+                    if receiver_present:
+                        station_component_deviations[receiver.station_name][component].update(
+                            self._autocovariance_of_window(window[trace]))
                     trace += 1
         return self._finish(station_component_deviations)
 

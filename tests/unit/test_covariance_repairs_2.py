@@ -121,6 +121,26 @@ def test_estimate_from_windows_matches_the_directory_path(tmp_path, receivers):
     assert from_arrays["STA2"]["Z"][0] == pytest.approx(9.0, rel=0.5)
 
 
+def test_estimate_from_windows_takes_flat_rows_and_skips_absent_stations(tmp_path, receivers):
+    rng = np.random.default_rng(4)
+    windows = rng.normal(size=(5, 2, 32))
+    present = np.ones((5, 2), dtype=bool)
+    present[1, 0] = present[3, 1] = False
+    for index, window in enumerate(windows):
+        waveforms = {receiver.station_name: {"Z": window[trace]}
+                     for trace, receiver in enumerate(receivers.iterate()) if present[index, trace]}
+        SimulationSaver(output_data=waveforms).dump_data_as_hdf5(tmp_path / f"noise_{index}.h5")
+    estimator = EmpiricalCovarianceEstimator(tmp_path, receivers, "Z", covariance_exp_tapering=False,
+                                             verbose=False)
+
+    from_files = estimator.compute_stationwise_covariances()
+    from_rows = estimator.estimate_from_windows(windows.reshape(5, -1), present=present)
+    for station in ("STA1", "STA2"):
+        assert np.allclose(from_rows[station]["Z"], from_files[station]["Z"])
+        assert np.array_equal(estimator.estimate_from_windows(windows.reshape(5, -1))[station]["Z"],
+                              estimator.estimate_from_windows(windows)[station]["Z"])
+
+
 def test_numeric_likelihood_covariance_is_white_noise_of_that_sigma():
     covariance = likelihood_covariance(0.5, compressor_covariance=None, data_vector_length=4)
     assert isinstance(covariance, ScalarEmpiricalCovariance)
