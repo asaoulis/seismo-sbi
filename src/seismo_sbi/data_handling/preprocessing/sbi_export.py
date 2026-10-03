@@ -80,6 +80,40 @@ def stream_to_seismogram_map(stream: Stream, station_names: List[str], t_start, 
         seismogram_map[station] = station_traces
     return seismogram_map
 
+
+def event_seismogram_map(stream: Stream, station_names: List[str], event_window, sampling_rate: float) -> dict:
+    """``{station: {component: waveform}}`` over ``event_window = (t_start, t_end)`` for the
+    stations of ``station_names`` that have all three components, each trace
+    ``compute_data_vector_length(t_end - t_start, sampling_rate) + 1`` samples long.
+    """
+    t_start = UTCDateTime(event_window[0])
+    t_end = UTCDateTime(event_window[1])
+    exact_end = _exact_end_time(t_start, t_end, sampling_rate)
+
+    return {station: traces for station, traces
+            in stream_to_seismogram_map(stream, station_names, t_start, exact_end).items()
+            if len(traces) == 3}
+
+
+def pre_event_autocorrelations(stream: Stream, station_names: List[str], event_start,
+                               covariance_window_s: float, full_auto_correlation: bool = True) -> dict:
+    """``{station: {component: autocorrelation}}`` of the ``covariance_window_s`` seconds before
+    ``event_start``, the noise statistics the event file holds under ``/misc``.
+
+    The autocorrelation is averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -1)``; with
+    ``full_auto_correlation`` False each entry is the scalar variance instead.
+    """
+    t_start = UTCDateTime(event_start)
+    cov_start = t_start - covariance_window_s
+    variance_dict = {}
+    for sta, traces in stream_to_seismogram_map(stream, station_names, cov_start, t_start).items():
+        sta_misc = {renamed: _compute_autocorrelation(data) if full_auto_correlation else np.var(data)
+                    for renamed, data in traces.items()}
+        if sta_misc:
+            variance_dict[sta] = sta_misc
+    return variance_dict
+
+
 def export_to_sbi_h5(
     stream: Stream,
     receivers: List[str],
@@ -106,23 +140,12 @@ def export_to_sbi_h5(
         full_auto_correlation: When True write the full normalised
             autocorrelation array; when False write a scalar variance.
     """
-    t_start = UTCDateTime(event_window[0])
-    t_end = UTCDateTime(event_window[1])
-    exact_end = _exact_end_time(t_start, t_end, sampling_rate)
-
-    data_map = {station: traces for station, traces
-                in stream_to_seismogram_map(stream, receivers, t_start, exact_end).items()
-                if len(traces) == 3}
+    data_map = event_seismogram_map(stream, receivers, event_window, sampling_rate)
 
     variance_dict: Optional[dict] = None
     if covariance_window is not None:
-        cov_start = t_start - covariance_window.total_seconds()
-        variance_dict = {}
-        for sta, traces in stream_to_seismogram_map(stream, receivers, cov_start, t_start).items():
-            sta_misc = {renamed: _compute_autocorrelation(data) if full_auto_correlation else np.var(data)
-                        for renamed, data in traces.items()}
-            if sta_misc:
-                variance_dict[sta] = sta_misc
+        variance_dict = pre_event_autocorrelations(stream, receivers, event_window[0],
+                                                   covariance_window.total_seconds(), full_auto_correlation)
 
     saver = SimulationSaver(output_data=data_map, misc_data=variance_dict)
     saver.dump_data_as_hdf5(out_path)
