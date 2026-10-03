@@ -34,7 +34,9 @@ lightning_logs/
 wandb/
 ml-checkpoints/
 /data/
-examples/data/
+examples/data/*
+!examples/data/ridgecrest/
+!examples/data/ridgecrest/*
 examples/inversions/
 examples/plots/
 examples/sbi-logs/
