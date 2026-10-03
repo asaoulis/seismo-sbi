@@ -1,6 +1,6 @@
 # Working with ObsPy
 
-A seismologist holding ObsPy objects (`Stream`, `Inventory`, `Origin`, `Catalog`) can reach a
+A seismologist holding ObsPy objects (`Stream`, `Inventory`, `Origin`, `Tensor`) can reach a
 posterior and get ObsPy objects back without writing a station file, a YAML or an HDF5 file by
 hand. Downloading is ObsPy's job: query an FDSN client directly and pass the result in.
 
@@ -13,7 +13,7 @@ hand. Downloading is ObsPy's job: query an FDSN client directly and pass the res
 | in | processed `Stream` | `pre_event_autocorrelations`: the pre-event noise autocorrelations | `data_handling.preprocessing.sbi_export` |
 | in | processed `Stream` | `export_to_sbi_h5`: the same event written as the HDF5 file the pipeline reads | `data_handling.preprocessing.sbi_export` |
 | in | continuous `Stream` | `noise_windows_from_stream`: event-free noise windows and their presence mask | `data_handling.preprocessing.noise_windows` |
-| in | `Catalog` (any ObsPy-readable file) | `load_catalogue`: locations, depths, magnitudes and times for a catalogue prior | `priors.catalogue` |
+| in | a `Catalog` saved to a file (any ObsPy-readable format) | `load_catalogue` (from the path): locations, depths, magnitudes and times for a catalogue prior | `priors.catalogue` |
 | in | `Origin` | `source_location_from_origin`: a `SourceLocation` (depth in km, time in s after a stated origin time) | `moment_tensor.quakeml` |
 | in | `Tensor` | `moment_tensor_from_tensor`: `m6` in N.m | `moment_tensor.quakeml` |
 | out | `Tensor` | `tensor_from_moment_tensor` | `moment_tensor.quakeml` |

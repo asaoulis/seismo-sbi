@@ -2,9 +2,9 @@
 
 QuakeML's ``Tensor`` holds ``m_rr, m_tt, m_pp, m_rt, m_rp, m_tp`` in N.m in r, theta, phi = up,
 south, east: the library's ``m6`` order and convention, so the components carry over unchanged.
-An ``Origin`` gives depth in m and an absolute time; a :class:`SourceLocation` gives depth in km
-and the time in s relative to a stated origin time. :func:`posterior_event` reports a posterior as
-an ``Event`` with its moment tensor, focal mechanism and moment magnitude.
+An ``Origin`` gives depth in m and an absolute time; a
+:class:`~seismo_sbi.simulators.sources.SourceLocation` gives depth in km and the time in s relative
+to a stated origin time. :func:`posterior_event` reports a posterior as an ``Event``.
 """
 import numpy as np
 from obspy import UTCDateTime
