@@ -73,6 +73,18 @@ def test_the_reparametrised_corner_labels_each_column_with_its_quantity():
     assert converted[0, names.index("$\\delta$")] == delta_deg[0]
 
 
+def test_the_reparametrised_corner_reads_six_component_samples_without_parameters():
+    m6 = np.array([[1.0, -0.2, -0.5, 0.3, 0.1, -0.4]]) * 1e16
+
+    class _MomentTensorOnly:
+        def vector_to_simulation_inputs(self, vector, only_theta_fiducial=True):
+            return {"moment_tensor": vector}
+
+    without, _ = MomentTensorReparametrised().convert_samples(m6, None, None)
+    with_parameters, _ = MomentTensorReparametrised(None, _MomentTensorOnly()).convert_samples(m6, None, None)
+    np.testing.assert_array_equal(without, with_parameters)
+
+
 def test_vertical_only_misfits_are_one_figure(tmp_path):
     matplotlib.use("Agg")
 

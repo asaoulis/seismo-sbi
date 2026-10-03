@@ -73,9 +73,9 @@ class MomentTensorReparametrised:
                         ParameterInformation(r"$\textrm{rake}$", '°'),
                         ]
     
-    def __init__(self, data_scaler, parameters):
-        # to convert samples from nde training scale
-        # back to natural units
+    def __init__(self, data_scaler=None, parameters=None):
+        """``parameters`` maps a sample vector to simulation inputs; None means each sample is the six
+        moment-tensor components (N m) in the order m_rr, m_tt, m_pp, m_rt, m_rp, m_tp."""
         self.data_scaler = data_scaler
         self.parameters = parameters
         # no need for an extra scaling step
@@ -86,8 +86,7 @@ class MomentTensorReparametrised:
         
         converted = []
         for sample in samples:
-            inputs = self.parameters.vector_to_simulation_inputs(sample, only_theta_fiducial=True)
-            mt = inputs["moment_tensor"]
+            mt = self._moment_tensor(sample)
             # Use lune utilities to compute gamma and delta (in degrees)
             g, d = mts6_to_gamma_delta(np.asarray(mt).reshape(1, -1))
             # Keep Mw from scalar moment
@@ -97,8 +96,7 @@ class MomentTensorReparametrised:
             nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
             converted.append(np.array([float(g[0]),float(d[0]), MW, nodal_plane[0], nodal_plane[1], nodal_plane[2]]))
         if theta0 is not None:
-            theta_inputs = self.parameters.vector_to_simulation_inputs(theta0, only_theta_fiducial=True)
-            theta_mt = theta_inputs["moment_tensor"]
+            theta_mt = self._moment_tensor(theta0)
             tg, td = mts6_to_gamma_delta(np.asarray(theta_mt).reshape(1, -1))
             theta_MW, _ = get_MW_and_epsilon(theta_mt)
             nodal_plane_pair = get_nodal_planes(theta_mt)
@@ -109,6 +107,11 @@ class MomentTensorReparametrised:
         return np.array(converted), theta0_converted
 
 
+
+    def _moment_tensor(self, vector):
+        if self.parameters is None:
+            return vector
+        return self.parameters.vector_to_simulation_inputs(vector, only_theta_fiducial=True)["moment_tensor"]
 
     def plot_chain_consumer(self, samples_theta0_dict, custom_processing = None, *args, extra_references=None, **kwargs):
         """Corner plot of the ensembles reparametrised as lune angles, Mw and one nodal plane.
@@ -147,6 +150,7 @@ LUNE_REFERENCE_STYLES = [
     {"marker": "^", "color": "magenta",     "s": 230},
     {"marker": "P", "color": "darkorange",  "s": 230},
     {"marker": "D", "color": "limegreen",   "s": 170},
+    {"marker": "X", "color": "red",         "s": 230},
 ]
 
 
