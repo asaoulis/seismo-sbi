@@ -76,12 +76,13 @@ Work through them in this order:
    nuisance effects at 20-50 s on the Ridgecrest stations, simulation stage against training stage, a
    user-defined per-station site transfer function, and two small networks trained with and without it.
    Needs `INSTASEIS_DB_20S` and a GPU for a few minutes.
-4. [`01_forward_models_and_receivers`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/01_forward_models_and_receivers.ipynb): receivers,
-   the Instaseis, CPS and kernel forward models, a toy forward model plugged in through the
-   registry, and the post-processing chain. Synthetic inputs; needs `INSTASEIS_DB` and `CPS_PATH`.
+4. [`custom_forward_model`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/custom_forward_model.ipynb): a
+   forward model of your own (a far-field P wave in a homogeneous whole space) registered with
+   `register_simulator` and used in a Gaussian-likelihood inversion. Needs no database.
 5. [`02_noise_covariances_and_likelihood`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/02_noise_covariances_and_likelihood.ipynb): every
-   Gaussian-likelihood covariance on synthetic noise, the noise samplers, score compression, and
-   MCMC with each covariance checked against the analytical posterior.
+   Gaussian-likelihood covariance on synthetic noise, a theory-error covariance from an ensemble of
+   Earth models, and the coverage of each score-compressed posterior on data from the reference Earth
+   and from an Earth 1.5 % faster.
 6. [`03_npe_training_and_evaluation`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/03_npe_training_and_evaluation.ipynb): dataset
    generation, training-time augmentation, training a neural compressor and flow, and the
    validation, calibration (TARP) and evaluation plots.

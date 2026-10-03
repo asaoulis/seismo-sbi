@@ -96,7 +96,8 @@ register_simulator("specfem3d", build_specfem3d)
 With that call made before the pipeline is built, `simulation_type: specfem3d` in the
 `seismic_context` block selects it. `simulator_config` is `(simulation_type, payload)`, where
 the payload carries whatever the type needs beyond the parameters — the sensitivity kernels for
-`kernel`, the ensemble simulator for `theory_covariance` — and is `None` otherwise.
+`kernel`, the ensemble simulator for `theory_covariance` — and is `None` otherwise. The
+`custom_forward_model` example notebook registers a toy forward model and inverts with it.
 
 ## AxiSEM ensembles
 

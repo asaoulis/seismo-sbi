@@ -111,8 +111,8 @@ compression:
 | `kolb` | a Toeplitz block per trace with correlation e^(−λ\|Δt\|) cos(λω₀\|Δt\|) |
 
 The [`02_noise_covariances_and_likelihood`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/02_noise_covariances_and_likelihood.ipynb)
-notebook builds every covariance from synthetic noise and checks the compression against the
-analytical posterior.
+notebook builds every covariance from synthetic noise and compares the posterior each gives with
+and without theory error.
 
 ## The SBI inversion
 
@@ -180,5 +180,3 @@ samples = generate_samples(evaluator.log_probability, False, num_parameters,
 posterior_samples = scaler.inverse_transform(samples)
 ```
 
-The `02_noise_covariances_and_likelihood` notebook does this for a linear forward model and
-checks each sampled posterior against the analytical one.
