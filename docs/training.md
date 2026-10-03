@@ -81,9 +81,8 @@ trainer.train("my_model", epochs=training.epochs, output_path=pipeline.models_ou
    noisy, augmented seismograms. The last `1 − ml_batch.train_fraction` of the simulations are
    held out for validation. Checkpoints are kept by validation loss.
 
-The [`nuisance_parameters_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_parameters_demo.ipynb)
-and [`nuisance_augmentation_demo`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisance_augmentation_demo.ipynb)
-notebooks show the two nuisance stages.
+The [`nuisances`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisances.ipynb) notebook shows the
+built-in effects, the two nuisance stages and a user-defined per-station effect.
 
 A station known to be worse than the rest gets its own setting: `amplitude_error`'s
 `scale_range` and `log_sigma_dex` and `time_shift_error`'s `gaussian_sigma` take a map from
