@@ -45,7 +45,7 @@ STOCHASTIC_CELLS = {"nuisances": {5, 6, 7}, "npe_flagship": {5, 6, 8, 9, 10, 11,
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),
          re.compile(r"\d\d:\d\d(:\d\d)?"), re.compile(r"0x[0-9a-f]+"),
-         re.compile(r"\d+%\|[^\n]*")]
+         re.compile(r"\d+%\|[^\n]*"), re.compile(r"[^\n\r]*numpy\.ndarray size changed[^\n\r]*")]
 NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
 PROGRESS_BAR = re.compile(r"it/s|s/it|\?it|\d+%\|")
 
@@ -202,6 +202,17 @@ def test_stored_outputs_keep_printed_results_and_drop_progress_bars():
     stored = without_progress_bars(nbformat.v4.new_notebook(cells=[cell])).cells[0]
     assert [output["text"] for output in stored.outputs] == ["Mw 6.24\n Converged.\n"]
     assert "execution" not in stored.metadata
+
+
+def test_printed_numbers_leave_out_numpy_binary_compatibility_warnings():
+    import nbformat
+
+    cell = nbformat.v4.new_code_cell("plot()")
+    cell.outputs = [nbformat.v4.new_output("stream", name="stdout", text="gamma -4.2 deg\n"),
+                    nbformat.v4.new_output("stream", name="stderr", text=(
+                        "<frozen importlib._bootstrap>:241: RuntimeWarning: numpy.ndarray size changed, may "
+                        "indicate binary incompatibility. Expected 80 from C header, got 96 from PyObject\n"))]
+    assert summarise(nbformat.v4.new_notebook(cells=[cell]))[0]["numbers"] == [-4.2]
 
 if __name__ == "__main__":
     import tempfile
