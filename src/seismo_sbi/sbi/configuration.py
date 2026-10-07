@@ -230,7 +230,7 @@ class SBI_Configuration:
         self.model_parameters.bounds[parameter_type] = parameter_values['bounds']
 
     def parse_simulations_options(self, config):
-        simulations_config = config
+        simulations_config = dict(config)
         if "iterative_least_squares" in simulations_config:
             simulations_config["iterative_least_squares"] = IterativeLeastSquaresParameters(**simulations_config["iterative_least_squares"])
         if "sampling_method" in simulations_config:

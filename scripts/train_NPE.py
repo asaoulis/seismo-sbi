@@ -48,7 +48,7 @@ def main():
     training = config.training.apply_overrides(station_encoder=args.architecture,
                                                epochs=args.epochs, devices=args.devices,
                                                train_batch_size=args.train_batch_size)
-    cap_querier_cache(training.querier_cache_maxsize)
+    cap_querier_cache(config.sim_parameters.querier_cache_maxsize)
 
     pipeline = build_pipeline(config, args.config, num_simulations=args.num_simulations)
     simulation_paths = generate_training_dataset(pipeline, config,

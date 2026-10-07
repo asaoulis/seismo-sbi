@@ -1,5 +1,6 @@
 """Tests for SBI_Configuration YAML parsing."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -777,3 +778,16 @@ def test_a_per_event_prior_is_rejected_at_parse_time():
             "noise_models": {}, "real_events": {"event": {"path": "event.h5", "priors": [[0.0], [1.0]]}}}
     with pytest.raises(InvalidConfiguration, match="per-event prior"):
         SBI_Configuration().parse_jobs_config(jobs)
+
+
+def test_the_raw_configuration_stays_the_yaml_as_read(monkeypatch):
+    examples = Path(__file__).resolve().parents[2] / "examples"
+    raw_config = yaml.safe_load((examples / "configs" / "npe_example.yaml").read_text())
+    raw_config["simulations"]["sampling_method"]["moment_tensor"] = {
+        "type": "gutenberg_richter", "b_value": 1.0, "mw_min": 3.5, "mw_max": 6.0, "mc": 3.5}
+    as_read = copy.deepcopy(raw_config)
+    monkeypatch.chdir(examples)
+    cfg = SBI_Configuration()
+    cfg.process_configuration_data(raw_config)
+    assert callable(cfg.dataset_parameters.sampling_method["moment_tensor"])
+    assert cfg.raw_config == as_read

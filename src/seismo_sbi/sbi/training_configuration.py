@@ -272,7 +272,6 @@ class TrainingConfiguration:
     warm_start_run_name: str = None
     model_dim: int = 256
     skip_compression_stencil: bool = False
-    querier_cache_maxsize: int = None
     epochs: int = 300
     devices: int = 1
 
@@ -294,8 +293,6 @@ class TrainingConfiguration:
             mmd=config.get("ml_mmd") or {},
             warm_start_run_name=(config.get("ml_warm_start") or {}).get("from_run_name"),
             skip_compression_stencil=bool(config.get("skip_compression_data", False)),
-            querier_cache_maxsize=(config.get("seismic_context") or {}).get(
-                "querier_cache_maxsize"),
         )
 
     def apply_overrides(self, station_encoder=None, epochs=None, devices=None,
