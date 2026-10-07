@@ -293,29 +293,3 @@ class TestDataManagerRealEventIngestion:
         # With no test_noises, no job data is created (the loop over test_noises is empty)
         assert isinstance(jobs, list)
 
-    def test_load_simulation_vector_matches_loader(self, event_h5):
-        """DataManager.load_simulation_vector delegates to SimulationDataLoader correctly."""
-        receivers = _build_receivers()
-        loader = SimulationDataLoader(
-            components="ZEN",
-            receivers=receivers,
-            data_length=None,
-        )
-        manager = DataManager(data_loader=loader, dataset_compressor=None)
-        vec = manager.load_simulation_vector(str(event_h5))
-        assert vec.shape == (EXPECTED_FLAT_LEN,)
-        assert np.all(np.isfinite(vec))
-
-    def test_load_noise_parametrisation_data(self, event_h5):
-        """DataManager.load_noise_parametrisation_data returns variance dict."""
-        receivers = _build_receivers()
-        loader = SimulationDataLoader(
-            components="ZEN",
-            receivers=receivers,
-            data_length=None,
-        )
-        manager = DataManager(data_loader=loader, dataset_compressor=None)
-        misc = manager.load_noise_parametrisation_data(str(event_h5))
-        assert isinstance(misc, dict)
-        for sta in STATIONS:
-            assert sta in misc

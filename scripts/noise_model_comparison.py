@@ -87,7 +87,7 @@ def load_misc_covariances(sbi_pipeline, noise_file: Path):
     Load misc data containing pre-window auto-covariance per station-component.
     Expected to be a dict: station -> component -> covariance array.
     """
-    misc = sbi_pipeline.data_manager.load_noise_parametrisation_data(noise_file)
+    misc = sbi_pipeline.data_manager.data_loader.load_misc_data(noise_file)
     return misc
 
 

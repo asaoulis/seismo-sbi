@@ -532,34 +532,33 @@ class SingleEventPipeline(SBIPipeline):
 
         for single_job in job_data:
             self.parameters = deepcopy(original_parameters)
-            sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
-            if covariance is not None:
-                self.rescale_training_noise(covariance)
+            if single_job.covariance is not None:
+                self.rescale_training_noise(single_job.covariance)
 
-            plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
+            plotter = SBIPipelinePlotter(self.job_outputs_path / f"{single_job.noise_type}", self.parameters)
 
-            theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, theta0_dict)
+            theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, single_job.theta0)
 
             for compressor_name in self.compressor_keys:
 
                 start_time = time.time()
-                logger.info("Starting on simulation: %s with compressor: %s", sim_name, compressor_name)
-                inversion_config = InversionConfig("", test_noise, compressor_name)
+                logger.info("Starting on simulation: %s with compressor: %s", single_job.job_name, compressor_name)
+                inversion_config = InversionConfig("", single_job.noise_type, compressor_name)
                 if self.seed is not None:
                     np.random.seed(self.seed)
                     torch.manual_seed(self.seed)
 
-                compression_data = self.find_mle_and_set_compressor(D, covariance, prior, dataset_details, compressor_name=compressor_name)
+                compression_data = self.find_mle_and_set_compressor(single_job.data_vector, single_job.covariance, single_job.prior, dataset_details, compressor_name=compressor_name)
                 for _ in range(self.mcmc_chain_for_mle):
-                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, covariance, prior, mle_start=compression_data.theta_fiducial)
+                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, single_job.covariance, single_job.prior, mle_start=compression_data.theta_fiducial)
 
-                inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, prior, compressor_name=compressor_name)
+                inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, single_job.prior, compressor_name=compressor_name)
                 
-                logger.info(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s")
+                logger.info(f"Time taken for {single_job.job_name} with {compressor_name}: {time.time() - start_time}s")
                 if do_plots:
                     plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
 
-                inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
+                inversion_result = InversionResult(single_job.job_name, inversion_data, inversion_config)
 
                 yield job_result, inversion_result
 
@@ -569,7 +568,7 @@ class SingleEventPipeline(SBIPipeline):
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
                         single_job, likelihood_config, compressor_name,
-                        deepcopy(self.parameters), prior
+                        deepcopy(self.parameters), single_job.prior
                     ):
                         yield job_result, result[1]
                     logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
@@ -632,8 +631,7 @@ class SingleEventPipeline(SBIPipeline):
             covariance_data=covariance,
             compression_data_extras=(compression_data, extra_gradients)
         )
-        D = single_job[2]
-        chi2_mle = self.compressors[compressor_name].compute_misfit(D)
+        chi2_mle = self.compressors[compressor_name].compute_misfit(single_job.data_vector)
         logger.info(f"chi^2 at MCMC MLE: {chi2_mle:.5f}")
         return compression_data
 
@@ -790,11 +788,10 @@ class SingleEventPipeline(SBIPipeline):
 
         scaler = FlexibleScaler(parameters)
 
-        sim_name, test_noise, D, theta0_dict, *unused_data = single_job
-        inversion_config = InversionConfig("", test_noise, f'gaussian_likelihood_{compressor_name}')
+        inversion_config = InversionConfig("", single_job.noise_type, f'gaussian_likelihood_{compressor_name}')
         
-        if theta0_dict is not None:
-            theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
+        if single_job.theta0 is not None:
+            theta0 = np.concatenate([[single_job.theta0[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
         else:
             theta0 = None
         if mle_start is not None:
@@ -805,7 +802,7 @@ class SingleEventPipeline(SBIPipeline):
         else:
             covariance_loss_callable = covariance.create_loss_callable(covariance.inverse_metadata, covariance.data_vector_length)
 
-        simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(D, partial(self.simulator_wrapper.simulation_callable, use_fiducial=True) , scaler, loss_callable=covariance_loss_callable, prior=prior)
+        simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(single_job.data_vector, partial(self.simulator_wrapper.simulation_callable, use_fiducial=True) , scaler, loss_callable=covariance_loss_callable, prior=prior)
 
         if return_log_prob:
             samples_scaled, logps = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,
@@ -821,7 +818,7 @@ class SingleEventPipeline(SBIPipeline):
         samples = scaler.inverse_transform(samples_scaled)
         inversion_data = InversionData(theta0, samples, scaler)
 
-        inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
+        inversion_result = InversionResult(single_job.job_name, inversion_data, inversion_config)
         if return_log_prob:
             yield None, inversion_result, logps
         else:

@@ -48,8 +48,8 @@ class DataManager:
     def create_synthetic_job_data(self, test_jobs_paths, test_noises):
         synthetic_jobs = []
         for sim_path in test_jobs_paths:
-            theta0 = self.load_model_parameter_vector(sim_path)
-            D = self.load_simulation_vector(sim_path)
+            theta0 = self.data_loader.load_input_data(sim_path)
+            D = self.data_loader.load_simulation_data_array(sim_path)
             for test_noise_name, synthetic_noise_sampler in test_noises.items():
                 noise = synthetic_noise_sampler.draw_with_covariance()
                 synthetic_jobs.append(
@@ -71,7 +71,7 @@ class DataManager:
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
             D = self.data_loader.load_simulation_data_array(real_event_path, data_length=data_length)
-            covariance_data = self.load_noise_parametrisation_data(real_event_path)
+            covariance_data = self.data_loader.load_misc_data(real_event_path)
             for test_noise_name in test_noises.keys():
                 real_jobs.append(
                     JobData(real_event_name,
@@ -128,22 +128,13 @@ class DataManager:
     
     def compute_data_vector_length(self, test_jobs_paths, real_event_jobs_config):
         if len(test_jobs_paths) > 0:
-            data_vector_length  = self.load_simulation_vector(test_jobs_paths[0]).shape[0]
+            data_vector_length  = self.data_loader.load_simulation_data_array(test_jobs_paths[0]).shape[0]
         else:
             real_event_data = list(real_event_jobs_config.values())[0]
             if isinstance(real_event_data, str):
                 real_event_path = real_event_data
             else:
                 real_event_path = real_event_data['path']
-            data_vector_length = self.load_simulation_vector(real_event_path).shape[0]
+            data_vector_length = self.data_loader.load_simulation_data_array(real_event_path).shape[0]
 
         return data_vector_length
-    
-    def load_simulation_vector(self, sim_path):
-        return self.data_loader.load_simulation_data_array(sim_path)
-
-    def load_model_parameter_vector(self, sim_path):
-        return self.data_loader.load_input_data(sim_path)
-
-    def load_noise_parametrisation_data(self, sim_path):
-        return self.data_loader.load_misc_data(sim_path)

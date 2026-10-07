@@ -138,14 +138,9 @@ def test_every_multi_event_test_job_carries_the_covariance_its_noise_was_rescale
     sampler = RealNoiseSampler(SimulationParameters(receivers, "Z", 8.0, None, 1.0, {}), tmp_path, 8)
 
     class _DataManager:
-        data_loader = SimpleNamespace(data_length=None)
+        data_loader = SimpleNamespace(load_input_data=lambda path: None,
+                                      load_simulation_data_array=lambda path: np.zeros(8))
         data_length = 8
-
-        def load_model_parameter_vector(self, path):
-            return None
-
-        def load_simulation_vector(self, path):
-            return np.zeros(8)
 
         def _create_job_data_from_real_events(self, real_event_jobs, test_noises, data_length=None):
             return []

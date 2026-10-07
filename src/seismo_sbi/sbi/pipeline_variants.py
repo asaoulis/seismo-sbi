@@ -33,12 +33,11 @@ class MultiEventPipeline(SingleEventPipeline):
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
         for i, single_job in enumerate(job_data):
-            sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
-            if covariance is not None:
-                self.rescale_training_noise(covariance)
+            if single_job.covariance is not None:
+                self.rescale_training_noise(single_job.covariance)
 
-            if theta0_dict is not None:
-                theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
+            if single_job.theta0 is not None:
+                theta0 = np.concatenate([[single_job.theta0[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
                 dataset_details = deepcopy(original_dataset_details)
             else:
                 theta0 = None
@@ -48,9 +47,9 @@ class MultiEventPipeline(SingleEventPipeline):
                 if i == 0:
                     # find MLE and build this compressor using per-compressor API
                     compression_data = self.find_mle_and_set_compressor(
-                        D,
-                        covariance,
-                        prior,
+                        single_job.data_vector,
+                        single_job.covariance,
+                        single_job.prior,
                         dataset_details,
                         compressor_name=compressor_name,
                     )
@@ -59,7 +58,7 @@ class MultiEventPipeline(SingleEventPipeline):
                         dataset_details,
                         theta0,
                         compression_data,
-                        prior,
+                        single_job.prior,
                         compressor_name=compressor_name,
                     )
                 else:
@@ -67,8 +66,8 @@ class MultiEventPipeline(SingleEventPipeline):
 
                 self.prepare_single_compressor(
                     compressor_name,
-                    prior=prior,
-                    covariance_data=covariance,
+                    prior=single_job.prior,
+                    covariance_data=single_job.covariance,
                     dataset_details=dataset_details,
                 )
                 job_result = None
@@ -77,7 +76,7 @@ class MultiEventPipeline(SingleEventPipeline):
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
                         single_job, likelihood_config, compressor_name,
-                        deepcopy(self.parameters), prior
+                        deepcopy(self.parameters), single_job.prior
                     ):
                         yield job_result, result[1]
                     logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
@@ -89,8 +88,8 @@ class MultiEventPipeline(SingleEventPipeline):
         first_event_covariances = {}
 
         for i, sim_path in enumerate(test_jobs_paths):
-            theta0 = self.data_manager.load_model_parameter_vector(sim_path)
-            D = self.data_manager.load_simulation_vector(sim_path)
+            theta0 = self.data_manager.data_loader.load_input_data(sim_path)
+            D = self.data_manager.data_loader.load_simulation_data_array(sim_path)
             for test_noise_name, synthetic_noise_sampler in self.test_noises.items():
                 if i == 0:
                     noise = synthetic_noise_sampler.draw_with_covariance()
@@ -133,14 +132,13 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
 
                 for i, single_job in enumerate(job_data):
 
-                    sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
-                    if covariance is not None:
-                        self.rescale_training_noise(covariance)
+                    if single_job.covariance is not None:
+                        self.rescale_training_noise(single_job.covariance)
 
-                    SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
+                    SBIPipelinePlotter(self.job_outputs_path / f"{single_job.noise_type}", self.parameters)
 
-                    if theta0_dict is not None:
-                        theta0 = np.concatenate([[theta0_dict[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
+                    if single_job.theta0 is not None:
+                        theta0 = np.concatenate([[single_job.theta0[param_type][param_name] for param_name in param_names] for param_type, param_names in param_names.items()])
                         dataset_details = deepcopy(original_dataset_details)
                     else:
                         theta0 = None
@@ -149,14 +147,14 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                         
                         start_time = time.time()
                         
-                        inversion_config = InversionConfig("", test_noise, compressor_name)
+                        inversion_config = InversionConfig("", single_job.noise_type, compressor_name)
                         if i == 0:
                             dataset_details = dataset_details._replace(num_simulations=num_sims)
                             # use per-compressor MLE/compressor API
                             compression_data = self.find_mle_and_set_compressor(
-                                D,
-                                covariance,
-                                prior,
+                                single_job.data_vector,
+                                single_job.covariance,
+                                single_job.prior,
                                 dataset_details,
                                 compressor_name=compressor_name,
                             )
@@ -165,13 +163,13 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                                 dataset_details,
                                 theta0,
                                 compression_data,
-                                prior,
+                                single_job.prior,
                                 compressor_name=compressor_name,
                             )
                             compressed_dataset = job_result.compressed_dataset
                         else:
                             # reuse existing compressor and SBI model
-                            x_0 = compressor.compress_data_vector(D)
+                            x_0 = compressor.compress_data_vector(single_job.data_vector)
                             x_0_scaled = self.ground_truth_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
                             if np.abs(x_0_scaled - 0.5).max() > 0.5:
                                 logger.warning('x_0 problem found %s %s', np.abs(x_0_scaled - 0.5).max(), i)
@@ -180,10 +178,10 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             theta0_scaled = self.ground_truth_scaler.transform(theta0.reshape(1,-1)).reshape(-1)
                             inversion_data = InversionData(theta0_scaled, sample_results, deepcopy(self.ground_truth_scaler), compression_data)
                             job_result = JobResult(compressed_dataset, x_0, deepcopy(self.ground_truth_scaler))
-                            compression_data = ScoreCompressionData(x_0, D, compression_data.data_parameter_gradients, None)
+                            compression_data = ScoreCompressionData(x_0, single_job.data_vector, compression_data.data_parameter_gradients, None)
 
-                        logger.info(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s")
-                        inversion_result = InversionResult(sim_name+f'_{num_sims}_{repeat}', inversion_data, inversion_config)
+                        logger.info(f"Time taken for {single_job.job_name} with {compressor_name}: {time.time() - start_time}s")
+                        inversion_result = InversionResult(single_job.job_name+f'_{num_sims}_{repeat}', inversion_data, inversion_config)
                         yield job_result, inversion_result
 
                         if likelihood_config["run"] and num_sims == 10000 and repeat == 0:
@@ -191,7 +189,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             start_time = time.time()
                             for result in self.run_single_gaussian_likelihood_inversion(
                                 single_job, likelihood_config, compressor_name,
-                                deepcopy(self.parameters), prior
+                                deepcopy(self.parameters), single_job.prior
                             ):
                                 yield result
                             logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
@@ -208,24 +206,23 @@ class MLEEstimatePipeline(SingleEventPipeline):
         original_dataset_details = deepcopy(dataset_details)
 
         for single_job in job_data:
-            sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
-            if covariance is not None:
-                self.rescale_training_noise(covariance)
+            if single_job.covariance is not None:
+                self.rescale_training_noise(single_job.covariance)
 
-            plotter = SBIPipelinePlotter(self.job_outputs_path / f"{test_noise}", self.parameters)
+            plotter = SBIPipelinePlotter(self.job_outputs_path / f"{single_job.noise_type}", self.parameters)
 
-            theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, theta0_dict)
+            theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, single_job.theta0)
 
             for compressor_name in self.compressor_keys:
 
                 
-                inversion_config = InversionConfig("", test_noise, compressor_name)
+                inversion_config = InversionConfig("", single_job.noise_type, compressor_name)
 
                 # use per-compressor API for MLE and compressor setup
                 compression_data = self.find_mle_and_set_compressor(
-                    D,
-                    covariance,
-                    prior,
+                    single_job.data_vector,
+                    single_job.covariance,
+                    single_job.prior,
                     dataset_details,
                     compressor_name=compressor_name,
                 )
@@ -238,7 +235,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
                         covariance=self.empirical_cov_mat,
                     )
                 inversion_data = InversionData(theta0, None, None, compression_data)
-                inversion_result = InversionResult(sim_name, inversion_data, inversion_config)
+                inversion_result = InversionResult(single_job.job_name, inversion_data, inversion_config)
 
                 yield None, inversion_result
 

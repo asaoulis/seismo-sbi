@@ -149,7 +149,7 @@ def rescale_training_noise_to_event(pipeline, config):
             "Training the noise covariance needs at least one jobs.real_events entry to "
             "parametrise it from.")
     real_noise_path = next(iter(config.real_event_jobs.values()))
-    covariance_data = pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
+    covariance_data = pipeline.data_manager.data_loader.load_misc_data(real_noise_path)
     pipeline.rescale_training_noise(covariance_data)
 
 

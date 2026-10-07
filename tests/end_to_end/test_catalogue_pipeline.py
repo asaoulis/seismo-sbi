@@ -2211,17 +2211,6 @@ class TestDataManagerWithCatalogueEvent:
             * (compute_data_vector_length(DURATION.total_seconds(), SR_TARGET) + 1)
         )
 
-    def test_load_simulation_vector(self):
-        vec = self.manager.load_simulation_vector(str(self.event_h5))
-        assert vec.shape == (self.expected_flat_len,)
-        assert np.all(np.isfinite(vec))
-
-    def test_load_noise_parametrisation_data(self):
-        misc = self.manager.load_noise_parametrisation_data(str(self.event_h5))
-        assert isinstance(misc, dict)
-        for sta in self.stations:
-            assert sta in misc
-
     def test_create_job_data_from_real_events(self):
         real_event_jobs = {"catalogue_event": str(self.event_h5)}
         test_noises = {}
