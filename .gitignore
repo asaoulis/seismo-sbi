@@ -28,6 +28,7 @@ coverage.xml
 *.xml
 *.log
 *.png
+!examples/assets/*.png
 *.svg
 *tfevents*
 lightning_logs/

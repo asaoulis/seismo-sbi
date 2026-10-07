@@ -22,3 +22,4 @@ examples.mkdir(parents=True)
 for name in ("ridgecrest_obspy", "npe_flagship", "nuisances", "custom_forward_model", "02_noise_covariances_and_likelihood",
              "theory_errors_LV2", "azores_inversion"):
     shutil.copy(Path(__file__).parents[1] / "examples" / f"{name}.ipynb", examples)
+shutil.copytree(Path(__file__).parents[1] / "examples" / "assets", examples / "assets")
