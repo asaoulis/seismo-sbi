@@ -58,7 +58,7 @@ def test_seeded_training_noise_reproduces_across_worker_processes():
 
 def test_sbi_seed_is_read_from_the_inference_block():
     configuration = SBI_Configuration()
-    sbi_block = {"method": "posterior", "noise_model": {"type": "gaussian_noises"}}
+    sbi_block = {"method": "posterior", "noise_model": {"type": "gaussian", "noise_level": 1.0e-6}}
     configuration.parse_sbi_config({"sbi": dict(sbi_block, seed=7), "likelihood": {"run": False}})
     assert configuration.sbi_seed == 7
     configuration.parse_sbi_config({"sbi": sbi_block, "likelihood": {"run": False}})

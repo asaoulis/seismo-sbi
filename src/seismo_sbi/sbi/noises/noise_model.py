@@ -31,7 +31,26 @@ class NoiseModelConfiguration:
 
     @classmethod
     def from_yaml_block(cls, block):
-        return cls(**{name: block[name] for name in cls.__dataclass_fields__ if name in block})
+        unknown = sorted(set(block) - set(cls.__dataclass_fields__))
+        if unknown:
+            raise InvalidConfiguration(f"inference.sbi.noise_model: unknown keys {unknown}; allowed: "
+                                       f"{sorted(cls.__dataclass_fields__)}.")
+        return cls(**block)
+
+    def __post_init__(self):
+        if self.type not in NOISE_MODEL_TYPES:
+            raise InvalidConfiguration(
+                f"Unknown inference.sbi.noise_model type {self.type!r}: expected one of "
+                "'gaussian', 'gaussian_filtered', 'real_noise' or 'empirical_gaussian'.")
+        if self.type == "gaussian" and self.noise_level is None:
+            raise InvalidConfiguration("inference.sbi.noise_model: type 'gaussian' needs noise_level (m).")
+        if self.type == "real_noise" and not self.noise_catalogue_path:
+            raise InvalidConfiguration("inference.sbi.noise_model: type 'real_noise' needs noise_catalogue_path.")
+        if self.allow_incomplete and self.follows_event:
+            raise InvalidConfiguration(
+                "inference.sbi.noise_model: allow_incomplete needs rescale: false. Rescaling a noise "
+                "window to an event needs the pre-event variance of every station, which an "
+                "incomplete window lacks.")
 
     @property
     def follows_event(self):
@@ -51,20 +70,19 @@ def build_noise_sampler(noise_model, simulation_parameters, trace_length, data_v
     if train_noise_type == 'gaussian':
         return WhiteNoiseSampler(noise_model.noise_level, data_vector_length)
     elif train_noise_type == 'gaussian_filtered':
-        return data_covariance.create_sampler()
+        return _sampler_of(data_covariance, "inference.sbi.noise_model type 'gaussian_filtered'")
     elif train_noise_type == 'real_noise':
-        if noise_model.allow_incomplete and noise_model.follows_event:
-            raise InvalidConfiguration(
-                "inference.sbi.noise_model: allow_incomplete needs rescale: false. Rescaling a noise "
-                "window to an event needs the pre-event variance of every station, which an "
-                "incomplete window lacks.")
         return RealNoiseSampler(simulation_parameters, noise_model.noise_catalogue_path, trace_length,
                                 allow_incomplete=noise_model.allow_incomplete)
-    elif train_noise_type == 'empirical_gaussian':
-        return empirical_covariance.create_sampler()
-    raise InvalidConfiguration(
-        f"Unknown inference.sbi.noise_model type {train_noise_type!r}: expected one of "
-        "'gaussian', 'gaussian_filtered', 'real_noise' or 'empirical_gaussian'.")
+    return _sampler_of(empirical_covariance, "inference.sbi.noise_model type 'empirical_gaussian'")
+
+
+def _sampler_of(covariance, what):
+    """``covariance``'s sampler; ``what`` names the noise model in the error when there is none."""
+    if covariance is None:
+        raise InvalidConfiguration(f"{what} draws from a compressor's covariance, and none is loaded: "
+                                   "load the compressors first.")
+    return covariance.create_sampler()
 
 
 def build_test_noise_samplers(test_noise_models, noise_model, simulation_parameters, trace_length,
@@ -81,10 +99,10 @@ def build_test_noise_samplers(test_noise_models, noise_model, simulation_paramet
             test_noises[f"{noise_type}_x{noise_factor}"] = WhiteNoiseSampler(
                 noise_factor * train_noise_level, data_vector_length)
         elif noise_type == "gaussian_filtered":
-            test_noises[noise_type] = data_covariance.create_sampler()
+            test_noises[noise_type] = _sampler_of(data_covariance, "jobs.noise_models gaussian_filtered")
         elif noise_type == "real_noise":
             noise_catalogue_path = noise_options
             test_noises[noise_type] = RealNoiseSampler(simulation_parameters, noise_catalogue_path, trace_length)
         elif noise_type == "empirical_gaussian":
-            test_noises[noise_type] = empirical_covariance.create_sampler()
+            test_noises[noise_type] = _sampler_of(empirical_covariance, "jobs.noise_models empirical_gaussian")
     return test_noises

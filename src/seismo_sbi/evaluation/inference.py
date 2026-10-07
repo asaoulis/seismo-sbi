@@ -72,9 +72,9 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
 
     Returns ``(config, sbi_pipeline, original_parameters)``.
 
-    If ``setup_training_noise`` is True, also primes the training noise sampler's
-    adaptive covariance from the first jobs.real_events entry (needed to draw
-    validation examples with the same on-the-fly noise the model trained on).
+    If ``setup_training_noise`` is True, the training noise is rescaled to the first
+    jobs.real_events entry as at training (:func:`rescale_training_noise_to_event`), so
+    validation examples carry the noise the model trained on.
 
     By default (``regenerate_dataset=False``) the simulation dataset on disk is reused:
     ``simulate_test_jobs`` would redraw every ``random_events`` simulation and overwrite
@@ -83,7 +83,7 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     from pathlib import Path as _Path
     from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
-    from seismo_sbi.sbi.datasets.training_data import build_pipeline
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline, rescale_training_noise_to_event
 
     config = SBI_Configuration()
     config.parse_config_file(config_path)
@@ -124,11 +124,7 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
     if setup_training_noise:
-        if not config.real_event_jobs:
-            raise ValueError("setup_training_noise requires a jobs.real_events entry.")
-        real_noise_path = next(iter(config.real_event_jobs.values()))
-        cov_data = sbi_pipeline.data_manager.load_noise_parametrisation_data(real_noise_path)
-        sbi_pipeline.rescale_training_noise(cov_data)
+        rescale_training_noise_to_event(sbi_pipeline, config)
 
     return config, sbi_pipeline, original_parameters
 

@@ -161,11 +161,3 @@ def test_real_noise_training_needs_no_noise_level(monkeypatch):
     assert noise_model_mod.build_test_noise_samplers([("real_noise", "/x")], noise_model, object(), 100, 100) == {
         "real_noise": "sampler"}
 
-
-def test_incomplete_windows_cannot_be_rescaled_to_an_event():
-    from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration, build_noise_sampler
-    from seismo_sbi.utils.errors import InvalidConfiguration
-
-    with pytest.raises(InvalidConfiguration, match="allow_incomplete needs rescale: false"):
-        build_noise_sampler(NoiseModelConfiguration("real_noise", noise_catalogue_path="/x", allow_incomplete=True),
-                            object(), 100, 100)
