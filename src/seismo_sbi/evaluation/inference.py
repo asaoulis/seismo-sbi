@@ -64,17 +64,12 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     return TrainedPosterior(posterior, data_scaler, pipeline, config, run_directory)
 
 
-def build_eval_pipeline(config_path, *, setup_training_noise=False,
-                        regenerate_dataset=False, skip_compression=None):
+def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compression=None):
     """
     Parse a YAML config and build a fully-loaded SingleEventPipeline, exactly as the
     evaluation drivers do.
 
     Returns ``(config, sbi_pipeline, original_parameters)``.
-
-    If ``setup_training_noise`` is True, the training noise is rescaled to the first
-    jobs.real_events entry as at training (:func:`rescale_training_noise_to_event`), so
-    validation examples carry the noise the model trained on.
 
     By default (``regenerate_dataset=False``) the simulation dataset on disk is reused:
     ``simulate_test_jobs`` would redraw every ``random_events`` simulation and overwrite
@@ -83,7 +78,7 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
     from pathlib import Path as _Path
     from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
-    from seismo_sbi.sbi.datasets.training_data import build_pipeline, rescale_training_noise_to_event
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline
 
     config = SBI_Configuration()
     config.parse_config_file(config_path)
@@ -122,10 +117,6 @@ def build_eval_pipeline(config_path, *, setup_training_noise=False,
         logger.info("skip_compression_data set — skipping score/Fisher stencil + compressor "
                     "load (ML-NPE eval needs no compressors).")
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
-
-    if setup_training_noise:
-        rescale_training_noise_to_event(sbi_pipeline, config)
-
     return config, sbi_pipeline, original_parameters
 
 
