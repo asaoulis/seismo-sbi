@@ -11,34 +11,34 @@ from emcee.moves import GaussianMove
 import multiprocessing
 import os
 from tqdm import tqdm
-from functools import partial
+from typing import Optional
+
 import joblib
 from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
+from seismo_sbi.sbi.inversion.gaussian_prior import GaussianPrior
 
 class GaussianLikelihoodEvaluator:
+    """The log posterior of scaled source parameters: the Gaussian log-likelihood of the data, plus
+    a uniform prior over the unit box of the scaled parameters and, when given, the log density of a
+    :class:`~seismo_sbi.sbi.inversion.gaussian_prior.GaussianPrior` ``prior`` in physical units.
+    """
 
-    def __init__(self, data, simulation_callable, scaler, loss_callable, ensemble = False, priors= (None, None)):
+    def __init__(self, data, simulation_callable, scaler, loss_callable, ensemble = False,
+                 prior: Optional[GaussianPrior] = None):
         self.data = data
         self.simulation_callable = simulation_callable
         self.scaler = scaler
         self.loss_callable = loss_callable
         self.ensemble = ensemble
-        if priors[0] is None:
-            self.log_prior = self.default_log_prior
-        else:
-            mean, covariances = priors
-            self.log_prior = partial(self.gaussian_prior, mean=mean, covariances=covariances, scaler=scaler)
+        self.prior = prior
 
-    def default_log_prior(self, scaled_theta):
+    def log_prior(self, scaled_theta):
         if np.any(scaled_theta < 0) or np.any(scaled_theta > 1):
             return -np.inf
-        return 0
-
-    def gaussian_prior(self, scaled_theta, mean, covariances, scaler):
-        if np.any(scaled_theta < 0) or np.any(scaled_theta > 1):
-                return -np.inf
-        theta = scaler.inverse_transform(scaled_theta.reshape(1,-1)).flatten()
-        return -0.5 * np.dot((theta - mean).T, np.dot(np.linalg.inv(np.diag(covariances)), (theta - mean)))
+        if self.prior is None:
+            return 0
+        theta = self.scaler.inverse_transform(scaled_theta.reshape(1,-1)).flatten()
+        return self.prior.log_density(theta)
 
     def log_likelihood(self, scaled_source_parameters):
 

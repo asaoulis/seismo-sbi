@@ -182,7 +182,6 @@ def _run_gaussian_likelihood_inversion(
             job, likelihood_config,
             "optimal_score_noise_level",
             deepcopy(pipeline.parameters),
-            priors=(None, None),
             mle_start=theta_mle,
         )
     )
@@ -218,7 +217,7 @@ def _run_sbi(pipeline, compressor, compression_data, D_obs, sigma, dataset_param
         dataset_details=train_params,
         theta0=None,
         compression_data=inference_cd,
-        priors=(None, None),
+        prior=None,
         compressor_name="optimal_score_noise_level",
     )
     return inversion_data.samples

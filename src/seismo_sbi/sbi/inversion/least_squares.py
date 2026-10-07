@@ -17,7 +17,6 @@ except Exception:
 
 import numpy as np
 
-from seismo_sbi.moment_tensor.conventions import scalar_moment
 from ...utils.errors import error_handling_wrapper
 from ..types.parameters import IterativeLeastSquaresParameters
 
@@ -56,7 +55,6 @@ class IterativeLeastSquaresSolver:
 
         new_parameters = deepcopy(self.model_parameters)
         model_params = new_parameters.parameter_to_vector('theta_fiducial', True)
-        true_priors = deepcopy(compressor.prior_mean), deepcopy(compressor.prior_covariance)
 
         # Track the best (lowest chi^2) model encountered during iterations
         best_chi2 = np.inf
@@ -68,9 +66,7 @@ class IterativeLeastSquaresSolver:
         for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
             score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
                                                                                                           seed=self.seed)
-            scaling_factors = self._create_scaling_vector(new_parameters)
-            scaling_factors = np.ones_like(scaling_factors)
-            self._set_compressor(compressor, score_compression_data, extra_gradients, true_priors, scaling_factors)
+            self._set_compressor(compressor, score_compression_data, extra_gradients)
             misfit_new = compressor.compute_misfit(observation)
             # Keep track of best model before applying update
             if misfit_new < best_chi2:
@@ -83,8 +79,7 @@ class IterativeLeastSquaresSolver:
                 print(f"chi^2: {misfit_new:.5f} rose; step rejected, damping lambda: {damping:.3f}", flush=True)
                 model_params = np.copy(accepted["model_params"])
                 new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
-                self._set_compressor(compressor, accepted["score_compression_data"], accepted["extra_gradients"],
-                                     true_priors, scaling_factors)
+                self._set_compressor(compressor, accepted["score_compression_data"], accepted["extra_gradients"])
             else:
                 converged = (accepted is not None
                              and accepted["chi2"] - misfit_new <= configuration.chi2_tolerance * accepted["chi2"])
@@ -98,7 +93,7 @@ class IterativeLeastSquaresSolver:
 
             theta_MLE = compressor.compute_theta_MLE(observation, damping=damping)
 
-            model_params = theta_MLE / scaling_factors
+            model_params = theta_MLE
             print(self._describe_step(new_parameters.vector_to_parameters(model_params, 'theta_fiducial')), flush=True)
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(model_params, 'theta_fiducial')
             all_steps.append(deepcopy(model_params))
@@ -123,22 +118,8 @@ class IterativeLeastSquaresSolver:
         )
 
     @staticmethod
-    def _set_compressor(compressor, score_compression_data, extra_gradients, true_priors, scaling_factors):
-        """Point ``compressor`` at the score compression of one model."""
-        if true_priors[0] is not None:
-            compressor.set_priors((true_priors[0] * scaling_factors, true_priors[1] * scaling_factors**2))
+    def _set_compressor(compressor, score_compression_data, extra_gradients):
+        """Point ``compressor`` at the score compression of one model; its prior is kept."""
         if extra_gradients is not None:
             compressor.C.set_covariance(extra_gradients)
         compressor.set_compression_variables(score_compression_data)
-
-    def _create_scaling_vector(self, model_parameters):
-        scaling_factors = []
-        for param, value in model_parameters.theta_fiducial.items():
-            if param == 'moment_tensor':
-                moment_tensor_components = value
-                M_0 = scalar_moment(moment_tensor_components)
-                scaling_factors.append( 1/ M_0 * np.ones(6))
-            elif param == 'source_location':
-                scaling_factors.append(np.array([0.1, 0.1, 0.5, 1]))
-        
-        return np.hstack(scaling_factors)

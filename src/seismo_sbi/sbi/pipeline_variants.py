@@ -33,7 +33,7 @@ class MultiEventPipeline(SingleEventPipeline):
         param_names = self.parameters.names
         original_dataset_details = deepcopy(dataset_details)
         for i, single_job in enumerate(job_data):
-            sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
+            sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
             if covariance is not None:
                 self.rescale_training_noise(covariance)
 
@@ -50,7 +50,7 @@ class MultiEventPipeline(SingleEventPipeline):
                     compression_data = self.find_mle_and_set_compressor(
                         D,
                         covariance,
-                        priors,
+                        prior,
                         dataset_details,
                         compressor_name=compressor_name,
                     )
@@ -59,7 +59,7 @@ class MultiEventPipeline(SingleEventPipeline):
                         dataset_details,
                         theta0,
                         compression_data,
-                        priors,
+                        prior,
                         compressor_name=compressor_name,
                     )
                 else:
@@ -67,7 +67,7 @@ class MultiEventPipeline(SingleEventPipeline):
 
                 self.prepare_single_compressor(
                     compressor_name,
-                    priors=priors,
+                    prior=prior,
                     covariance_data=covariance,
                     dataset_details=dataset_details,
                 )
@@ -77,7 +77,7 @@ class MultiEventPipeline(SingleEventPipeline):
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
                         single_job, likelihood_config, compressor_name,
-                        deepcopy(self.parameters), priors
+                        deepcopy(self.parameters), prior
                     ):
                         yield job_result, result[1]
                     logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
@@ -133,7 +133,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
 
                 for i, single_job in enumerate(job_data):
 
-                    sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
+                    sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
                     if covariance is not None:
                         self.rescale_training_noise(covariance)
 
@@ -156,7 +156,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             compression_data = self.find_mle_and_set_compressor(
                                 D,
                                 covariance,
-                                priors,
+                                prior,
                                 dataset_details,
                                 compressor_name=compressor_name,
                             )
@@ -165,7 +165,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                                 dataset_details,
                                 theta0,
                                 compression_data,
-                                priors,
+                                prior,
                                 compressor_name=compressor_name,
                             )
                             compressed_dataset = job_result.compressed_dataset
@@ -191,7 +191,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                             start_time = time.time()
                             for result in self.run_single_gaussian_likelihood_inversion(
                                 single_job, likelihood_config, compressor_name,
-                                deepcopy(self.parameters), priors
+                                deepcopy(self.parameters), prior
                             ):
                                 yield result
                             logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
@@ -208,7 +208,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
         original_dataset_details = deepcopy(dataset_details)
 
         for single_job in job_data:
-            sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
+            sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
             if covariance is not None:
                 self.rescale_training_noise(covariance)
 
@@ -225,7 +225,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
                 compression_data = self.find_mle_and_set_compressor(
                     D,
                     covariance,
-                    priors,
+                    prior,
                     dataset_details,
                     compressor_name=compressor_name,
                 )

@@ -171,7 +171,7 @@ class SBIPipeline:
         num_traces = [component for receiver in self.simulation_parameters.receivers.receivers for component in receiver.components]
         self.trace_length = int(self.data_vector_length// len(num_traces))
 
-    def load_compressors(self, compression_methods : dict, score_compression_data, priors=(None,None), covariance_data=None, extra_gradients = None, freeze=False):
+    def load_compressors(self, compression_methods : dict, score_compression_data, prior=None, covariance_data=None, extra_gradients = None, freeze=False):
 
         """Build every compressor of ``compression_methods``, a list of ``(name, options)`` pairs where
         ``name`` is the final compressor name (e.g. ``'optimal_score_filtered_block'``).
@@ -181,7 +181,7 @@ class SBIPipeline:
                 full_key,
                 options,
                 score_compression_data,
-                priors,
+                prior,
                 covariance_data,
                 extra_gradients,
             )
@@ -195,7 +195,7 @@ class SBIPipeline:
         full_key: str,
         options: dict,
         score_compression_data,
-        priors,
+        prior,
         covariance_data,
         extra_gradients,
     ):
@@ -228,7 +228,7 @@ class SBIPipeline:
                 cov_data = sampler.draw_with_covariance(window_index=0).covariance_data
                 self.empirical_cov_mat = self.create_covariance_matrix(cov_matrix_option, cov_data)
 
-            compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
+            compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=prior)
 
         elif ctype == "theory_optimal_score":
             theory_covariance = extra_gradients
@@ -246,7 +246,7 @@ class SBIPipeline:
             cov_mat_config = "theory_block"
             self.data_cov_mat = self.create_covariance_matrix(data_cov_option, noise_level)
             self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, cov_mat_options)
-            compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=priors)
+            compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=prior)
 
         elif ctype == "multi_optimal_score":
             noise_level = options["noise_level"]
@@ -266,7 +266,7 @@ class SBIPipeline:
     def prepare_single_compressor(
         self,
         compressor_name: str,
-        priors=(None, None),
+        prior=None,
         covariance_data=None,
         dataset_details=None,
         compression_data_extras=None
@@ -303,7 +303,7 @@ class SBIPipeline:
             compressor_name,
             options,
             compression_data,
-            priors,
+            prior,
             covariance_data,
             extra_gradients,
         )
@@ -532,7 +532,7 @@ class SingleEventPipeline(SBIPipeline):
 
         for single_job in job_data:
             self.parameters = deepcopy(original_parameters)
-            sim_name, test_noise, D, theta0_dict, covariance, priors = single_job
+            sim_name, test_noise, D, theta0_dict, covariance, prior = single_job
             if covariance is not None:
                 self.rescale_training_noise(covariance)
 
@@ -549,11 +549,11 @@ class SingleEventPipeline(SBIPipeline):
                     np.random.seed(self.seed)
                     torch.manual_seed(self.seed)
 
-                compression_data = self.find_mle_and_set_compressor(D, covariance, priors, dataset_details, compressor_name=compressor_name)
+                compression_data = self.find_mle_and_set_compressor(D, covariance, prior, dataset_details, compressor_name=compressor_name)
                 for _ in range(self.mcmc_chain_for_mle):
-                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, covariance, priors, mle_start=compression_data.theta_fiducial)
+                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, covariance, prior, mle_start=compression_data.theta_fiducial)
 
-                inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, priors, compressor_name=compressor_name)
+                inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, prior, compressor_name=compressor_name)
                 
                 logger.info(f"Time taken for {sim_name} with {compressor_name}: {time.time() - start_time}s")
                 if do_plots:
@@ -569,12 +569,12 @@ class SingleEventPipeline(SBIPipeline):
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
                         single_job, likelihood_config, compressor_name,
-                        deepcopy(self.parameters), priors
+                        deepcopy(self.parameters), prior
                     ):
                         yield job_result, result[1]
                     logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
-    def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, priors, mle_start = None):
+    def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, prior, mle_start = None):
         MLE_likelihood_config = deepcopy(likelihood_config)
         use_best = MLE_likelihood_config.get('mle_use_best', False)
         logger.info('Finding MLE with MCMC, use_best: %s', use_best)
@@ -592,7 +592,7 @@ class SingleEventPipeline(SBIPipeline):
             MLE_likelihood_config,
             compressor_name,
             deepcopy(self.parameters),
-            priors,
+            prior,
             mle_start=mle_start,
             seed=self.seed,
         )))
@@ -616,7 +616,7 @@ class SingleEventPipeline(SBIPipeline):
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(mcmc_MLE, 'theta_fiducial')
         _, _, compression_data, _ = self.prepare_single_compressor(
             compressor_name,
-            priors=priors,
+            prior=prior,
             covariance_data=covariance,
         )
 
@@ -628,7 +628,7 @@ class SingleEventPipeline(SBIPipeline):
         compression_data = score_compression_data
         _, _, _, _ = self.prepare_single_compressor(
             compressor_name,
-            priors=priors,
+            prior=prior,
             covariance_data=covariance,
             compression_data_extras=(compression_data, extra_gradients)
         )
@@ -637,7 +637,7 @@ class SingleEventPipeline(SBIPipeline):
         logger.info(f"chi^2 at MCMC MLE: {chi2_mle:.5f}")
         return compression_data
 
-    def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, priors, compressor_name: str = None):
+    def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, prior, compressor_name: str = None):
         """Train an NPE on the compressed simulations and sample it at the data; returns
         ``(inversion_data, job_result, sbi_model)``.
         """
@@ -691,7 +691,7 @@ class SingleEventPipeline(SBIPipeline):
         # count number of rows removed
         return train_data, raw_compressed_dataset
 
-    def find_mle_and_set_compressor(self, data_vector, covariance_data, priors, dataset_details, extra_gradients=None, compressor_name: str = None):
+    def find_mle_and_set_compressor(self, data_vector, covariance_data, prior, dataset_details, extra_gradients=None, compressor_name: str = None):
         """Find the MLE by iterative least squares and re-centre the compressor on it; returns the
         compression data at the MLE.
         """
@@ -711,7 +711,7 @@ class SingleEventPipeline(SBIPipeline):
         # build / refresh this specific compressor with its own compression data
         key, compressor, compression_data, extra_gradients = self.prepare_single_compressor(
             compressor_name,
-            priors=priors,
+            prior=prior,
             covariance_data=covariance_data,
             dataset_details=dataset_details,
         )
@@ -724,7 +724,7 @@ class SingleEventPipeline(SBIPipeline):
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(compression_data.theta_fiducial, 'theta_fiducial')
         _, _, _, _ = self.prepare_single_compressor(
             compressor_name,
-            priors=priors,
+            prior=prior,
             covariance_data=covariance_data,
             dataset_details=dataset_details,
             compression_data_extras=(compression_data, extra_gradients)
@@ -768,7 +768,7 @@ class SingleEventPipeline(SBIPipeline):
             theta0 = None
         return theta0, deepcopy(original_dataset_details)
 
-    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, priors=(None,None), mle_start = None, seed = None):
+    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, prior=None, mle_start = None, seed = None):
         """Sample the Gaussian-likelihood posterior of one job with emcee; yields
         ``(None, inversion_result)``, with the log-probabilities when ``return_log_prob`` is set.
         """
@@ -805,7 +805,7 @@ class SingleEventPipeline(SBIPipeline):
         else:
             covariance_loss_callable = covariance.create_loss_callable(covariance.inverse_metadata, covariance.data_vector_length)
 
-        simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(D, partial(self.simulator_wrapper.simulation_callable, use_fiducial=True) , scaler, loss_callable=covariance_loss_callable, priors=priors)
+        simulator_likelihood = likelihood.GaussianLikelihoodEvaluator(D, partial(self.simulator_wrapper.simulation_callable, use_fiducial=True) , scaler, loss_callable=covariance_loss_callable, prior=prior)
 
         if return_log_prob:
             samples_scaled, logps = likelihood.generate_samples(simulator_likelihood.log_probability, ensemble,

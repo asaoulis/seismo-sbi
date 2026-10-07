@@ -4,18 +4,21 @@
 :class:`InversionData` and :class:`InversionResult` hold what an inversion used and returned.
 """
 
-from typing import NamedTuple, Callable, Dict, Tuple
+from typing import NamedTuple, Callable, Dict, Optional
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
+from seismo_sbi.sbi.inversion.gaussian_prior import GaussianPrior
 import numpy as np
 
 class JobData(NamedTuple):
+    """One job: its data vector under one test noise, the true parameters (None for a real event),
+    the covariance data of its noise, and an optional Gaussian prior on its source parameters."""
 
     job_name: str
     noise_type: str
     data_vector: np.ndarray
     theta0: Dict
     covariance: Dict = None
-    priors: Tuple = (None, None)
+    prior: Optional[GaussianPrior] = None
 
 class InversionData(NamedTuple):
 

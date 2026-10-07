@@ -6,11 +6,9 @@ estimate) from the fiducial data, its parameter gradients and a noise covariance
 
 import numpy as np
 from abc import ABC, abstractclassmethod
-from typing import List
+from typing import List, NamedTuple, Optional
 
-from typing import NamedTuple
-
-
+from ..inversion.gaussian_prior import GaussianPrior
 from ..noises.covariance_base import EmpiricalCovariance
 
 class ScoreCompressionData(NamedTuple):
@@ -32,13 +30,16 @@ class GaussianCompressor(Compressor):
 
     Built from the fiducial data, its parameter gradients (``ScoreCompressionData``) and a noise
     covariance; compresses a data vector to the quasi-maximum-likelihood estimate
-    ``theta_fiducial + F^-1 score``, with :meth:`compute_score` giving the score itself.
+    ``theta_fiducial + F^-1 score``, with :meth:`compute_score` giving the score itself. A
+    :class:`~seismo_sbi.sbi.inversion.gaussian_prior.GaussianPrior` ``prior`` adds its precision to
+    ``F`` and its score to the score, so the estimate is the maximum of the posterior.
     """
 
-    def __init__(self, score_compression_data : ScoreCompressionData, covariance_matrix : EmpiricalCovariance, prior = (None, None)):
+    def __init__(self, score_compression_data : ScoreCompressionData, covariance_matrix : EmpiricalCovariance,
+                 prior: Optional[GaussianPrior] = None):
 
         self.num_params = score_compression_data.data_parameter_gradients.shape[0]
-        self.prior_mean, self.prior_covariance = prior
+        self.prior = prior
 
         self.C = covariance_matrix
 
@@ -59,11 +60,6 @@ class GaussianCompressor(Compressor):
         self.Fisher_mat = self._compute_Fisher_matrix()
         self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
 
-    def set_priors(self, prior):
-        self.prior_mean, self.prior_covariance = prior
-        self.Fisher_mat = self._compute_Fisher_matrix()
-        self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
-
     def _compute_Fisher_matrix(self):
         # assume a special case of dC/dtheta = 0 throughout
 
@@ -80,8 +76,8 @@ class GaussianCompressor(Compressor):
                     ))
 
         
-        if self.prior_covariance is not None:
-            F +=  np.linalg.inv(np.diag(self.prior_covariance))
+        if self.prior is not None:
+            F += self.prior.precision()
 
         return F
 
@@ -129,10 +125,8 @@ class GaussianCompressor(Compressor):
             # broadcast multiply and transpose instead of Python loop
             # shape: (num_params, d) * (d,) -> (num_params, d) then transpose
             dL_dtheta[:, :] = (self.dD_Dtheta_gradients * covariance_residual_product).T
-        if self.prior_mean is not None:
-            theta_diff = self.prior_mean - self.theta_fiducial
-            # The sign of theta_diff here is unverified.
-            dL_dtheta += np.dot(np.linalg.inv(np.diag(self.prior_covariance)), theta_diff)
+        if self.prior is not None:
+            dL_dtheta += self.prior.score(self.theta_fiducial)
         return dL_dtheta
 
     def compute_misfit(self, D):

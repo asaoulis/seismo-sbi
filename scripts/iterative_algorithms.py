@@ -78,7 +78,7 @@ for damping in [0.0, 0.1]:
             only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
             single_least_squares_step =  only_moment_tensor_variable
             compression_data, extra_gradients = sbi_pipeline.compute_required_compression_data(sbi_pipeline.compression_methods, sbi_pipeline.parameters,)
-            sbi_pipeline.load_compressors(sbi_pipeline.compression_methods, score_compression_data=compression_data, priors=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
+            sbi_pipeline.load_compressors(sbi_pipeline.compression_methods, score_compression_data=compression_data, prior=priors, covariance_data=covariance_data, extra_gradients=extra_gradients)
             compressor = list(sbi_pipeline.compressors.values())[0]
             _, _, history = sbi_pipeline.least_squares_solver.solve_least_squares(single_job.data_vector, compressor, single_step=single_least_squares_step, return_history=True)
 

@@ -68,10 +68,8 @@ class DataManager:
         for real_event_name, real_event_data in real_event_jobs.items():
             if isinstance(real_event_data, str):
                 real_event_path = real_event_data
-                priors = (None, None)
             elif isinstance(real_event_data, dict):
                 real_event_path = real_event_data['path']
-                priors = (None, None)
             D = self.data_loader.load_simulation_data_array(real_event_path, data_length=data_length)
             covariance_data = self.load_noise_parametrisation_data(real_event_path)
             for test_noise_name in test_noises.keys():
@@ -80,8 +78,7 @@ class DataManager:
                             test_noise_name,
                             D, 
                             theta0=None,
-                            covariance = covariance_data,
-                            priors = priors)
+                            covariance = covariance_data)
                 )
         return real_jobs
 
