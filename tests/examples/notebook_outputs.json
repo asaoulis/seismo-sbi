@@ -914,11 +914,23 @@
   },
   {
    "error": null,
+   "numbers": []
+  },
+  {
+   "error": null,
    "numbers": [
     201.0,
     201.0,
     202005.0
    ]
+  },
+  {
+   "error": null,
+   "numbers": []
+  },
+  {
+   "error": null,
+   "numbers": []
   },
   {
    "error": null,
@@ -947,6 +959,10 @@
     1.5,
     1.9
    ]
+  },
+  {
+   "error": null,
+   "numbers": []
   }
  ],
  "ridgecrest_obspy": [
