@@ -47,7 +47,7 @@ pipeline.compute_data_vector_properties(test_jobs_paths, config.real_event_jobs)
 compression_data, extra_gradients = pipeline.compute_required_compression_data(
     config.compression_methods, config.model_parameters)
 pipeline.load_compressors(config.compression_methods, compression_data,
-                          extra_gradients=extra_gradients, freeze=True)
+                          extra_gradients=extra_gradients)
 pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 
 job_data = pipeline.create_job_data(test_jobs_paths, config.real_event_jobs)

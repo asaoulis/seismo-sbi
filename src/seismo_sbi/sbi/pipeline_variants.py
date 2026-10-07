@@ -41,7 +41,7 @@ class MultiEventPipeline(SingleEventPipeline):
                 dataset_details = deepcopy(original_dataset_details)
             else:
                 theta0 = None
-            for compressor_name in self.compressor_keys:
+            for compressor_name, _ in self.compression_methods:
                 start_time = time.time()
 
                 if i == 0:
@@ -213,7 +213,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
 
             theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, single_job.theta0)
 
-            for compressor_name in self.compressor_keys:
+            for compressor_name, _ in self.compression_methods:
 
                 
                 inversion_config = InversionConfig("", single_job.noise_type, compressor_name)

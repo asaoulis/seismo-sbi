@@ -111,7 +111,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
         )
         sbi_pipeline.load_compressors(
             config.compression_methods, score_compression_data,
-            extra_gradients=extra_gradients, freeze=True,
+            extra_gradients=extra_gradients,
         )
     else:
         logger.info("skip_compression_data set — skipping score/Fisher stencil + compressor "

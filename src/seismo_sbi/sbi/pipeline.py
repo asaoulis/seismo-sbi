@@ -101,7 +101,6 @@ class SBIPipeline:
 
         self.data_vector_length = None
         self.trace_length = None
-        self.compressor_keys = []
         self.compressors = {}
         self.compression_methods = None
         #: Seeds the SBI leg (covariance realisations, MLE chains, training set, NPE training); None leaves it unseeded.
@@ -162,7 +161,7 @@ class SBIPipeline:
         num_traces = [component for receiver in self.simulation_parameters.receivers.receivers for component in receiver.components]
         self.trace_length = int(self.data_vector_length// len(num_traces))
 
-    def load_compressors(self, compression_methods : dict, score_compression_data, prior=None, covariance_data=None, extra_gradients = None, freeze=False):
+    def load_compressors(self, compression_methods : dict, score_compression_data, prior=None, covariance_data=None, extra_gradients = None):
 
         """Build every compressor of ``compression_methods``, a list of ``(name, options)`` pairs where
         ``name`` is the final compressor name (e.g. ``'optimal_score_filtered_block'``).
@@ -171,9 +170,6 @@ class SBIPipeline:
             self.compressors[full_key] = build_compressor(
                 options, score_compression_data, self.simulation_parameters, self.covariance_layout(),
                 covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
-
-        if freeze:
-            self.compressor_keys = list(self.compressors.keys())
 
     def prepare_single_compressor(
         self,
@@ -214,8 +210,6 @@ class SBIPipeline:
         compressor = build_compressor(options, compression_data, self.simulation_parameters, self.covariance_layout(),
                                       covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
         self.compressors[key] = compressor
-        if key not in self.compressor_keys:
-            self.compressor_keys.append(key)
         return key, compressor, compression_data, extra_gradients
 
     def covariance_layout(self):
@@ -434,7 +428,7 @@ class SingleEventPipeline(SBIPipeline):
 
             theta0, dataset_details  = self.compute_theta0_and_update_dataset(param_names, original_dataset_details, single_job.theta0)
 
-            for compressor_name in self.compressor_keys:
+            for compressor_name, _ in self.compression_methods:
 
                 start_time = time.time()
                 logger.info("Starting on simulation: %s with compressor: %s", single_job.job_name, compressor_name)
@@ -589,13 +583,8 @@ class SingleEventPipeline(SBIPipeline):
         compression data at the MLE.
         """
         logger.info("Starting MLE")
-        # choose a compressor name if not provided (needed to decide single- vs multi-step below)
         if compressor_name is None:
-            if not self.compressor_keys:
-                # default to first configured method name
-                compressor_name = next(iter(dict(self.compression_methods).keys()))
-            else:
-                compressor_name = self.compressor_keys[0]
+            compressor_name = self.compression_methods[0][0]
         only_moment_tensor_variable = all([sampler =='constant' for param, sampler in dataset_details.sampling_method.items() if param != 'moment_tensor'])
         # One linearised Gauss-Newton step is exact only for a linear problem: moment tensor
         # alone AND a constant covariance, which a theory-error covariance is not.
