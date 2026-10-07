@@ -160,3 +160,21 @@ def test_empirical_likelihood_covariance_is_an_independent_copy():
 def test_unknown_likelihood_covariance_option_is_rejected():
     with pytest.raises(InvalidConfiguration):
         likelihood_covariance("kolb", compressor_covariance=None, data_vector_length=3)
+
+
+def test_estimate_from_windows_reads_a_vertical_only_station(tmp_path):
+    mixed = Receivers(receivers=[Receiver(0.0, 0.0, "XX", "STA1", ["Z"]), Receiver(1.0, 1.0, "XX", "STA2", ["Z", "E", "N"])])
+    rng = np.random.default_rng(5)
+    windows = rng.normal(size=(6, 4, 32)) * np.array([1.0, 2.0, 3.0, 4.0])[None, :, None]
+    for index, window in enumerate(windows):
+        waveforms = {"STA1": {"Z": window[0]}, "STA2": {"Z": window[1], "1": window[2], "2": window[3]}}
+        SimulationSaver(output_data=waveforms).dump_data_as_hdf5(tmp_path / f"noise_{index}.h5")
+    estimator = EmpiricalCovarianceEstimator(tmp_path, mixed, "ZEN", covariance_exp_tapering=False, verbose=False)
+
+    from_files = estimator.compute_stationwise_covariances()
+    from_rows = estimator.estimate_from_windows(windows.reshape(6, -1))
+    assert list(from_rows["STA1"]) == ["Z"] and list(from_rows["STA2"]) == ["Z", "1", "2"]
+    for station, components in from_rows.items():
+        for component, autocovariance in components.items():
+            assert np.allclose(autocovariance, from_files[station][component])
+    assert from_rows["STA2"]["2"][0] == pytest.approx(16.0, rel=0.5)

@@ -102,14 +102,14 @@ class EmpiricalCovarianceEstimator:
         """Per-trace autocovariances ``{station: {component: (n_samples,)}}`` from noise windows
         held in memory, ``(n_windows, n_traces, n_samples)`` or the flat ``(n_windows, n_traces *
         n_samples)`` rows :meth:`~seismo_sbi.sbi.noises.real_noise.RealNoiseSampler.from_windows`
-        takes, with traces in receiver order and each station's components in the loader's order;
+        takes, with traces in receiver order and each station's own components in its order;
         tapered like the directory path.
 
         ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; an absent
         station's traces are skipped, as the directory path skips a station missing from a file.
         """
         noise_windows = np.asarray(noise_windows)
-        n_traces = len(self.receivers.receivers) * len(self.components)
+        n_traces = sum(len(receiver.components) for receiver in self.receivers.iterate())
         noise_windows = noise_windows.reshape(noise_windows.shape[0], n_traces, -1)
         if present is None:
             present = np.ones((noise_windows.shape[0], len(self.receivers.receivers)), dtype=bool)
@@ -117,9 +117,9 @@ class EmpiricalCovarianceEstimator:
         for window, window_present in zip(noise_windows, present):
             trace = 0
             for receiver, receiver_present in zip(self.receivers.iterate(), window_present):
-                for component in self.components:
+                for component in receiver.components:
                     if receiver_present:
-                        station_component_deviations[receiver.station_name][component].update(
+                        station_component_deviations[receiver.station_name][component_alias(component)].update(
                             self._autocovariance_of_window(window[trace]))
                     trace += 1
         return self._finish(station_component_deviations)
@@ -131,8 +131,14 @@ class EmpiricalCovarianceEstimator:
         return station_component_covariances
 
     def _new_running_deviations(self):
-        return {receiver.station_name: {component: RunningStandardDeviations(track=self.track) for component in self.components}
+        return {receiver.station_name: {component: RunningStandardDeviations(track=self.track)
+                                        for component in self._recorded_components(receiver)}
                 for receiver in self.receivers.iterate()}
+
+    def _recorded_components(self, receiver):
+        """The components of the layout that ``receiver`` records, in the layout's order."""
+        recorded = [component_alias(component) for component in receiver.components]
+        return [component for component in self.components if component in recorded]
 
     @staticmethod
     def _autocovariance_of_window(noise_window_data):
@@ -152,7 +158,7 @@ class EmpiricalCovarianceEstimator:
             with h5py.File(noise_file) as f:
                 for receiver in self.receivers.iterate():
                     receiver_name = receiver.station_name
-                    for component in self.components:
+                    for component in self._recorded_components(receiver):
                             try:
                                 noise_window_data = f["outputs"][receiver_name][component][:]
                             except KeyError:
