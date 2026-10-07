@@ -7,6 +7,7 @@ from seismo_sbi.sbi.scalers import (
     FlexibleScaler,
     MomentTensorScaler,
     ZeroOneScaler,
+    ScalerConfiguration,
     build_flexible_scaler,
 )
 from seismo_sbi.sbi.types.parameters import ModelParameters
@@ -111,8 +112,7 @@ def test_build_flexible_scaler_reads_config_block():
     linear = build_flexible_scaler(p, None)
     assert linear.moment_tensor_scaling == "linear"
 
-    ss = build_flexible_scaler(p, {"ml_scaler": {"moment_tensor": "scale_shape",
-                                                 "mt_log_decades": 8.0}})
+    ss = build_flexible_scaler(p, ScalerConfiguration(moment_tensor="scale_shape", mt_log_decades=8.0))
     assert ss.moment_tensor_scaling == "scale_shape"
     assert isinstance(ss.scalers[1], MomentTensorScaler)
 
@@ -123,15 +123,14 @@ def test_invalid_scaling_option_raises():
         FlexibleScaler(p, moment_tensor_scaling="nonsense")
 
 
-def _auto_raw_config(mw_min=3.5, mw_max=6.0, magnitude_conversion="identity"):
-    return {
-        "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},
-        "simulations": {"sampling_method": {"moment_tensor": {
-            "type": "gutenberg_richter",
-            "mw_min": mw_min, "mw_max": mw_max,
-            "magnitude_conversion": magnitude_conversion,
-        }}},
-    }
+AUTO = ScalerConfiguration(moment_tensor="scale_shape", mt_log_decades="auto")
+
+
+def _gutenberg_richter_sampling(mw_min=3.5, mw_max=6.0, magnitude_conversion="identity"):
+    """A parsed ``simulations.sampling_method`` holding a built Gutenberg-Richter moment-tensor prior."""
+    from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
+    return {"moment_tensor": make_gutenberg_richter_mt_sampler(
+        b_value=1.0, mw_min=mw_min, mw_max=mw_max, mc=mw_min, magnitude_conversion=magnitude_conversion, seed=0)}
 
 
 def test_auto_mt_log_decades_matches_prior_edges_in_scaled_space():
@@ -139,7 +138,7 @@ def test_auto_mt_log_decades_matches_prior_edges_in_scaled_space():
     so the sampled magnitude maps to u in [0,1] with the edges hit exactly (no clip,
     no wasted range) — the whole point of the dynamic mode."""
     p = _mt_and_location_params()
-    scaler = build_flexible_scaler(p, _auto_raw_config(3.5, 6.0))
+    scaler = build_flexible_scaler(p, AUTO, _gutenberg_richter_sampling(3.5, 6.0))
     mt = scaler.scalers[1]
     assert isinstance(mt, MomentTensorScaler)
     # window edges == prior magnitude edges (M0 = 10**(1.5 Mw + 9.1))
@@ -160,8 +159,7 @@ def test_auto_honours_magnitude_conversion():
     """A {slope, intercept} magnitude_conversion shifts the derived window accordingly."""
     p = _mt_and_location_params()
     scaler = build_flexible_scaler(
-        p, _auto_raw_config(3.0, 5.0, magnitude_conversion={"slope": 1.0, "intercept": 0.5})
-    )
+        p, AUTO, _gutenberg_richter_sampling(3.0, 5.0, magnitude_conversion={"slope": 1.0, "intercept": 0.5}))
     mt = scaler.scalers[1]
     # Mw = 1.0*M + 0.5  =>  window edges at Mw 3.5 and 5.5
     assert np.isclose(mt.log10_m0_min, 1.5 * 3.5 + 9.1)
@@ -170,39 +168,14 @@ def test_auto_honours_magnitude_conversion():
 
 def test_auto_requires_gr_sampler():
     p = _mt_and_location_params()
-    bad = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"}}
-    with pytest.raises(ValueError):
-        build_flexible_scaler(p, bad)
+    with pytest.raises(ValueError, match="gutenberg_richter"):
+        build_flexible_scaler(p, AUTO, {"moment_tensor": "uniform"})
 
 
 def test_invalid_mt_log_decades_string_raises():
     p = _mt_and_location_params()
-    bad = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "nonsense"}}
     with pytest.raises(ValueError):
-        build_flexible_scaler(p, bad)
-
-
-def test_auto_reads_resolved_sampler_callable():
-    """The LIVE pipeline: SBI_Configuration resolves sampling_method.moment_tensor into a
-    built sampler CALLABLE (not a dict) before build_flexible_scaler runs. auto must read
-    the derived window off the sampler's .info (this is exactly what a naive dict-only
-    implementation crashes on: 'function' object has no attribute 'get')."""
-    from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
-    p = _mt_and_location_params()
-    sampler = make_gutenberg_richter_mt_sampler(
-        b_value=0.691, mw_min=3.5, mw_max=6.0, mc=3.8,
-        magnitude_conversion="identity", seed=0,
-    )
-    raw = {
-        "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},
-        # sampling_method already RESOLVED to the callable, as in the live pipeline:
-        "simulations": {"sampling_method": {"moment_tensor": sampler}},
-    }
-    scaler = build_flexible_scaler(p, raw)
-    mt = scaler.scalers[1]
-    assert isinstance(mt, MomentTensorScaler)
-    assert np.isclose(mt.log10_m0_min, 1.5 * 3.5 + 9.1)
-    assert np.isclose(mt.log10_m0_max, 1.5 * 6.0 + 9.1)
+        build_flexible_scaler(p, ScalerConfiguration(moment_tensor="scale_shape", mt_log_decades="nonsense"))
 
 
 def test_gr_sampler_exposes_log10_m0_range():

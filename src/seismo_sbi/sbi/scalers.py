@@ -6,9 +6,11 @@ plus a unit tensor) are combined per parameter block by :class:`FlexibleScaler`;
 checkpoint was trained with.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from seismo_sbi.sbi.configuration import ModelParameters
+from seismo_sbi.sbi.types.parameters import ModelParameters
 
 
 class SymmetricLogScaler:
@@ -334,24 +336,38 @@ def recorded_m0_convention(meta: dict) -> str:
     return (recorded_theta_scaler(meta) or {}).get("m0_convention", "six_components")
 
 
-def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None,
-                          model_meta: dict = None) -> FlexibleScaler:
-    """Build a :class:`FlexibleScaler`, honouring an optional top-level ``ml_scaler`` block.
+@dataclass(frozen=True)
+class ScalerConfiguration:
+    """``ml_scaler``: how the network's parameters are scaled.
 
-    The same helper is used at training and at inference so the scaling matches::
+    ``moment_tensor`` is ``"linear"`` (each component to [0, 1] within its bounds) or
+    ``"scale_shape"`` (:class:`MomentTensorScaler`: log10 M0 and a unit tensor). ``mt_log_decades``
+    is a scale-shape tensor's log10 M0 range, or ``"auto"`` for the range of the
+    Gutenberg-Richter moment-tensor prior.
+    """
 
-        ml_scaler:
-          moment_tensor: scale_shape   # or "linear" (default)
-          mt_log_decades: 9.0          # optional, MomentTensorScaler dynamic range
+    moment_tensor: str = "linear"
+    mt_log_decades: object = 9.0
 
-    ``raw_config`` is the parsed YAML dict; ``None`` gives the linear scaling. ``model_meta``,
+    @classmethod
+    def from_yaml_block(cls, config):
+        block = config.get("ml_scaler") or {}
+        return cls(**{name: block[name] for name in cls.__dataclass_fields__ if name in block})
+
+
+def build_flexible_scaler(parameters: ModelParameters, ml_scaler: ScalerConfiguration = None,
+                          sampling_method: dict = None, model_meta: dict = None) -> FlexibleScaler:
+    """Build the :class:`FlexibleScaler` of ``ml_scaler`` (:class:`ScalerConfiguration`; None gives
+    the linear scaling), the same at training and at inference.
+
+    ``sampling_method`` is the parsed ``simulations.sampling_method``; ``mt_log_decades: auto`` reads
+    the log10 M0 window of its built Gutenberg-Richter ``moment_tensor`` sampler. ``model_meta``,
     the parsed ``model_meta.json`` of a trained checkpoint, sets the M0 convention it was trained
     with (:func:`recorded_m0_convention`); without it the scaler is the full-tensor one of a new run.
     """
-    raw_config = raw_config or {}
-    cfg = raw_config.get("ml_scaler") or {}
-    mt_scaling = cfg.get("moment_tensor", "linear")
-    mt_log_decades = cfg.get("mt_log_decades", 9.0)
+    ml_scaler = ml_scaler or ScalerConfiguration()
+    mt_scaling = ml_scaler.moment_tensor
+    mt_log_decades = ml_scaler.mt_log_decades
 
     mt_log10_m0_range = None
     if mt_scaling == "scale_shape" and isinstance(mt_log_decades, str):
@@ -359,8 +375,7 @@ def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None,
             raise ValueError(
                 f"ml_scaler.mt_log_decades must be a number or 'auto', got {mt_log_decades!r}"
             )
-        # Dynamic: fit the log-M0 window to the GR prior so mw_min/mw_max land on u=0/1.
-        mt_log10_m0_range = _mt_log10_m0_range_from_prior(raw_config)
+        mt_log10_m0_range = _mt_log10_m0_range_from_prior(sampling_method)
 
     return FlexibleScaler(
         parameters,
@@ -371,50 +386,16 @@ def build_flexible_scaler(parameters: ModelParameters, raw_config: dict = None,
     )
 
 
-def _mt_log10_m0_range_from_prior(raw_config: dict):
-    """``[log10 M0_min, log10 M0_max]`` window from the moment_tensor Gutenberg-Richter
-    prior, so the sampled magnitude range maps to ``u in [0, 1]`` exactly.
-
-    Uses the SAME magnitude->M0 convention as the sampler
-    (:func:`seismo_sbi.priors.gutenberg_richter.magnitude_to_m0`,
-    ``M0 = 10**(1.5*Mw + 9.1)``) and honours ``magnitude_conversion``.  Requires a
-    ``gutenberg_richter`` moment_tensor sampler (``mt_log_decades: auto``).
-    """
-    from seismo_sbi.priors.gutenberg_richter import magnitude_to_m0
-
-    smpl = (((raw_config.get("simulations") or {}).get("sampling_method") or {})
-            .get("moment_tensor"))
-    # A parsed config holds the built sampler, whose ``.info`` carries the log10 M0 window; a raw
-    # YAML config still holds the dict form.
-    if callable(smpl):
-        rng = (getattr(smpl, "info", {}) or {}).get("log10_m0_range")
-        if rng is None:
-            raise ValueError(
-                "ml_scaler.mt_log_decades: auto — the resolved moment_tensor sampler "
-                "exposes no log10_m0_range (needs a gutenberg_richter sampler)"
-            )
-        return (float(rng[0]), float(rng[1]))
-    smpl = smpl or {}
-    if smpl.get("type") != "gutenberg_richter":
+def _mt_log10_m0_range_from_prior(sampling_method: dict):
+    """``[log10 M0_min, log10 M0_max]`` of the built Gutenberg-Richter ``moment_tensor`` sampler,
+    so the sampled magnitude range maps to ``u in [0, 1]`` exactly."""
+    sampler = (sampling_method or {}).get("moment_tensor")
+    rng = (getattr(sampler, "info", {}) or {}).get("log10_m0_range")
+    if rng is None:
         raise ValueError(
-            "ml_scaler.mt_log_decades: auto requires a gutenberg_richter moment_tensor "
-            "sampler (simulations.sampling_method.moment_tensor.type)"
+            "ml_scaler.mt_log_decades: auto needs a gutenberg_richter moment_tensor sampler "
+            "(simulations.sampling_method.moment_tensor.type), whose log10 M0 window it reads"
         )
-    mw_min, mw_max = float(smpl["mw_min"]), float(smpl["mw_max"])
-    conv = smpl.get("magnitude_conversion", "identity")
-
-    def to_mw(m):
-        if conv in (None, "identity"):
-            return m
-        if isinstance(conv, dict):
-            return conv.get("slope", 1.0) * m + conv.get("intercept", 0.0)
-        raise ValueError(
-            "mt_log_decades: auto supports magnitude_conversion 'identity' or "
-            "{slope, intercept}; a callable conversion can't be derived from config"
-        )
-
-    lo, hi = sorted((float(np.log10(magnitude_to_m0(to_mw(mw_min)))),
-                     float(np.log10(magnitude_to_m0(to_mw(mw_max))))))
-    return (lo, hi)
+    return (float(rng[0]), float(rng[1]))
 
 

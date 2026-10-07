@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.scalers import (
-    FlexibleScaler, MomentTensorScaler, build_flexible_scaler,
+    FlexibleScaler, MomentTensorScaler, ScalerConfiguration, build_flexible_scaler,
     check_scaler_provenance, recorded_m0_convention, scaler_provenance,
 )
 from seismo_sbi.sbi.types.parameters import ModelParameters
@@ -211,24 +211,23 @@ def test_a_real_scale_shape_scaler_is_caught_against_a_linear_checkpoint(capsys)
 
 # ---- an Mw 3.2-5.5 prior's window, pinned end-to-end through build_flexible_scaler ----
 
+AUTO = ScalerConfiguration(moment_tensor="scale_shape", mt_log_decades="auto")
+SCALE_SHAPE = ScalerConfiguration(moment_tensor="scale_shape", mt_log_decades=9.0)
+
+
+def _gutenberg_richter_sampling(mw_min, mw_max):
+    """A parsed ``simulations.sampling_method`` holding a built Gutenberg-Richter moment-tensor prior."""
+    from seismo_sbi.priors.samplers import make_gutenberg_richter_mt_sampler
+    return {"moment_tensor": make_gutenberg_richter_mt_sampler(
+        b_value=1.1, mc=mw_min, mw_min=mw_min, mw_max=mw_max, magnitude_conversion="identity", seed=0)}
+
+
 def test_auto_window_from_a_mw_3p2_gutenberg_richter_prior():
     """`mt_log_decades: auto` + mw_min 3.2 / mw_max 5.5 => log10 M0 in [13.900, 17.350].
 
     Every checkpoint trained under this prior records this window in its model_meta.json.
     """
-    raw_config = {
-        "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},
-        "simulations": {
-            "sampling_method": {
-                "moment_tensor": {
-                    "type": "gutenberg_richter",
-                    "b_value": 1.1, "mc": 3.2, "mw_min": 3.2, "mw_max": 5.5,
-                    "magnitude_conversion": "identity",
-                }
-            }
-        },
-    }
-    scaler = build_flexible_scaler(_mt_and_location_params(), raw_config)
+    scaler = build_flexible_scaler(_mt_and_location_params(), AUTO, _gutenberg_richter_sampling(3.2, 5.5))
     p = scaler_provenance(scaler)
     assert p["moment_tensor"] == "scale_shape"
     assert p["log10_m0_min"] == pytest.approx(13.900)     # 1.5 * 3.2 + 9.1
@@ -240,13 +239,7 @@ def test_the_old_and_new_prior_floors_produce_different_provenance():
     """mw_min 3.5 -> 3.2 must be visible in the recorded provenance, i.e. it is a
     retrain-requiring change and check_scaler_provenance will say so."""
     def _prov(mw_min):
-        raw = {
-            "ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": "auto"},
-            "simulations": {"sampling_method": {"moment_tensor": {
-                "type": "gutenberg_richter", "b_value": 1.1, "mc": mw_min,
-                "mw_min": mw_min, "mw_max": 5.5, "magnitude_conversion": "identity"}}},
-        }
-        return build_flexible_scaler(_mt_and_location_params(), raw)
+        return build_flexible_scaler(_mt_and_location_params(), AUTO, _gutenberg_richter_sampling(mw_min, 5.5))
 
     old, new = _prov(3.5), _prov(3.2)
     assert scaler_provenance(old) != scaler_provenance(new)
@@ -319,9 +312,8 @@ def test_a_record_without_m0_convention_means_six_components():
 
 def test_a_legacy_checkpoint_scales_bit_identically_to_the_frozen_outputs():
     frozen = np.load(SIX_COMPONENT_OUTPUTS)
-    raw_config = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": 9.0}}
     meta = {"model_config": {"theta_scaler": dict(LEGACY_RECORD)}}
-    scaler = build_flexible_scaler(_moment_tensor_params(2e18), raw_config, model_meta=meta)
+    scaler = build_flexible_scaler(_moment_tensor_params(2e18), SCALE_SHAPE, model_meta=meta)
     np.testing.assert_array_equal(scaler.transform(frozen["m6"]), frozen["bounds_scaled"])
     np.testing.assert_array_equal(scaler.inverse_transform(frozen["bounds_scaled"]), frozen["bounds_inverse"])
     assert check_scaler_provenance(meta, scaler, strict=True) is True
@@ -333,8 +325,7 @@ def test_a_legacy_checkpoint_scales_bit_identically_to_the_frozen_outputs():
 
 
 def test_a_legacy_checkpoint_fails_strict_against_the_full_tensor_scaler():
-    raw_config = {"ml_scaler": {"moment_tensor": "scale_shape", "mt_log_decades": 9.0}}
-    scaler = build_flexible_scaler(_moment_tensor_params(2e18), raw_config)
+    scaler = build_flexible_scaler(_moment_tensor_params(2e18), SCALE_SHAPE)
     with pytest.raises(ValueError, match="MISMATCH"):
         check_scaler_provenance({"theta_scaler": dict(LEGACY_RECORD)}, scaler, strict=True)
 

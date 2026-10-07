@@ -22,6 +22,7 @@ from seismo_sbi.priors.samplers import (
 )
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration
 from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
+from seismo_sbi.sbi.scalers import ScalerConfiguration
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Catalogue-driven sampler factories selectable via a dict-form
@@ -86,6 +87,7 @@ class SBI_Configuration:
 
         self.pipeline_parameters = None
         self.training = TrainingConfiguration()
+        self.ml_scaler = ScalerConfiguration()
 
         self.model_parameters = ModelParameters()
         self.sim_parameters = None
@@ -145,10 +147,9 @@ class SBI_Configuration:
         self.process_configuration_data(config)
 
     def process_configuration_data(self, config):
-        # `raw_config` is kept for the parameter scaler, which must be rebuilt from the same
-        # file at inference time (see build_flexible_scaler).
         self.raw_config = config
         self.training = TrainingConfiguration.from_yaml_block(config)
+        self.ml_scaler = ScalerConfiguration.from_yaml_block(config)
         for name, parsing_callable in self._parsing_callables.items():
             if name == 'job_options':
                 subconfig = {key: value for key, value in config.items() if not(isinstance(value, dict) or isinstance(value, list))}

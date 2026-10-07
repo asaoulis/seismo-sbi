@@ -58,8 +58,8 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     config = SBI_Configuration.from_file(config_path)
     config.sim_parameters = config.sim_parameters._replace(stf_alignment=recorded_stf_alignment(model_meta))
     pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
-    data_scaler = build_flexible_scaler(deepcopy(pipeline.parameters), config.raw_config,
-                                        model_meta=model_meta)
+    data_scaler = build_flexible_scaler(deepcopy(pipeline.parameters), config.ml_scaler,
+                                        config.dataset_parameters.sampling_method, model_meta=model_meta)
     check_scaler_provenance(model_meta, data_scaler, strict=strict)
     return TrainedPosterior(posterior, data_scaler, pipeline, config, run_directory)
 
