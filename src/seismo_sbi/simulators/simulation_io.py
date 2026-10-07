@@ -199,31 +199,27 @@ class SimulationDataLoader():
             data = data.reshape(-1)
         return data, coords, kept_stations
 
-    def convert_sim_data_to_array(self, simulation_data_map, *, scale_dict=None, stacked=False, fill_unused=False,
-                                  data_length=None):
+    def convert_sim_data_to_array(self, simulation_data_map, *, stacked=False, fill_unused=False, data_length=None):
         """Seismogram array from a simulation map; an absent station raises ``KeyError``."""
-        array, _ = self._convert_sim_data(simulation_data_map, scale_dict=scale_dict, stacked=stacked,
-                                          fill_unused=fill_unused, allow_missing=False, data_length=data_length)
+        array, _ = self._convert_sim_data(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
+                                          allow_missing=False, data_length=data_length)
         return array
 
-    def convert_sim_data_to_array_with_presence(self, simulation_data_map, *, scale_dict=None,
-                                                stacked=False, fill_unused=False):
+    def convert_sim_data_to_array_with_presence(self, simulation_data_map, *, stacked=False, fill_unused=False):
         """``(array, present_mask)``, tolerating absent stations.
 
         ``present_mask`` is a boolean over ``receivers`` saying which stations the map
         carried. An absent station is zero-filled so the array keeps its full-station shape;
         those samples are padding, not data, and the caller must mask them out.
         """
-        return self._convert_sim_data(simulation_data_map, scale_dict=scale_dict, stacked=stacked,
-                                      fill_unused=fill_unused, allow_missing=True)
+        return self._convert_sim_data(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
+                                      allow_missing=True)
 
-    def _convert_sim_data(self, simulation_data_map, *, scale_dict, stacked, fill_unused, allow_missing,
-                          data_length=None):
+    def _convert_sim_data(self, simulation_data_map, *, stacked, fill_unused, allow_missing, data_length=None):
         """Shared implementation of the two public wrappers above.
 
-        ``scale_dict`` is ``{station: {component: scale factor}}``; ``stacked`` returns
-        ``(n_stations, n_components, n_samples)`` instead of a flat vector; ``data_length`` (None:
-        the loader's own) truncates every trace.
+        ``stacked`` returns ``(n_stations, n_components, n_samples)`` instead of a flat vector;
+        ``data_length`` (None: the loader's own) truncates every trace.
         """
         if data_length is None:
             data_length = self.data_length
@@ -270,16 +266,7 @@ class SimulationDataLoader():
                         break
                     raise KeyError(f"No data found for {receiver_name}:{component}")
 
-                trace_data_vector = trace_data[:seismogram_array_length]
-
-                if scale_dict is not None:
-                    factor = scale_dict.get(receiver_name, {}).get(component)
-                    if factor is None:
-                        factor = scale_dict.get(receiver_name, {}).get(alt_component, 1.0)
-                    if factor != 1.0:
-                        trace_data_vector = trace_data_vector / np.sqrt(factor)
-
-                comp_data.append(trace_data_vector)
+                comp_data.append(trace_data[:seismogram_array_length])
 
             if comp_data is None:
                 station_data.append([np.zeros(seismogram_array_length) for _ in rec_components])

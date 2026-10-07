@@ -5,7 +5,6 @@ simulation, optionally rescaled to one event's pre-event variances, and can hold
 window in memory for training.
 """
 from pathlib import Path
-import h5py
 import numpy as np
 
 from seismo_sbi.sbi.types.parameters import SimulationParameters
@@ -206,8 +205,7 @@ class RealNoiseSampler(NoiseSampler):
         if self.allow_incomplete or self.target_variances is None:
             return NoiseDraw(noise, present)
         covariance_data = self.data_loader.load_misc_data(window_path)
-        noise = self._load_noise_file(window_path, scale_dict=self.variance_ratios(covariance_data))
-        return NoiseDraw(noise, None, covariance_data)
+        return NoiseDraw(self._rescaled(noise, covariance_data), None, covariance_data)
 
     def draw_with_covariance(self, window_index=None):
         """The window at ``window_index`` (a random one when None) as recorded, never rescaled or
@@ -246,9 +244,8 @@ class RealNoiseSampler(NoiseSampler):
             return None, None
         return noise, None
 
-    def _load_noise_file(self, path : Path, scale_dict=None):
-        with h5py.File(path, 'r') as window:
-            return self.data_loader.convert_sim_data_to_array(window, scale_dict=scale_dict)
+    def _load_noise_file(self, path : Path):
+        return self.data_loader.load_simulation_data_array(path)
     
     def variance_ratios(self, covariance_data):
         """``{station: {component: ratio}}``: each trace's pre-event variance in a window's
@@ -258,6 +255,22 @@ class RealNoiseSampler(NoiseSampler):
         return {station: {component: variance / station_component_value(self.target_variances, station, component)
                           for component, variance in components.items()}
                 for station, components in window_variances.items()}
+
+    def _rescaled(self, noise, covariance_data):
+        """``noise`` with each trace divided by the square root of its variance ratio
+        (:meth:`variance_ratios`); a trace without a ratio is kept."""
+        ratios = self.variance_ratios(covariance_data)
+        receivers = list(self.data_loader.receivers.iterate())
+        traces = np.asarray(noise).reshape(sum(len(receiver.components) for receiver in receivers), -1)
+        rescaled = []
+        for receiver in receivers:
+            for component in receiver.components:
+                trace = traces[len(rescaled)]
+                ratio = ratios.get(receiver.station_name, {}).get(component)
+                if ratio is None:
+                    ratio = ratios.get(receiver.station_name, {}).get(component_alias(component), 1.0)
+                rescaled.append(trace / np.sqrt(ratio) if ratio != 1.0 else trace)
+        return np.concatenate(rescaled)
 
     def rescale_to(self, covariance_data):
         """Rescale later draws to the pre-event variances of ``covariance_data``
