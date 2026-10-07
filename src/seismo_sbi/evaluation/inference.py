@@ -78,7 +78,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     from pathlib import Path as _Path
     from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
-    from seismo_sbi.sbi.datasets.training_data import build_pipeline
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline, event_noise_for_compressors
 
     config = SBI_Configuration()
     config.parse_config_file(config_path)
@@ -111,6 +111,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
         )
         sbi_pipeline.load_compressors(
             config.compression_methods, score_compression_data,
+            covariance_data=event_noise_for_compressors(sbi_pipeline, config),
             extra_gradients=extra_gradients,
         )
     else:

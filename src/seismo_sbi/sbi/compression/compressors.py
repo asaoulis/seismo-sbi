@@ -5,8 +5,6 @@ the fiducial data and its gradients, and the covariance data of the noise, and r
 with its noise covariance as ``compressor.C``. A theory compressor's covariance holds its data covariance
 as ``compressor.C.data_covariance``.
 """
-import logging
-
 import numpy as np
 
 from seismo_sbi.sbi.compression.gaussian import GaussianCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
@@ -14,8 +12,6 @@ from seismo_sbi.sbi.noises.covariance_estimator import build_cov_sigma2_dict
 from seismo_sbi.sbi.noises.covariances import build_covariance_matrix, build_theory_covariance
 from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
 from seismo_sbi.utils.errors import InvalidConfiguration
-
-logger = logging.getLogger(__name__)
 
 
 def build_compressor(options, score_compression_data, simulation_parameters, layout, covariance_data=None,
@@ -38,11 +34,12 @@ def build_compressor(options, score_compression_data, simulation_parameters, lay
 
     if ctype == "theory_optimal_score":
         noise_level = options.noise_level
-        if covariance_data is not None and noise_level is None:
+        if noise_level is None:
+            if covariance_data is None:
+                raise InvalidConfiguration(
+                    "compression.theory_optimal_score with noise_level: null takes its noise level from an event's "
+                    "pre-event variances, and none was given: pass the event's covariance data, or set noise_level.")
             noise_level = build_cov_sigma2_dict(covariance_data)
-        elif covariance_data is None and noise_level is None:
-            logger.info("using temp noise level 1.0")
-            noise_level = 1.0
         if options.data_covariance is None:
             raise InvalidConfiguration("compression.theory_optimal_score needs data_covariance, the noise "
                                        "covariance model the theory covariance is added to.")

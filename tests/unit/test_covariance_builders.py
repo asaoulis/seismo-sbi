@@ -50,3 +50,26 @@ def test_a_theory_compressor_without_a_data_covariance_is_rejected():
     with pytest.raises(InvalidConfiguration, match="needs data_covariance"):
         build_compressor(TheoryOptimalScoreOptions(noise_level=1e-8), None, None, LAYOUT,
                          extra_gradients=cc.theory_covariance_blocks())
+
+
+def test_a_theory_compressor_without_a_noise_level_or_an_event_is_rejected():
+    from seismo_sbi.sbi.compression.compressor_options import TheoryOptimalScoreOptions
+    from seismo_sbi.sbi.compression.compressors import build_compressor
+    from seismo_sbi.utils.errors import InvalidConfiguration
+
+    with pytest.raises(InvalidConfiguration, match="noise_level: null"):
+        build_compressor(TheoryOptimalScoreOptions(data_covariance="filtered_block"), None, None, LAYOUT,
+                         extra_gradients=cc.theory_covariance_blocks())
+
+
+@pytest.mark.parametrize("noise_level, expected", [(None, "event1.h5"), (1e-8, None)])
+def test_compressors_get_the_first_event_noise_only_when_their_noise_level_comes_from_it(noise_level, expected):
+    from types import SimpleNamespace
+    from seismo_sbi.sbi.compression.compressor_options import TheoryOptimalScoreOptions
+    from seismo_sbi.sbi.datasets.training_data import event_noise_for_compressors
+
+    config = SimpleNamespace(
+        compression_methods=[("theory_optimal_score", TheoryOptimalScoreOptions("filtered_block", noise_level))],
+        real_event_jobs={"first": "event1.h5", "second": {"path": "event2.h5"}})
+    pipeline = SimpleNamespace(data_manager=SimpleNamespace(data_loader=SimpleNamespace(load_misc_data=lambda path: path)))
+    assert event_noise_for_compressors(pipeline, config) == expected

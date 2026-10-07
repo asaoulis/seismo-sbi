@@ -18,6 +18,7 @@ from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.utils.environment import log_progress_to_stdout
 from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
 from seismo_sbi.sbi import job_runners
+from seismo_sbi.sbi.datasets.training_data import event_noise_for_compressors
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
@@ -57,7 +58,8 @@ def main():
                                                                             config.model_parameters,  
                                                                             rerun_if_stencil_exists = config.pipeline_parameters.generate_dataset)
 
-    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients)
+    sbi_pipeline.load_compressors(config.compression_methods, score_compression_data, extra_gradients=extra_gradients,
+                                  covariance_data=event_noise_for_compressors(sbi_pipeline, config))
     
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
 

@@ -107,6 +107,7 @@ def prepare_training_data(pipeline, config, simulation_paths, training):
     augmentation chains, returning the :class:`TrainingData` a trainer consumes."""
     if not training.skip_compression_stencil:
         pipeline.load_compressors(config.compression_methods, pipeline.score_compression_data,
+                                  covariance_data=event_noise_for_compressors(pipeline, config),
                                   extra_gradients=pipeline.extra_gradients)
     pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
     rescale_training_noise_to_event(pipeline, config)
@@ -151,6 +152,16 @@ def rescale_training_noise_to_event(pipeline, config):
     real_noise_path = next(iter(config.real_event_jobs.values()))
     covariance_data = pipeline.data_manager.data_loader.load_misc_data(real_noise_path)
     pipeline.rescale_training_noise(covariance_data)
+
+
+def event_noise_for_compressors(pipeline, config):
+    """The first real event's pre-event noise ``{station: {component: autocovariance}}`` when a theory
+    compressor takes its noise level from the event (``noise_level: null``), else None."""
+    if not any(options.type == "theory_optimal_score" and options.noise_level is None
+               for _, options in config.compression_methods) or not config.real_event_jobs:
+        return None
+    event = next(iter(config.real_event_jobs.values()))
+    return pipeline.data_manager.data_loader.load_misc_data(event["path"] if isinstance(event, dict) else event)
 
 
 def preload_noise_cache(pipeline, cache):
