@@ -1474,6 +1474,10 @@
   },
   {
    "error": null,
+   "numbers": []
+  },
+  {
+   "error": null,
    "numbers": [
     12.0
    ]
