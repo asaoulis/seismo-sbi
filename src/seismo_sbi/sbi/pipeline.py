@@ -171,46 +171,30 @@ class SBIPipeline:
                 options, score_compression_data, self.simulation_parameters, self.covariance_layout(),
                 covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
 
-    def prepare_single_compressor(
-        self,
-        compressor_name: str,
-        prior=None,
-        covariance_data=None,
-        dataset_details=None,
-        compression_data_extras=None
-    ):
-        """Compute compression data and (re)build a single compressor.
+    def compression_data_at_fiducial(self, compressor_name):
+        """``(compression_data, extra_gradients)`` of the configured compressor ``compressor_name`` at the
+        current fiducial source (``parameters.theta_fiducial``)."""
+        return self.compute_required_compression_data([(compressor_name, self.compressor_options(compressor_name))],
+                                                      self.parameters)
 
-        compressor_name must match one of the full keys from
-        ``self.compression_methods`` (e.g. 'optimal_score_filtered_block').
-
-        Returns (key, compressor, compression_data, extra_gradients).
-        """
-
-        # compression_methods is a list of (full_key, options)
+    def compressor_options(self, compressor_name):
+        """The options of the configured compressor ``compressor_name``."""
         methods_dict = dict(self.compression_methods)
         if compressor_name not in methods_dict:
             raise KeyError(
                 f"Compressor '{compressor_name}' not found in compression_methods. "
                 f"Available: {list(methods_dict.keys())}"
             )
+        return methods_dict[compressor_name]
 
-        options = methods_dict[compressor_name]
-
-        # Compute compression data for this single compressor using the full key
-        if compression_data_extras is None:
-            compression_data, extra_gradients = self.compute_required_compression_data(
-                [(compressor_name, options)],
-                self.parameters,
-            )
-        else:
-            compression_data, extra_gradients = compression_data_extras
-
-        key = compressor_name
-        compressor = build_compressor(options, compression_data, self.simulation_parameters, self.covariance_layout(),
+    def set_compressor(self, compressor_name, compression_data, extra_gradients=None, covariance_data=None, prior=None):
+        """Build the configured compressor ``compressor_name`` around ``compression_data``, store it in
+        ``compressors`` and return it; ``covariance_data`` is the job's noise, None for the configured one."""
+        compressor = build_compressor(self.compressor_options(compressor_name), compression_data,
+                                      self.simulation_parameters, self.covariance_layout(),
                                       covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
-        self.compressors[key] = compressor
-        return key, compressor, compression_data, extra_gradients
+        self.compressors[compressor_name] = compressor
+        return compressor
 
     def covariance_layout(self):
         """The :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout` of this run's data vector."""
@@ -439,7 +423,8 @@ class SingleEventPipeline(SBIPipeline):
 
                 compression_data = self.find_mle_and_set_compressor(single_job.data_vector, single_job.covariance, single_job.prior, dataset_details, compressor_name=compressor_name)
                 for _ in range(self.mcmc_chain_for_mle):
-                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, single_job.covariance, single_job.prior, mle_start=compression_data.theta_fiducial)
+                    compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, single_job.covariance, single_job.prior, mle_start=compression_data.theta_fiducial,
+                                                                                compressor_name=compressor_name)
 
                 inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, single_job.prior, compressor_name=compressor_name)
                 
@@ -462,7 +447,10 @@ class SingleEventPipeline(SBIPipeline):
                         yield job_result, result[1]
                     logger.info(f"Time taken for likelihood inversions: {time.time() - start_time}s")
 
-    def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, prior, mle_start = None):
+    def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, prior, mle_start = None,
+                                              compressor_name="theory_optimal_score"):
+        """Refine the MLE with a Gaussian-likelihood chain of the compressor ``compressor_name`` and re-centre
+        the compressor on it; returns the compression data there."""
         MLE_likelihood_config = deepcopy(likelihood_config)
         use_best = MLE_likelihood_config.get('mle_use_best', False)
         logger.info('Finding MLE with MCMC, use_best: %s', use_best)
@@ -474,7 +462,6 @@ class SingleEventPipeline(SBIPipeline):
             MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 400
         MLE_likelihood_config['ensemble'] = False
         MLE_likelihood_config['return_log_prob'] = bool(use_best)
-        compressor_name = "theory_optimal_score"
         result = next(iter(self.run_single_gaussian_likelihood_inversion(
             single_job,
             MLE_likelihood_config,
@@ -502,24 +489,8 @@ class SingleEventPipeline(SBIPipeline):
         # compute chi2 of MLE
         
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(mcmc_MLE, 'theta_fiducial')
-        _, _, compression_data, _ = self.prepare_single_compressor(
-            compressor_name,
-            prior=prior,
-            covariance_data=covariance,
-        )
-
-        score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(
-            self.parameters,
-            *self.least_squares_solver.stencil_args,
-            seed=self.seed,
-        )
-        compression_data = score_compression_data
-        _, _, _, _ = self.prepare_single_compressor(
-            compressor_name,
-            prior=prior,
-            covariance_data=covariance,
-            compression_data_extras=(compression_data, extra_gradients)
-        )
+        compression_data, extra_gradients = self.compression_data_at_fiducial(compressor_name)
+        self.set_compressor(compressor_name, compression_data, extra_gradients, covariance, prior)
         chi2_mle = self.compressors[compressor_name].compute_misfit(single_job.data_vector)
         logger.info(f"chi^2 at MCMC MLE: {chi2_mle:.5f}")
         return compression_data
@@ -590,13 +561,8 @@ class SingleEventPipeline(SBIPipeline):
         # alone AND a constant covariance, which a theory-error covariance is not.
         theory_error_covariance = str(compressor_name).startswith("theory")
         single_least_squares_step = only_moment_tensor_variable and not theory_error_covariance
-        # build / refresh this specific compressor with its own compression data
-        key, compressor, compression_data, extra_gradients = self.prepare_single_compressor(
-            compressor_name,
-            prior=prior,
-            covariance_data=covariance_data,
-            dataset_details=dataset_details,
-        )
+        compression_data, extra_gradients = self.compression_data_at_fiducial(compressor_name)
+        compressor = self.set_compressor(compressor_name, compression_data, extra_gradients, covariance_data, prior)
         self.least_squares_solver.seed = self.seed
         compression_data, extra_gradients = self.least_squares_solver.solve_least_squares(
             data_vector,
@@ -604,14 +570,7 @@ class SingleEventPipeline(SBIPipeline):
             single_step=single_least_squares_step,
         )
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(compression_data.theta_fiducial, 'theta_fiducial')
-        _, _, _, _ = self.prepare_single_compressor(
-            compressor_name,
-            prior=prior,
-            covariance_data=covariance_data,
-            dataset_details=dataset_details,
-            compression_data_extras=(compression_data, extra_gradients)
-        )
-
+        self.set_compressor(compressor_name, compression_data, extra_gradients, covariance_data, prior)
         return compression_data
 
     def use_fisher_to_constrain_bounds(self, compressor_name, dataset_details, compression_data):

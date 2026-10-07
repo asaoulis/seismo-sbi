@@ -288,19 +288,14 @@ def _build_inference_setup(tmp, sim_params, model_params, dataset_params, data_v
     pipeline.trace_length = data_length
 
     # Pass 1: compute stencil (sensitivity kernels and fiducial seismogram)
-    _, _, cd_raw, _ = pipeline.prepare_single_compressor(
-        "optimal_score_noise_level", covariance_data=1.0,
-    )
+    cd_raw, _ = pipeline.compression_data_at_fiducial("optimal_score_noise_level")
 
     # Adaptive σ: 10:1 SNR on the fiducial seismogram
     sigma = _get_sigma(cd_raw.data_fiducial)
 
     # Pass 2: rebuild compressor with correct σ — no stencil re-run
-    _, compressor, compression_data, _ = pipeline.prepare_single_compressor(
-        "optimal_score_noise_level",
-        covariance_data=sigma,
-        compression_data_extras=(cd_raw, None),
-    )
+    compression_data = cd_raw
+    compressor = pipeline.set_compressor("optimal_score_noise_level", cd_raw, covariance_data=sigma)
 
     pipeline.training_noise_sampler = WhiteNoiseSampler(sigma, pipeline.data_vector_length)
 

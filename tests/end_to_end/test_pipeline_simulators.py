@@ -292,10 +292,9 @@ def instaseis_compressor(tmp_path_factory):
         _build_mt_model_parameters(),
         _build_dataset_parameters(),
     )
-    _, compressor, _, _ = pipeline.prepare_single_compressor(
-        "optimal_score_noise_level",
-        covariance_data=1.0,
-    )
+    compression_data, extra_gradients = pipeline.compression_data_at_fiducial("optimal_score_noise_level")
+    compressor = pipeline.set_compressor("optimal_score_noise_level", compression_data, extra_gradients,
+                                         covariance_data=1.0)
     return compressor
 
 
@@ -394,10 +393,9 @@ def cps_compressor(tmp_path_factory):
     dataset_params = _build_dataset_parameters(include_velocity_model=True)
 
     pipeline = _build_pipeline(tmp_path, sim_params, model_params, dataset_params)
-    _, compressor, _, _ = pipeline.prepare_single_compressor(
-        "optimal_score_noise_level",
-        covariance_data=1.0,
-    )
+    compression_data, extra_gradients = pipeline.compression_data_at_fiducial("optimal_score_noise_level")
+    compressor = pipeline.set_compressor("optimal_score_noise_level", compression_data, extra_gradients,
+                                         covariance_data=1.0)
     return compressor
 
 

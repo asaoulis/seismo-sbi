@@ -64,12 +64,9 @@ class MultiEventPipeline(SingleEventPipeline):
                 else:
                     pass
 
-                self.prepare_single_compressor(
-                    compressor_name,
-                    prior=single_job.prior,
-                    covariance_data=single_job.covariance,
-                    dataset_details=dataset_details,
-                )
+                job_compression_data, job_extra_gradients = self.compression_data_at_fiducial(compressor_name)
+                self.set_compressor(compressor_name, job_compression_data, job_extra_gradients,
+                                    covariance_data=single_job.covariance, prior=single_job.prior)
                 job_result = None
                 if likelihood_config["run"]:
                     logger.info('Starting likelihood inversions.')
