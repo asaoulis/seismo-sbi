@@ -228,7 +228,7 @@ class FlexibleScaler:
 
 
 def scaler_provenance(scaler) -> dict:
-    """A JSON-able fingerprint of the theta scaling ACTUALLY in force.
+    """A JSON-able fingerprint of the theta scaling a :class:`FlexibleScaler` applies.
 
     Recorded into ``model_meta.json`` at training time and re-derived at inference, so a
     checkpoint carries the scaling it was trained under.  Without this the inverse transform
@@ -242,15 +242,8 @@ def scaler_provenance(scaler) -> dict:
     value compare equal.
     """
     out = {"moment_tensor": "linear"}
-    mt = getattr(scaler, "mt_scaler", None) or getattr(scaler, "_mt_scaler", None)
-    if mt is None:
-        # A FlexibleScaler keeps its sub-scalers in the list ``scalers``; search it first, or every
-        # checkpoint would record "linear".
-        for candidate in list(getattr(scaler, "scalers", None) or []) + list(vars(scaler).values()):
-            if isinstance(candidate, MomentTensorScaler):
-                mt = candidate
-                break
-    if isinstance(mt, MomentTensorScaler):
+    mt = next((block for block in scaler.scalers if isinstance(block, MomentTensorScaler)), None)
+    if mt is not None:
         out = {"moment_tensor": "scale_shape",
                "log10_m0_min": round(float(mt.log10_m0_min), 9),
                "log10_m0_max": round(float(mt.log10_m0_max), 9),
@@ -264,7 +257,7 @@ def scaler_provenance(scaler) -> dict:
 def _linear_bounds(scaler) -> dict:
     """``{block: [lower, upper]}`` of every :class:`ZeroOneScaler` block of a :class:`FlexibleScaler`."""
     blocks = {}
-    for (start, _), block_scaler in zip(getattr(scaler, "indices", []), getattr(scaler, "scalers", [])):
+    for (start, _), block_scaler in zip(scaler.indices, scaler.scalers):
         if isinstance(block_scaler, ZeroOneScaler):
             try:
                 blocks[scaler.index_to_param_type[start]] = [

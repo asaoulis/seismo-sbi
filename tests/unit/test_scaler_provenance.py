@@ -20,12 +20,12 @@ from seismo_sbi.sbi.types.parameters import ModelParameters
 BOUNDS = [[-5e17] * 6, [5e17] * 6]
 
 
-class _Holder:
-    """Stands in for a FlexibleScaler carrying a MomentTensorScaler."""
-
-    def __init__(self, mt=None):
-        if mt is not None:
-            self.mt = mt
+def _flexible(mt=None):
+    """A :class:`FlexibleScaler` of one moment-tensor block, scaled by ``mt`` or, without it, linearly."""
+    scaler = FlexibleScaler(_moment_tensor_params(5e17))
+    if mt is not None:
+        scaler.scalers[0] = mt
+    return scaler
 
 
 def _mw_to_u(sc, mw):
@@ -34,59 +34,59 @@ def _mw_to_u(sc, mw):
 
 def test_provenance_captures_the_resolved_window():
     sc = MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)
-    p = scaler_provenance(_Holder(sc))
+    p = scaler_provenance(_flexible(sc))
     assert p["moment_tensor"] == "scale_shape"
     assert p["log10_m0_min"] == pytest.approx(sc.log10_m0_min)
     assert p["log10_m0_max"] == pytest.approx(sc.log10_m0_max)
 
 
 def test_a_linear_scaler_is_recorded_as_such():
-    assert scaler_provenance(_Holder())["moment_tensor"] == "linear"
+    assert scaler_provenance(_flexible())["moment_tensor"] == "linear"
 
 
 def test_matching_scalers_pass():
     sc = MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)
-    h = _Holder(sc)
+    h = _flexible(sc)
     assert check_scaler_provenance({"theta_scaler": scaler_provenance(h)}, h) is True
 
 
 def test_provenance_may_live_under_model_config():
     """train_NPE records it inside model_config, which is what lands in model_meta.json."""
     sc = MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)
-    h = _Holder(sc)
+    h = _flexible(sc)
     meta = {"model_config": {"theta_scaler": scaler_provenance(h)}}
     assert check_scaler_provenance(meta, h) is True
 
 
 def test_a_changed_decade_count_is_caught(capsys):
     """The exact regression: retrain-free config edit that silently rescales every moment."""
-    trained = scaler_provenance(_Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
-    now = _Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=9.0))
+    trained = scaler_provenance(_flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
+    now = _flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=9.0))
     assert check_scaler_provenance({"theta_scaler": trained}, now) is False
     assert "MISMATCH" in capsys.readouterr().out
 
 
 def test_a_changed_bounds_is_caught():
-    trained = scaler_provenance(_Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
-    now = _Holder(MomentTensorScaler(bounds=[[-1e18] * 6, [1e18] * 6], n_decades=4.0))
+    trained = scaler_provenance(_flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
+    now = _flexible(MomentTensorScaler(bounds=[[-1e18] * 6, [1e18] * 6], n_decades=4.0))
     assert check_scaler_provenance({"theta_scaler": trained}, now) is False
 
 
 def test_switching_scale_shape_to_linear_is_caught():
-    trained = scaler_provenance(_Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
-    assert check_scaler_provenance({"theta_scaler": trained}, _Holder()) is False
+    trained = scaler_provenance(_flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
+    assert check_scaler_provenance({"theta_scaler": trained}, _flexible()) is False
 
 
 def test_strict_mode_raises_instead_of_warning():
-    trained = scaler_provenance(_Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
-    now = _Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=9.0))
+    trained = scaler_provenance(_flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)))
+    now = _flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=9.0))
     with pytest.raises(ValueError, match="MISMATCH"):
         check_scaler_provenance({"theta_scaler": trained}, now, strict=True)
 
 
 def test_a_legacy_checkpoint_without_provenance_warns_but_passes(capsys):
     """Checkpoints predating the record must keep loading — just not silently."""
-    h = _Holder(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0))
+    h = _flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0))
     assert check_scaler_provenance({}, h) is True
     assert "no theta_scaler provenance" in capsys.readouterr().out
 
@@ -94,8 +94,8 @@ def test_a_legacy_checkpoint_without_provenance_warns_but_passes(capsys):
 def test_equivalent_windows_written_differently_compare_equal():
     """Provenance records the resolved NUMBERS, so `auto` == the same explicit window."""
     lo, hi = 1.5 * 3.5 + 9.1, 1.5 * 5.5 + 9.1
-    a = _Holder(MomentTensorScaler(log10_m0_range=(lo, hi)))
-    b = _Holder(MomentTensorScaler(bounds=[[-(10 ** hi) * np.sqrt(2)] * 6,
+    a = _flexible(MomentTensorScaler(log10_m0_range=(lo, hi)))
+    b = _flexible(MomentTensorScaler(bounds=[[-(10 ** hi) * np.sqrt(2)] * 6,
                                            [(10 ** hi) * np.sqrt(2)] * 6],
                                    n_decades=hi - lo))
     assert check_scaler_provenance({"theta_scaler": scaler_provenance(a)}, b) is True
@@ -146,7 +146,7 @@ def test_round_trip_is_exact_for_both_windows():
 
 
 # ---------------------------------------------------------------------------
-# Regression: provenance against a REAL FlexibleScaler, not the _Holder stub.
+# Regression: provenance against a FlexibleScaler built from its parameters.
 #
 # Every test above hands `scaler_provenance` an object with the MomentTensorScaler as a
 # direct attribute. A real FlexibleScaler does not look like that — it keeps its per-block
@@ -302,7 +302,7 @@ def _moment_tensor_params(max_abs_nm):
 def test_a_scale_shape_record_carries_its_m0_convention():
     for convention in ("full_tensor", "six_components"):
         scaler = MomentTensorScaler(bounds=BOUNDS, m0_convention=convention)
-        assert scaler_provenance(_Holder(scaler))["m0_convention"] == convention
+        assert scaler_provenance(_flexible(scaler))["m0_convention"] == convention
 
 
 def test_a_record_without_m0_convention_means_six_components():
