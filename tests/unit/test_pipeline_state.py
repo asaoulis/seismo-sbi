@@ -1,4 +1,4 @@
-"""The state a pipeline declares, and the receiver time shifts it keeps from its configuration."""
+"""The state a pipeline declares, the receiver time shifts it keeps, and the errors when a step runs too early."""
 from types import SimpleNamespace
 
 import h5py
@@ -10,7 +10,7 @@ from seismo_sbi.sbi import pipeline as pipeline_module
 from seismo_sbi.sbi.pipeline import SingleEventPipeline
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, SimulationParameters
 from seismo_sbi.simulators.receivers import Receiver, Receivers
-from seismo_sbi.utils.errors import InvalidConfiguration
+from seismo_sbi.utils.errors import InvalidConfiguration, PipelineStateError
 
 
 class _StubSimulatorWrapper:
@@ -155,3 +155,31 @@ def test_every_multi_event_test_job_carries_the_covariance_its_noise_was_rescale
     first_level = jobs[0].data_vector[0]
     assert all(job.covariance is first_covariance for job in jobs)
     assert all(np.allclose(job.data_vector, first_level) for job in jobs)
+
+
+def _pipeline_with_compressor(tmp_path, compressor_fiducial):
+    pipeline = _pipeline(tmp_path)
+    pipeline.parameters = ModelParameters()
+    pipeline.parameters.theta_fiducial = {"moment_tensor": np.array([1e15] * 6)}
+    pipeline.compressors = {"score": SimpleNamespace(theta_fiducial=np.asarray(compressor_fiducial, dtype=float))}
+    return pipeline
+
+
+def test_an_inversion_with_an_unbuilt_compressor_raises(tmp_path):
+    pipeline = _pipeline_with_compressor(tmp_path, [1e15] * 6)
+    with pytest.raises(PipelineStateError, match="'other' is not built"):
+        pipeline.check_compressor_is_current("other")
+
+
+def test_an_inversion_with_a_compressor_built_at_another_fiducial_raises(tmp_path):
+    pipeline = _pipeline_with_compressor(tmp_path, [1e15] * 6)
+    pipeline.check_compressor_is_current("score")
+    pipeline.parameters.theta_fiducial = {"moment_tensor": np.array([2e15] * 6)}
+    with pytest.raises(PipelineStateError, match="other than the current one"):
+        pipeline.check_compressor_is_current("score")
+
+
+def test_the_sbi_inversion_without_a_training_noise_sampler_raises(tmp_path):
+    pipeline = _pipeline_with_compressor(tmp_path, [1e15] * 6)
+    with pytest.raises(PipelineStateError, match="no training noise sampler"):
+        pipeline.run_single_sbi_inversion("posterior", None, None, None, None, compressor_name="score")

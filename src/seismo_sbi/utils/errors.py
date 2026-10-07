@@ -11,6 +11,10 @@ class InvalidConfiguration(Exception):
     """A configuration file asks for something the pipeline cannot build."""
 
 
+class PipelineStateError(Exception):
+    """A pipeline step runs before the step that prepares what it needs."""
+
+
 def error_handling_wrapper(num_attempts=3):
     def decorator(simulation_callable):
         @wraps(simulation_callable)

@@ -44,7 +44,7 @@ from .simulator_wrapper import GeneralSimulatorWrapper
 from .job_runners import convert_lists_to_arrays
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
-from seismo_sbi.utils.errors import InvalidConfiguration
+from seismo_sbi.utils.errors import InvalidConfiguration, PipelineStateError
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,18 @@ class SBIPipeline:
                                       covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
         self.compressors[compressor_name] = compressor
         return compressor
+
+    def check_compressor_is_current(self, compressor_name):
+        """Raise :class:`PipelineStateError` unless the compressor ``compressor_name`` is built and was built
+        at the current fiducial source (``parameters.theta_fiducial``)."""
+        if compressor_name not in self.compressors:
+            raise PipelineStateError(f"The compressor {compressor_name!r} is not built: call load_compressors or "
+                                     "find_mle_and_set_compressor first.")
+        fiducial = self.parameters.parameter_to_vector('theta_fiducial', True)
+        if not np.allclose(self.compressors[compressor_name].theta_fiducial, fiducial, rtol=1e-9, atol=0):
+            raise PipelineStateError(f"The compressor {compressor_name!r} was built at a fiducial source other than "
+                                     "the current one: rebuild it (find_mle_and_set_compressor) after changing "
+                                     "theta_fiducial.")
 
     def covariance_layout(self):
         """The :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout` of this run's data vector."""
@@ -501,6 +513,10 @@ class SingleEventPipeline(SBIPipeline):
         """
         
         param_names = self.parameters.names
+        self.check_compressor_is_current(compressor_name)
+        if self.training_noise_sampler is None:
+            raise PipelineStateError("The SBI inversion adds training noise to every simulation, and no training "
+                                     "noise sampler is loaded: call load_test_noises first.")
 
         self.use_kernel_simulator_if_possible(compression_data, dataset_details.sampling_method)
 
@@ -618,6 +634,7 @@ class SingleEventPipeline(SBIPipeline):
         ensemble = likelihood_config.get('ensemble', True)
         covariance = likelihood_config['covariance']
 
+        self.check_compressor_is_current(compressor_name)
         covariance = likelihood_covariance(covariance, self.compressors[compressor_name].C, self.data_vector_length)
         walker_burn_in = likelihood_config['walker_burn_in']
         num_samples = likelihood_config['num_samples']
