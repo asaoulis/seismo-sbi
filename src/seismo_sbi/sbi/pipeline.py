@@ -26,13 +26,8 @@ from .compression.gaussian import GaussianCompressor, MultiPointGaussianCompress
 
 from .noises.noise_model import build_noise_sampler, build_test_noise_samplers
 from .noises.real_noise import RealNoiseSampler
-from .noises.diagonal_covariances import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance
-from .noises.toeplitz_covariances import (
-    BlockDiagonalEmpiricalCovariance,
-    BlockDiagonalFilteredCovariance,
-    BlockDiagonalKolbCovariance,
-)
-from .noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
+from .noises.diagonal_covariances import ScalarEmpiricalCovariance
+from .noises.covariances import CovarianceLayout, build_covariance_matrix, build_theory_covariance
 from .noises.covariance_estimator import build_cov_sigma2_dict
 
 from .inversion.sbi_inference import SBI_Inference
@@ -314,29 +309,17 @@ class SBIPipeline:
         return key, compressor, compression_data, extra_gradients
 
     def create_covariance_matrix(self, cov_matrix_option, cov_mat_config):
+        if cov_matrix_option == "theory_block":
+            covariance_blocks, diag_reg_magnitude = cov_mat_config
+            return build_theory_covariance(covariance_blocks, self.data_cov_mat, diag_reg_magnitude,
+                                           self.covariance_layout())
+        return build_covariance_matrix(cov_matrix_option, cov_mat_config, self.covariance_layout())
 
-        stationwise_covariances = deepcopy(cov_mat_config)
-        if cov_matrix_option == "empirical_block":
-            cov_mat = BlockDiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
-        elif cov_matrix_option == "theory_block":
-            covariance_blocks, diag_reg_magnitude = stationwise_covariances
-            cov_mat = TheoryBlockDiagonalEmpiricalCovariance(covariance_blocks, self.data_cov_mat.covariance_matrix_arrays, self.simulation_parameters.receivers, self.trace_length, diag_regularisation=diag_reg_magnitude, num_jobs=self.num_parallel_jobs)
-        elif cov_matrix_option == "filtered_block":
-            noise_level = stationwise_covariances
-            logger.info('Initialising filtered block covariance with noise level: %s', type(noise_level))
-            cov_mat = BlockDiagonalFilteredCovariance(noise_level, self.simulation_parameters.processing['filter'], self.simulation_parameters.receivers, self.trace_length, num_jobs=self.num_parallel_jobs)
-        elif cov_matrix_option == "kolb":
-            noise_level = stationwise_covariances
-            cov_mat = BlockDiagonalKolbCovariance(noise_level,receivers=self.simulation_parameters.receivers, data_vector_length=self.trace_length, num_jobs=self.num_parallel_jobs)
-        elif cov_matrix_option == "empirical_diagonal":
-            cov_mat = DiagonalEmpiricalCovariance(stationwise_covariances, self.simulation_parameters.receivers, self.trace_length)
-        elif cov_matrix_option == "noise_level":
-            noise_level = stationwise_covariances
-            cov_mat = ScalarEmpiricalCovariance(noise_level, data_vector_length=self.data_vector_length)
-        else:
-            raise NotImplementedError(f"covariance matrix option {cov_matrix_option} not implemented")
-        return cov_mat
-    
+    def covariance_layout(self):
+        """The :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout` of this run's data vector."""
+        return CovarianceLayout(self.simulation_parameters.receivers, self.trace_length, self.data_vector_length,
+                                (self.simulation_parameters.processing or {}).get('filter'), self.num_parallel_jobs)
+
     def load_test_noises(self, sbi_noise_model, test_noise_models):
         """Build the test-noise samplers (``test_noises``) and the training noise sampler from the
         training noise model ``sbi_noise_model`` (:class:`NoiseModelConfiguration`)."""
