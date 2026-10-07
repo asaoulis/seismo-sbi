@@ -56,7 +56,7 @@ def dense_theory_problem():
         variances(), receivers=make_receivers(), data_vector_length=BLOCK_SIZE, num_jobs=1)
     theory = theory_covariance_blocks()
     covariance = TheoryBlockDiagonalEmpiricalCovariance(
-        theory, data_covariance.covariance_matrix_arrays, make_receivers(), BLOCK_SIZE,
+        theory, data_covariance, make_receivers(), BLOCK_SIZE,
         diag_regularisation=0.01, covariance_gradients=True, num_jobs=1)
     dense = block_diag(*covariance.covariance_matrix_arrays)
     derivatives = [block_diag(*blocks) for blocks in

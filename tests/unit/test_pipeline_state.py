@@ -25,7 +25,7 @@ def _pipeline(tmp_path):
 def test_a_new_pipeline_declares_its_state(tmp_path):
     pipeline = _pipeline(tmp_path)
 
-    for name in ("parameters", "data_cov_mat", "least_squares_solver", "mcmc_chain_for_mle"):
+    for name in ("parameters", "least_squares_solver", "mcmc_chain_for_mle"):
         assert getattr(pipeline, name) is None
     assert pipeline.default_receiver_time_shifts == {}
 

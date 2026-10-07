@@ -37,5 +37,16 @@ def test_an_unknown_covariance_name_is_rejected():
 def test_the_theory_covariance_adds_the_data_covariance_blocks():
     kolb = DIRECT["kolb"]()
     theory = build_theory_covariance(cc.theory_covariance_blocks(), kolb, 0.0, LAYOUT)
+    assert theory.data_covariance is kolb
     assert all(np.array_equal(data, kolb_block)
                for data, kolb_block in zip(theory.data_covariance_arrays, kolb.covariance_matrix_arrays))
+
+
+def test_a_theory_compressor_without_a_data_covariance_is_rejected():
+    from seismo_sbi.sbi.compression.compressor_options import TheoryOptimalScoreOptions
+    from seismo_sbi.sbi.compression.compressors import build_compressor
+    from seismo_sbi.utils.errors import InvalidConfiguration
+
+    with pytest.raises(InvalidConfiguration, match="needs data_covariance"):
+        build_compressor(TheoryOptimalScoreOptions(noise_level=1e-8), None, None, LAYOUT,
+                         extra_gradients=cc.theory_covariance_blocks())

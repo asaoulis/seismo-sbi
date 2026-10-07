@@ -61,5 +61,5 @@ def build_theory_covariance(theory_covariance, data_covariance, diag_regularisat
     blocks of ``data_covariance``, its diagonal regularised by ``diag_regularisation_magnitude`` times
     its largest variance."""
     return TheoryBlockDiagonalEmpiricalCovariance(
-        deepcopy(theory_covariance), data_covariance.covariance_matrix_arrays, layout.receivers, layout.trace_length,
+        deepcopy(theory_covariance), data_covariance, layout.receivers, layout.trace_length,
         diag_regularisation=diag_regularisation_magnitude, num_jobs=layout.num_jobs)

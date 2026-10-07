@@ -15,6 +15,7 @@ from seismo_sbi.utils.parallel import parallel_execution
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     """Theory plus data covariance, one block per trace.
 
+    ``data_covariance`` is the data-noise covariance whose blocks are added.
     ``station_component_covariances`` carries the flattened theory blocks as ``data_fiducial``,
     shape (n_traces * L * L,), and their parameter derivatives as ``data_parameter_gradients``,
     shape (n_params, n_traces * L * L). With ``covariance_gradients=True`` the derivatives enter
@@ -24,7 +25,7 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     def __init__(
         self,
         station_component_covariances,
-        data_covariance_arrays,
+        data_covariance,
         *args,
         diag_regularisation=0.001,
         **kwargs
@@ -32,7 +33,8 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
         super().__init__(*args, **kwargs)
 
         self.station_component_covariances = station_component_covariances
-        self.data_covariance_arrays = data_covariance_arrays
+        self.data_covariance = data_covariance
+        self.data_covariance_arrays = data_covariance.covariance_matrix_arrays
         self.diag_regularisation_magnitude = diag_regularisation
 
         self.covariance_matrix_arrays = None

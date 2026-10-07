@@ -22,13 +22,11 @@ from .configuration import  ModelParameters, SimulationParameters, PipelineParam
 from .types.results import InversionResult, InversionData, JobResult, InversionConfig, JobData
 from .types.fixed_jobs import FixedEventJobs
 
-from .compression.gaussian import GaussianCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
+from .compression.compressors import build_compressor
 
 from .noises.noise_model import build_noise_sampler, build_test_noise_samplers
-from .noises.real_noise import RealNoiseSampler
 from .noises.diagonal_covariances import ScalarEmpiricalCovariance
-from .noises.covariances import CovarianceLayout, build_covariance_matrix, build_theory_covariance
-from .noises.covariance_estimator import build_cov_sigma2_dict
+from .noises.covariances import CovarianceLayout
 
 from .inversion.sbi_inference import SBI_Inference
 from .inversion import likelihood as likelihood
@@ -118,8 +116,6 @@ class SBIPipeline:
         self.test_noises = {}
 
         self.parameter_sampler = None
-        self.data_cov_mat = None
-        self.empirical_cov_mat = None
 
         self.data_manager = None
 
@@ -172,91 +168,12 @@ class SBIPipeline:
         ``name`` is the final compressor name (e.g. ``'optimal_score_filtered_block'``).
         """
         for full_key, options in compression_methods:
-            compressor, key = self._build_single_compressor(
-                full_key,
-                options,
-                score_compression_data,
-                prior,
-                covariance_data,
-                extra_gradients,
-            )
-            self.compressors[key] = compressor
+            self.compressors[full_key] = build_compressor(
+                options, score_compression_data, self.simulation_parameters, self.covariance_layout(),
+                covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
 
         if freeze:
             self.compressor_keys = list(self.compressors.keys())
-
-    def _build_single_compressor(
-        self,
-        full_key: str,
-        options: dict,
-        score_compression_data,
-        prior,
-        covariance_data,
-        extra_gradients,
-    ):
-        """Build a single compressor instance for the given full_key.
-
-        full_key is the compressor name used everywhere, e.g.
-        'optimal_score_filtered_block' or 'theory_optimal_score'.
-        options is the dict stored in SBI_Configuration.compression_methods for
-        this key.
-
-        Returns (compressor, full_key).
-        """
-        ctype = options.type
-
-        if ctype == "optimal_score":
-            cov_matrix_option = options.covariance
-            cov_mat_config = options.path
-
-            # reset and build covariance
-            self.empirical_cov_mat = None
-            if covariance_data is not None:
-                cov_mat_config = covariance_data
-                self.empirical_cov_mat = self.create_covariance_matrix(cov_matrix_option, cov_mat_config)
-            else:
-                sampler = RealNoiseSampler(
-                    self.simulation_parameters,
-                    cov_mat_config,
-                    self.trace_length,
-                )
-                cov_data = sampler.draw_with_covariance(window_index=0).covariance_data
-                self.empirical_cov_mat = self.create_covariance_matrix(cov_matrix_option, cov_data)
-
-            compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=prior)
-
-        elif ctype == "theory_optimal_score":
-            theory_covariance = extra_gradients
-            noise_level = options.noise_level
-            data_cov_option = options.data_covariance
-            if covariance_data is not None and noise_level is None:
-                noise_level = build_cov_sigma2_dict(covariance_data)
-            elif covariance_data is None and noise_level is None:
-                # TEMP NOISE LEVEL
-                logger.info("using temp noise level 1.0")
-                noise_level = 1.0
-
-            diag_regularisation_magnitude = options.diag_regularisation_magnitude
-            cov_mat_options = (theory_covariance, diag_regularisation_magnitude)
-            cov_mat_config = "theory_block"
-            self.data_cov_mat = self.create_covariance_matrix(data_cov_option, noise_level)
-            self.empirical_cov_mat = self.create_covariance_matrix(cov_mat_config, cov_mat_options)
-            compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=prior)
-
-        elif ctype == "multi_optimal_score":
-            noise_level = options.noise_level
-            cov_mat = np.diag(noise_level**2 * np.ones((self.data_vector_length)))
-            compressor = MultiPointGaussianCompressor(score_compression_data, cov_mat)
-
-        elif ctype == "second_order_score":
-            noise_level = options.noise_level
-            cov_mat = np.diag(noise_level**2 * np.ones((self.data_vector_length)))
-            compressor = SecondOrderCompressor(score_compression_data, extra_gradients, cov_mat)
-
-        else:
-            raise NotImplementedError(f"Unknown compression type {ctype} for compressor '{full_key}'")
-
-        return compressor, full_key
 
     def prepare_single_compressor(
         self,
@@ -293,27 +210,13 @@ class SBIPipeline:
         else:
             compression_data, extra_gradients = compression_data_extras
 
-        # Build just this compressor with the same full key
-        compressor, key = self._build_single_compressor(
-            compressor_name,
-            options,
-            compression_data,
-            prior,
-            covariance_data,
-            extra_gradients,
-        )
-
+        key = compressor_name
+        compressor = build_compressor(options, compression_data, self.simulation_parameters, self.covariance_layout(),
+                                      covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
         self.compressors[key] = compressor
         if key not in self.compressor_keys:
             self.compressor_keys.append(key)
         return key, compressor, compression_data, extra_gradients
-
-    def create_covariance_matrix(self, cov_matrix_option, cov_mat_config):
-        if cov_matrix_option == "theory_block":
-            covariance_blocks, diag_reg_magnitude = cov_mat_config
-            return build_theory_covariance(covariance_blocks, self.data_cov_mat, diag_reg_magnitude,
-                                           self.covariance_layout())
-        return build_covariance_matrix(cov_matrix_option, cov_mat_config, self.covariance_layout())
 
     def covariance_layout(self):
         """The :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout` of this run's data vector."""
@@ -323,12 +226,21 @@ class SBIPipeline:
     def load_test_noises(self, sbi_noise_model, test_noise_models):
         """Build the test-noise samplers (``test_noises``) and the training noise sampler from the
         training noise model ``sbi_noise_model`` (:class:`NoiseModelConfiguration`)."""
-        covariances = dict(data_covariance=self.data_cov_mat, empirical_covariance=self.empirical_cov_mat)
+        covariances = self.noise_covariances()
         self.test_noises.update(build_test_noise_samplers(test_noise_models, sbi_noise_model, self.simulation_parameters,
                                                           self.trace_length, self.data_vector_length, **covariances))
         self.training_noise_follows_event = sbi_noise_model.follows_event
         self.training_noise_sampler = build_noise_sampler(sbi_noise_model, self.simulation_parameters,
                                                           self.trace_length, self.data_vector_length, **covariances)
+
+    def noise_covariances(self):
+        """``dict(data_covariance=, empirical_covariance=)`` for the noise models drawn from a compressor's
+        covariance: the data covariance of the last built theory compressor and the covariance of the last
+        built compressor (None before any is built)."""
+        built = [self.compressors[name].C for name, _ in self.compression_methods or [] if name in self.compressors]
+        data_covariances = [covariance.data_covariance for covariance in built if hasattr(covariance, "data_covariance")]
+        return dict(data_covariance=data_covariances[-1] if data_covariances else None,
+                    empirical_covariance=built[-1] if built else None)
 
     def rescale_training_noise(self, covariance_data):
         """Rescale the training noise to one event's pre-event noise ``covariance_data``
@@ -539,7 +451,7 @@ class SingleEventPipeline(SBIPipeline):
                 
                 logger.info(f"Time taken for {single_job.job_name} with {compressor_name}: {time.time() - start_time}s")
                 if do_plots:
-                    plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.empirical_cov_mat)
+                    plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.compressors[compressor_name].C)
 
                 inversion_result = InversionResult(single_job.job_name, inversion_data, inversion_config)
 

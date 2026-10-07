@@ -117,8 +117,8 @@ class TestTrainingNoiseFollowsTheEvent:
     @staticmethod
     def _pipeline(receivers, noise_model, noise_catalogue_dir):
         stub = SimpleNamespace(simulation_parameters=_make_sim_params(receivers), trace_length=TRACE_LEN,
-                               data_vector_length=TRACE_LEN, test_noises={}, data_cov_mat=None,
-                               empirical_cov_mat=None)
+                               data_vector_length=TRACE_LEN, test_noises={},
+                               noise_covariances=lambda: dict(data_covariance=None, empirical_covariance=None))
         SBIPipeline.load_test_noises(stub, NoiseModelConfiguration.from_yaml_block(
             {"noise_catalogue_path": noise_catalogue_dir, **noise_model}), [])
         return stub

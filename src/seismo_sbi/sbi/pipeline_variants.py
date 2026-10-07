@@ -232,7 +232,7 @@ class MLEEstimatePipeline(SingleEventPipeline):
                         self.simulation_parameters.receivers,
                         compression_data.data_fiducial,
                         self.parameters.get_parameter_values('source_location')[:2],
-                        covariance=self.empirical_cov_mat,
+                        covariance=self.compressors[compressor_name].C,
                     )
                 inversion_data = InversionData(theta0, None, None, compression_data)
                 inversion_result = InversionResult(single_job.job_name, inversion_data, inversion_config)

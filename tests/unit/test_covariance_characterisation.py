@@ -144,7 +144,7 @@ def measure_theory():
     data_covariance = BlockDiagonalKolbCovariance(
         variances(), receivers=make_receivers(), data_vector_length=BLOCK_SIZE, num_jobs=1)
     covariance = TheoryBlockDiagonalEmpiricalCovariance(
-        theory_covariance_blocks(), data_covariance.covariance_matrix_arrays, make_receivers(), BLOCK_SIZE,
+        theory_covariance_blocks(), data_covariance, make_receivers(), BLOCK_SIZE,
         diag_regularisation=0.01, num_jobs=1)
     return measure_block(covariance)
 
