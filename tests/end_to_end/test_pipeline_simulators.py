@@ -22,6 +22,7 @@ from pathlib import Path
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.compression.compressor_options import OptimalScoreOptions
 from seismo_sbi.sbi.types.parameters import (
     DatasetGenerationParameters,
     IterativeLeastSquaresParameters,
@@ -153,7 +154,7 @@ def _build_dataset_parameters(include_velocity_model=False):
 _COMPRESSION_METHODS = [
     (
         "optimal_score_noise_level",
-        {"type": "optimal_score", "covariance": "noise_level", "path": None},
+        OptimalScoreOptions("noise_level", None),
     )
 ]
 

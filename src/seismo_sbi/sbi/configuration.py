@@ -23,6 +23,7 @@ from seismo_sbi.priors.samplers import (
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration
 from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
 from seismo_sbi.sbi.scalers import ScalerConfiguration
+from seismo_sbi.sbi.compression.compressor_options import compressor_options
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Catalogue-driven sampler factories selectable via a dict-form
@@ -79,7 +80,6 @@ class SBI_Configuration:
     _STANDARD_NUISANCE_KEYS = frozenset({"fiducial", "bounds", "stage"})
 
 
-    compression_types = ["optimal_score", "theory_optimal_score", "second_order_score", "multi_optimal_score"]
     test_noise_models = ['gaussian_noises', 'real_noise', 'empirical_gaussian', 'gaussian_filtered']
 
     
@@ -305,8 +305,8 @@ class SBI_Configuration:
         becomes::
 
             self.compression_methods = [
-                ("optimal_score_filtered_block", {"type": "optimal_score", "covariance": "filtered_block", "path": "/path/to/noise"}),
-                ("optimal_score_empirical_diagonal", {"type": "optimal_score", "covariance": "empirical_diagonal", "path": "/path/to/noise"}),
+                ("optimal_score_filtered_block", OptimalScoreOptions("filtered_block", "/path/to/noise")),
+                ("optimal_score_empirical_diagonal", OptimalScoreOptions("empirical_diagonal", "/path/to/noise")),
             ]
         """
         compression_config = config
@@ -322,29 +322,8 @@ class SBI_Configuration:
                 options = full_dict[name]
                 compression_list.append((name, options))
 
-        for raw_type, raw_options in compression_list:
-            if raw_type not in SBI_Configuration.compression_types:
-                allowed_types = ', '.join(SBI_Configuration.compression_types)
-                raise InvalidConfiguration(f"Invalid compression type {raw_type}. Only [ {allowed_types} ] allowed")
-
-            # For covariance-based compressors (e.g. optimal_score) we expect a
-            # single-entry dict giving the covariance option and its path.
-            if raw_type == "optimal_score":
-                if not isinstance(raw_options, dict) or len(raw_options) != 1:
-                    raise InvalidConfiguration(
-                        "optimal_score entries must be of the form:\n"
-                        "  - optimal_score:\n      <covariance_option>: <path>"
-                    )
-                cov_name, cov_path = list(raw_options.items())[0]
-                full_key = f"{raw_type}_{cov_name}"
-                options = {"type": raw_type, "covariance": cov_name, "path": cov_path}
-                self.compression_methods.append((full_key, options))
-            else:
-                # Non-covariance compressors keep their raw options and use the
-                # raw type as the full key.
-                full_key = raw_type
-                options = {"type": raw_type, **(raw_options or {})}
-                self.compression_methods.append((full_key, options))
+        self.compression_methods = [compressor_options(raw_type, raw_options)
+                                    for raw_type, raw_options in compression_list]
 
     def parse_sbi_config(self, config):
         inference_config = config

@@ -208,11 +208,11 @@ class SBIPipeline:
 
         Returns (compressor, full_key).
         """
-        ctype = options.get("type")
+        ctype = options.type
 
         if ctype == "optimal_score":
-            cov_matrix_option = options["covariance"]
-            cov_mat_config = options["path"]
+            cov_matrix_option = options.covariance
+            cov_mat_config = options.path
 
             # reset and build covariance
             self.empirical_cov_mat = None
@@ -232,8 +232,8 @@ class SBIPipeline:
 
         elif ctype == "theory_optimal_score":
             theory_covariance = extra_gradients
-            noise_level = options["noise_level"]
-            data_cov_option = options["data_covariance"]
+            noise_level = options.noise_level
+            data_cov_option = options.data_covariance
             if covariance_data is not None and noise_level is None:
                 noise_level = build_cov_sigma2_dict(covariance_data)
             elif covariance_data is None and noise_level is None:
@@ -241,7 +241,7 @@ class SBIPipeline:
                 logger.info("using temp noise level 1.0")
                 noise_level = 1.0
 
-            diag_regularisation_magnitude = options.get("diag_regularisation_magnitude", 0.0)
+            diag_regularisation_magnitude = options.diag_regularisation_magnitude
             cov_mat_options = (theory_covariance, diag_regularisation_magnitude)
             cov_mat_config = "theory_block"
             self.data_cov_mat = self.create_covariance_matrix(data_cov_option, noise_level)
@@ -249,12 +249,12 @@ class SBIPipeline:
             compressor = GaussianCompressor(score_compression_data, self.empirical_cov_mat, prior=prior)
 
         elif ctype == "multi_optimal_score":
-            noise_level = options["noise_level"]
+            noise_level = options.noise_level
             cov_mat = np.diag(noise_level**2 * np.ones((self.data_vector_length)))
             compressor = MultiPointGaussianCompressor(score_compression_data, cov_mat)
 
         elif ctype == "second_order_score":
-            noise_level = options["noise_level"]
+            noise_level = options.noise_level
             cov_mat = np.diag(noise_level**2 * np.ones((self.data_vector_length)))
             compressor = SecondOrderCompressor(score_compression_data, extra_gradients, cov_mat)
 

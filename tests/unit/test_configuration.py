@@ -20,9 +20,9 @@ def test_parse_optimal_score_filtered_block():
     assert len(cfg.compression_methods) == 1
     key, opts = cfg.compression_methods[0]
     assert key == "optimal_score_filtered_block"
-    assert opts["type"] == "optimal_score"
-    assert opts["covariance"] == "filtered_block"
-    assert opts["path"] == "/some/path"
+    assert opts.type == "optimal_score"
+    assert opts.covariance == "filtered_block"
+    assert opts.path == "/some/path"
 
 
 def test_parse_optimal_score_empirical_block():
@@ -48,6 +48,20 @@ def test_parse_invalid_compression_type_raises():
     cfg = SBI_Configuration()
     with pytest.raises(InvalidConfiguration, match="Invalid compression type"):
         cfg.parse_compression_options([{"bogus_type": {"x": "y"}}])
+
+
+def test_theory_score_options_are_typed_with_their_defaults():
+    cfg = SBI_Configuration()
+    cfg.parse_compression_options({"theory_optimal_score": {"noise_level": 1e-8, "data_covariance": "kolb"}})
+    key, opts = cfg.compression_methods[0]
+    assert key == "theory_optimal_score" and opts.type == "theory_optimal_score"
+    assert (opts.data_covariance, opts.noise_level, opts.diag_regularisation_magnitude) == ("kolb", 1e-8, 0.0)
+
+
+def test_an_unknown_compressor_option_is_rejected():
+    cfg = SBI_Configuration()
+    with pytest.raises(InvalidConfiguration, match="unknown keys \\['noise_levle'\\]"):
+        cfg.parse_compression_options({"theory_optimal_score": {"noise_levle": 1e-8}})
 
 
 def test_parse_optimal_score_missing_covariance_raises():
