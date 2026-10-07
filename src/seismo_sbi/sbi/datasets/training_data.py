@@ -43,13 +43,12 @@ class TrainingData:
 def build_pipeline(config, config_path, num_simulations=None, pipeline_class=None):
     """Build the pipeline named by ``config.pipeline_type`` and load its seismic parameters.
 
-    ``num_simulations`` overrides the configured size of the training dataset;
+    ``num_simulations`` overrides the size of the training dataset, ``jobs.simulations.random_events``;
     ``pipeline_class`` overrides the class the configuration names.
     """
     if num_simulations is not None:
-        config.dataset_parameters = config.dataset_parameters._replace(
-            num_simulations=num_simulations)
-        print(f"Overriding num_simulations -> {num_simulations}")
+        config.test_job_simulations = config.test_job_simulations._replace(random_events=num_simulations)
+        print(f"Overriding jobs.simulations.random_events -> {num_simulations}")
 
     if pipeline_class is None:
         pipeline_class = PIPELINE_CLASSES[config.pipeline_type]

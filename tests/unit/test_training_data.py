@@ -48,3 +48,20 @@ def test_prepare_training_data_returns_the_pipeline_geometry(tmp_path, monkeypat
     assert len(data.simulation_paths) == 4
     assert data.trace_length == pipeline.trace_length
     assert data.station_locations.shape == (len(pipeline.simulation_parameters.receivers), 2)
+
+
+def test_the_simulation_count_override_sets_the_training_set_size(monkeypatch):
+    from seismo_sbi.sbi.configuration import SBI_Configuration
+    from seismo_sbi.sbi.datasets.training_data import build_pipeline
+
+    class Pipeline:
+        def __init__(self, *args):
+            self.compression_methods = None
+
+        def load_seismo_parameters(self, *args):
+            pass
+
+    monkeypatch.chdir(Path(__file__).resolve().parents[2] / "examples")
+    config = SBI_Configuration.from_file("configs/npe_example.yaml")
+    build_pipeline(config, "configs/npe_example.yaml", num_simulations=4, pipeline_class=Pipeline)
+    assert config.test_job_simulations.random_events == 4

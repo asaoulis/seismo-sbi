@@ -37,7 +37,7 @@ def parse_arguments():
     parser.add_argument('--train-batch-size', dest='train_batch_size', type=int,
                         help="Per-GPU training batch size; overrides ml_batch.train.")
     parser.add_argument('--num-simulations', dest='num_simulations', type=int,
-                        help="Overrides simulations.num_simulations.")
+                        help="Overrides jobs.simulations.random_events, the training set size.")
     return parser.parse_args()
 
 
