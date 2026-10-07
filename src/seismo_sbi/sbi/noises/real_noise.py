@@ -7,7 +7,7 @@ window in memory for training.
 from pathlib import Path
 import numpy as np
 
-from seismo_sbi.sbi.configuration import SimulationParameters
+from seismo_sbi.sbi.types.parameters import SimulationParameters
 from seismo_sbi.sbi.noises.covariance_base import pre_event_variances, station_component_value
 from seismo_sbi.sbi.noises.noise_samplers import NoiseDraw, NoiseSampler
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader, component_alias

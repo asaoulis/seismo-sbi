@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import pytest
 
+from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
 from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
 from seismo_sbi.sbi.pipeline import SBIPipeline
 from seismo_sbi.sbi.types.parameters import SimulationParameters
@@ -116,8 +117,10 @@ class TestTrainingNoiseFollowsTheEvent:
     @staticmethod
     def _pipeline(receivers, noise_model, noise_catalogue_dir):
         stub = SimpleNamespace(simulation_parameters=_make_sim_params(receivers), trace_length=TRACE_LEN,
-                               data_vector_length=TRACE_LEN, test_noises={})
-        SBIPipeline.load_test_noises(stub, {"noise_catalogue_path": noise_catalogue_dir, **noise_model}, [])
+                               data_vector_length=TRACE_LEN, test_noises={}, data_cov_mat=None,
+                               empirical_cov_mat=None)
+        SBIPipeline.load_test_noises(stub, NoiseModelConfiguration.from_yaml_block(
+            {"noise_catalogue_path": noise_catalogue_dir, **noise_model}), [])
         return stub
 
     def _event_covariance(self, stub):

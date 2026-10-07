@@ -24,7 +24,7 @@ from .types.fixed_jobs import FixedEventJobs
 
 from .compression.gaussian import GaussianCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
 
-from .noises.noise_samplers import WhiteNoiseSampler
+from .noises.noise_model import build_noise_sampler, build_test_noise_samplers
 from .noises.real_noise import RealNoiseSampler
 from .noises.diagonal_covariances import ScalarEmpiricalCovariance, DiagonalEmpiricalCovariance
 from .noises.toeplitz_covariances import (
@@ -338,58 +338,14 @@ class SBIPipeline:
         return cov_mat
     
     def load_test_noises(self, sbi_noise_model, test_noise_models):
-        """Build the test-noise samplers (``test_noises``) and the training noise sampler."""
-        for noise_type, noise_options in test_noise_models:
-            if noise_type == "gaussian_noises":
-                train_noise_level = sbi_noise_model['noise_level']
-                noise_factor = noise_options
-                self.test_noises[f"{noise_type}_x{noise_factor}"] = WhiteNoiseSampler(
-                    noise_factor * train_noise_level, self.data_vector_length)
-            elif noise_type == "gaussian_filtered":
-                cov = self.data_cov_mat
-                self.test_noises[noise_type] = cov.create_sampler()
-            elif noise_type == "real_noise":
-                noise_catalogue_path = noise_options
-                self.test_noises[noise_type] = RealNoiseSampler(self.simulation_parameters,
-                                                                noise_catalogue_path,
-                                                                self.trace_length,)
-            elif noise_type == "empirical_gaussian":
-                noise_catalogue_path = noise_options
-                self.test_noises[noise_type] = self.empirical_cov_mat.create_sampler()
-            
-        
-        train_noise_type =  sbi_noise_model['type']
-        self.training_noise_follows_event = (
-            train_noise_type in ('gaussian_filtered', 'empirical_gaussian')
-            or (train_noise_type == 'real_noise' and sbi_noise_model.get('rescale', True)))
-
-        if train_noise_type == 'gaussian':
-            train_noise_level = sbi_noise_model['noise_level']
-            self.training_noise_sampler = WhiteNoiseSampler(train_noise_level, self.data_vector_length)
-        elif train_noise_type == 'gaussian_filtered':
-            train_noise_level = sbi_noise_model['noise_level']
-            self.training_noise_sampler = self.data_cov_mat.create_sampler()
-        elif train_noise_type == 'real_noise':
-            noise_catalogue_path = sbi_noise_model['noise_catalogue_path']
-            # allow_incomplete zero-fills stations a window lacks; valid only with variable-station
-            # training, which masks them out.
-            allow_incomplete = sbi_noise_model.get('allow_incomplete', False)
-            if allow_incomplete and self.training_noise_follows_event:
-                raise InvalidConfiguration(
-                    "inference.sbi.noise_model: allow_incomplete needs rescale: false. Rescaling a noise "
-                    "window to an event needs the pre-event variance of every station, which an "
-                    "incomplete window lacks.")
-            self.training_noise_sampler = RealNoiseSampler(self.simulation_parameters,
-                                                           noise_catalogue_path,
-                                                           self.trace_length,
-                                                           allow_incomplete=allow_incomplete)
-        elif train_noise_type == 'empirical_gaussian':
-            self.training_noise_sampler = self.empirical_cov_mat.create_sampler()
-        else:
-            raise InvalidConfiguration(
-                f"Unknown inference.sbi.noise_model type {train_noise_type!r}: expected one of "
-                "'gaussian', 'gaussian_filtered', 'real_noise' or 'empirical_gaussian'.")
-
+        """Build the test-noise samplers (``test_noises``) and the training noise sampler from the
+        training noise model ``sbi_noise_model`` (:class:`NoiseModelConfiguration`)."""
+        covariances = dict(data_covariance=self.data_cov_mat, empirical_covariance=self.empirical_cov_mat)
+        self.test_noises.update(build_test_noise_samplers(test_noise_models, sbi_noise_model, self.simulation_parameters,
+                                                          self.trace_length, self.data_vector_length, **covariances))
+        self.training_noise_follows_event = sbi_noise_model.follows_event
+        self.training_noise_sampler = build_noise_sampler(sbi_noise_model, self.simulation_parameters,
+                                                          self.trace_length, self.data_vector_length, **covariances)
 
     def rescale_training_noise(self, covariance_data):
         """Rescale the training noise to one event's pre-event noise ``covariance_data``

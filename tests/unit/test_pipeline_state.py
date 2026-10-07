@@ -6,6 +6,7 @@ import numpy as np
 
 import pytest
 
+from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
 from seismo_sbi.sbi import pipeline as pipeline_module
 from seismo_sbi.sbi.pipeline import SingleEventPipeline
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, SimulationParameters
@@ -130,7 +131,7 @@ def test_training_sources_are_drawn_from_the_bounds_and_sampling_method_at_gener
 
 def test_an_unknown_training_noise_model_is_rejected(tmp_path):
     with pytest.raises(InvalidConfiguration, match="noise_model type 'laplace'"):
-        _pipeline(tmp_path).load_test_noises({"type": "laplace", "noise_level": 1.0}, [])
+        _pipeline(tmp_path).load_test_noises(NoiseModelConfiguration("laplace", noise_level=1.0), [])
 
 
 def test_every_multi_event_test_job_carries_the_covariance_its_noise_was_rescaled_to(tmp_path):

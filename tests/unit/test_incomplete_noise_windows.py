@@ -127,15 +127,10 @@ def test_subsampler_rejects_an_empty_availability_mask():
         sub(3, available=np.zeros(3, dtype=bool))
 
 
-def test_pipeline_passes_allow_incomplete_from_config(monkeypatch):
-    """The YAML flag must actually reach RealNoiseSampler.
-
-    Exercises the REAL branch in ``SBIPipeline.load_test_noises`` (called unbound on a stub)
-    rather than re-implementing it: without the wiring, `allow_incomplete: true` in a config
-    is silently ignored and the sampler quietly reverts to skipping incomplete windows --
-    no error, just a smaller pool.
-    """
-    import seismo_sbi.sbi.pipeline as pipeline_mod
+def test_the_noise_model_passes_allow_incomplete_to_the_sampler(monkeypatch):
+    """``allow_incomplete: true`` in a configuration reaches :class:`RealNoiseSampler`; without it the
+    sampler would skip incomplete windows and quietly draw from a smaller pool."""
+    import seismo_sbi.sbi.noises.noise_model as noise_model_mod
 
     seen = {}
 
@@ -143,16 +138,8 @@ def test_pipeline_passes_allow_incomplete_from_config(monkeypatch):
         def __init__(self, *a, **kw):
             seen.update(kw)
 
-    monkeypatch.setattr(pipeline_mod, "RealNoiseSampler", _Spy)
-
-    class _Stub:
-        simulation_parameters = object()
-        trace_length = 100
-        data_vector_length = 100
-
-    load = pipeline_mod.SBIPipeline.load_test_noises
-
-    for cfg, expected in (
+    monkeypatch.setattr(noise_model_mod, "RealNoiseSampler", _Spy)
+    for block, expected in (
         ({"type": "real_noise", "noise_level": 0.0, "noise_catalogue_path": "/x",
           "allow_incomplete": True, "rescale": False}, True),
         ({"type": "real_noise", "noise_level": 0.0, "noise_catalogue_path": "/x",
@@ -160,34 +147,25 @@ def test_pipeline_passes_allow_incomplete_from_config(monkeypatch):
         ({"type": "real_noise", "noise_level": 0.0, "noise_catalogue_path": "/x"}, False),
     ):
         seen.clear()
-        stub = _Stub()
-        stub.test_noises = {}
-        load(stub, cfg, [])
-        assert seen.get("allow_incomplete") is expected, cfg
+        noise_model_mod.build_noise_sampler(noise_model_mod.NoiseModelConfiguration.from_yaml_block(block),
+                                            object(), 100, 100)
+        assert seen.get("allow_incomplete") is expected, block
 
 
 def test_real_noise_training_needs_no_noise_level(monkeypatch):
-    import seismo_sbi.sbi.pipeline as pipeline_mod
+    import seismo_sbi.sbi.noises.noise_model as noise_model_mod
 
-    monkeypatch.setattr(pipeline_mod, "RealNoiseSampler", lambda *a, **kw: "sampler")
-
-    class _Stub:
-        simulation_parameters = object()
-        trace_length = 100
-        data_vector_length = 100
-        test_noises = {}
-
-    stub = _Stub()
-    pipeline_mod.SBIPipeline.load_test_noises(stub, {"type": "real_noise", "noise_catalogue_path": "/x"},
-                                              [("real_noise", "/x")])
-    assert stub.training_noise_sampler == "sampler" and stub.test_noises == {"real_noise": "sampler"}
+    monkeypatch.setattr(noise_model_mod, "RealNoiseSampler", lambda *a, **kw: "sampler")
+    noise_model = noise_model_mod.NoiseModelConfiguration("real_noise", noise_catalogue_path="/x")
+    assert noise_model_mod.build_noise_sampler(noise_model, object(), 100, 100) == "sampler"
+    assert noise_model_mod.build_test_noise_samplers([("real_noise", "/x")], noise_model, object(), 100, 100) == {
+        "real_noise": "sampler"}
 
 
 def test_incomplete_windows_cannot_be_rescaled_to_an_event():
-    import seismo_sbi.sbi.pipeline as pipeline_mod
+    from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration, build_noise_sampler
     from seismo_sbi.utils.errors import InvalidConfiguration
 
-    stub = SimpleNamespace(simulation_parameters=object(), trace_length=100, data_vector_length=100, test_noises={})
     with pytest.raises(InvalidConfiguration, match="allow_incomplete needs rescale: false"):
-        pipeline_mod.SBIPipeline.load_test_noises(
-            stub, {"type": "real_noise", "noise_catalogue_path": "/x", "allow_incomplete": True}, [])
+        build_noise_sampler(NoiseModelConfiguration("real_noise", noise_catalogue_path="/x", allow_incomplete=True),
+                            object(), 100, 100)

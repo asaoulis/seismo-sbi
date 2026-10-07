@@ -21,6 +21,7 @@ from seismo_sbi.priors.samplers import (
     make_gutenberg_richter_mt_sampler,
 )
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration
+from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Catalogue-driven sampler factories selectable via a dict-form
@@ -351,7 +352,7 @@ class SBI_Configuration:
         if self.pipeline_type not in PIPELINE_TYPES:
             raise InvalidConfiguration(
                 f"inference.sbi.pipeline must be one of {', '.join(PIPELINE_TYPES)}, not {self.pipeline_type!r}.")
-        self.sbi_noise_model = inference_config["sbi"]["noise_model"]
+        self.sbi_noise_model = NoiseModelConfiguration.from_yaml_block(inference_config["sbi"]["noise_model"])
         self.sbi_seed = inference_config["sbi"].get("seed")
         self.likelihood_config = inference_config["likelihood"]
 

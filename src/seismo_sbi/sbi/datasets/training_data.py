@@ -142,10 +142,7 @@ def rescale_training_noise_to_event(pipeline, config):
     generic-event mode (``real_noise`` with ``rescale: false``), where the sampler draws noise
     windows verbatim and the event file need not hold every station.
     """
-    noise_model = config.sbi_noise_model
-    if noise_model.get('type') == 'gaussian':
-        return
-    if noise_model.get('type') == 'real_noise' and not noise_model.get('rescale', True):
+    if not config.sbi_noise_model.follows_event:
         return
     if not config.real_event_jobs:
         raise InvalidConfiguration(

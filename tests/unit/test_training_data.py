@@ -6,11 +6,13 @@ from types import SimpleNamespace
 import pytest
 
 from seismo_sbi.sbi.datasets.training_data import rescale_training_noise_to_event
+from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 
 def configuration(noise_model, real_event_jobs=None):
-    return SimpleNamespace(sbi_noise_model=noise_model, real_event_jobs=real_event_jobs or {})
+    return SimpleNamespace(sbi_noise_model=NoiseModelConfiguration.from_yaml_block(noise_model),
+                           real_event_jobs=real_event_jobs or {})
 
 
 def test_white_gaussian_noise_trains_without_a_real_event():
