@@ -1,7 +1,8 @@
 # Forward models
 
-Everything that turns source parameters into seismograms lives in `seismo_sbi.simulators`.
-The generic parts sit at the root of the package, and each backend has its own subdirectory.
+`seismo_sbi.simulators` holds the forward models: every class that turns source parameters into
+seismograms. The generic parts sit at the root of the package, and each backend has its own
+subdirectory.
 
 | module | what it holds |
 |---|---|
@@ -40,8 +41,8 @@ receiver's `time_shift` is a static correction in samples. An `Inventory` does n
 
 ## Nuisance effects
 
-What a real recording does to a synthetic seismogram lives in its own package,
-`seismo_sbi.nuisance_effects`:
+`seismo_sbi.nuisance_effects` holds the nuisance effects: the changes a real recording makes to a
+synthetic seismogram.
 
 | module | what it holds |
 |---|---|

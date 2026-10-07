@@ -11,9 +11,9 @@ moment-tensor solutions improve as a result.
 Documentation: <https://asaoulis.github.io/seismo-sbi/>. The site has the API reference, the
 configuration guide, the forward-model guide and the example notebooks rendered with their outputs.
 
-`seismo-sbi` is a Python package for single-event moment-tensor inversion. One earthquake, its
-stations and its forward model go in, and a posterior comes out. Each stage works on its own, or
-the stages chain into one workflow:
+`seismo-sbi` is a Python package for single-event moment-tensor inversion. It takes one
+earthquake, its stations and a forward model, and returns a posterior over the source parameters.
+Each stage works on its own, or the stages chain into one workflow:
 
 - Forward models: Instaseis, Computer Programs in Seismology (CPS), Green's-function ensembles of
   perturbed 1-D Earth models, and a registry for a forward model of your own.
@@ -61,7 +61,7 @@ Some notebooks and tests also need:
 
 ## Getting started
 
-The notebooks under `examples/` are the quickest way in. They run headless, and the
+Start with the notebooks under `examples/`. They run headless, and the
 [documentation site](https://asaoulis.github.io/seismo-sbi/) renders them with their outputs.
 Work through them in this order:
 
@@ -175,9 +175,8 @@ configuration and calls one library entry point. Run any of them with `--help` t
 
 ## Preparing real data
 
-Real seismic data reach the SBI pipeline in three steps: download the raw waveforms and instrument
-responses, build the event and noise HDF5 catalogues, and point the YAML configuration at the
-results. Every intermediate file is a standard ObsPy format (`.mseed` and StationXML). HDF5 is
+Preparing real data takes three steps: download the raw waveforms and instrument responses,
+build the event and noise HDF5 catalogues, and point the YAML configuration at the results. Every intermediate file is a standard ObsPy format (`.mseed` and StationXML). HDF5 is
 written only at the final step. To work from ObsPy objects in memory instead (a `Stream`, an
 `Inventory`, an `Origin`) and get the posterior back as a QuakeML `Event`, see
 [docs/obspy.md](docs/obspy.md).

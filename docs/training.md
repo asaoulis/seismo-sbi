@@ -85,7 +85,7 @@ trainer.train("my_model", epochs=training.epochs, output_path=pipeline.models_ou
 The [`nuisances`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisances.ipynb)
 notebook shows the built-in effects, the two nuisance stages and a user-defined per-station effect.
 
-A station known to be worse than the rest gets its own setting. `amplitude_error`'s
+A station with larger errors than the rest can have its own nuisance width. `amplitude_error`'s
 `scale_range` and `log_sigma_dex`, and `time_shift_error`'s `gaussian_sigma`, take a map from
 station name to value, with a `default` for the others:
 
@@ -99,9 +99,8 @@ nuisance:
 
 ## Your own nuisance effect
 
-A nuisance the library does not have is a subclass of
-`seismo_sbi.nuisance_effects.seismogram_effect.SeismogramEffect`, registered once before the
-configuration is parsed:
+To add a nuisance effect, subclass `seismo_sbi.nuisance_effects.seismogram_effect.SeismogramEffect`
+and register it once, before the configuration is parsed:
 
 ```python
 from seismo_sbi.nuisance_effects.post_processing import register_nuisance_effect

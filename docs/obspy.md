@@ -1,8 +1,9 @@
 # Working with ObsPy
 
-A seismologist who holds ObsPy objects (`Stream`, `Inventory`, `Origin`, `Tensor`) can reach a
-posterior and get ObsPy objects back. No station file, YAML file or HDF5 file is written by
-hand. Downloading is ObsPy's job: query an FDSN client directly and pass the result in.
+The library works directly on ObsPy objects. Pass in a `Stream`, an `Inventory` and an `Origin`,
+and get the synthetics back as a `Stream` and the posterior as a QuakeML `Event`. No station file,
+YAML file or HDF5 file is needed. Download the data with ObsPy's FDSN client and pass the result
+in.
 
 | direction | ObsPy object | function | module |
 |---|---|---|---|
@@ -42,7 +43,7 @@ All modules are under `seismo_sbi`.
   `EmpiricalCovarianceEstimator(None, receivers, components).estimate_from_windows(noise_windows,
   present)` estimates the per-trace noise autocovariances from them.
 
-## What a posterior event carries
+## The contents of a posterior event
 
 `posterior_event(posterior_samples, origin)` reports a point estimate (the posterior mean, or the
 `point_estimate` given) and the marginal posterior standard deviations. The event carries the
