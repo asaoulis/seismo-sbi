@@ -2131,15 +2131,15 @@ class TestSimulationDataLoaderWithCatalogueEvent:
         self.expected_flat_len = len(self.stations) * 3 * self.expected_len
 
     def test_flattened_vector_shape(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert vec.shape == (self.expected_flat_len,)
 
     def test_flattened_vector_finite(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert np.all(np.isfinite(vec))
 
     def test_flattened_vector_nonzero(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert np.any(vec != 0.0)
 
     def test_misc_data_has_all_stations(self):
@@ -2158,7 +2158,7 @@ class TestSimulationDataLoaderWithCatalogueEvent:
         """Receivers with ['Z','E','N'] transparently read '1'/'2' from h5."""
         from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         # Must not raise and must have correct shape
         assert vec.shape == (self.expected_flat_len,)
 

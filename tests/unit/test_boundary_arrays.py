@@ -40,7 +40,7 @@ def test_seismogram_map_to_array_matches_the_hdf5_round_trip(tmp_path):
 
     flat = seismogram_map_to_array(waveforms, receivers)
     assert flat.shape == (7 * N_SAMPLES,)
-    assert np.array_equal(flat, loader.load_flattened_simulation_vector(path))
+    assert np.array_equal(flat, loader.load_simulation_data_array(path))
     assert np.array_equal(flat[:N_SAMPLES], waveforms["AAA"]["Z"])
     assert np.array_equal(flat[-N_SAMPLES:], waveforms["CCC"]["Z"])
 
@@ -156,7 +156,7 @@ def test_observation_from_stream_equals_the_exported_file_read_back(tmp_path):
     receivers = Receivers.from_arrays(["ZZZ", "AAA", "BBB"], ["XX"] * 3, [0.0, 1.0, 2.0], [0.0, 1.0, 2.0])
 
     from_file, file_mask = SimulationDataLoader("ZEN", receivers, data_length=31) \
-        .load_flattened_simulation_vector_with_presence(path)
+        .load_simulation_data_array_with_presence(path)
     in_memory, memory_mask = observation_from_stream(stream, receivers, event_window, sampling_rate_hz=1.0)
 
     assert np.array_equal(in_memory, from_file)

@@ -116,35 +116,35 @@ class SimulationDataLoader():
         with h5py.File(sim_name, 'r') as simulation_data_file:
             return self._read_input_dict(simulation_data_file)
 
-    def load_flattened_simulation_vector(self, sim_name, *args, **kwargs):
-        return self.load_simulation_data_array(sim_name, *args, **kwargs)
+    def load_simulation_data_array(self, sim_name, *, stacked=False, fill_unused=False, data_length=None):
+        """The seismograms of the file ``sim_name``, flat in receiver order or ``(n_stations,
+        n_components, n_samples)`` when ``stacked``; an absent station raises ``KeyError``.
 
-    def load_flattened_simulation_vector_with_presence(self, sim_name, *args, **kwargs):
-        """``(flat_vector, present_mask)``, tolerating stations absent from the file."""
-        with h5py.File(sim_name, 'r') as simulation_data_map:
-            return self.convert_sim_data_to_array_with_presence(
-                simulation_data_map, *args, **kwargs)
-
-    def load_simulation_data_array(self, sim_name, *args, **kwargs):
-        with h5py.File(sim_name, 'r') as simulation_data_map:
-            return self.convert_sim_data_to_array(simulation_data_map, *args, **kwargs)
-
-    def load_input_and_data_array(self, sim_name, *args, **kwargs):
-        """``(input_data_dict, data_array)`` from a single open of the file.
-
-        The dataloader's per-sample path needs both, and opening the file twice costs.
+        ``data_length`` truncates every trace to that many samples; None keeps the loader's own.
         """
+        with h5py.File(sim_name, 'r') as simulation_data_map:
+            return self.convert_sim_data_to_array(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
+                                                  data_length=data_length)
+
+    def load_simulation_data_array_with_presence(self, sim_name, *, stacked=False, fill_unused=False):
+        """``(array, present_mask)`` of the file ``sim_name``, tolerating stations absent from it."""
+        with h5py.File(sim_name, 'r') as simulation_data_map:
+            return self.convert_sim_data_to_array_with_presence(simulation_data_map, stacked=stacked,
+                                                                fill_unused=fill_unused)
+
+    def load_input_and_data_array(self, sim_name, *, stacked=False, fill_unused=False):
+        """``(input_data_dict, data_array)`` from a single open of the file."""
         with h5py.File(sim_name, 'r') as simulation_data_file:
             input_data = self._read_input_dict(simulation_data_file)
-            data = self.convert_sim_data_to_array(simulation_data_file, *args, **kwargs)
+            data = self.convert_sim_data_to_array(simulation_data_file, stacked=stacked, fill_unused=fill_unused)
         return input_data, data
 
-    def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *args, **kwargs):
+    def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *, stacked=False, fill_unused=False):
         """Load a simulation with per-station time shifts ``shift_dict`` applied to its traces."""
         self.receivers.set_time_shifts(shift_dict)
         with h5py.File(sim_name, 'r') as simulation_data_map:
             shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}
-            return self.convert_sim_data_to_array(shifted_map, *args, **kwargs)
+            return self.convert_sim_data_to_array(shifted_map, stacked=stacked, fill_unused=fill_unused)
 
     def load_event_subset(self, sim_name, subset_station_names, stacked=True):
         """``(data, coords)`` for the named stations only, in the order they are named.
@@ -162,12 +162,8 @@ class SimulationDataLoader():
         subset = [name_to_rec[n] for n in subset_station_names]
         coords = np.array([[rec.latitude, rec.longitude] for rec in subset], dtype=float)
 
-        saved = self.receivers.receivers
-        try:
-            self.receivers.receivers = subset
-            data = self.load_simulation_data_array(sim_name, stacked=stacked)
-        finally:
-            self.receivers.receivers = saved
+        subset_loader = SimulationDataLoader(self.components, Receivers(receivers=subset), self.data_length)
+        data = subset_loader.load_simulation_data_array(sim_name, stacked=stacked)
         return data, coords
 
     def load_event_subset_with_components(self, sim_name, components_map, stacked=True):
@@ -203,14 +199,14 @@ class SimulationDataLoader():
             data = data.reshape(-1)
         return data, coords, kept_stations
 
-    def convert_sim_data_to_array(self, simulation_data_map, scale_dict=None, stacked=False, fill_unused=False):
+    def convert_sim_data_to_array(self, simulation_data_map, *, scale_dict=None, stacked=False, fill_unused=False,
+                                  data_length=None):
         """Seismogram array from a simulation map; an absent station raises ``KeyError``."""
-        array, _ = self._convert_sim_data(
-            simulation_data_map, scale_dict, stacked, fill_unused, allow_missing=False
-        )
+        array, _ = self._convert_sim_data(simulation_data_map, scale_dict=scale_dict, stacked=stacked,
+                                          fill_unused=fill_unused, allow_missing=False, data_length=data_length)
         return array
 
-    def convert_sim_data_to_array_with_presence(self, simulation_data_map, scale_dict=None,
+    def convert_sim_data_to_array_with_presence(self, simulation_data_map, *, scale_dict=None,
                                                 stacked=False, fill_unused=False):
         """``(array, present_mask)``, tolerating absent stations.
 
@@ -218,26 +214,28 @@ class SimulationDataLoader():
         carried. An absent station is zero-filled so the array keeps its full-station shape;
         those samples are padding, not data, and the caller must mask them out.
         """
-        return self._convert_sim_data(
-            simulation_data_map, scale_dict, stacked, fill_unused, allow_missing=True
-        )
+        return self._convert_sim_data(simulation_data_map, scale_dict=scale_dict, stacked=stacked,
+                                      fill_unused=fill_unused, allow_missing=True)
 
-    def _convert_sim_data(self, simulation_data_map, scale_dict=None, stacked=False,
-                          fill_unused=False, allow_missing=False):
+    def _convert_sim_data(self, simulation_data_map, *, scale_dict, stacked, fill_unused, allow_missing,
+                          data_length=None):
         """Shared implementation of the two public wrappers above.
 
         ``scale_dict`` is ``{station: {component: scale factor}}``; ``stacked`` returns
-        ``(n_stations, n_components, n_samples)`` instead of a flat vector.
+        ``(n_stations, n_components, n_samples)`` instead of a flat vector; ``data_length`` (None:
+        the loader's own) truncates every trace.
         """
+        if data_length is None:
+            data_length = self.data_length
         try:
             seismogram_array_length = self._get_seismogram_array_length(simulation_data_map)
         except KeyError:
             # Only reachable with allow_missing: the probe receiver is the absent one.
-            if not allow_missing or self.data_length is None:
+            if not allow_missing or data_length is None:
                 raise
-            seismogram_array_length = self.data_length
-        if self.data_length is not None:
-            seismogram_array_length = min(seismogram_array_length, self.data_length)
+            seismogram_array_length = data_length
+        if data_length is not None:
+            seismogram_array_length = min(seismogram_array_length, data_length)
 
         station_data = []
         present = []

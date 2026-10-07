@@ -41,7 +41,7 @@ class DatasetCompressor:
         
         score_compression_data = derivative_stencil.calculate_score_compression_data(
                                     self.simulator if simulator is None else simulator,
-                                    self.data_loader.load_flattened_simulation_vector,
+                                    self.data_loader.load_simulation_data_array,
                                     self.num_parallel_jobs,
                                     **kwargs)
 
@@ -52,7 +52,7 @@ class DatasetCompressor:
         hessian_derivative_stencil = HessianDerivativeStencil(parameters, stencil_output_folder)
         hessian_derivative_stencil.run_stencil_simulations(self.simulator, self.num_parallel_jobs)
 
-        nonetype_safe_loader = lambda x, dummy: self.data_loader.load_flattened_simulation_vector(x) if x is not None else 0
+        nonetype_safe_loader = lambda x, dummy: self.data_loader.load_simulation_data_array(x) if x is not None else 0
         hessian_stencil_results = hessian_derivative_stencil.load_simulation_results(nonetype_safe_loader)
 
         first_order_gradients = score_compression_data.data_parameter_gradients
@@ -116,5 +116,5 @@ class DatasetCompressor:
             inputs = np.concatenate([[inputs[param_type][param_name] for param_name in param_names] for param_type, param_names in fixed_keys.items()])
         else:
             inputs = np.array([])
-        D = self.data_loader.load_flattened_simulation_vector(sim_path)
+        D = self.data_loader.load_simulation_data_array(sim_path)
         return inputs,D

@@ -5,6 +5,7 @@ simulation, optionally rescaled to one event's pre-event variances, and can hold
 window in memory for training.
 """
 from pathlib import Path
+import h5py
 import numpy as np
 
 from seismo_sbi.sbi.types.parameters import SimulationParameters
@@ -154,7 +155,7 @@ class RealNoiseSampler(NoiseSampler):
             if self.allow_incomplete:
                 # Absent stations are zero-filled, so every window has the canonical
                 # length and NONE are discarded. The presence mask travels with the row.
-                v, present = self.data_loader.load_flattened_simulation_vector_with_presence(p)
+                v, present = self.data_loader.load_simulation_data_array_with_presence(p)
                 v = np.asarray(v).reshape(-1)
                 if not present.any():
                     return None
@@ -235,7 +236,7 @@ class RealNoiseSampler(NoiseSampler):
         is unusable: no model station at all, a model station missing, or a trace shorter than the
         data vector needs."""
         if self.allow_incomplete:
-            noise, present = self.data_loader.load_flattened_simulation_vector_with_presence(window_path)
+            noise, present = self.data_loader.load_simulation_data_array_with_presence(window_path)
             return (noise, present) if present.any() else (None, None)
         try:
             noise = self._load_noise_file(window_path)
@@ -245,8 +246,9 @@ class RealNoiseSampler(NoiseSampler):
             return None, None
         return noise, None
 
-    def _load_noise_file(self, path : Path, *args, **kwargs):
-        return self.data_loader.load_flattened_simulation_vector(path, *args, **kwargs)
+    def _load_noise_file(self, path : Path, scale_dict=None):
+        with h5py.File(path, 'r') as window:
+            return self.data_loader.convert_sim_data_to_array(window, scale_dict=scale_dict)
     
     def variance_ratios(self, covariance_data):
         """``{station: {component: ratio}}``: each trace's pre-event variance in a window's

@@ -52,11 +52,10 @@ def test_multi_event_real_jobs_are_read_at_the_configured_trace_length():
     lengths_seen = []
 
     class _DataManager:
-        data_loader = SimpleNamespace(data_length=None)
         data_length = 201
 
-        def _create_job_data_from_real_events(self, real_event_jobs, test_noises):
-            lengths_seen.append(self.data_loader.data_length)
+        def _create_job_data_from_real_events(self, real_event_jobs, test_noises, data_length=None):
+            lengths_seen.append(data_length)
             return ["real job"]
 
     pipeline = MultiEventPipeline.__new__(MultiEventPipeline)
@@ -67,7 +66,6 @@ def test_multi_event_real_jobs_are_read_at_the_configured_trace_length():
 
     assert job_data == ["real job"]
     assert lengths_seen == [201]
-    assert pipeline.data_manager.data_loader.data_length is None
 
 
 def test_the_real_trace_length_is_the_configured_duration_times_the_sampling_rate(tmp_path, monkeypatch):
@@ -149,7 +147,7 @@ def test_every_multi_event_test_job_carries_the_covariance_its_noise_was_rescale
         def load_simulation_vector(self, path):
             return np.zeros(8)
 
-        def _create_job_data_from_real_events(self, real_event_jobs, test_noises):
+        def _create_job_data_from_real_events(self, real_event_jobs, test_noises, data_length=None):
             return []
 
     pipeline = MultiEventPipeline.__new__(MultiEventPipeline)

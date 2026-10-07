@@ -79,23 +79,23 @@ class TestSimulationDataLoader:
         self.event_h5 = event_h5
 
     def test_flattened_vector_length(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert vec.shape == (EXPECTED_FLAT_LEN,), (
             f"Expected flat vector of length {EXPECTED_FLAT_LEN}, got {vec.shape}"
         )
 
     def test_flattened_vector_dtype(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert np.issubdtype(vec.dtype, np.floating), (
             f"Expected floating dtype, got {vec.dtype}"
         )
 
     def test_flattened_vector_finite(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert np.all(np.isfinite(vec)), "Flattened vector contains NaN or Inf"
 
     def test_flattened_vector_nonzero(self):
-        vec = self.loader.load_flattened_simulation_vector(self.event_h5)
+        vec = self.loader.load_simulation_data_array(self.event_h5)
         assert np.any(vec != 0.0), "Flattened vector is all-zero"
 
     def test_misc_data_keys(self):
@@ -118,7 +118,7 @@ class TestSimulationDataLoader:
             receivers=receivers,
             data_length=DATA_VECTOR_LEN // 2,
         )
-        vec = loader.load_flattened_simulation_vector(self.event_h5)
+        vec = loader.load_simulation_data_array(self.event_h5)
         expected = len(STATIONS) * N_COMPONENTS_PER_STATION * (DATA_VECTOR_LEN // 2)
         assert vec.shape == (expected,)
 
@@ -179,7 +179,7 @@ class TestComponentFallbackAndOrdering:
         receivers = _build_receivers()  # components=['Z','E','N']
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
         # Must not raise KeyError even though h5 has '1'/'2' not 'E'/'N'
-        vec = loader.load_flattened_simulation_vector(event_h5)
+        vec = loader.load_simulation_data_array(event_h5)
         assert vec.shape == (EXPECTED_FLAT_LEN,)
         assert np.all(np.isfinite(vec))
 
@@ -204,7 +204,7 @@ class TestComponentFallbackAndOrdering:
 
         receivers = _build_receivers()
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
-        vec = loader.load_flattened_simulation_vector(event_h5)
+        vec = loader.load_simulation_data_array(event_h5)
 
         n_comp = 3
         block = DATA_VECTOR_LEN  # samples per component
@@ -221,7 +221,7 @@ class TestComponentFallbackAndOrdering:
         """Z, E(→1), N(→2) blocks for each station must not be copies of each other."""
         receivers = _build_receivers()
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
-        vec = loader.load_flattened_simulation_vector(event_h5)
+        vec = loader.load_simulation_data_array(event_h5)
 
         block = DATA_VECTOR_LEN
         for i in range(len(STATIONS)):

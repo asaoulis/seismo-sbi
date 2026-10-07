@@ -108,14 +108,8 @@ class MultiEventPipeline(SingleEventPipeline):
                             covariance=first_event_covariances[test_noise_name])
                     )
 
-        # Real events are truncated to the configured trace length, derived from the seismogram
-        # duration and sampling rate.
-        data_loader = self.data_manager.data_loader
-        data_loader.data_length = self.data_manager.data_length
-        try:
-            job_data += self.data_manager._create_job_data_from_real_events(real_event_jobs, self.test_noises)
-        finally:
-            data_loader.data_length = None
+        job_data += self.data_manager._create_job_data_from_real_events(
+            real_event_jobs, self.test_noises, data_length=self.data_manager.data_length)
 
         return job_data
 

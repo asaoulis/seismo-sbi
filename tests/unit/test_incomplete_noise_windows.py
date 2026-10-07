@@ -55,7 +55,7 @@ def loader():
 def test_complete_window_reports_all_present(tmp_path, loader):
     f = tmp_path / "full.h5"
     _write(f, NAMES)
-    vec, present = loader.load_flattened_simulation_vector_with_presence(f)
+    vec, present = loader.load_simulation_data_array_with_presence(f)
     assert present.tolist() == [True, True, True]
     assert vec.size == len(NAMES) * 3 * NPTS
 
@@ -63,7 +63,7 @@ def test_complete_window_reports_all_present(tmp_path, loader):
 def test_missing_station_is_zero_filled_and_flagged(tmp_path, loader):
     f = tmp_path / "partial.h5"
     _write(f, ["AAA", "CCC"])                      # BBB absent
-    vec, present = loader.load_flattened_simulation_vector_with_presence(f)
+    vec, present = loader.load_simulation_data_array_with_presence(f)
     assert present.tolist() == [True, False, True]
     # canonical shape preserved, and the absent station's block is exactly zero
     assert vec.size == len(NAMES) * 3 * NPTS
@@ -82,7 +82,7 @@ def test_station_missing_one_component_counts_as_absent(tmp_path, loader):
             comps = "ZN" if n == "BBB" else "ZNE"   # BBB lacks E
             for j, c in enumerate(comps):
                 sg.create_dataset(c, data=np.full(NPTS, 1.0 + j))
-    vec, present = loader.load_flattened_simulation_vector_with_presence(f)
+    vec, present = loader.load_simulation_data_array_with_presence(f)
     assert present.tolist() == [True, False, True]
     assert np.all(vec.reshape(len(NAMES), 3, NPTS)[1] == 0.0)
 

@@ -441,7 +441,7 @@ class TestSbiIngestionWithNewApiH5:
             for sta in available
         ])
         loader = SimulationDataLoader(components="ZEN", receivers=receivers)
-        vec = loader.load_flattened_simulation_vector(preprocessing_real_output["h5"])
+        vec = loader.load_simulation_data_array(preprocessing_real_output["h5"])
         expected_len = len(available) * 3 * DATA_VECTOR_LEN
         assert vec.shape == (expected_len,), (
             f"Expected flat length {expected_len}, got {vec.shape}"
