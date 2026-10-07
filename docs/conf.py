@@ -9,6 +9,7 @@ autoapi_dirs = ["../src/seismo_sbi"]
 autoapi_root = "api"
 autoapi_options = ["members", "undoc-members", "show-inheritance", "show-module-summary"]
 napoleon_use_ivar = True
+myst_enable_extensions = ["dollarmath", "amsmath"]
 myst_heading_anchors = 3
 nb_execution_mode = "off"
 suppress_warnings = ["myst.header"]
