@@ -1265,6 +1265,10 @@
   },
   {
    "error": null,
+   "numbers": []
+  },
+  {
+   "error": null,
    "numbers": [
     2.0,
     0.48,
