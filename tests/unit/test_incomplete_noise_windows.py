@@ -161,3 +161,59 @@ def test_real_noise_training_needs_no_noise_level(monkeypatch):
     assert noise_model_mod.build_test_noise_samplers([("real_noise", "/x")], noise_model, object(), 100, 100) == {
         "real_noise": "sampler"}
 
+
+
+def _rescale_pool(directory, present_names, window_variance):
+    """One noise window holding ``present_names``, each trace of variance-ratio interest."""
+    directory.mkdir()
+    with h5py.File(directory / "window.h5", "w") as h:
+        outputs, misc = h.create_group("outputs"), h.create_group("misc")
+        for station_index, name in enumerate(present_names):
+            station_outputs, station_misc = outputs.create_group(name), misc.create_group(name)
+            for component_index, component in enumerate("ZNE"):
+                station_outputs.create_dataset(component, data=np.arange(NPTS) + 10.0 * station_index + component_index)
+                station_misc.create_dataset(component, data=window_variance * np.exp(-np.arange(NPTS) / 3.0))
+    return directory
+
+
+def _rescale_sampler(directory):
+    from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
+
+    receivers = Receivers(receivers=[Receiver(0.0, float(k), "XX", name, ["Z", "N", "E"]) for k, name in enumerate(NAMES)])
+    return RealNoiseSampler.from_receivers(receivers, "ZNE", NPTS, 1.0, directory, data_length=NPTS, allow_incomplete=True)
+
+
+TARGET = {name: {component: np.array([2.0 + k]) for component in "ZNE"} for k, name in enumerate(NAMES)}
+
+
+def test_an_incomplete_window_is_rescaled_station_by_station(tmp_path):
+    sampler = _rescale_sampler(_rescale_pool(tmp_path / "pool", ["AAA", "CCC"], window_variance=8.0))
+    sampler.rescale_to(TARGET)
+
+    noise, present, covariance_data = sampler.draw()
+
+    traces = noise.reshape(len(NAMES), 3, NPTS)
+    assert present.tolist() == [True, False, True] and sorted(covariance_data) == ["AAA", "CCC"]
+    assert np.allclose(traces[0, 1], (np.arange(NPTS) + 1.0) / np.sqrt(8.0 / 2.0))
+    assert np.allclose(traces[2, 2], (np.arange(NPTS) + 12.0) / np.sqrt(8.0 / 4.0))
+    assert not traces[1].any()
+
+
+@pytest.mark.parametrize("present_names", [NAMES, ["AAA", "CCC"]])
+def test_a_rescaled_draw_from_the_pool_equals_the_draw_from_disk(tmp_path, present_names):
+    pool = _rescale_pool(tmp_path / "pool", present_names, window_variance=8.0)
+    from_disk = _rescale_sampler(pool)
+    from_disk.rescale_to(TARGET)
+    pooled_after, pooled_before = _rescale_sampler(pool), _rescale_sampler(pool)
+    pooled_after.preload_cache(max_workers=1, dtype=np.float64)
+    pooled_after.rescale_to(TARGET)
+    pooled_before.rescale_to(TARGET)
+    pooled_before.preload_cache(max_workers=1, dtype=np.float64)
+
+    expected = from_disk.draw()
+    (pool / "window.h5").unlink()
+    for pooled in (pooled_after, pooled_before):
+        draw = pooled.draw()
+        assert np.array_equal(draw.noise, expected.noise)
+        assert np.array_equal(draw.present, expected.present)

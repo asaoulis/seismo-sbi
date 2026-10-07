@@ -18,7 +18,8 @@ class RealNoiseSampler(NoiseSampler):
 
     Each draw picks one window from ``directory`` covering every model station (or, with
     ``allow_incomplete``, whichever it covers) and returns it flattened in receiver order,
-    optionally rescaled to the variances set by :meth:`rescale_to`.
+    optionally rescaled to the variances set by :meth:`rescale_to`. A rescaled trace is divided by
+    the square root of the ratio of its window's pre-event variance to the target variance.
     """
 
     def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None,
@@ -54,6 +55,9 @@ class RealNoiseSampler(NoiseSampler):
         self._noise_cache = None
         self._presence_cache = None
         self._presence_bits = None
+        self._cache_paths = None
+        self._variance_cache = None
+        self._target_trace_variances = None
 
         #: ``{station: {component: variance}}`` the draws are rescaled to, or None.
         self.target_variances = None
@@ -142,8 +146,8 @@ class RealNoiseSampler(NoiseSampler):
         returns a uniformly random row.
 
         Windows whose flattened length differs from the data-vector length (missing stations or data
-        gaps) are skipped as the on-disk path skips them. Only a draw without a rescale target
-        (``target_variances`` None) comes from the cache.
+        gaps) are skipped as the on-disk path skips them. With a rescale target the pool also holds
+        each window's pre-event variances, and rescaled draws come from it too.
         """
         from concurrent.futures import ThreadPoolExecutor
         from tqdm import tqdm
@@ -174,11 +178,12 @@ class RealNoiseSampler(NoiseSampler):
             loaded = list(tqdm(ex.map(_try_load, paths), total=len(paths),
                                desc="[noise-cache] preloading", unit="win"))
         # Keep windows matching the modal length (the data-vector length); drop gaps/mismatches.
-        kept = [vp for vp in loaded if vp is not None]
+        kept = [(p, vp) for p, vp in zip(paths, loaded) if vp is not None]
         if not kept:
             raise RuntimeError("RealNoiseSampler.preload_cache: no valid noise windows found.")
-        ref_len = self._expected_length or kept[0][0].size
-        kept = [vp for vp in kept if vp[0].size == ref_len]
+        ref_len = self._expected_length or kept[0][1][0].size
+        self._cache_paths = [p for p, vp in kept if vp[0].size == ref_len]
+        kept = [vp for _, vp in kept if vp[0].size == ref_len]
         valid = [v for v, _ in kept]
         if self.allow_incomplete:
             self._presence_cache = np.ascontiguousarray(
@@ -189,23 +194,49 @@ class RealNoiseSampler(NoiseSampler):
         print(f"[noise-cache] preloaded {len(valid)}/{len(paths)} noise windows into RAM "
               f"({gb:.2f} GB, {np.dtype(dtype).name}) in {_t.perf_counter() - t0:.1f}s — "
               f"per-sample HDF5 noise read removed.")
+        self._variance_cache = None
+        if self.target_variances is not None:
+            self._preload_variances()
+
+    def _preload_variances(self):
+        """Read the pre-event variances ``(n_windows, n_traces)`` of the pooled windows, NaN for the
+        traces of an absent station, so that rescaled draws come from the pool."""
+        variances = [self._trace_variances(pre_event_variances(
+            self.data_loader.load_misc_data(path, allow_missing=self.allow_incomplete)), allow_missing=True)
+            for path in self._cache_paths]
+        self._variance_cache = np.stack(variances, axis=0)
+        self._target_trace_variances = self._trace_variances(self.target_variances)
+
+    def _trace_variances(self, variances, allow_missing=False):
+        """``(n_traces,)``: ``variances`` ``{station: {component: variance}}`` in receiver order,
+        NaN for a station it lacks when ``allow_missing``, else ``KeyError``."""
+        values = []
+        for receiver in self.data_loader.receivers.iterate():
+            for component in receiver.components:
+                if allow_missing and receiver.station_name not in variances:
+                    values.append(np.nan)
+                else:
+                    values.append(station_component_value(variances, receiver.station_name, component))
+        return np.array(values, dtype=float)
 
     def draw(self):
         """A noise window for a training sample.
 
-        A random row of the in-memory pool when it is preloaded and no rescale target is set;
-        otherwise a random window read from disk, rescaled to the target variances when they are
-        set, its recorded covariance data then coming with it.
+        A random row of the in-memory pool when it is preloaded, otherwise a random window read from
+        disk with its recorded covariance data. Either is rescaled to the target variances when they
+        are set; the traces of an absent station stay zero.
         """
-        if self._noise_cache is not None and self.target_variances is None:
+        if self._noise_cache is not None and (self.target_variances is None or self._variance_cache is not None):
             row = np.random.randint(0, self._noise_cache.shape[0])
             present = self._presence_cache[row] if self.allow_incomplete else None
-            return NoiseDraw(self._noise_cache[row], present)
+            if self.target_variances is None:
+                return NoiseDraw(self._noise_cache[row], present)
+            return NoiseDraw(self._rescaled_by(self._noise_cache[row], self._variance_cache[row]), present)
         window_path, noise, present = self._usable_window(None)
-        if self.allow_incomplete or self.target_variances is None:
+        if self.target_variances is None:
             return NoiseDraw(noise, present)
-        covariance_data = self.data_loader.load_misc_data(window_path)
-        return NoiseDraw(self._rescaled(noise, covariance_data), None, covariance_data)
+        covariance_data = self.data_loader.load_misc_data(window_path, allow_missing=self.allow_incomplete)
+        return NoiseDraw(self._rescaled(noise, covariance_data), present, covariance_data)
 
     def draw_with_covariance(self, window_index=None):
         """The window at ``window_index`` (a random one when None) as recorded, never rescaled or
@@ -272,7 +303,17 @@ class RealNoiseSampler(NoiseSampler):
                 rescaled.append(trace / np.sqrt(ratio) if ratio != 1.0 else trace)
         return np.concatenate(rescaled)
 
+    def _rescaled_by(self, noise, window_variances):
+        """``noise`` with each trace divided by the square root of its ``window_variances`` ``(n_traces,)``
+        over the target variance; a trace with no window variance (NaN) is kept."""
+        ratios = window_variances / self._target_trace_variances
+        traces = np.asarray(noise).reshape(ratios.size, -1)
+        return np.concatenate([trace / np.sqrt(ratio) if not np.isnan(ratio) and ratio != 1.0 else trace
+                               for trace, ratio in zip(traces, ratios)])
+
     def rescale_to(self, covariance_data):
         """Rescale later draws to the pre-event variances of ``covariance_data``
-        ``{station: {component: autocovariance}}``."""
+        ``{station: {component: autocovariance}}``, which must cover every model station."""
         self.target_variances = pre_event_variances(covariance_data)
+        if self._cache_paths is not None:
+            self._preload_variances()

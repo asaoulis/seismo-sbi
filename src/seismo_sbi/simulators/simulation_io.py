@@ -312,7 +312,12 @@ class SimulationDataLoader():
                 f"order of the components {list(self.components)} the data vector is laid out in."
             )
 
-    def load_misc_data(self, sim_name):
+    def load_misc_data(self, sim_name, allow_missing=False):
+        """``{station: {component: autocovariance}}`` from the ``misc`` group of ``sim_name``.
+
+        With ``allow_missing`` a station absent from the group, or missing one of its components, is
+        left out; otherwise it raises ``KeyError``.
+        """
         with h5py.File(sim_name, 'r') as simulation_data_map:
             misc_data = {}
             misc_group = simulation_data_map["misc"]
@@ -320,12 +325,17 @@ class SimulationDataLoader():
                 receiver_name = receiver.station_name
                 components = receiver.components
                 misc_data[receiver_name] = {}
-                for  component in components:
-                    try:
-                        misc_data[receiver_name][component] = misc_group[receiver_name][component][()]
-                    except KeyError:
-                        component = component_alias(component)
-                        misc_data[receiver_name][component] = misc_group[receiver_name][component][()]
+                try:
+                    for  component in components:
+                        try:
+                            misc_data[receiver_name][component] = misc_group[receiver_name][component][()]
+                        except KeyError:
+                            component = component_alias(component)
+                            misc_data[receiver_name][component] = misc_group[receiver_name][component][()]
+                except KeyError:
+                    if not allow_missing:
+                        raise
+                    del misc_data[receiver_name]
             return misc_data
 
     def _get_seismogram_array_length(self, simulation_data_file):

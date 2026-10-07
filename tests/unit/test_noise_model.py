@@ -11,6 +11,7 @@ from seismo_sbi.utils.errors import InvalidConfiguration
     ({"type": "empirical_gaussian"}, True),
     ({"type": "real_noise", "noise_catalogue_path": "/x"}, True),
     ({"type": "real_noise", "noise_catalogue_path": "/x", "rescale": False}, False),
+    ({"type": "real_noise", "noise_catalogue_path": "/x", "allow_incomplete": True}, True),
 ])
 def test_recorded_and_covariance_noise_follow_the_event_unless_rescale_is_off(block, follows):
     assert NoiseModelConfiguration.from_yaml_block(block).follows_event is follows
@@ -21,7 +22,6 @@ def test_recorded_and_covariance_noise_follow_the_event_unless_rescale_is_off(bl
     ({"type": "gaussian", "noise_level": 1.0, "noise_levle": 2.0}, "unknown keys \\['noise_levle'\\]"),
     ({"type": "gaussian"}, "needs noise_level"),
     ({"type": "real_noise"}, "needs noise_catalogue_path"),
-    ({"type": "real_noise", "noise_catalogue_path": "/x", "allow_incomplete": True}, "allow_incomplete needs rescale: false"),
 ])
 def test_an_inconsistent_noise_model_is_rejected_when_parsed(block, message):
     with pytest.raises(InvalidConfiguration, match=message):

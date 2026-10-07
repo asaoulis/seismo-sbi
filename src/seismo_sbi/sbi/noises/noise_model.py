@@ -46,11 +46,6 @@ class NoiseModelConfiguration:
             raise InvalidConfiguration("inference.sbi.noise_model: type 'gaussian' needs noise_level (m).")
         if self.type == "real_noise" and not self.noise_catalogue_path:
             raise InvalidConfiguration("inference.sbi.noise_model: type 'real_noise' needs noise_catalogue_path.")
-        if self.allow_incomplete and self.follows_event:
-            raise InvalidConfiguration(
-                "inference.sbi.noise_model: allow_incomplete needs rescale: false. Rescaling a noise "
-                "window to an event needs the pre-event variance of every station, which an "
-                "incomplete window lacks.")
 
     @property
     def follows_event(self):
