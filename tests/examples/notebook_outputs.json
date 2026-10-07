@@ -25,10 +25,22 @@
   },
   {
    "error": null,
+   "numbers": []
+  },
+  {
+   "error": null,
    "numbers": [
     256.0,
     256.0,
     256.0
+   ]
+  },
+  {
+   "error": null,
+   "numbers": [
+    10.0,
+    180.0,
+    139.0
    ]
   },
   {

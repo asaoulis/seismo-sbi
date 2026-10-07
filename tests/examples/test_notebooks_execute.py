@@ -41,7 +41,7 @@ TIMEOUT_S = {"ridgecrest_obspy": 120, "nuisances": 1800, "npe_flagship": 2400, "
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
 #: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
 #: they raise is compared.
-STOCHASTIC_CELLS = {"nuisances": {6, 7, 8}, "npe_flagship": {6, 7, 9, 10, 11, 12, 13, 14}, "theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13, 17}, "azores_inversion": {1, 7, 10, 13}}
+STOCHASTIC_CELLS = {"nuisances": {6, 7, 8}, "npe_flagship": {6, 7, 9, 10, 11, 12, 13, 14}, "theory_errors_LV2": {0, 2, 3, 8, 10, 11, 13, 17}, "azores_inversion": {1, 9, 12, 15}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),
          re.compile(r"\d+(\.\d+)?\s*(s|ms|seconds|it/s|s/it)\b"),
          re.compile(r"\d\d:\d\d(:\d\d)?"), re.compile(r"0x[0-9a-f]+"),
