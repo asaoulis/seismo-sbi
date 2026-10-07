@@ -78,5 +78,5 @@ def test_least_squares_keeps_the_prior_and_reaches_the_posterior_mean():
 
     final, _ = solver.solve_least_squares(data, compressor, single_step=True)
 
-    assert compressor.prior == PRIOR
+    assert compressor.prior is PRIOR
     assert np.allclose(final.theta_fiducial, posterior_mean(G, data))

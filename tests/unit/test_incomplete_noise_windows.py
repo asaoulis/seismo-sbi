@@ -1,14 +1,8 @@
-"""Incomplete real-noise windows + variable-station training.
+"""Incomplete real-noise windows and variable-station training.
 
-`RealNoiseSampler` historically dropped a whole noise window if ANY model station was
-missing, so usable windows = pool x P(all stations present). That fraction collapses as
-the station count grows (about 78% of windows at 29 stations in one recorded pool),
-which pushed the station set *down* exactly when more stations were wanted.
-
-Under variable-station training a window missing station X is still perfectly good noise
-for every station it does have. These tests pin that: absent stations are zero-filled and
-reported via a mask, the station draw is restricted to that mask, and the default path is
-byte-identical to the old behaviour.
+A window missing a model station is kept: the absent station is zero-filled and marked in a
+presence mask, the station draw is restricted to that mask, a rescaled window is rescaled station by
+station, and the default path still raises on a missing station.
 """
 from types import SimpleNamespace
 
