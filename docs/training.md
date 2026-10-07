@@ -1,16 +1,17 @@
 # Neural compression and NPE training
 
 The [inference pipeline](pipeline.md) compresses the data with a linearised score compressor and
-trains a density estimator for one event at a time. This page covers the other route: a neural
-network that compresses the seismograms of every station to a short summary, trained together
+trains a density estimator for one event at a time. This page covers the other route. A neural
+network compresses the seismograms of every station to a short summary. It is trained together
 with a conditional normalising flow over the source parameters. The result is an amortised
-neural posterior estimator (NPE). Once trained on simulations drawn from the prior, it returns the
-posterior of any new event recorded by the same network in a fraction of a second, with no
-further simulation. This is what builds whole moment-tensor catalogues.
+neural posterior estimator (NPE): one network trained once, on simulations drawn from the prior.
+It then returns the posterior of any new event recorded by the same station network in a
+fraction of a second, with no further simulation. This is what builds whole moment-tensor
+catalogues.
 
 One YAML file drives training: the same blocks as an inversion (see
 [the configuration guide](configuration.md)) plus the `ml_*` blocks below.
-`examples/configs/npe_example.yaml` is a small complete example, and the
+`examples/configs/npe_example.yaml` is a small complete example. The
 [`npe_flagship`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/npe_flagship.ipynb)
 notebook trains one with nuisances on a real event, from `examples/configs/npe_flagship.yaml`.
 
@@ -28,10 +29,10 @@ python scripts/train_NPE.py --config examples/configs/npe_example.yaml --run-nam
 | `--epochs`, `--devices`, `--architecture`, `--train-batch-size`, `--num-simulations` | override the configuration for this run |
 
 With `--devices` above one, training runs one process per GPU. On a cluster the two stages
-usually run as separate jobs: `generate` on CPU nodes, `train` on GPU nodes over the same
+usually run as separate jobs: `generate` on CPU nodes, then `train` on GPU nodes over the same
 simulations.
 
-Outputs, under the configuration's `output_directory`:
+The outputs, under the configuration's `output_directory`:
 
 | path | contents |
 |---|---|
@@ -64,29 +65,29 @@ trainer.train("my_model", epochs=training.epochs, output_path=pipeline.models_ou
               devices=training.devices)
 ```
 
-1. **Forward model and prior.** `build_pipeline` builds the forward model, the stations and the
+1. Forward model and prior. `build_pipeline` builds the forward model, the stations and the
    parameter samplers the configuration describes.
-2. **Training set.** `generate_training_dataset` simulates `jobs.simulations.random_events`
-   sources drawn from the prior, one HDF5 file each. Nuisance parameters staged `simulation`
-   (for example a Green's-function ensemble member per simulation, or the source time function's
-   duration) are drawn here and baked into the seismograms.
-3. **Noise, augmentation and scaling.** `prepare_training_data` sets up:
-   - the training noise model (`inference.sbi.noise_model`, typically recorded noise windows);
+2. Training set. `generate_training_dataset` simulates `jobs.simulations.random_events` sources
+   drawn from the prior, one HDF5 file each. Nuisance parameters staged `simulation` (for example
+   a Green's-function ensemble member per simulation, or the source time function's duration) are
+   drawn here and baked into the seismograms.
+3. Noise, augmentation and scaling. `prepare_training_data` sets up:
+   - the training noise model (`inference.sbi.noise_model`, typically recorded noise windows)
    - the augmentations: nuisance effects staged `training_augmentation` (amplitude errors, time
-     shifts, station dropout, scattering coda, ...), applied afresh every time a simulation is
-     drawn;
-   - the scaler that maps the source parameters to the unit box the flow works in.
-4. **Model.** `CompressionTrainer` builds the embedding network and the flow (see below).
-5. **Training.** `train` maximises the flow's log-probability of the true source given the
-   noisy, augmented seismograms. The last `1 − ml_batch.train_fraction` of the simulations are
-   held out for validation. Checkpoints are kept by validation loss.
+     shifts, station dropout, scattering coda, and others), applied afresh every time a
+     simulation is drawn
+   - the scaler that maps the source parameters to the unit box the flow works in
+4. Model. `CompressionTrainer` builds the embedding network and the flow (see below).
+5. Training. `train` maximises the flow's log-probability of the true source given the noisy,
+   augmented seismograms. The last `1 − ml_batch.train_fraction` of the simulations are held out
+   for validation. Checkpoints are kept by validation loss.
 
-The [`nuisances`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisances.ipynb) notebook shows the
-built-in effects, the two nuisance stages and a user-defined per-station effect.
+The [`nuisances`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisances.ipynb)
+notebook shows the built-in effects, the two nuisance stages and a user-defined per-station effect.
 
-A station known to be worse than the rest gets its own setting: `amplitude_error`'s
-`scale_range` and `log_sigma_dex` and `time_shift_error`'s `gaussian_sigma` take a map from
-station name to value, with a `default` for the others.
+A station known to be worse than the rest gets its own setting. `amplitude_error`'s
+`scale_range` and `log_sigma_dex`, and `time_shift_error`'s `gaussian_sigma`, take a map from
+station name to value, with a `default` for the others:
 
 ```yaml
 nuisance:
@@ -111,19 +112,20 @@ register_nuisance_effect("station_gain_error", StationGainEffect,
 
 Its constructor takes the extra keys of the configuration's `nuisance.station_gain_error` block
 (and `sampling_rate`, in samples per second, with `needs_sampling_rate=True`). Its `__call__`
-takes a `{station: {component: trace}}` dict, the receivers and the active nuisance values,
-reads `nuisance_params["station_gain_error"]`, returns a new dict, and returns the input unchanged
-when the key is absent. The block's `stage` then picks where it runs, among the stages it was
-registered for.
+takes a `{station: {component: trace}}` dict, the receivers and the active nuisance values. It
+reads `nuisance_params["station_gain_error"]` and returns a new dict. When the key is absent, it
+returns the input unchanged. The block's `stage` then picks where it runs, among the stages it
+was registered for.
 
 ## Training on arrays
 
 Simulations made elsewhere train the same flow without being written as HDF5 files. An
 `ArraySimulationDataset` holds the unscaled source parameters `theta`,
 `(n_simulations, n_parameters)`, and the clean seismograms `x`,
-`(n_simulations, n_stations, n_components, trace_length)`: stations in receiver order, components
-in the order of `components`, zeros where a station does not record a component. Each draw gets
-the augmentation, noise and scaling a simulation file gets, and `RealNoiseSampler.from_windows`
+`(n_simulations, n_stations, n_components, trace_length)`. The stations are in receiver order
+and the components in the order of `components`, with zeros where a station does not record a
+component. Each draw gets
+the augmentation, noise and scaling a simulation file gets. `RealNoiseSampler.from_windows`
 draws recorded noise windows held in memory:
 
 ```python
@@ -143,23 +145,25 @@ trainer.train("my_model", epochs=training.epochs, output_path="models", logger=N
               dataloader_args={"dataset": dataset, **training.loader_args(len(dataset))})
 ```
 
-`noise_windows` is `(n_windows, data_vector_length)`, each row a window's traces for the
+`noise_windows` is `(n_windows, data_vector_length)`. Each row is one window's traces for the
 components each receiver records, in receiver order. With `x` in float32 the samples equal those
-of a preloaded simulation folder (`ml_cache.sims`), with `x` in float64 those read file by file.
+of a preloaded simulation folder (`ml_cache.sims`). With `x` in float64 they equal those read
+file by file.
 
 ## The model
 
 The input is every trace of every station, `(n_stations, n_components, n_samples)`.
 
-1. **Station encoder.** Each station's traces are encoded separately into a short sequence of
+1. Station encoder. Each station's traces are encoded separately into a short sequence of
    feature vectors. `ml_architecture` chooses the encoder: `cnn` (convolutional), `tcn`
-   (temporal convolutional) or `pno` (a Fourier neural-operator encoder). `ml_encoder` sets its size.
-2. **Across stations.** A transformer combines the stations, each tagged with its position
-   (`ml_positional_encoding`) and, optionally, conditioned on the source location
+   (temporal convolutional) or `pno` (a Fourier neural-operator encoder). `ml_encoder` sets its
+   size.
+2. Across stations. A transformer combines the stations. Each station is tagged with its
+   position (`ml_positional_encoding`) and, optionally, conditioned on the source location
    (`ml_conditioning`). The stations form a set, so a model trained with
    `ml_variable_stations` also accepts events recorded by a subset of the network.
-3. **Summary.** The station features are pooled (`ml_pooling`) into the summary vector.
-4. **Flow.** A conditional masked autoregressive flow (`ml_flow`) models the posterior of the
+3. Summary. The station features are pooled (`ml_pooling`) into the summary vector.
+4. Flow. A conditional masked autoregressive flow (`ml_flow`) models the posterior of the
    scaled source parameters given the summary.
 
 The source parameters are scaled to the unit box of their bounds. `ml_scaler` can instead
@@ -193,9 +197,9 @@ An `ml_*` block the training configuration does not know is an error.
 held-out simulations, drawn with the same noise and augmentation the model trained on.
 `write_validation_outputs` turns the result into:
 
-- recovery plots of the posterior against the true source, per parameter;
+- recovery plots of the posterior against the true source, per parameter
 - a TARP coverage test (Lemos et al. 2023): for a calibrated posterior, the expected coverage of
-  its credible regions equals their credibility;
+  its credible regions equals their credibility
 - a metrics JSON with the bias, width and coverage per parameter, including the derived
   source-type (γ, δ), Mw, strike, dip and rake.
 
@@ -227,9 +231,9 @@ moment_tensors = trained.data_scaler.inverse_transform(samples.numpy())
 ```
 
 `load_trained_posterior` rebuilds the embedding network and flow from the run directory's
-`model_meta.json` and best checkpoint (`CompressionTrainer.from_run_directory`), and builds the
-parameter scaling from the configuration with the scalar-moment convention the sidecar records
-(checkpoints that record none were trained with the six-component moment); it raises if that
+`model_meta.json` and best checkpoint (`CompressionTrainer.from_run_directory`). It builds the
+parameter scaling from the configuration, with the scalar-moment convention the sidecar records
+(checkpoints that record none were trained with the six-component moment). It raises if that
 scaling differs from the one the run was trained with. `load_real_observation` returns an event
 listed under `jobs.real_events` as an `(n_stations, n_components, n_samples)` array.
 `build_eval_pipeline(config_path)` also simulates the configuration's test jobs, for validation.

@@ -1,10 +1,10 @@
 # Configuration
 
-A pipeline is driven by one YAML file, parsed once by
-`seismo_sbi.sbi.configuration.SBI_Configuration.from_file`. Training options are parsed from
-the same file into `seismo_sbi.sbi.training_configuration.TrainingConfiguration`. Working
-examples: `examples/configs/LV2.yaml` (Gaussian likelihood and SBI) and
-`examples/configs/npe_example.yaml` (NPE training).
+One YAML file drives a pipeline. `seismo_sbi.sbi.configuration.SBI_Configuration.from_file`
+parses it once. The training options are parsed from the same file into
+`seismo_sbi.sbi.training_configuration.TrainingConfiguration`. Working examples:
+`examples/configs/LV2.yaml` (Gaussian likelihood and SBI) and `examples/configs/npe_example.yaml`
+(NPE training).
 
 ## Blocks
 
@@ -15,7 +15,7 @@ examples: `examples/configs/LV2.yaml` (Gaussian likelihood and SBI) and
 | `parameters` | `ModelParameters` (`model_parameters`) | `inference` and `nuisance` parameters: fiducial values, stencil deltas, bounds, and each nuisance's `stage` |
 | `simulations` | `DatasetGenerationParameters` (`dataset_parameters`) | `num_simulations`, per-parameter `sampling_method`, iterative least squares |
 | `compression` | `compression_methods` | score compressors and their options, or `{}` for none |
-| `inference` | `sbi_method`, `sbi_seed`, `likelihood_config` | the SBI method, pipeline type, training noise model and optional `seed`; Gaussian-likelihood options |
+| `inference` | `sbi_method`, `sbi_seed`, `likelihood_config` | the SBI method, pipeline type, training noise model and optional `seed`. Gaussian-likelihood options |
 | `jobs` | `test_job_simulations`, `real_event_jobs` | synthetic test events, noise models to test against, real events, plots |
 | `ml_*` | `TrainingConfiguration` (`training`) | NPE architecture, encoder, conditioning, flow, optimiser, batches, caches, logging, scaler |
 
@@ -27,7 +27,7 @@ are required. An `ml_*` block that the training configuration does not know is a
 
 ## `seismic_context.processing`
 
-How the synthetics are filtered so that they match the observed data:
+This block sets how the synthetics are filtered, so that they match the observed data:
 
 ```yaml
 seismic_context:
@@ -51,13 +51,13 @@ Three rates sit next to each other:
 - `processing.sampling_rate` is the rate the Instaseis backend resamples the filtered synthetics
   to, over `seismogram_duration`.
 - `processing.filter_sampling_rate` is the rate the filter is designed at, so that the synthetics
-  see the same filter response as the observed data. Set it to the raw rate of the recordings, the
-  rate the data preparation filtered them at (`build_catalogue.py` filters each channel at its raw
-  rate). For synthetic-only work, any rate comfortably above twice `freqmax` will do.
+  see the same filter response as the observed data. Set it to the raw rate of the recordings,
+  the rate the data preparation filtered them at (`build_catalogue.py` filters each channel at
+  its raw rate). For synthetic-only work, any rate well above twice `freqmax` will do.
 
-`filter_sampling_rate` is required in every configuration; a file without it fails to parse with
-`InvalidConfiguration`. Only the Instaseis backend uses it at present; the CPS backend filters at
+`filter_sampling_rate` is required in every configuration. A file without it fails to parse with
+`InvalidConfiguration`. Only the Instaseis backend uses it at present. The CPS backend filters at
 the sampling rate of its Green's functions.
 
-The filtered synthetics start 60 s (`SYNTHETICS_PRE_EVENT_PAD_S`) before the origin exactly,
-on the sample grid through that instant, whatever the database's own sample interval.
+The filtered synthetics start exactly 60 s (`SYNTHETICS_PRE_EVENT_PAD_S`) before the origin, on
+the sample grid through that instant, whatever the database's own sample interval.

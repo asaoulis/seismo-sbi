@@ -1,7 +1,7 @@
 # Forward models
 
 Everything that turns source parameters into seismograms lives in `seismo_sbi.simulators`.
-The generic parts sit at the root of the package and each backend has its own subdirectory.
+The generic parts sit at the root of the package, and each backend has its own subdirectory.
 
 | module | what it holds |
 |---|---|
@@ -21,17 +21,22 @@ The generic parts sit at the root of the package and each backend has its own su
 
 ## Receivers
 
-`Receivers` is the ordered set of stations every seismogram array follows. It is built in one of
-four ways: `Receivers.from_station_file(stations, components_path, time_shifts_path)` reads
-`name network latitude longitude` lines with two optional JSON maps; `Receivers.from_arrays`
-takes equal-length sequences of names, networks, latitudes and longitudes;
-`Receivers.from_inventory(inventory, channels="?H?")` reads an obspy `Inventory`, for example
-from StationXML; and `Receivers(receivers=[...])` takes `Receiver` records directly. The
-`components.json` map is the per-station channel list an `Inventory` already holds, so
+`Receivers` is the ordered set of stations that every seismogram array follows. It is built in
+one of four ways:
+
+- `Receivers.from_station_file(stations, components_path, time_shifts_path)` reads
+  `name network latitude longitude` lines, with two optional JSON maps.
+- `Receivers.from_arrays` takes equal-length sequences of names, networks, latitudes and
+  longitudes.
+- `Receivers.from_inventory(inventory, channels="?H?")` reads an ObsPy `Inventory`, for example
+  from StationXML.
+- `Receivers(receivers=[...])` takes `Receiver` records directly.
+
+The `components.json` map is the per-station channel list that an `Inventory` already holds.
 `from_inventory` fills it from each station's channels (`1` and `2` read as `E` and `N`).
-`receivers.to_inventory()` goes back to obspy for plotting or FDSN queries, and
+`receivers.to_inventory()` goes back to ObsPy for plotting or FDSN queries, and
 `receivers.network_station_codes()` gives the `(network, station)` pairs to request. A
-receiver's `time_shift` is a static correction in samples; it is not carried by an `Inventory`.
+receiver's `time_shift` is a static correction in samples. An `Inventory` does not carry it.
 
 ## Nuisance effects
 
@@ -45,7 +50,7 @@ What a real recording does to a synthetic seismogram lives in its own package,
 | `amplitude_effect.py`, `dropout_effects.py`, `time_shift_effect.py`, `scattering_coda_effect.py`, `anisotropy_effects.py`, `dispersion_effect.py` | the nuisance effects, one family per module |
 | `lanczos_shift.py` | sub-sample time shifts by Lanczos interpolation |
 
-Every `Simulator` runs its output through a `PostProcessingChain`; the same effects run in the
+Every `Simulator` runs its output through a `PostProcessingChain`. The same effects run in the
 dataloader as training-time augmentation.
 
 ## Plug in your own forward model
@@ -62,19 +67,20 @@ class Specfem3DSimulator(Simulator):
         ...  # returns {station_name: {component: np.ndarray}}
 ```
 
-`source` is a `simulators.sources.GenericPointSource`: a `SourceLocation`
-(latitude, longitude, depth in km below the catalogue datum, time shift in s) and a moment
-tensor whose `.components` are `m_rr, m_tt, m_pp, m_rt, m_rp, m_tp` in N.m. The receivers to
-simulate are the `Receivers` handed to `__init__`, iterated with `self.receivers.iterate()`;
-each trace has `seismogram_duration_in_s * sampling_rate` samples. The method must accept the
-keyword arguments `velocity_model`, `stf_duration` and `use_fiducial`, and may ignore them.
-`pre_event_pad_s` states where the origin falls in each trace (60 s for the Instaseis backends,
-0 for CPS); `simulators.synthetic_stream.seismogram_map_to_stream` needs it to time-stamp the traces.
-The source time is the centroid of the moment-rate function (`stf_alignment` is `"peak"`); a
-model whose source time function starts at the source time overrides the `stf_alignment` property
-to return `"onset"`, as CPS does.
+`source` is a `simulators.sources.GenericPointSource`: a `SourceLocation` (latitude, longitude,
+depth in km below the catalogue datum, time shift in s) and a moment tensor whose `.components`
+are `m_rr, m_tt, m_pp, m_rt, m_rp, m_tp` in N m. The receivers to simulate are the `Receivers`
+handed to `__init__`, iterated with `self.receivers.iterate()`. Each trace has
+`seismogram_duration_in_s * sampling_rate` samples. The method must accept the keyword arguments
+`velocity_model`, `stf_duration` and `use_fiducial`, and can ignore them.
 
-The station time shifts and the nuisance effects are applied to its output for you.
+`pre_event_pad_s` states where the origin falls in each trace (60 s for the Instaseis backends, 0
+for CPS). `simulators.synthetic_stream.seismogram_map_to_stream` needs it to time-stamp the
+traces. The source time is the centroid of the moment-rate function (`stf_alignment` is
+`"peak"`). A model whose source time function starts at the source time overrides the
+`stf_alignment` property to return `"onset"`, as CPS does.
+
+The station time shifts and the nuisance effects are applied to the output for you.
 
 Then make the model selectable from a configuration file:
 
@@ -93,21 +99,22 @@ def build_specfem3d(simulation_parameters, simulator_config, pp_effects, data_fl
 register_simulator("specfem3d", build_specfem3d)
 ```
 
-With that call made before the pipeline is built, `simulation_type: specfem3d` in the
-`seismic_context` block selects it. `simulator_config` is `(simulation_type, payload)`, where
-the payload carries whatever the type needs beyond the parameters — the sensitivity kernels for
-`kernel`, the ensemble simulator for `theory_covariance` — and is `None` otherwise. The
-`custom_forward_model` example notebook registers a toy forward model and inverts with it.
+If that call is made before the pipeline is built, `simulation_type: specfem3d` in the
+`seismic_context` block selects the model. `simulator_config` is `(simulation_type, payload)`. The
+payload carries whatever the type needs beyond the parameters: the sensitivity kernels for
+`kernel`, the ensemble simulator for `theory_covariance`. Otherwise it is `None`. The
+[`custom_forward_model`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/custom_forward_model.ipynb)
+notebook registers a toy forward model and inverts with it.
 
 ## AxiSEM ensembles
 
 `simulators/axisem/` produces the perturbed 1-D models a theory-error ensemble is simulated on.
-`perturb.py` draws one perturbed model, `perturbed_models.py` writes a whole ensemble, and
+`perturb.py` draws one perturbed model. `perturbed_models.py` writes a whole ensemble.
 `build_ensemble.py` also renders the solver input files and the member manifest:
 
 ```bash
 python scripts/build_axisem_ensemble.py --config examples/configs/axisem_ensemble.yaml --dry-run
 ```
 
-Meshing, solving and repacking into Instaseis databases happen on a cluster; the resulting
+Meshing, solving and repacking into Instaseis databases happen on a cluster. The resulting
 directory of databases is what `instaseis/ensemble.py` reads back.

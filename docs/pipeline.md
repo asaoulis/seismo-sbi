@@ -5,7 +5,7 @@ simulation-based inference (SBI) and a Gaussian-likelihood MCMC. Both work from 
 forward model and score compression, so their posteriors can be compared directly. The run can
 also invert synthetic test events with known sources, to check the posteriors against the truth.
 
-One YAML file drives the whole run (see [the configuration guide](configuration.md));
+One YAML file drives the whole run (see [the configuration guide](configuration.md)).
 `examples/configs/LV2.yaml` is a complete example, and the
 [`theory_errors_LV2`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/theory_errors_LV2.ipynb)
 notebook runs it step by step.
@@ -16,7 +16,7 @@ notebook runs it step by step.
 python scripts/event_inversion.py --config examples/configs/LV2.yaml
 ```
 
-Outputs, under the configuration's `output_directory`:
+The outputs, under the configuration's `output_directory`:
 
 | path | contents |
 |---|---|
@@ -56,23 +56,23 @@ results = pipeline.run_compressions_and_inversions(
 job_results, inversion_results = job_runners.run_all_inversions_before_plotting(pipeline, results)
 ```
 
-1. **Parameters and forward model.** `load_seismo_parameters` sets the source parameters to
-   invert for and their bounds, the nuisance parameters, the forward model and the stations.
-2. **Test events.** `simulate_test_jobs` simulates the synthetic events listed under
+1. Parameters and forward model. `load_seismo_parameters` sets the source parameters to invert
+   for and their bounds, the nuisance parameters, the forward model and the stations.
+2. Test events. `simulate_test_jobs` simulates the synthetic events listed under
    `jobs.simulations`. Real events come from the HDF5 files listed under `jobs.real_events`.
-3. **Compression data.** `compute_required_compression_data` computes the derivatives of the
-   synthetics with respect to each source parameter about the fiducial source. For a
-   theory-error compressor it also simulates the Earth-model ensemble, from which the
-   theory-error covariance is estimated.
-4. **Compressors.** `load_compressors` builds one score compressor per entry of the
-   `compression` block (see below).
-5. **Noise.** `load_test_noises` builds the noise added to the synthetic test events
+3. Compression data. `compute_required_compression_data` computes the derivatives of the
+   synthetics with respect to each source parameter, about the fiducial source (the source the
+   compression is linearised around). For a theory-error compressor it also simulates the
+   Earth-model ensemble, from which the theory-error covariance is estimated.
+4. Compressors. `load_compressors` builds one score compressor per entry of the `compression`
+   block (see below).
+5. Noise. `load_test_noises` builds the noise added to the synthetic test events
    (`jobs.noise_models`) and the noise added to every training simulation
    (`inference.sbi.noise_model`).
-6. **Jobs.** `create_job_data` makes one job per event and test noise: the data vector, the
-   true source when it is known, and the event's noise covariance.
-7. **Inversions.** `run_compressions_and_inversions` runs, for each job and each compressor,
-   the SBI inversion and then, if `inference.likelihood.run` is set, the Gaussian-likelihood
+6. Jobs. `create_job_data` makes one job per event and test noise: the data vector, the true
+   source when it is known, and the event's noise covariance.
+7. Inversions. `run_compressions_and_inversions` runs, for each job and each compressor, the SBI
+   inversion. If `inference.likelihood.run` is set, it then runs the Gaussian-likelihood
    inversion. It yields one result at a time.
 
 `MultiEventPipeline` and `VaryDatasetSizeEventPipeline` (in `seismo_sbi.sbi.pipeline_variants`)
@@ -83,9 +83,9 @@ run the same steps over several events, or over training sets of increasing size
 ## Score compression
 
 A compressor maps the data vector (every trace of every station, concatenated) to one number per
-source parameter: the maximum-likelihood estimate under a Gaussian likelihood, linearised about a
-fiducial source. It needs the derivatives from step 3 and a data covariance. Each entry of the
-`compression` block is one compressor, and each runs its own inversions:
+source parameter. That number is the maximum-likelihood estimate under a Gaussian likelihood,
+linearised about a fiducial source. It needs the derivatives from step 3 and a data covariance. Each entry of the
+`compression` block is one compressor, and each compressor runs its own inversions:
 
 ```yaml
 compression:
@@ -98,9 +98,9 @@ compression:
 | compressor | covariance |
 |---|---|
 | `optimal_score` | a data-noise covariance, chosen from the table below |
-| `theory_optimal_score` | a data-noise covariance (`data_covariance`, with `noise_level`) plus the theory-error covariance from the Earth-model ensemble, per trace; `diag_regularisation_magnitude` adds to its diagonal |
-| `second_order_score` | a scalar noise level; adds the second-order derivatives |
-| `multi_optimal_score` | a scalar noise level; compresses about several fiducial points |
+| `theory_optimal_score` | a data-noise covariance (`data_covariance`, with `noise_level`) plus the theory-error covariance from the Earth-model ensemble, per trace. `diag_regularisation_magnitude` adds to its diagonal |
+| `second_order_score` | a scalar noise level. Adds the second-order derivatives |
+| `multi_optimal_score` | a scalar noise level. Compresses about several fiducial points |
 
 | data covariance | structure |
 |---|---|
@@ -108,28 +108,28 @@ compression:
 | `empirical_diagonal` | one variance per trace, measured from recorded noise |
 | `empirical_block` | a Toeplitz block per trace, from the measured noise autocovariance |
 | `filtered_block` | a Toeplitz block per trace: white noise through the processing filter |
-| `kolb` | a Toeplitz block per trace with correlation e^(−λ\|Δt\|) cos(λω₀\|Δt\|) |
+| `kolb` | a Toeplitz block per trace with correlation $e^{-\lambda\lvert\Delta t\rvert} \cos(\lambda \omega_0 \lvert\Delta t\rvert)$ |
 
 The [`02_noise_covariances_and_likelihood`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/02_noise_covariances_and_likelihood.ipynb)
-notebook builds every covariance from synthetic noise and compares the posterior each gives with
+notebook builds every covariance from synthetic noise and compares the posterior each gives, with
 and without theory error.
 
 ## The SBI inversion
 
 For each job and compressor:
 
-1. **Maximum-likelihood estimate.** Iterative least squares from the fiducial source finds the
-   MLE, and the compressor is re-centred on it. `simulations.iterative_least_squares` sets the
-   iterations; `mcmc_chain_for_mle` adds rounds of MCMC refinement.
-2. **Training set.** `simulations.num_simulations` sources are drawn uniformly from the prior
-   box: the parameter bounds, narrowed to ± `simulations.use_fisher_to_constrain_bounds` Fisher
-   standard deviations about the MLE (default 5; 0 keeps the bounds). Each is simulated, given a
-   noise realisation from the training noise model, and compressed.
-3. **Density estimation.** A neural density estimator is trained on the (source, compressed
-   data) pairs with [`sbi`](https://github.com/sbi-dev/sbi): `inference.sbi.method: posterior`
-   trains a posterior estimator (SNPE-C with a masked autoregressive flow), and
-   `likelihood` trains a likelihood estimator (SNLE).
-4. **Posterior.** The posterior is sampled at the compressed observed data (10 000 samples).
+1. Maximum-likelihood estimate. Iterative least squares from the fiducial source finds the MLE,
+   and the compressor is re-centred on it. `simulations.iterative_least_squares` sets the
+   iterations. `mcmc_chain_for_mle` adds rounds of MCMC refinement.
+2. Training set. `simulations.num_simulations` sources are drawn uniformly from the prior box.
+   The box is the parameter bounds, narrowed to ± `simulations.use_fisher_to_constrain_bounds`
+   Fisher standard deviations about the MLE (the default is 5, and 0 keeps the bounds). Each source is
+   simulated, given a noise realisation from the training noise model, and compressed.
+3. Density estimation. A neural density estimator is trained on the (source, compressed data)
+   pairs with [`sbi`](https://github.com/sbi-dev/sbi). `inference.sbi.method: posterior` trains a
+   posterior estimator (SNPE-C with a masked autoregressive flow). `likelihood` trains a
+   likelihood estimator (SNLE).
+4. Posterior. The posterior is sampled at the compressed observed data (10 000 samples).
 
 Parameters are scaled to the unit box of their bounds for training and sampling, and returned
 in physical units. `inference.sbi.seed` makes the SBI inversion reproducible.
@@ -138,12 +138,12 @@ in physical units. `inference.sbi.seed` makes the SBI inversion reproducible.
 
 The Gaussian-likelihood inversion samples
 
-log p(θ | d) = −½ (s(θ) − d)ᵀ C⁻¹ (s(θ) − d) + log p(θ),
+$$\log p(\theta \mid d) = -\tfrac{1}{2}\,(s(\theta) - d)^\mathsf{T} C^{-1} (s(\theta) - d) + \log p(\theta),$$
 
-where s(θ) are the synthetics from the fiducial Earth model, d the data, C the covariance and
-p(θ) uniform over the parameter bounds. It uses the forward model at every step, so it is the
-reference the SBI posterior is compared with. Sampling is with [emcee](https://emcee.readthedocs.io).
-The `inference.likelihood` block sets it:
+where $s(\theta)$ are the synthetics from the fiducial Earth model, $d$ the data, $C$ the
+covariance and $p(\theta)$ uniform over the parameter bounds. It calls the forward model at
+every step, so it is the reference the SBI posterior is compared with. Sampling is with
+[emcee](https://emcee.readthedocs.io). The `inference.likelihood` block sets it:
 
 ```yaml
 inference:
@@ -158,14 +158,15 @@ inference:
 
 `num_samples` is split between the chains (one per process, `num_processes`, by default the
 run's `num_jobs`). `move_size` is the proposal step of the Gaussian-move chains in the unit-box
-parameter coordinates: one value, or `[burn-in step, sampling step]`. With `covariance: empirical`, each compressor's inversion uses that
-compressor's covariance, so each covariance model gets its own Gaussian-likelihood posterior.
+parameter coordinates: one value, or `[burn-in step, sampling step]`. With
+`covariance: empirical`, each compressor's inversion uses that compressor's covariance, so each
+covariance model gets its own Gaussian-likelihood posterior.
 
 ### Standalone use
 
 The likelihood and sampler work without the pipeline. `GaussianLikelihoodEvaluator` takes the
 data, any function from source parameters to a data vector, a scaler to the unit box, and the
-covariance's loss; `generate_samples` runs the chains:
+covariance's loss. `generate_samples` runs the chains:
 
 ```python
 from seismo_sbi.sbi.inversion.likelihood import GaussianLikelihoodEvaluator, generate_samples
@@ -179,4 +180,3 @@ samples = generate_samples(evaluator.log_probability, False, num_parameters,
                            nsamples_per_walker=5000, nwalkers=4, burn_in=1000, num_processes=4)
 posterior_samples = scaler.inverse_transform(samples)
 ```
-
