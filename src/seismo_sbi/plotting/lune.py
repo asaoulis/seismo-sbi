@@ -138,10 +138,6 @@ def plot_lune_frame(ax, frame_color='k', grid_color='lightgray', fontweight='bol
     return bm
 
 
-def project_points_to_lune(bm: Basemap, gamma, delta):
-    return bm(gamma, delta)
-
-
 def plot_scatter_on_lune(ax, bm: Basemap, gamma, delta, **scatter_kwargs):
     x, y = bm(gamma, delta)
     ax.scatter(x, y, **scatter_kwargs)
@@ -190,10 +186,3 @@ def plot_filled_kde_on_lune(ax, bm: Basemap, gamma, delta, cmap='Purples',
     if not lv or lv[-1] >= zmax:
         return None
     return ax.contourf(XX, YY, Z, levels=lv + [zmax], cmap=cmap, alpha=alpha)
-
-
-__all__ = [
-    'plot_lune_frame',
-    'project_points_to_lune', 'plot_scatter_on_lune', 'plot_kde_contours_on_lune',
-    'plot_filled_kde_on_lune', 'kde_on_grid', 'kde_hpd_contour_levels'
-]

@@ -697,31 +697,6 @@ class PosteriorPlotter:
             plotting_units_samples[:,i] = scaler(samples[:,i])
         return plotting_units_samples
 
-    def _add_triangle_plot_to_axes(self, posterior_samples, theta_0, plot_bounds, axes):
-
-        assert axes.shape == (self.num_dim, self.num_dim)
-        
-        if plot_bounds is None:
-            plot_bounds = [None for _ in range(self.num_dim)]
-        else:
-            plot_bounds = plot_bounds.T
-
-        for i in range(self.num_dim):
-            for j in range(self.num_dim):
-                if i < j:
-                    h, xedges, yedges , _ =axes[i,j].hist2d(posterior_samples[:,j], posterior_samples[:,i], range= [plot_bounds[j], plot_bounds[i]], bins=50, density=True)
-                    axes[i,j].vlines([theta_0[j]], ymin=np.min(yedges), ymax = np.max(yedges), color="red", linestyle='--', label="theta")
-                    axes[i,j].hlines([theta_0[i]], xmin=np.min(xedges), xmax = np.max(xedges), color="red", linestyle='--', label="theta")
-                elif i == j:
-                    n, _ ,_ = axes[i,j].hist(posterior_samples[:,i], range=plot_bounds[i], bins=50, density=True)
-                    axes[i,j].vlines([theta_0[i]], ymin=np.min(n), ymax = np.max(n), color="red", linestyle='--', label="theta")
-                    axes[i,j].set_xlabel(f"{self.parameters_info[i].name} ({self.parameters_info[i].unit})")
-                    axes[i,j].tick_params(left = False, labelleft = False)
-                    if i == 0:
-                        axes[i,j].legend()
-                else:
-                    axes[i,j].set_visible(False)
-
     def plot_beachball_samples(self, inversion_data, plot_path : Path = None):
         theta0, samples, data_scaler, _ = inversion_data
         if data_scaler is None:

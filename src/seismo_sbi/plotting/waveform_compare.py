@@ -1,10 +1,10 @@
-"""Observed-versus-synthetic waveform figures: a record section and per-station overlays.
+"""Observed-versus-synthetic waveforms of many stations as one moveout record section.
 
 Arrays in, figures out; no pipeline or posterior object is needed. ``obs`` and ``syn`` are
 ``(n_stations, n_components, n_samples)`` in the same station and component order, ``coords`` is
 ``(n_stations, 2)`` of latitude and longitude, ``event_location`` is ``(lat, lon, depth_km)`` and
 ``sampling_rate_hz`` is in Hz. Components are assumed ordered Z, E, N. Cross-correlation and
-best-lag annotations come from :func:`seismo_sbi.data_quality.align_best_lag`, where a positive
+best-lag annotations come from :func:`seismo_sbi.data_quality.metrics.align_best_lag`, where a positive
 lag delays the synthetic. Forward-model the synthetic at the event's true location.
 """
 from __future__ import annotations
@@ -12,8 +12,6 @@ from __future__ import annotations
 from collections import OrderedDict
 
 import numpy as np
-
-from seismo_sbi.utils.seismograms import shift_1d_with_padding
 
 COMPONENTS = ("Z", "E", "N")
 
@@ -23,66 +21,9 @@ def _dist_km(ev_lat, ev_lon, sta_lat, sta_lon) -> float:
     return gps2dist_azimuth(ev_lat, ev_lon, sta_lat, sta_lon)[0] / 1000.0
 
 
-def _shift(x, lag: int):
-    """Delay (``+lag``) / advance (``-lag``) a trace by an integer number of samples, zero-padded."""
-    return shift_1d_with_padding(np.asarray(x, float), int(lag))
-
-
 def _xcorr_lag(obs1d, syn1d, max_lag: int):
     from seismo_sbi.data_quality.metrics import align_best_lag
     return align_best_lag(np.asarray(obs1d, float), np.asarray(syn1d, float), max_lag)
-
-
-def _apply_align(o, s, align: str, max_lag: int, sr: float):
-    """Return (syn_aligned, label) for the requested alignment mode."""
-    if align == "window60":
-        return _shift(s, -int(round(60 * sr))), "syn+60s"
-    if align == "best":
-        _, lag = _xcorr_lag(o, s, max_lag)
-        return _shift(s, lag), f"lag={lag/sr:+.0f}s"
-    return np.asarray(s, float), "raw"
-
-
-def record_section(obs, syn, station_names, coords, event_location, *, sampling_rate=1.0,
-                   component="Z", reduction_velocity=None, align="none", max_lag=60,
-                   figname=None, gain=0.4, color_obs="black", color_syn="#b87333", ax=None):
-    """One-component record section: obs (black) + syn (colour), one trace per station offset by
-    its epicentral distance (km). ``reduction_velocity`` (km/s), if given, plots at reduced time
-    ``t - dist/v_red`` so a moving-out phase lines up. ``align`` in {'none','window60','best'}.
-    Each trace is peak-normalised (by its own obs) and scaled by ``gain`` in distance units.
-    """
-    import matplotlib.pyplot as plt
-    obs = np.asarray(obs, float); syn = np.asarray(syn, float)
-    ci = COMPONENTS.index(component)
-    ev_lat, ev_lon, _ = event_location
-    dists = np.array([_dist_km(ev_lat, ev_lon, coords[i][0], coords[i][1])
-                      for i in range(len(station_names))])
-    order = np.argsort(dists)
-    T = obs.shape[2]
-    t = np.arange(T) / float(sampling_rate)
-    span = (dists.max() - dists.min()) or 1.0
-    g = gain * span / max(len(order), 1)            # trace half-amplitude in distance units
-
-    own = ax is not None
-    if not own:
-        fig, ax = plt.subplots(figsize=(9, 10))
-    for i in order:
-        o = obs[i, ci]; s = syn[i, ci]
-        s, lbl = _apply_align(o, s, align, max_lag, sampling_rate)
-        # normalise each trace by the max of BOTH obs and syn so neither channel (nor a quiet /
-        # dead observation) blows the record section up.
-        norm = max(float(np.max(np.abs(o))), float(np.max(np.abs(s)))) or 1.0
-        tt = t - (dists[i] / reduction_velocity if reduction_velocity else 0.0)
-        ax.plot(tt, dists[i] + g * o / norm, color=color_obs, lw=0.8, zorder=3)
-        ax.plot(tt, dists[i] + g * s / norm, color=color_syn, lw=0.8, alpha=0.9, zorder=2)
-        ax.text(t[0] - (dists[i] / reduction_velocity if reduction_velocity else 0.0),
-                dists[i], f" {station_names[i]}", va="center", ha="right", fontsize=7)
-    xlab = "reduced time  t − Δ/v  [s]" if reduction_velocity else "time [s]"
-    ax.set(xlabel=xlab, ylabel="epicentral distance [km]",
-           title=f"Record section — {component}  (obs=black, syn={color_syn}; {align})")
-    ax.grid(alpha=0.2)
-    if not own:
-        _finish(fig, figname)
 
 
 def _finish(fig, figname):
