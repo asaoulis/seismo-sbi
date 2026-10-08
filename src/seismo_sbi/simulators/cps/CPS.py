@@ -102,7 +102,7 @@ def calc_CPS_GFs(dists_in_km, evdp_in_km, vmodel, output='DISP',
     if verbose: logger.info('  - Calculated GF written to %s', wdir_path / 'GF.mseed')
 
 def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_params=None,
-                         force_calc=True, verbose=True, rootdir='.', return_gf=True, gf_directory=None,
+                         force_calc=True, verbose=True, rootdir='.', gf_directory=None,
                          cps_path=None):
     """Green's functions for every receiver in ``objstats``, rotated into the moment-tensor
     frame, computing them with CPS first if they are not already stored.
@@ -210,7 +210,4 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
     Ecomp = -gf_tensor[:,1] * np.sin(baz) - gf_tensor[:,2] * np.cos(baz)
     gf_tensor[:,2,:,:] = Ncomp
     gf_tensor[:,1,:,:] = Ecomp
-    if return_gf:
-        return gf_tensor
-    else:
-        for s, obj in enumerate(objstats): obj.update({'Gtensor':gf_tensor[s]})
+    return gf_tensor

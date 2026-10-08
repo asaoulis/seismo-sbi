@@ -64,7 +64,6 @@ class CPSSimulator(Simulator):
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.gf_storage_root = gf_storage_root
         self.cps_path = cps_path
-        self.synthetics_summary = lambda x: x
     
     @property
     def stf_alignment(self) -> str:
@@ -82,14 +81,13 @@ class CPSSimulator(Simulator):
         self.sensitivity_kernels = self.compute_greens_functions(source, velocity_model, **kwargs)
 
         seismograms = self._compute_seismograms_from_kernels(source)
-        seismograms = self.synthetics_summary(seismograms)
         num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         seismograms = seismograms.reshape(num_traces, -1)
         return seismogram_array_to_map(seismograms, self.receivers)
 
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
-        greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1 / CPS_SAMPLING_RATE_HZ, force_calc=True, verbose=False, rootdir=self.gf_storage_root, return_gf=True, **kwargs)
+        greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1 / CPS_SAMPLING_RATE_HZ, force_calc=True, verbose=False, rootdir=self.gf_storage_root, **kwargs)
         greens_functions = greens_functions.transpose(2, 0, 1, 3)
 
         used_greens_functions = []
@@ -110,7 +108,7 @@ class CPSSimulator(Simulator):
         return seismograms
     
     @abstractmethod
-    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
+    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', **kwargs):
         """Green's functions for this simulator's receivers; implemented by each subclass."""
         raise NotImplementedError("This method should be implemented in subclasses.")
     
@@ -129,7 +127,7 @@ class CPSVariableKernelSimulator(CPSSimulator):
                     item.rmdir()
 
     
-    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
+    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', **kwargs):
         kwargs.pop('use_fiducial', False)
         kwargs.pop('seed', None)
         return update_with_Gtensor(
@@ -139,7 +137,6 @@ class CPSVariableKernelSimulator(CPSSimulator):
             force_calc=force_calc,
             verbose=verbose,
             rootdir=rootdir,
-            return_gf=return_gf,
             filter_params=self.synthetics_processing['filter'],
             cps_path=self.cps_path,
             **kwargs,
@@ -177,7 +174,7 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
     def fiducial_model_path(self):
         return self._fiducial_model_path
 
-    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', return_gf=True, **kwargs):
+    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', **kwargs):
         seed = kwargs.pop('seed', None)
         use_fiducial = kwargs.pop('use_fiducial', False)
         member = kwargs.pop('member', None)
@@ -191,7 +188,6 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
             force_calc=False,
             verbose=verbose,
             gf_directory=cps_data_folder,
-            return_gf=return_gf,
             filter_params=self.synthetics_processing['filter'],
             cps_path=self.cps_path,
             **kwargs,
@@ -247,7 +243,6 @@ class MultiModelCPSSimulator(MultiModelSimulator, CPSSimulator):
         force_calc=True,
         verbose=False,
         rootdir='.',
-        return_gf=True,
         **kwargs,
     ):
         """Never called: each sub-simulator computes its own Green's functions."""
