@@ -2,8 +2,8 @@
 
 :class:`TorchSimulationDataset` loads each clean simulation, applies the training-time nuisance
 augmentation, adds a noise draw, and returns ``(theta, x)``, optionally with a station subset and
-a source-conditioning vector, and :func:`make_torch_dataloaders` builds the training and
-validation loaders.
+a source-conditioning vector. :func:`split_dataset` divides a dataset into training and
+validation samples, and :func:`make_torch_dataloaders` builds the two loaders over them.
 """
 
 import glob
@@ -161,7 +161,6 @@ def _seed_worker(worker_id):
     np.random.seed(seed)
 
 
-# Convenience factory to create a torch DataLoader for a dataset (no splitting)
 def make_torch_dataloader(
     data_loader: SimulationDataLoader,
     data_folder: str,
@@ -184,6 +183,8 @@ def make_torch_dataloader(
     post_noise_augmentation_chain=None,
     post_noise_nuisance_params=None,
 ) -> DataLoader:
+    """One loader over every simulation under ``data_folder``, without a validation split; the
+    dataset arguments go to :class:`TorchSimulationDataset`."""
     dataset = TorchSimulationDataset(
         data_loader=data_loader,
         data_folder=data_folder,
@@ -200,23 +201,9 @@ def make_torch_dataloader(
         post_noise_augmentation_chain=post_noise_augmentation_chain,
         post_noise_nuisance_params=post_noise_nuisance_params,
     )
-    if persistent_workers is None:
-        persistent_workers = num_workers > 0
-    # Variable-station samples are ragged ⇒ the default collate cannot stack them.
-    collate_fn = variable_station_collate if station_subsampler is not None else None
-    # prefetch_factor is only valid for multiprocessing loaders (num_workers > 0).
-    extra = {"prefetch_factor": prefetch_factor} if num_workers > 0 else {}
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        persistent_workers=persistent_workers,
-        worker_init_fn=_seed_worker if num_workers > 0 else None,
-        collate_fn=collate_fn,
-        **extra,
-    )
+    loader_options = _loader_options(num_workers, pin_memory, persistent_workers, prefetch_factor,
+                                     station_subsampler)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **loader_options)
 
 def make_torch_dataloaders(
     *,
@@ -286,7 +273,7 @@ def make_torch_dataloaders(
             cache_preload_workers=cache_preload_workers,
             cache_dtype=cache_dtype,
         )
-    train_subset, val_subset = _split_at_index(full_dataset, train_max_index)
+    train_subset, val_subset = split_dataset(full_dataset, train_max_index)
     loader_options = _loader_options(num_workers, pin_memory, persistent_workers, prefetch_factor,
                                      station_subsampler)
 
@@ -299,8 +286,9 @@ def make_torch_dataloaders(
     return train_loader, val_loader
 
 
-def _split_at_index(dataset, train_max_index):
-    """``(train, validation)`` subsets: the samples before ``train_max_index`` and the rest."""
+def split_dataset(dataset, train_max_index):
+    """``(train, validation)`` subsets of ``dataset``: the samples before ``train_max_index`` and
+    the rest, in order. An index past the end puts every sample in training."""
     n = len(dataset)
     end = max(0, min(train_max_index, n))
     return Subset(dataset, range(0, end)), Subset(dataset, range(end, n))
