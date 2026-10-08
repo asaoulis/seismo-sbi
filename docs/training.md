@@ -208,7 +208,8 @@ from seismo_sbi.evaluation.validation import run_validation, write_validation_ou
 
 original_parameters = deepcopy(pipeline.parameters)   # taken right after generate_training_dataset
 posterior = trainer.build_posterior()
-validation = run_validation(pipeline, original_parameters, posterior, data.data_scaler)
+validation = run_validation(pipeline, original_parameters, posterior, data.data_scaler,
+                            train_fraction=training.batch.train_fraction)
 summary = write_validation_outputs(validation, "validation/", original_parameters,
                                    data.data_scaler, num_samples=1000)
 ```

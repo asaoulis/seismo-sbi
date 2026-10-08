@@ -405,6 +405,21 @@ def test_run_validation_direct_branch_calls_posterior_sample(monkeypatch):
     assert out["samples_scaled"].shape == (5, 3, 6)
 
 
+def test_run_validation_holds_out_the_simulations_after_the_training_share(monkeypatch):
+    """train_fraction=0.8 of 30 simulations → training ends at 24, validation reads 24..29."""
+    from seismo_sbi.evaluation.validation import run_validation
+
+    N, C, T = 3, 3, 8
+    ds = _StubDataset(n_sims=30, N=N, C=C, T=T)
+    _patch_run_validation_deps(monkeypatch, ds, {"calls": []})
+    out = run_validation(
+        _StubPipeline([f"S{i}" for i in range(N)]), object(), _DeterministicPosterior(n_dims=6),
+        _IdentityScaler(), n_val=100, n_show=0, num_samples=2, device="cpu",
+        variable_stations=False, cond_param_map=None, train_fraction=0.8,
+    )
+    np.testing.assert_array_equal(out["theta_scaled"], ds._theta[24:30])
+
+
 # ---------------------------------------------------------------------------
 # 4.  write_validation_outputs side-effects (pure subset: JSON write)
 # ---------------------------------------------------------------------------

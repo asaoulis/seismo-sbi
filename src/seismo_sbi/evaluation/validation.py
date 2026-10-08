@@ -16,6 +16,7 @@ import numpy as np
 
 from seismo_sbi.evaluation import posterior_metrics
 from seismo_sbi.plotting import evaluation as ev
+from seismo_sbi.sbi.training_configuration import BatchConfig
 from seismo_sbi.sbi.types.results import InversionData
 
 logger = logging.getLogger(__name__)
@@ -33,11 +34,13 @@ def run_validation(
     device: Optional[str] = None,
     variable_stations: bool = True,
     cond_param_map: Optional[dict] = None,
+    train_fraction: float = BatchConfig.train_fraction,
 ) -> dict:
     """Posterior samples for the held-out tail of the simulation set.
 
-    The last 10 % of the sorted simulations, at most ``n_val`` of them, are drawn with the
-    training noise and augmentations and ``num_samples`` posterior samples taken for each.
+    The sorted simulations after the training share ``train_fraction`` (the run's
+    ``ml_batch.train_fraction``), at most ``n_val`` of them, are drawn with the training noise and
+    augmentations and ``num_samples`` posterior samples taken for each.
     ``variable_stations`` (or a ``cond_param_map``, ``{block: [parameter names]}`` of the
     conditioning source parameters) packs the full station set as a variable-station context,
     conditioned on each simulation's true source; otherwise the flat data vector is the input.
@@ -52,7 +55,7 @@ def run_validation(
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    ds, val_idx = validation_dataset(sbi_pipeline, data_scaler, n_val=n_val)
+    ds, val_idx = validation_dataset(sbi_pipeline, data_scaler, n_val=n_val, train_fraction=train_fraction)
     # Conditioned models are always variable-station (packed context).
     use_packed = bool(variable_stations) or (cond_param_map is not None)
     logger.info(f"  validation: {len(val_idx)} held-out sims (tail of {len(ds)}), "
@@ -79,9 +82,10 @@ def run_validation(
     }
 
 
-def validation_dataset(sbi_pipeline, data_scaler, *, n_val: int):
+def validation_dataset(sbi_pipeline, data_scaler, *, n_val: int, train_fraction: float):
     """``(dataset, val_idx)``: the simulation set with the training noise and augmentations, and
-    the indices of its held-out tail (the last 10 %, at most ``n_val``).
+    the indices of its held-out tail (the simulations after the training share
+    ``train_fraction``, at most ``n_val``).
     """
     from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
     from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
@@ -115,10 +119,11 @@ def validation_dataset(sbi_pipeline, data_scaler, *, n_val: int):
     )
 
     n = len(ds)
-    val_idx = list(range(int(0.90 * n), n))[:n_val]
+    train_max_index = int(train_fraction * n)
+    val_idx = list(range(train_max_index, n))[:n_val]
     if not val_idx:
         raise RuntimeError(
-            f"No held-out validation sims (n={n}, train_max_index={int(0.90*n)})."
+            f"No held-out validation sims (n={n}, train_max_index={train_max_index})."
         )
     return ds, val_idx
 
