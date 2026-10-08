@@ -199,9 +199,14 @@ def _run_sbi(pipeline, compressor, compression_data, D_obs, sigma, dataset_param
 
     The kernel simulator is activated automatically (source_location constant).
     Fisher-constrained bounds focus training data near the true solution for
-    the NPE.  Training noise uses the same σ as the compressor covariance.
+    the NPE.  Training noise uses the same σ as the compressor covariance. The
+    parameter draws, the per-simulation noise and the network are seeded with
+    ``RNG_SEED``, as :meth:`run_compressions_and_inversions` seeds them.
     """
+    import torch
+
     pipeline = deepcopy(pipeline)
+    pipeline.seed = RNG_SEED
 
     theta_mle = compressor.compress_data_vector(D_obs)
     inference_cd = compression_data._replace(theta_fiducial=theta_mle)
@@ -213,6 +218,8 @@ def _run_sbi(pipeline, compressor, compression_data, D_obs, sigma, dataset_param
         use_fisher_to_constrain_bounds=None,
     )
 
+    np.random.seed(RNG_SEED)
+    torch.manual_seed(RNG_SEED)
     inversion_data, _, _ = pipeline.run_single_sbi_inversion(
         sbi_method="posterior",
         dataset_details=train_params,
