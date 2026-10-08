@@ -61,6 +61,29 @@ def test_the_reparametrised_corner_draws_each_reference_in_every_panel(tmp_path,
             assert ax.get_xlim()[0] < x < ax.get_xlim()[1] and ax.get_ylim()[0] < y < ax.get_ylim()[1]
 
 
+def test_corner_ticks_keep_clear_of_the_panel_edges(tmp_path, monkeypatch):
+    matplotlib.use("Agg")
+    monkeypatch.chdir(EXAMPLES)
+    parameters = SBI_Configuration.from_file("configs/npe_example.yaml").model_parameters
+    truth = np.array([3.0, -2.0, -1.0, 1.5, -0.5, 2.0]) * 1e16
+    samples = truth + np.random.default_rng(1).normal(scale=2e15, size=(400, 6))
+
+    figure = MomentTensorReparametrised(None, parameters).plot_chain_consumer(
+        {"posterior": (None, samples, None, None)}, kde=False, figsave=tmp_path / "corner.png")
+
+    figure.canvas.draw()
+    checked = 0
+    for ax in figure.axes:
+        for axis, (low, high) in ((ax.xaxis, sorted(ax.get_xlim())), (ax.yaxis, sorted(ax.get_ylim()))):
+            if not any(label.get_text() for label in axis.get_ticklabels()):
+                continue
+            margin = 0.08 * (high - low)
+            ticks = [tick for tick in axis.get_ticklocs() if low <= tick <= high]
+            assert all(low + margin <= tick <= high - margin for tick in ticks)
+            checked += 1
+    assert checked >= 6
+
+
 def test_the_reparametrised_corner_labels_each_column_with_its_quantity():
     from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
 

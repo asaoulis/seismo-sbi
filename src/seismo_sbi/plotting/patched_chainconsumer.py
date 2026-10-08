@@ -2,7 +2,9 @@
 
 A modified copy of the figure methods of ``Plotter`` from ChainConsumer 0.34.0 (Samuel Hinton,
 MIT licence). ``CustomChainConsumer.configure(inverse=True)`` flips the trade-off triangle and
-moves and rotates every label to match; otherwise the plot is ChainConsumer's own.
+moves and rotates every label to match. Ticks within 8 % of a panel's range from either edge are
+left out, so the labels of abutting panels do not print into each other; otherwise the plot is
+ChainConsumer's own.
 """
 
 import numpy as np
@@ -18,6 +20,20 @@ if not hasattr(_scipy_integrate, "simps"):
 from chainconsumer.helpers import get_smoothed_bins, get_grid_bins
 from chainconsumer.plotter import Plotter
 from chainconsumer.chainconsumer import ChainConsumer
+
+class EdgeClearLocator(MaxNLocator):
+    """``MaxNLocator`` ticks without those within ``edge_fraction`` of the axis range from either end."""
+
+    def __init__(self, *args, edge_fraction=0.08, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.edge_fraction = edge_fraction
+
+    def tick_values(self, vmin, vmax):
+        ticks = super().tick_values(vmin, vmax)
+        low, high = min(vmin, vmax), max(vmin, vmax)
+        margin = self.edge_fraction * (high - low)
+        return ticks[(ticks >= low + margin) & (ticks <= high - margin)]
+
 
 def remove_square_brackets(text):
     # Use regular expression to find and remove anything between square brackets
@@ -525,7 +541,7 @@ class CustomPlotter(Plotter):
                                 _ = [l.set_rotation(45) for l in ax.get_xticklabels()]
                             _ = [l.set_fontsize(tick_font_size) for l in ax.get_xticklabels()]
                             if not logx:
-                                ax.xaxis.set_major_locator(MaxNLocator(max_ticks, prune="lower"))
+                                ax.xaxis.set_major_locator(EdgeClearLocator(max_ticks, prune="lower"))
                                 ax.xaxis.set_major_formatter(formatter_x)
                             else:
                                 ax.xaxis.set_major_locator(LogLocator(numticks=max_ticks))
@@ -536,7 +552,7 @@ class CustomPlotter(Plotter):
                                 _ = [l.set_rotation(45) for l in ax.get_yticklabels()]
                             _ = [l.set_fontsize(tick_font_size) for l in ax.get_yticklabels()]
                             if not logy:
-                                ax.yaxis.set_major_locator(MaxNLocator(max_ticks, prune="lower"))
+                                ax.yaxis.set_major_locator(EdgeClearLocator(max_ticks, prune="lower"))
                                 ax.yaxis.set_major_formatter(formatter_y)
                             else:
                                 ax.yaxis.set_major_locator(LogLocator(numticks=max_ticks))
