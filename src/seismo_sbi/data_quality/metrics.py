@@ -223,9 +223,10 @@ def traces_from_receivers(receivers) -> List[TraceDescriptor]:
 def correlation_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
     """Mean over the station's components of ``1 - Pearson(obs, syn)`` at zero lag.
 
-    Mirrors ``PosteriorPredictiveChecks._metric_corr_misfit`` (per-trace correlation,
-    then averaged). Unlike ``max_xcorr`` this is *not* lag-optimised, so it penalises
-    timing errors as well as shape errors.
+    Per-trace correlation, then averaged;
+    :class:`~seismo_sbi.plotting.posterior_predictive_checks.PosteriorPredictiveChecks` scores each
+    posterior-predictive sample with it. Unlike ``max_xcorr`` this is *not* lag-optimised, so it
+    penalises timing errors as well as shape errors.
     """
     x = obs2d_sta - obs2d_sta.mean(axis=1, keepdims=True)
     y = syn2d_sta - syn2d_sta.mean(axis=1, keepdims=True)
@@ -239,9 +240,9 @@ def correlation_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
 def envelope_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
     """Mean relative L1 difference of the Hilbert envelopes, averaged over components.
 
-    Mirrors ``PosteriorPredictiveChecks._metric_envelope_misfit``. Computed per trace
-    (not on the concatenation) to avoid Hilbert edge artefacts at trace boundaries.
-    Returns NaN if scipy is unavailable (matching the PPC guard).
+    Computed per trace, to avoid Hilbert edge artefacts at trace boundaries, unlike the
+    envelope misfit of ``PosteriorPredictiveChecks``, which takes the envelope of the whole
+    concatenated vector. Returns NaN if scipy is unavailable.
     """
     if hilbert is None:
         return float("nan")
@@ -261,8 +262,8 @@ def station_reduced_chi2(
 ) -> float:
     """Reduced chi-square of a station's residual.
 
-    Mirrors ``PosteriorPredictiveChecks._metric_reduced_chi2``: with a covariance
-    exposing ``compute_loss(residual, reduce=True)`` the Mahalanobis form
+    ``PosteriorPredictiveChecks`` scores each posterior-predictive sample with it. With a
+    covariance exposing ``compute_loss(residual, reduce=True)`` the Mahalanobis form
     ``chi2 = -2 * compute_loss`` is used (the covariance must be sized to this
     station's residual); otherwise it falls back to ``r·r``. ``dof`` defaults to the
     residual length.
