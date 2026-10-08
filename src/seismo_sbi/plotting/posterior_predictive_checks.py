@@ -5,12 +5,16 @@ and evaluates registered misfit metrics against the observation; :func:`plot_met
 compares the metrics across methods.
 """
 
-import numpy as np
+import traceback
 import warnings
-import joblib
-from tqdm import tqdm
-from typing import Callable, Dict, List, Optional
 from collections import OrderedDict
+from typing import Callable, Dict, Iterable, List, Optional, Union
+
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 # Optional seismology helpers
 try:
@@ -19,6 +23,7 @@ except Exception:
     hilbert = None
     welch = None
 
+from seismo_sbi.data_quality.metrics import correlation_misfit, station_reduced_chi2
 from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
 from seismo_sbi.simulators.simulation_io import component_alias
 from seismo_sbi.utils.parallel import tqdm_joblib
@@ -364,31 +369,17 @@ class PosteriorPredictiveChecks:
 
     # --- Built-in metrics: each returns an array of length n_synthetics ---
 
-    def _chi2_from_cov(self, r: np.ndarray):
-        """
-        Try to compute r^T C^{-1} r using covariance_matrix interfaces;
-        fall back to raw dot(r, r).
-        """
-        C = self.covariance_matrix
-        if C is None:
-            return float(np.dot(r, r))
-        return -2* C.compute_loss(r, reduce=True)
-
     def _metric_reduced_chi2(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
-        # vectorized
         n_samples = synthetics.shape[0]
         obs_len = obs.size
         dof = meta.get("dof_override", None)
         if dof is None:
             dof = obs_len if obs_len > 0 else 1
 
-        # compute residuals in vectorized fashion when possible
-        diffs = synthetics - obs[None, :]  # shape (n_samples, obs_len)
         chi2s = np.empty((n_samples,), dtype=float)
         for i in range(n_samples):
-            chi2s[i] = self._chi2_from_cov(diffs[i, :])
-        # reduced
-        return chi2s / float(dof)
+            chi2s[i] = station_reduced_chi2(obs, synthetics[i], self.covariance_matrix, dof)
+        return chi2s
 
     def _reshape_to_traces(self, vec: np.ndarray, n_traces: int):
         vec = np.asarray(vec).ravel()
@@ -428,16 +419,9 @@ class PosteriorPredictiveChecks:
             # fallback
             return self._metric_corr_misfit(obs, synthetics, {**meta, "n_traces": None})
 
-        x = obs_mat - obs_mat.mean(axis=1, keepdims=True)
-        xnorm = np.linalg.norm(x, axis=1) + 1e-12  # [n_traces]
         vals = np.empty((n_samples,), dtype=float)
         for i in range(n_samples):
-            y = syn_mat[i] - syn_mat[i].mean(axis=1, keepdims=True)
-            ynorm = np.linalg.norm(y, axis=1) + 1e-12
-            dots = np.sum(x * y, axis=1)
-            corr_tr = np.where((xnorm * ynorm) == 0.0, 0.0, dots / (xnorm * ynorm))
-            misfit_tr = 1.0 - corr_tr
-            vals[i] = float(np.mean(misfit_tr))
+            vals[i] = correlation_misfit(obs_mat, syn_mat[i])
         return vals
 
     def _metric_power_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
@@ -634,7 +618,6 @@ class PosteriorPredictiveChecks:
         except Exception:
             # if metric computation fails, just return first k
             print("Metric computation failed during selection, returning first k samples. Error:")
-            import traceback
             traceback.print_exc()
             return synthetics[:k], np.arange(k, dtype=int)
         # lower is better
@@ -642,10 +625,6 @@ class PosteriorPredictiveChecks:
         best_idx = order[:k]
         return synthetics[best_idx], best_idx
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from typing import Dict, Iterable, Optional, Union
 
 def plot_metric_bars(
     metrics_dict: Dict[str, Dict[str, float]],
