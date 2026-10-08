@@ -1,8 +1,7 @@
 """Cross-event station reliability statistics.
 
-Roll up many events' :class:`QAArtifacts` into per-station reliability, the driver for
-catalogue-scale station filtering ("station X is dropped in 80% of events -> blacklist").
-Pure and deterministic, so it is unit-testable without any forward model.
+Roll up many events' :class:`QAArtifacts` into per-station reliability, for filtering stations
+across a catalogue (a station dropped in 80 % of events belongs on the blocklist).
 """
 from __future__ import annotations
 

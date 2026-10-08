@@ -1,7 +1,7 @@
 """Local equirectangular (lat/lon) <-> local-Cartesian (km) conversions.
 
-These are deliberately lightweight, dependency-free approximations valid over the
-small spatial extent of a single seismic crisis (tens of km), used by the
+These equirectangular approximations hold over the small extent of a single seismic
+sequence (tens of km). They are used by the
 catalogue source-location prior to apply a Gaussian perturbation specified in
 kilometres.  A reference point fixes the local tangent plane; the longitude scale
 uses ``cos(ref_lat)`` so the forward and inverse transforms round-trip exactly for

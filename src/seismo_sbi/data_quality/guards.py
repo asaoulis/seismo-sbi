@@ -1,4 +1,4 @@
-"""Model-free quality guards and the calibrated gate composition over them.
+"""Quality guards that need no forward model, and the calibrated gate composition over them.
 
 Each guard catches a distinct failure mode of a recorded trace without reference to a synthetic.
 Verdicts are per component and a component that fails is zero-filled individually; a station is
@@ -22,20 +22,20 @@ from .policy import (
 
 
 def data_qa_thresholds(level: str = "minimal", **overrides) -> QAThresholds:
-    """Calibrated QA presets, checked against reference-MT forward models.
+    """Calibrated QA presets, checked against forward models of reference moment tensors.
 
-    Every gate encodes *misfit conditional on expected signal* — an expected-low-signal
-    trace (nodal / distant / small event) is always KEPT. Levels:
+    Every gate judges the misfit given the expected signal, so an expected-low-signal trace
+    (nodal, distant or a small event) is always kept. Levels:
 
-    * ``"minimal"`` — the ESSENTIAL gates only (each catches a distinct, eyeball-confirmed
-      failure mode that no other gate sees): DEAD (signal predicted >=5 sigma, observed <10%
-      of it, or <25% with xcorr<0.1), SIGMA-OUTLIER (pre-event sigma >50x network median:
-      broken channel), EXCESS (obs energy >25x the signal+noise budget: glitches /
-      interloper events). Classical fit gates are neutralised.
-    * ``"full"`` — minimal + the CONDITIONAL FIT gates: where signal is clearly expected
-      (snr_syn>=5) AND observed (snr_sig>=2), drop if best-lag xcorr<0.2 or the amplitude
-      ratio leaves [0.1, 5] (catches coherent gain errors). ~1% extra drops on the clean
-      population. The recommended production preset.
+    * ``"minimal"``: the gates that each catch a failure no other gate sees, checked by eye.
+      Dead (signal predicted at 5 sigma or more, observed below 10 % of it, or below 25 % with
+      xcorr below 0.1), sigma outlier (pre-event sigma above 50 times the network median: a
+      broken channel), excess (observed energy above 25 times the signal-plus-noise budget:
+      glitches and interloping events). The classical fit gates are switched off.
+    * ``"full"``: minimal plus the conditional fit gates. Where a signal is clearly expected
+      (snr_syn >= 5) and observed (snr_sig >= 2), a trace drops if its best-lag xcorr is below
+      0.2 or its amplitude ratio leaves [0.1, 5] (coherent gain errors). It drops about 1 %
+      more of a clean population and is the recommended preset.
     """
     kw = dict(enable_snr_gates=True, snr_dead_ratio=0.1, snr_dead_min_syn=5.0,
               snr_dead_unrecog_ratio=0.25, xcorr_dead=0.1,
@@ -83,13 +83,13 @@ def read_noise_sigma(event_h5, stations, components) -> Dict[Tuple[str, str], fl
 
 
 def obs_dead_components(obs, present, components, *, rel_floor=0.02, abs_floor=1e-12):
-    """Model-INDEPENDENT dead-channel detection from the observation alone.
+    """Dead channels found from the observation alone, with no forward model.
 
-    A channel is dead if its event-window RMS is < ``abs_floor`` (flatline / dead
-    sensor) OR < ``rel_floor`` * the per-component MEDIAN RMS across present stations
-    (a gross amplitude outlier reading ~0 while its peers see the event). Needs no
-    synthetic, so unlike the SNR/fit gates it is robust to model quality — the
-    reliable "obviously broken" basic QA. Returns ``{(station, component): 'drop-dead'}``.
+    A channel is dead if its event-window RMS is below ``abs_floor`` (a flat line or a dead
+    sensor) or below ``rel_floor`` times the per-component median RMS across the present
+    stations (a channel reading about zero while its peers record the event). It needs no
+    synthetic, so unlike the SNR and fit gates it does not depend on the forward model.
+    Returns ``{(station, component): 'drop-dead'}``.
     """
     obs = np.asarray(obs)                       # (Np, C, T)
     Np, C, _ = obs.shape
@@ -107,21 +107,19 @@ def obs_dead_components(obs, present, components, *, rel_floor=0.02, abs_floor=1
 
 def neighbour_window_flag(origin_time, duration_s, catalogue_times, pre_s=120.0,
                           catalogue_mags=None, event_mag=None, delta_mag=None):
-    """Catalogue-neighbour contamination check (a FLAG, never a silent drop).
+    """Whether another catalogue event contaminates this event's window: a flag, never a drop.
 
     Another catalogue event with origin inside ``[origin - pre_s, origin + duration_s]``
-    puts its wavetrain (or, before the origin, its coda) into this event's window; a
-    pre-window neighbour also corrupts the pre-event noise-sigma estimates (silently
-    blinding the metric gates), which is why this check is essential even alongside the
-    metric-based contamination flag. ``catalogue_times``: iterable of datetimes of OTHER
-    events.
+    puts its wavetrain (or, before the origin, its coda) into this event's window. A
+    pre-window neighbour also corrupts the pre-event noise-sigma estimates and so blinds the
+    metric gates, which the metric-based contamination flag cannot detect.
+    ``catalogue_times`` holds the origin datetimes of the other events.
 
-    In a dense swarm an absolute flag saturates (nearly every window contains *some*
-    micro-event), so a MAGNITUDE-RELATIVE criterion is available: pass parallel
-    ``catalogue_mags`` plus the analysed event's ``event_mag`` and a ``delta_mag`` and
-    only neighbours with ``mag >= event_mag - delta_mag`` (moment within ~10^(1.5*delta)
-    of the event's) qualify for the flag. The nearest QUALIFYING neighbour's offset and
-    magnitude are reported (plus ``nearest_any_s`` for context).
+    In a dense swarm an absolute flag saturates, since nearly every window contains some
+    micro-event. With ``catalogue_mags`` (parallel to the times), ``event_mag`` and
+    ``delta_mag``, only neighbours with ``mag >= event_mag - delta_mag`` (moment within about
+    10^(1.5 delta_mag) of the event's) count. The offset and magnitude of the nearest counting
+    neighbour are reported, with ``nearest_any_s`` for the nearest of any size.
 
     Returns ``{"neighbour_in_window": bool, "nearest_neighbour_s": float,
     "nearest_neighbour_mag": float | nan, "nearest_any_s": float}``.
@@ -155,25 +153,24 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
                          obs=None, blocklist=(),
                          min_stations: int = 5, min_fraction: float = 0.25,
                          contaminated_action: str = "warn"):
-    """The calibrated per-component QA composition (pure, backend-free).
+    """The calibrated per-component QA of one event.
 
-    Layers, in order: per-trace gate verdicts (``component_verdicts``, SNR gates first),
-    the cross-station sigma-outlier health check, the persistent-bad-channel
-    ``blocklist`` (deployment DATA, never restored by the keep-floor), and the
-    model-independent obs-only dead guard (needs ``obs`` shaped (Np, C, T)). A station
-    drops only when NO component survives.
+    The layers, in order: per-trace gate verdicts (``component_verdicts``, SNR gates first),
+    the cross-station sigma-outlier check, the ``blocklist`` of persistently bad channels
+    (data about the deployment, never restored by the keep floor), and the dead-channel check on
+    the observation alone (needs ``obs`` shaped (n_present, n_components, n_samples)). A station
+    drops only when none of its components survives.
 
-    Event-level contamination is computed as a FLAG; with ``contaminated_action="warn"``
-    (A/B-calibrated default) a flagged window keeps every channel except the
-    sigma-INDEPENDENT health drops (blocklist + obs-dead) — mass-dropping a contaminated
-    window's traces makes the posterior worse, and the sigma-based gates are themselves
-    untrustworthy there (a neighbour's coda corrupts the pre-event sigma). ``"drop"``
-    applies all gates as usual. Either way the flag is the product; display it.
+    Event-level contamination is computed as a flag. With ``contaminated_action="warn"`` (the
+    default, chosen by comparing posteriors both ways) a flagged window keeps every channel
+    except the health drops that do not use sigma (blocklist and dead observation): dropping
+    most of a contaminated window's traces makes the posterior worse, and the sigma-based gates
+    cannot be trusted there, since a neighbour's coda corrupts the pre-event sigma. ``"drop"``
+    applies all gates as usual. Either way the flag is the result to report.
 
-    Keep-floor: if fewer than ``max(min_stations, ceil(min_fraction * len(present)))``
-    stations survive, RANK-FILL by observed signal SNR (never revert-all — that would
-    re-inject the pure-noise traces the gates just removed); blocklisted channels are
-    never restored.
+    Keep floor: if fewer than ``max(min_stations, ceil(min_fraction * len(present)))`` stations
+    survive, stations are restored in order of observed signal SNR, not all at once (which would
+    restore the noise-only traces the gates removed). Blocklisted channels are never restored.
 
     Returns ``(comp_map, dropped, component_drops, event_flags)`` where ``comp_map`` is
     ``{station: [kept components]}``, ``dropped`` is ``{station: verdict}`` for fully
@@ -182,22 +179,19 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
     """
     comps = list(components)
     cv = component_verdicts(metrics, thresholds, snr_metrics=snr)
-    # model-free sigma-outlier channel health (needs the cross-station context, so it is
-    # applied here rather than inside the per-trace gate)
+    # sigma outliers need the other stations, so they are applied here, not in the per-trace gate
     for (sta, comp), verdict in sigma_outlier_verdicts(
             snr or [], thresholds, metrics=metrics).items():
         old = cv.get(sta, {}).get(comp)
         if old is not None and old.is_kept:
             cv[sta][comp] = ComponentVerdict(sta, comp, verdict,
                                              old.max_xcorr, old.amp_ratio_obs_syn)
-    # persistent-bad-channel blocklist (deployment data, not a gate)
     for (sta, comp) in blocklist:
         old = cv.get(sta, {}).get(comp)
         if old is not None:
             cv[sta][comp] = ComponentVerdict(sta, comp, "drop-blocklist",
                                              old.max_xcorr, old.amp_ratio_obs_syn)
 
-    # model-INDEPENDENT dead-channel guard (basic QA, robust to a bad first guess)
     obs_dead = {}
     if obs is not None:
         obs3d = np.asarray(obs).reshape(len(present), len(comps), -1)
@@ -227,7 +221,6 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
 
     comp_map, dropped = _collapse(component_drops)
 
-    # event-level contamination diagnostics (FLAGS, never silent drops)
     event_flags = event_contamination(metrics, snr or [], cv, exclude=tuple(blocklist))
     if event_flags.get("contaminated") and contaminated_action == "warn":
         keep_drops = {k: v for k, v in component_drops.items() if v == "drop-blocklist"}
@@ -236,7 +229,7 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
         component_drops = keep_drops
         comp_map, dropped = _collapse(component_drops)
 
-    # keep-floor: RANK-FILL by observed debiased signal SNR (not revert-all).
+    # keep floor: restore stations in order of observed debiased signal SNR
     floor = max(min_stations, int(np.ceil(min_fraction * len(present))))
     if len(comp_map) < floor:
         snr_by_sta: Dict[str, list] = {}

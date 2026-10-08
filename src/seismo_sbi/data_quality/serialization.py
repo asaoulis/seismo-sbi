@@ -1,11 +1,11 @@
-"""On-disk quality-control artifacts: the only file-format authority for data QA.
+"""The files a data-QA run writes and reads.
 
 ``components.json`` maps ``{station: [Z, E, N]}``, with ``[]`` dropping the station, and is read
 by ``Receivers._convert_to_instaseis_receivers``. ``time_shifts.json`` maps ``{station: int}``
 for the non-zero static shifts in samples, read by ``Receivers.set_time_shifts``.
 ``*_allstation_verdicts.json`` holds ``{"present": {station: {...}}, "absent_from_h5": [...]}``
-as the audit trail; each per-station record keeps its original nine fields in order, with any
-new fidelity field appended.
+as the audit trail; each per-station record lists the nine summary fields first, then the
+multi-component coherence and any fidelity field computed.
 """
 from __future__ import annotations
 
@@ -27,9 +27,8 @@ def write_time_shifts_json(path, shifts: Dict[str, int]) -> None:
 
 
 def verdict_to_json(v: StationVerdict) -> dict:
-    """Serialise a verdict, preserving the original nine keys (and order) so existing
-    readers stay valid; appends the multi-component coherence and any PPC fidelity
-    fields that were computed."""
+    """A verdict as a JSON record: the nine summary fields in a fixed order, then the
+    multi-component coherence and any posterior-predictive fidelity field computed."""
     s = v.summary
     out = dict(
         dist_km=s.dist_km, azimuth=s.azimuth,
@@ -66,14 +65,13 @@ def components_from_verdicts(
 ) -> Dict[str, List[str]]:
     """Build the ``components.json`` map: ``{station: [kept components] | []}``.
 
-    Per-STATION policy (the default): kept stations -> all ``full_components``,
-    everything else (drops, stations absent from the verdicts) -> ``[]``.
+    By default the policy is per station: kept stations get all ``full_components`` and
+    everything else (drops, stations absent from the verdicts) gets ``[]``.
 
     If ``component_verdicts`` (``{station: {component: ComponentVerdict}}``, from
-    :func:`policy.component_verdicts`) is supplied, kept stations are further
-    refined to ONLY the components whose per-component verdict is ``keep`` — so a
-    station can keep ``[Z, E]`` while its dodgy ``N`` channel is dropped (zero-filled
-    at load). A station-level drop still zeroes the whole station (``[]``), and a
+    :func:`policy.component_verdicts`) is supplied, a kept station keeps only the components
+    whose per-component verdict is ``keep``, so a station can keep ``[Z, E]`` while a bad ``N``
+    channel is dropped (zero-filled at load). A station-level drop still zeroes the whole station (``[]``), and a
     kept station with no surviving component also collapses to ``[]``."""
     kept = {s for s, v in verdicts.items() if v.is_kept}
     full = list(full_components)
@@ -121,9 +119,8 @@ def load_qa_artifacts(
 ) -> QAArtifacts:
     """Load whichever of the three artifacts exist into a :class:`QAArtifacts`.
 
-    Paths are explicit because the santorini layout splits them (components/time_shifts
-    under ``events/<EV>/``, verdicts under ``diagnostics/<EV>/station_qa/``). Missing
-    files are simply left empty.
+    Each path is given separately, since a study may keep the three files in different
+    directories. A missing file leaves its field empty.
     """
     art = QAArtifacts(event=event)
     if components_path is not None and Path(components_path).exists():

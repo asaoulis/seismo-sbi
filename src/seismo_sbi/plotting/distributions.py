@@ -622,10 +622,10 @@ class PosteriorPlotter:
             plt.close()
 
     def _primary_reference_legend(self, ax, bm, true_theta0, reference_label, primary_reference):
-        """Return the legend spec ``[{label,color,marker}]`` for the PRIMARY reference — the gold
-        'truth' diamond (e.g. a published solution). If the ensembles carried a ``theta0`` truth
-        it is already drawn by the main loop and we only emit its legend entry; if they did NOT
-        (e.g. the station-dropout lune, whose configs have ``theta0=None``) but a
+        """Return the legend spec ``[{label,color,marker}]`` for the primary reference, the
+        'truth' diamond (a published solution, say). If the ensembles carried a ``theta0`` truth
+        it is already drawn by the main loop and only its legend entry is returned; if they did
+        not (the station-dropout lune, whose configs have ``theta0=None``) but a
         ``primary_reference`` MT 6-vector is supplied, draw it here as the same peru diamond so it
         appears consistently. Returns ``[]`` when there is nothing to label."""
         truth_drawn = true_theta0 is not None

@@ -91,7 +91,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     existing_sims = training_simulation_paths(sbi_pipeline)
     if regenerate_dataset or not existing_sims:
         if not existing_sims:
-            logger.info("No existing sims found — generating the dataset.")
+            logger.info("No existing sims found: generating the dataset.")
         test_jobs_paths = sbi_pipeline.simulate_test_jobs(
             config.dataset_parameters, config.test_job_simulations
         )
@@ -116,7 +116,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
             extra_gradients=extra_gradients,
         )
     else:
-        logger.info("skip_compression_data set — skipping score/Fisher stencil + compressor "
+        logger.info("skip_compression_data set: skipping score/Fisher stencil + compressor "
                     "load (ML-NPE eval needs no compressors).")
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
     rescale_training_noise_to_event(sbi_pipeline, config)
@@ -203,9 +203,8 @@ def load_observation(event_path, receivers, components, time_shifts=None):
 def recovered_mt_samples(inv_data) -> np.ndarray:
     """Physical-unit moment-tensor samples ``(n, 6)`` from an ``InversionData``.
 
-    ``inv_data.samples`` are ALREADY in physical units — the pipeline applies the
-    ``FlexibleScaler`` inverse before saving (median ~1e16 N m, matching the MLE).
-    Applying ``data_scaler.inverse_transform`` here again double-scales to ~1e33
-    (Mw 16, float overflow in the lune), so do NOT transform — just slice the first
-    six MT columns.  Lifted from ``compare_to_reference.recovered_samples``."""
+    ``inv_data.samples`` are already in physical units: the pipeline applies the
+    ``FlexibleScaler`` inverse before saving (median about 1e16 N m, matching the MLE).
+    Applying ``data_scaler.inverse_transform`` again would scale them to about 1e33 (Mw 16,
+    float overflow in the lune), so the first six columns are taken as they are."""
     return np.asarray(inv_data.samples)[:, :6]

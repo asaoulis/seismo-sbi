@@ -25,14 +25,12 @@ def error_handling_wrapper(num_attempts=3):
                 try:
                     return simulation_callable(*args, **kwargs)
                 except Exception as exc:
-                    # Error handling with the function name printed
                     last_exc = exc
                     func_name = simulation_callable.__name__
                     print(f"{func_name} terminated with exception {attempt_number + 1} times:")
                     print(''.join(traceback.format_exception(None, exc, exc.__traceback__)))
                     print(f"Retrying {func_name}...")
 
-            # Re-raise the last failure itself; the ``except ... as`` name is gone once the block exits.
             print(f"{simulation_callable.__name__} failed after multiple attempts. Exiting.")
             raise last_exc
         
@@ -46,8 +44,6 @@ def skip_after_retries(simulation_callable, num_attempts=3):
 
     def _error_handled_simulation_callable(*args, **kwargs):
 
-        # Bound outside the except block, whose target Python deletes on exit, so the
-        # real worker error survives to be re-raised.
         last_exc = None
         for attempt_number in range(num_attempts):
             try:

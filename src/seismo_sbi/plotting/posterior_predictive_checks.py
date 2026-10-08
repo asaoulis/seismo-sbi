@@ -32,14 +32,9 @@ class PosteriorPredictiveChecks:
     simulator : callable
         Callable(param_dict) -> 1D numpy array synthetic (same length as observation).
     covariance_matrix : optional object
-        Optional covariance wrapper used to compute Mahalanobis distance.
-        Supported (attempted) interfaces (in order):
-
-        - obj.solve(rhs) -> C^{-1} rhs  OR obj.apply_inverse(vec)
-          then chi2 = r^T (C^{-1} r)
-        - obj.compute_loss(residual, reduce=True) returning either
-          -0.5 * chi2 (common in some codebases) or 0.5 * chi2;
-          we try to infer sign/scale, but fallback to dot(r, r).
+        Noise covariance for the reduced chi-square: an object whose
+        ``compute_loss(residual, reduce=True)`` returns ``-chi2 / 2``. Without one the chi-square
+        is ``dot(r, r)``.
     receivers : optional
         Object with .iterate() yielding receivers where each receiver has .components,
         used to infer per-trace shapes.
@@ -54,9 +49,8 @@ class PosteriorPredictiveChecks:
     augmentation_chains : optional dict
         Maps ``ensemble_name -> PostProcessingChain`` of Category-2 nuisance
         effects (the SAME effects used in training-time augmentation) to fold
-        into each synthetic of that ensemble.  Replaces the legacy
-        ``random_shift_distributions`` integer-shift mechanism; time shifts are
-        now expressed via a ``TimeShiftErrorEffect`` in the chain.
+        into each synthetic of that ensemble. A time shift is a ``TimeShiftErrorEffect`` in
+        the chain.
     augmentation_nuisance_params : optional dict
         Maps ``ensemble_name -> {nuisance_key: value}`` activating the effects
         in that ensemble's chain (e.g. ``{"time_shift_error": 1.0}``).  Missing
@@ -457,7 +451,7 @@ class PosteriorPredictiveChecks:
         ``mean_{lag=1..maxlag} |acf_obs(lag) - acf_syn(lag)|``, averaged over traces.
 
         The autocorrelation of a trace is invariant to a time shift of that trace, so this
-        scores pulse shape/duration/frequency content while ignoring arrival time entirely —
+        scores pulse shape, duration and frequency content while ignoring arrival time entirely:
         the complement to the zero-lag correlation, which cannot separate the two.
 
         Computed PER TRACE (falling back to the whole vector only when the trace layout is
@@ -465,7 +459,7 @@ class PosteriorPredictiveChecks:
         boundaries and measure the packing order rather than the waveforms.
 
         .. warning::
-           **Blind to polarity by construction** — ``ACF(-x) == ACF(x)``, so an inverted
+           Blind to polarity by construction: ``ACF(-x) == ACF(x)``, so an inverted
            waveform scores exactly 0.  Never use this metric alone to argue about the sign
            of the isotropic component; pair it with ``Shifted corr misfit`` (which keeps
            polarity as long as the lag budget stays under half a dominant period), the
@@ -500,7 +494,7 @@ class PosteriorPredictiveChecks:
         bounded lag lets the arrival time float and scores waveform shape and polarity alone.
 
         ``L`` = ``max_shift_samples`` (constructor) or 10 % of the trace length. The lag band
-        is bounded on purpose — an unbounded search would happily align a P arrival onto an S.
+        is bounded on purpose: an unbounded search would align a P arrival onto an S.
 
         Normalised cross-correlation via FFT, vectorised over traces.
         """

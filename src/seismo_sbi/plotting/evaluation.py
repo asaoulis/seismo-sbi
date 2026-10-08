@@ -83,8 +83,8 @@ def build_recovery_dict(
     Assemble an ordered ``{label: InversionData}`` dict for overlaying on the same
     lune / chainconsumer axes.
 
-    The first entry is the gold-standard score-compression result (so its ``theta0``
-    — the gold MLE — becomes the reference/truth line in the chainconsumer plots).
+    The first entry is the gold-standard score-compression result, so its ``theta0`` (the gold
+    MLE) becomes the reference line in the corner plots.
     Then the Gaussian-likelihood gold result, then each ML run.
 
     Parameters
@@ -122,7 +122,7 @@ def add_decomposition_beachballs(ax, theta0_mt, color="salmon"):
     """
     Add scaled ISO / CLVD / DC beachballs + percentages to the left of a lune axis,
     in axes coordinates. ``theta0_mt`` is a 6-component moment tensor in the pipeline
-    (up-south-east) convention. Adapted from the project's reference snippet.
+    (up-south-east) convention.
     """
     from pyrocko import moment_tensor as pmt
     from seismo_sbi.plotting.rocko_beachball_patch import plot_beachball_on_axes
@@ -196,8 +196,8 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
 
     ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional published
     reference solutions, overlaid as distinct scatter markers (e.g. extra catalogues).
-    ``reference_name`` (optional) is the legend label for the primary (gold diamond) reference
-    — e.g. a catalogue's name; ``reference_label`` still selects which ensemble's theta0 feeds the
+    ``reference_name`` (optional) is the legend label for the primary (gold diamond) reference,
+    such as a catalogue's name; ``reference_label`` still selects which ensemble's theta0 feeds the
     decomposition beachballs.
     """
     import matplotlib.pyplot as plt
@@ -242,8 +242,8 @@ def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
     ``label -> InversionData``; contour colours follow dict order (matched by the legend).
     ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional reference
     overlays drawn as distinct scatter markers. ``primary_reference`` + ``reference_label``
-    draw and label the primary (gold diamond) reference — needed here because dropout-ensemble
-    configs carry no theta0 truth.
+    draw and label the primary (gold diamond) reference, which the dropout-ensemble configs need
+    because they carry no theta0 truth.
     """
     import matplotlib.pyplot as plt
 
@@ -321,7 +321,7 @@ def plot_recovery_scatter(theta_true: np.ndarray, samples_per_sim: np.ndarray,
     bars against the truth; the diagonal is the perfect-recovery line.
 
     ``theta_true`` shape ``(n_sims, 6)``; ``samples_per_sim`` shape
-    ``(n_samples, n_sims, 6)`` — moment-tensor parametrisation.
+    ``(n_samples, n_sims, 6)``, in the moment-tensor parametrisation.
     """
     import matplotlib.pyplot as plt
 

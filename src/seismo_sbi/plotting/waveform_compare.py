@@ -132,14 +132,14 @@ def moveout_record_section(
     station_names, coords, event_location
         Length-``N`` names, ``(N, 2)`` (lat, lon), and ``(lat, lon, depth_km)``.
     order_by : {'distance', 'azimuth', 'arrival', 'none'}
-        Vertical ordering. ``'azimuth'`` is the radiation-pattern view — the most
+        Vertical ordering. ``'azimuth'`` is the radiation-pattern view, the most
         diagnostic ordering for an ISO-vs-DC decision.
     y_scale : {'rank', 'true'}
         ``'rank'`` spaces stations uniformly (readable when a cluster dominates);
         ``'true'`` puts them at their real distance/azimuth (honest moveout, but crowds).
     normalise : {'per_station', 'per_trace', 'global'}
         ``'per_station'`` keeps the relative size of Z/E/N within a station meaningful
-        while still letting distant stations be seen — usually the right compromise.
+        while still letting distant stations be seen, usually the right compromise.
     layout : {'panels', 'interleaved'}
         ``'panels'`` gives one column per component; ``'interleaved'`` stacks all three
         under each station in a single axis.

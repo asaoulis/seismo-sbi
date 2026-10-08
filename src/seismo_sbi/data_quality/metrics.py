@@ -1,11 +1,10 @@
 """Per-trace and per-station waveform-fit metrics for data quality control.
 
-Pure functions and small frozen dataclasses over numpy arrays: no pipeline, no file I/O, no
-plotting. A reference synthetic is compared against an observation to decide, per station,
-whether to keep, time-shift or drop it. Two families live here: the alignment and amplitude
-metrics (cross-correlation lag, variance reduction, peak amplitude ratio) and the
-posterior-predictive fidelity metrics (``correlation_misfit``, ``envelope_misfit``,
-``station_reduced_chi2``). Shifting uses ``shift_1d_with_padding``; a positive lag delays.
+A reference synthetic is compared against an observation, both numpy arrays, to decide per
+station whether to keep, time-shift or drop it. The alignment and amplitude metrics give the
+cross-correlation lag, variance reduction and peak amplitude ratio, :func:`snr_metrics` the
+pre-event-noise SNR, and ``correlation_misfit``, ``envelope_misfit`` and ``station_reduced_chi2``
+the posterior-predictive fidelity. Shifting uses ``shift_1d_with_padding``; a positive lag delays.
 """
 from __future__ import annotations
 
@@ -68,7 +67,7 @@ class SNRMetrics:
     sigma: float            # pre-event noise std
     snr_obs: float          # RMS_W(obs) / sigma   (>= ~1 floor)
     snr_syn: float          # RMS_W(syn) / sigma   (predicted detectability; noise-free)
-    snr_sig: float          # sqrt(max(0, snr_obs^2 - 1)) — noise-DEBIASED observed signal SNR
+    snr_sig: float          # sqrt(max(0, snr_obs^2 - 1)): the noise-debiased observed signal SNR
     snr_obs_full: float     # whole-window RMS(obs) / sigma  (for the excess gate)
     snr_syn_full: float     # whole-window RMS(syn) / sigma
 
@@ -97,15 +96,15 @@ def snr_metrics(obs2d, syn2d, traces, sigma_map, *, quantiles=(0.05, 0.95),
     """Per-trace pre-event-noise SNR for a flattened event (``obs2d``/``syn2d`` are
     ``(n_traces, T)`` in the same order as ``traces``).
 
-    ``sigma_map`` maps ``(station, component) -> noise std sigma`` — the CALLER keys it with
-    the SAME component names as ``traces`` (so it must apply any E->1 / N->2 renaming itself).
+    ``sigma_map`` maps ``(station, component) -> noise std sigma``. The caller keys it with the
+    component names of ``traces``, so it applies any E->1 / N->2 renaming itself.
     A trace with a missing / non-finite / <= ``sigma_floor`` sigma is emitted with
     ``sigma=nan`` and all SNRs 0, which the policy routes straight to a dead-channel drop.
 
     ``align`` (default True) cross-correlates obs vs syn (±``max_lag`` samples) and shifts the
     synthetic onto the observation before windowing. A 1-D fiducial model mis-times arrivals by
-    several seconds vs the real Earth, so an UNALIGNED synthetic signal window misses the
-    observed signal and understates ``snr_sig`` — making healthy but time-shifted stations look
+    several seconds against the real Earth, so an unaligned synthetic signal window misses the
+    observed signal and understates ``snr_sig``, and healthy but time-shifted stations look
     dead. Alignment removes that confound (the signal-window SNR is a fit-quality-free amplitude
     measure once aligned).
     """
@@ -207,8 +206,7 @@ def traces_from_receivers(receivers) -> List[TraceDescriptor]:
             for rec in receivers.iterate() for comp in rec.components]
 
 
-# --- PPC-derived per-station fidelity ---
-# Same maths as plotting.posterior_predictive_checks, on one station's (n_components, trace_length).
+# --- Per-station fidelity, on one station's (n_components, trace_length) ---
 def correlation_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
     """Mean over the station's components of ``1 - Pearson(obs, syn)`` at zero lag.
 

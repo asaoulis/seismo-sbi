@@ -1,6 +1,7 @@
-"""Diagnostic figures for data QA (obs-vs-synthetic overlay, station scorecard,
-time-shift before/after), drawn from the QA dataclasses. Plotting is not in the test gate:
-the verdict and shift data are the contract, these are diagnostics.
+"""Diagnostic figures for data QA, drawn from the QA dataclasses.
+
+:func:`plot_overlay_grid` overlays observed and synthetic traces, :func:`plot_station_scorecard`
+summarises each station's metrics and :func:`plot_shift_before_after` shows the time shifts.
 """
 from __future__ import annotations
 
@@ -74,8 +75,8 @@ def plot_station_scorecard(
     out_png,
     thresholds: QAThresholds,
 ) -> None:
-    """Four-panel scorecard: amp ratio (log), Z xcorr, aligned VR, azimuth/distance
-    polar map — each coloured by verdict."""
+    """Four-panel scorecard: amplitude ratio (log), Z xcorr, aligned VR and an
+    azimuth-distance polar map, each coloured by verdict."""
     stas = sorted(verdicts, key=lambda s: verdicts[s].summary.dist_km)
     cols = [VERDICT_COLORS[verdicts[s].verdict] for s in stas]
     x = np.arange(len(stas))

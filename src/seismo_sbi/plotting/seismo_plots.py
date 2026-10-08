@@ -256,7 +256,7 @@ class MisfitsPlotting:
     def _reshape_to_cube(self, flat):
         """``(n_traces * T,)`` flat vector -> ``(N_stations, C, T)`` cube.
 
-        Uses the receivers' own (receiver-major, then component) order — the same layout
+        Uses the receivers' own (receiver-major, then component) order: the same layout
         the simulator flattens into, so this inverts it exactly. Requires a uniform
         component set across the (restricted) receivers, which is what the dataloader's
         ``load_event_subset(..., stacked=True)`` produces.
@@ -284,9 +284,9 @@ class MisfitsPlotting:
         ----------
         observation : flat 1-D vector
         deterministic : dict, optional
-            ``label -> flat vector`` — single synthetics (best-fit MT, reference MTs).
+            ``label -> flat vector``: single synthetics (best-fit MT, reference MTs).
         ensembles : dict, optional
-            ``label -> (n_samples, data_len)`` — posterior predictive clouds. Subsampled to
+            ``label -> (n_samples, data_len)``: posterior predictive clouds. Subsampled to
             ``max_samples`` before rendering.
         channel_mask : ``(N, C)`` bool, optional
             ``False`` = QA-dropped channel (greyed and excluded from the annotations).

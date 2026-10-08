@@ -1,6 +1,6 @@
-"""Per-station keep, time-shift or drop decisions.
+"""Keep, time-shift or drop decisions per station and per component.
 
-Pure deterministic logic over :class:`TraceMetrics`, controlled by :class:`QAThresholds`. The
+The decisions follow from :class:`TraceMetrics` and :class:`SNRMetrics` under :class:`QAThresholds`. The
 gates are vertical-component coherence, gross amplitude, timing, and a lag-aligned
 multi-component coherence gate that generalises the vertical-only one and is therefore robust to
 timing error. The zero-lag posterior-predictive metrics (``corr_misfit``, ``envelope_misfit``,
@@ -24,7 +24,7 @@ VERDICT_COLORS = {
     "drop-corr": "#9467bd",   # purple
     "drop-fit": "#8c564b",    # brown (PPC aligned-coherence gate)
     "drop-snr-dead": "#000000",    # black  (dead / flatlined channel)
-    "drop-snr-noise": "#7f7f7f",   # grey   (retired verdict: below-noise is a KEEP; old plots use it)
+    "drop-snr-noise": "#7f7f7f",   # grey   (below-noise drop, found only in older verdict files)
     "drop-snr-excess": "#e377c2",  # pink   (obs energy exceeds signal+noise budget)
     "drop-snr-noisy": "#bcbd22",   # olive  (pre-event noise sigma is a gross network outlier)
 }
@@ -68,9 +68,9 @@ class QAThresholds:
 
     # SNR gates against the pre-event window, each off by default. A trace is dropped only for a
     # data problem or extreme mismodelling, never for low signal.
-    enable_snr_gates: bool = False  # arms the DEAD gate (+ invalid-sigma dead routing)
-    snr_dead_ratio: float = 0.1     # G1: drop if debiased obs signal < this * predicted...
-    snr_dead_min_syn: float = 5.0   # ...but only when the signal SHOULD be clearly visible
+    enable_snr_gates: bool = False  # arms the dead gate (and routes an invalid sigma to it)
+    snr_dead_ratio: float = 0.1     # dead: debiased observed signal below this x the prediction...
+    snr_dead_min_syn: float = 5.0   # ...when the predicted signal is at least this
     snr_sigma_floor: float = 0.0    # sigma <= this (or non-finite) => dead channel
     # The unrecognisable branch of the dead gate: also dead when the observed energy is
     # marginal and the best-lag correlation is low, which a peak-amplitude test alone misses.
@@ -79,7 +79,7 @@ class QAThresholds:
     # Excess energy: the observed whole-window energy exceeds the signal-plus-noise budget.
     # Not conditioned on the synthetic, since an overlapping event at a quiet station is the case.
     enable_snr_excess: bool = False
-    snr_excess_factor: float = 5.0  # G3: drop if obs energy > this^2 * (syn energy + noise)
+    snr_excess_factor: float = 5.0  # excess: observed energy above this^2 x (synthetic energy + noise)
     # Re-scope the correlation and amplitude gates to fire only where a signal is both expected
     # and observed, so a trace is never dropped for failing to correlate with noise.
     conditional_fit_gates: bool = False
@@ -228,28 +228,28 @@ class ComponentVerdict:
 
 def _snr_component_gate(snr: Optional[SNRMetrics], t: QAThresholds,
                         m: Optional[TraceMetrics] = None) -> Optional[str]:
-    """SNR drop verdict for one trace, or None. Order: dead -> excess.
+    """SNR drop verdict for one trace, or None. Order: dead, then excess.
 
-    Fable-designed, noise-aware gates (only armed when ``enable_snr_gates``), each encoding
-    *misfit conditional on expected signal* — never "low absolute SNR":
+    The gates run only when ``enable_snr_gates`` is set. Each judges the misfit given the
+    expected signal, never a low absolute SNR:
 
-    * **dead (G1)** — the signal SHOULD be clearly visible (``snr_syn >= snr_dead_min_syn``)
+    * dead: the signal should be clearly visible (``snr_syn >= snr_dead_min_syn``)
       yet the noise-debiased observed signal is essentially absent
       (``snr_sig < snr_dead_ratio * snr_syn``). Catches a flatlined channel (obs/syn ~1e-3)
       while sparing the benign ~0.5 1-D amplitude misfit (RMS-ratio separation ~1e2-1e3),
       because it only fires when the prediction is strong.
-    * **unrecognisable (G1u, opt-in via ``snr_dead_unrecog_ratio``)** — the observed energy
-      is marginal (``snr_sig < snr_dead_unrecog_ratio * snr_syn``) AND nothing resembling
+    * unrecognisable (set ``snr_dead_unrecog_ratio`` to use it): the observed energy
+      is marginal (``snr_sig < snr_dead_unrecog_ratio * snr_syn``) and nothing resembling
       the predicted waveform is present at any lag (``max_xcorr < xcorr_dead``). Requires
       the trace's :class:`TraceMetrics` ``m``; skipped when ``m`` is None.
-    * **excess (G3, opt-in via ``enable_snr_excess``)** — whole-window observed energy
+    * excess (set ``enable_snr_excess`` to use it): the whole-window observed energy
       exceeds the signal+noise budget
       ``snr_obs_full^2 > snr_excess_factor^2 * (snr_syn_full^2 + 1)``: an overlapping event,
-      transient or glitch the MT cannot explain. Never fires when obs <= syn, and is NOT
-      conditioned on ``snr_syn`` (an interloper at an expected-quiet station must fire it).
+      transient or glitch the MT cannot explain. It never fires when obs <= syn, and it does
+      not depend on ``snr_syn``, so an interloper at an expected-quiet station fires it.
 
     There is no below-noise drop: an expected-low-signal trace is uninformative, not bad, and
-    is KEPT.
+    is kept.
     """
     if not t.enable_snr_gates or snr is None:
         return None
@@ -270,18 +270,15 @@ def _snr_component_gate(snr: Optional[SNRMetrics], t: QAThresholds,
 
 def decide_component(m: TraceMetrics, thresholds: QAThresholds,
                      snr: Optional[SNRMetrics] = None) -> ComponentVerdict:
-    """Keep/drop ONE trace. When ``enable_snr_gates`` and an :class:`SNRMetrics` is supplied,
-    the noise-aware SNR gates run FIRST (a below-noise trace's coherence/amplitude are
-    meaningless — it should be labelled "no signal", not "incoherent"); otherwise the
-    classical coherence-then-amplitude gates apply, exactly as before.
+    """Keep or drop one trace. With ``enable_snr_gates`` and an :class:`SNRMetrics`, the SNR
+    gates run first, since a below-noise trace's coherence and amplitude say nothing: it is
+    labelled "no signal", not "incoherent". Otherwise the coherence-then-amplitude gate applies.
 
-    With ``conditional_fit_gates`` (opt-in, needs ``snr``) the classical gates fire only
-    where a signal is clearly expected (``snr_syn >= snr_fit_min_syn``) AND clearly observed
-    (``snr_sig >= snr_fit_sig_min``); anywhere below, the trace is KEPT — an
-    expected-low-signal trace must never be dropped for failing to correlate with noise.
-
-    With ``snr=None`` OR ``enable_snr_gates=False`` this is byte-identical to the legacy
-    behaviour (so all existing callers + golden regressions are unaffected)."""
+    With ``conditional_fit_gates`` (needs ``snr``) the coherence and amplitude gates fire only
+    where a signal is clearly expected (``snr_syn >= snr_fit_min_syn``) and clearly observed
+    (``snr_sig >= snr_fit_sig_min``). Below that the trace is kept, so an expected-low-signal
+    trace is never dropped for failing to correlate with noise. With ``snr=None`` or
+    ``enable_snr_gates=False`` only the coherence-then-amplitude gate runs."""
     t = thresholds
     snr_verdict = _snr_component_gate(snr, t, m)
     if snr_verdict is not None:
@@ -330,17 +327,17 @@ def sigma_outlier_verdicts(
     thresholds: QAThresholds,
     metrics: Optional[List[TraceMetrics]] = None,
 ) -> Dict[tuple, str]:
-    """Model-FREE channel-health gate: ``{(station, component): "drop-snr-noisy"}`` for
-    every trace whose pre-event noise sigma is > ``sigma_rel_max`` x the network MEDIAN
-    sigma of the same component (across the stations of this event).
+    """Channel-health gate needing no forward model: ``{(station, component): "drop-snr-noisy"}``
+    for every trace whose pre-event noise sigma is above ``sigma_rel_max`` times the network
+    median sigma of the same component (across the stations of this event).
 
-    A channel this far above its peers is broken or garbage-dominated (broken channels have
-    been seen at ~80-1400x; healthy transients stay ~10-30x) — its own sigma
-    "explains" the garbage, so the SNR gates cannot see it; only the cross-station
-    comparison can. No-op ({}) unless ``thresholds.sigma_rel_max`` is set (opt-in).
+    A channel this far above its peers is broken or dominated by garbage (broken channels sit at
+    about 80-1400 times the median, healthy transients at 10-30 times). Its own sigma explains
+    the garbage, so the SNR gates cannot see it and only the cross-station comparison can. The
+    gate returns ``{}`` unless ``thresholds.sigma_rel_max`` is set.
 
-    Escape hatch: a single pre-window spike can inflate sigma on an otherwise-good trace
-    (observed during calibration: OKW N with xcorr 0.64). If ``metrics`` is supplied, a
+    A single pre-window spike can inflate sigma on an otherwise good trace (a correlation of
+    0.64 has been seen on such a channel). If ``metrics`` is supplied, a
     trace that visibly matches the synthetic (``max_xcorr >= sigma_outlier_escape_xcorr``
     with an amplitude ratio inside ``sigma_outlier_escape_amp``) is spared.
     """

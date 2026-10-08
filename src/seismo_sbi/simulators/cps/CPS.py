@@ -28,7 +28,7 @@ def write_Model96(vel_model, fname):
 
     fid = open(fname, 'w')
     fid.write('MODEL.01\n' +
-            'Korean Pennisula model from Kim et al. (2011)\n' +
+            'Layered model written by seismo_sbi\n' +
             'ISOTROPIC\n' +
             'KGS\n' +
             'FLAT EARTH\n' +

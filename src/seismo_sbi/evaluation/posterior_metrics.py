@@ -67,7 +67,7 @@ def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
     -------
     (ecp_bootstrap, alpha) : tuple
         ``ecp_bootstrap`` shape ``(num_bootstrap, num_alpha)``, ``alpha`` shape
-        ``(num_alpha,)`` — exactly the form ``plotting.coverage.plot_coverage``
+        ``(num_alpha,)``: the form ``plotting.coverage.plot_coverage``
         expects as a coverage_dict value.
     """
     from tarp import get_tarp_coverage
@@ -168,7 +168,7 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
                                derived_max_samples: int = 400) -> dict:
     """
     Post-process a validation-inference result (the dict returned by
-    ``evaluate_validation_set``) into concrete per-run performance metrics.
+    :func:`~seismo_sbi.evaluation.validation.run_validation`) into per-run performance metrics.
 
     Computes per-parameter spread / bias / error in **moment-tensor space** and, when
     the inference is the 6-component moment tensor, in the **derived space**
@@ -184,7 +184,7 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
         computed when ``n_dims == 6``.
     ecp, alpha : optional
         TARP coverage outputs (``ecp`` shape (n_bootstrap, n_alpha), ``alpha`` shape
-        (n_alpha,)) — used for the calibration-error scalar.
+        (n_alpha,)), used for the calibration-error scalar.
     derived_max_samples : int
         Cap on posterior draws per example used for the (pyrocko-heavy) derived-space
         metrics. MT-space metrics + coverage always use all draws.
