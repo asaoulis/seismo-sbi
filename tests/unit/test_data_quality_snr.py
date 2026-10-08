@@ -12,7 +12,7 @@ from seismo_sbi.data_quality.metrics import (
     SNRMetrics, TraceDescriptor, signal_window, snr_metrics, TraceMetrics)
 from seismo_sbi.data_quality.policy import (
     QAThresholds, decide_component, component_verdicts, event_contamination,
-    sigma_outlier_verdicts, snr_station_drop, _snr_component_gate)
+    sigma_outlier_verdicts, _snr_component_gate)
 
 
 def _pulse(n=400, c=200, w=15, amp=1.0):
@@ -78,9 +78,8 @@ def test_gate_dead_fires_but_spares_benign_misfit():
     assert _snr_component_gate(_snr(snr_syn=10, snr_sig=5.0), t) is None
 
 
-def test_below_noise_is_KEPT_g2_retired():
-    """The old G2 'below-noise' drop is retired: an expected-low-signal trace
-    (snr_syn < snr_syn_min) is uninformative, NOT bad — it must be kept."""
+def test_an_expected_quiet_trace_is_kept():
+    """A trace whose predicted signal is near the noise is uninformative, not bad: it is kept."""
     t = QAThresholds(enable_snr_gates=True)
     assert _snr_component_gate(_snr(snr_syn=1.5, snr_sig=1.0), t) is None
     assert _snr_component_gate(_snr(snr_syn=0.01, snr_sig=0.0), t) is None
@@ -167,19 +166,14 @@ def _snr_c(comp, snr_syn, snr_sig):
     return SNRMetrics("AAA", comp, 0.1, snr_obs, snr_syn, snr_sig, 1.0, 1.0)
 
 
-def test_component_verdicts_with_snr_and_station_collapse():
+def test_component_verdicts_drop_only_the_dead_component():
     t = QAThresholds(enable_snr_gates=True)
     mets = [TraceMetrics("AAA", c, 1, 1, 0.9, 0.9, 0.9, 0, 1.0, 1.0, 1.0) for c in ("Z", "1", "2")]
     snrs = [_snr_c("Z", 10, 0.01), _snr_c("1", 10, 5.0), _snr_c("2", 10, 5.0)]  # only Z dead
     cv = component_verdicts(mets, t, snr_metrics=snrs)
     assert cv["AAA"]["Z"].verdict == "drop-snr-dead"
     assert cv["AAA"]["1"].verdict == "keep"
-    # Z failed -> whole-station SNR drop
-    assert snr_station_drop(cv["AAA"]) == "drop-snr-dead"
-    # only one non-Z fails -> no station collapse
-    cv2 = {"1": type(cv["AAA"]["1"])("AAA", "1", "drop-snr-noise", 0.9, 1.0),
-           "2": cv["AAA"]["2"], "Z": cv["AAA"]["1"]}
-    assert snr_station_drop(cv2) is None
+    assert cv["AAA"]["2"].verdict == "keep"
 
 
 # ------------------------------------------------------- sigma-outlier channel health

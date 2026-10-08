@@ -39,9 +39,6 @@ VERDICT_LABELS = {
     "drop-snr-excess": "DROP (excess energy)",
     "drop-snr-noisy": "DROP (noise floor outlier)",
 }
-# SNR drop verdicts, most-severe first (for the station-collapse tie-break).
-_SNR_DROP_ORDER = ("drop-snr-dead", "drop-snr-noisy", "drop-snr-excess", "drop-snr-noise")
-
 KEPT_VERDICTS = ("keep", "time-shift")
 
 
@@ -70,9 +67,8 @@ class QAThresholds:
     envelope_misfit_drop: Optional[float] = None
 
     # SNR gates against the pre-event window, each off by default. A trace is dropped only for a
-    # data problem or extreme mismodelling, never for low signal; ``snr_syn_min`` is no longer read.
+    # data problem or extreme mismodelling, never for low signal.
     enable_snr_gates: bool = False  # arms the DEAD gate (+ invalid-sigma dead routing)
-    snr_syn_min: float = 2.0        # RETIRED (was G2); field kept for API compatibility
     snr_dead_ratio: float = 0.1     # G1: drop if debiased obs signal < this * predicted...
     snr_dead_min_syn: float = 5.0   # ...but only when the signal SHOULD be clearly visible
     snr_sigma_floor: float = 0.0    # sigma <= this (or non-finite) => dead channel
@@ -252,8 +248,8 @@ def _snr_component_gate(snr: Optional[SNRMetrics], t: QAThresholds,
       transient or glitch the MT cannot explain. Never fires when obs <= syn, and is NOT
       conditioned on ``snr_syn`` (an interloper at an expected-quiet station must fire it).
 
-    There is no below-noise drop (``snr_syn < snr_syn_min``): an expected-low-signal trace
-    is uninformative, not bad, and is KEPT.
+    There is no below-noise drop: an expected-low-signal trace is uninformative, not bad, and
+    is KEPT.
     """
     if not t.enable_snr_gates or snr is None:
         return None
@@ -424,24 +420,3 @@ def event_contamination(
     flag = frac >= frac_hard or (frac >= frac_soft and med_xc < med_xcorr_max)
     return {"contaminated": float(flag), "n_expected": float(n),
             "frac_expected_dropped": frac, "median_xcorr_expected": med_xc}
-
-
-def snr_station_drop(component_verdicts_for_station: Dict[str, ComponentVerdict]) -> Optional[str]:
-    """Whole-station SNR-collapse verdict, or None.
-
-    Mirrors the Z-primacy philosophy of :func:`decide_station`: a station is SNR-dropped
-    when its Z channel fails an SNR gate OR >= 2 of its components do. Returns the most
-    severe SNR drop verdict (dead > excess > noise) among the failures.
-
-    For per-component NPE inputs prefer not collapsing: a broken Z beside healthy
-    horizontals would throw away good data.
-    """
-    dropped = {c: v.verdict for c, v in component_verdicts_for_station.items()
-               if v.verdict.startswith("drop-snr")}
-    if not dropped:
-        return None
-    if "Z" in dropped or len(dropped) >= 2:
-        for verdict in _SNR_DROP_ORDER:
-            if verdict in dropped.values():
-                return verdict
-    return None
