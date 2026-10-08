@@ -13,6 +13,8 @@ from typing import List, Sequence
 
 import numpy as np
 
+from seismo_sbi.sbi.types.results import InversionData, InversionResult, InversionConfig
+
 
 @dataclass
 class StationConfig:
@@ -207,7 +209,6 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     """
     import torch
     from seismo_sbi.sbi.npe.source_conditioning import pack_subset_observation
-    from seismo_sbi.sbi.types.results import InversionData, InversionResult, InversionConfig
 
     obs = np.asarray(obs)
     coords = np.asarray(coords, dtype=float)

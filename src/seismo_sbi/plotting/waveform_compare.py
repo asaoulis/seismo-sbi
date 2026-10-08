@@ -13,6 +13,8 @@ from collections import OrderedDict
 
 import numpy as np
 
+from seismo_sbi.utils.seismograms import shift_1d_with_padding
+
 COMPONENTS = ("Z", "E", "N")
 
 
@@ -23,7 +25,6 @@ def _dist_km(ev_lat, ev_lon, sta_lat, sta_lon) -> float:
 
 def _shift(x, lag: int):
     """Delay (``+lag``) / advance (``-lag``) a trace by an integer number of samples, zero-padded."""
-    from seismo_sbi.utils.seismograms import shift_1d_with_padding
     return shift_1d_with_padding(np.asarray(x, float), int(lag))
 
 

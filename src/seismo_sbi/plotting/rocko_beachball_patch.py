@@ -6,7 +6,7 @@
 
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
-from matplotlib.transforms import IdentityTransform
+from matplotlib.transforms import Affine2D, IdentityTransform
 
 from pyrocko.plot.beachball import BeachballError, choose_transform, deco_part, eig2gx, project
 
@@ -84,9 +84,6 @@ def plot_beachball_mpl(
     # Return collection + metadata so caller can place it exactly where they want.
     return collection, transform, position, size, data
 
-
-# rocko_beachball_helpers.py
-from matplotlib.transforms import Affine2D
 
 def plot_beachball_on_axes(
         ax,

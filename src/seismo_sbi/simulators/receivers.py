@@ -7,6 +7,7 @@ optional components map and per-station shift map), from arrays, or from an obsp
 """
 
 from fnmatch import fnmatchcase
+from itertools import cycle
 from typing import NamedTuple, List, Sequence
 import numpy as np
 import json
@@ -241,7 +242,6 @@ class Receivers:
 
         def add_zebra_border(ax, step=1, length=0.1):
             """Draw alternating black and white tick marks around the map extent."""
-            from itertools import cycle
             colors = cycle(['black', 'white'])
             lon_min, lon_max, lat_min, lat_max = ax.get_extent(crs=ccrs.PlateCarree())
 

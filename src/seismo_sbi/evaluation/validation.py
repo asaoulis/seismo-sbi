@@ -14,6 +14,10 @@ from typing import Optional
 
 import numpy as np
 
+from seismo_sbi.evaluation import posterior_metrics
+from seismo_sbi.plotting import evaluation as ev
+from seismo_sbi.sbi.types.results import InversionData
+
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +132,6 @@ def sample_validation_posteriors(sbi_pipeline, posterior, data_scaler, ds, val_i
     """
     import torch
     from seismo_sbi.sbi.npe.source_conditioning import pack_subset_observation
-    from seismo_sbi.sbi.types.results import InversionData
 
     data_loader = sbi_pipeline.data_manager.data_loader
     coords_all = np.asarray(ds.station_coords)  # (N_master, 2)
@@ -229,7 +232,6 @@ def write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures):
     """TARP expected coverage ``(ecp, alpha)``, drawn to ``tarp_coverage.png`` and entered in
     ``figures``; ``(None, None)`` when it cannot be computed.
     """
-    from seismo_sbi.evaluation import posterior_metrics
     from seismo_sbi.plotting.coverage import plot_coverage
 
     ecp = alpha = None
@@ -253,8 +255,6 @@ def write_recovery_scatter(theta_phys, samples_phys, out_dir, figures):
     """True against recovered gamma, delta and Mw, drawn to ``recovery_scatter.svg`` and entered
     in ``figures``.
     """
-    from seismo_sbi.plotting import evaluation as ev
-
     try:
         sc_path = out_dir / "recovery_scatter.svg"
         ev.plot_recovery_scatter(theta_phys, samples_phys, figsave=sc_path)
@@ -294,8 +294,6 @@ def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples,
     """The evaluation metrics of ``val`` with the run's settings and ``figures``, written to
     ``evaluation_metrics.json``.
     """
-    from seismo_sbi.evaluation import posterior_metrics
-
     metrics: dict = {}
     try:
         metrics = posterior_metrics.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)

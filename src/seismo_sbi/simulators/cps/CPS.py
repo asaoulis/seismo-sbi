@@ -10,6 +10,7 @@ import subprocess
 from obspy import read, Stream
 from pathlib import Path
 import hashlib
+import uuid
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -44,8 +45,6 @@ def write_Model96(vel_model, fname):
         fid.write(line)
     fid.flush()
     fid.close()
-
-import uuid
 
 
 def random_run_tag():

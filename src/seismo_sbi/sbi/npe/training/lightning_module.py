@@ -11,6 +11,8 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LambdaLR, CyclicLR
 
 from seismo_sbi.sbi.npe.training.legacy_checkpoints import remap_legacy_state_dict
+from seismo_sbi.sbi.npe.training.mmd import (
+    DEFAULT_BANDWIDTH_SCALES, median_bandwidth, rbf_mixture_mmd2_unbiased)
 
 
 def fused_adam_supported(params):
@@ -75,7 +77,6 @@ class NPELightningModule(pl.LightningModule):
         ``lambda_mmd`` after ``warmup_epochs`` over ``ramp_epochs``; checkpoint selection stays on the
         NLL-only ``val_loss`` and the MMD is logged as ``train_mmd2`` / ``val_mmd2``.
         """
-        from seismo_sbi.sbi.npe.training.mmd import DEFAULT_BANDWIDTH_SCALES
         cfg = dict(mmd_config or {})
         self._mmd_cfg = {
             "lambda_mmd": float(cfg.get("lambda_mmd", 0.05)),
@@ -126,7 +127,6 @@ class NPELightningModule(pl.LightningModule):
         estimator is noise-sensitive). Bandwidth = median heuristic on the pooled
         sub-batches, EMA-smoothed across steps, detached from the graph.
         """
-        from seismo_sbi.sbi.npe.training.mmd import median_bandwidth, rbf_mixture_mmd2_unbiased
         cfg = self._mmd_cfg
         n_real = self.mmd_real_context.shape[0]
         b = min(cfg["batch_size"], n_real)

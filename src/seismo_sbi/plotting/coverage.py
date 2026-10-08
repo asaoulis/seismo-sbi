@@ -9,6 +9,7 @@ import importlib
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 
 importlib.import_module("scienceplots")  # registers the 'science' style used below
 
@@ -34,8 +35,7 @@ def plot_coverage(coverage_dict, colors, savefig=None, title='Inference calibrat
             plt.savefig(savefig, dpi=200, transparent=True)
         plt.show()
 
-# gaussian smoothing
-from scipy.ndimage import gaussian_filter1d
+
 def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig=None):
 
     with plt.style.context('science'):

@@ -4,8 +4,11 @@
 simulation, optionally rescaled to one event's pre-event variances, and can hold every valid
 window in memory for training.
 """
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import numpy as np
+from tqdm import tqdm
 
 from seismo_sbi.sbi.types.parameters import SimulationParameters
 from seismo_sbi.sbi.noises.covariance_base import pre_event_variances, station_component_value
@@ -149,9 +152,6 @@ class RealNoiseSampler(NoiseSampler):
         gaps) are skipped as the on-disk path skips them. With a rescale target the pool also holds
         each window's pre-event variances, and rescaled draws come from it too.
         """
-        from concurrent.futures import ThreadPoolExecutor
-        from tqdm import tqdm
-        import time as _t
         paths = list(self.noise_paths)
 
         def _try_load(p):
@@ -173,7 +173,7 @@ class RealNoiseSampler(NoiseSampler):
                 return None
             return v, None
 
-        t0 = _t.perf_counter()
+        t0 = time.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
             loaded = list(tqdm(ex.map(_try_load, paths), total=len(paths),
                                desc="[noise-cache] preloading", unit="win"))
@@ -192,7 +192,7 @@ class RealNoiseSampler(NoiseSampler):
         self._noise_cache = np.ascontiguousarray(np.stack(valid, axis=0), dtype=dtype)
         gb = self._noise_cache.nbytes / 1e9
         print(f"[noise-cache] preloaded {len(valid)}/{len(paths)} noise windows into RAM "
-              f"({gb:.2f} GB, {np.dtype(dtype).name}) in {_t.perf_counter() - t0:.1f}s — "
+              f"({gb:.2f} GB, {np.dtype(dtype).name}) in {time.perf_counter() - t0:.1f}s — "
               f"per-sample HDF5 noise read removed.")
         self._variance_cache = None
         if self.target_variances is not None:

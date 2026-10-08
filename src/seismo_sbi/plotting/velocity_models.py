@@ -118,7 +118,6 @@ def add_event_to_map(
     )
 
 def plot_perturbations(fiducial, perturbations, ax=None, title=None, add_legend=False):
-    import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.ticker import AutoMinorLocator

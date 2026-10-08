@@ -7,6 +7,7 @@ fixed receiver set.
 """
 
 import logging
+import traceback
 from pathlib import Path
 import shutil
 import numpy as np
@@ -362,7 +363,6 @@ class SBIPipeline:
                     flattened_dict_keys = [item for sublist in dict_keys for item in sublist]
                     plotter.plot_chain_consumer("_".join(flattened_dict_keys), job_name, chain_consumer_dict, kde=True, savefig=savefig)
                 except Exception as e:
-                    import traceback
                     traceback.print_exc()
                     logger.warning("ChainConsumer failed, skipping plotting of posterior comparisons: %s", e)
 

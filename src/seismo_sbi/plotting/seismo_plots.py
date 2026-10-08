@@ -12,6 +12,7 @@ from collections import OrderedDict
 from obspy.taup import tau
 from obspy.geodetics import locations2degrees
 
+from seismo_sbi.plotting.waveform_compare import moveout_record_section
 from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 
 def get_epicentral_distances_function(event_lat, event_long, station):
@@ -296,8 +297,6 @@ class MisfitsPlotting:
             Passed straight to ``moveout_record_section`` (``order_by``, ``y_scale``,
             ``normalise``, ``layout``, ``window``, ``ensemble_style``, ...).
         """
-        from seismo_sbi.plotting.waveform_compare import moveout_record_section
-
         obs_cube, components = self._reshape_to_cube(observation)
         obs_cube = obs_cube[0]
         overlays = OrderedDict()

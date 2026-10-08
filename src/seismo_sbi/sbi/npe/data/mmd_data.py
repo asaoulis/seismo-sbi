@@ -9,7 +9,9 @@ loader: the suite's true locations already scatter around the catalogue values.
 """
 from __future__ import annotations
 
+import glob
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -131,9 +133,7 @@ def build_psim_loader(psim_folder, manifest_path, *, data_loader,
     master_names = [r.station_name for r in data_loader.receivers.iterate()]
     components = list(data_loader.components)
 
-    import glob as _glob
-    import os as _os
-    paths = sorted(_glob.glob(_os.path.join(str(psim_folder), "*.h5")))
+    paths = sorted(glob.glob(os.path.join(str(psim_folder), "*.h5")))
     # keep only sims whose parent survived the clean_only filter (same sorted order the
     # dataset will glob, so fixed_item_masks stays aligned with dataset indices)
     keep_paths = [p for p in paths if Path(p).stem.split("__")[0] in events_by_id]

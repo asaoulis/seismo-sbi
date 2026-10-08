@@ -16,6 +16,8 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from seismo_sbi.sbi.configuration import SBI_Configuration
+from seismo_sbi.sbi.scalers import build_flexible_scaler, check_scaler_provenance
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
 logger = logging.getLogger(__name__)
@@ -46,11 +48,9 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     mismatch unless ``strict`` is False. The pipeline's forward model places the source time on
     the moment-rate function as the run was trained (:func:`recorded_stf_alignment`).
     """
-    from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.datasets.training_data import build_pipeline
     from seismo_sbi.sbi.npe.training.train import CompressionTrainer, recorded_stf_alignment
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
-    from seismo_sbi.sbi.scalers import build_flexible_scaler, check_scaler_provenance
 
     run_directory = resolve_ckpt_dir(run_directory)
     posterior = CompressionTrainer.from_run_directory(run_directory).build_posterior()
@@ -75,8 +75,6 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     ``simulate_test_jobs`` would redraw every ``random_events`` simulation and overwrite
     the dataset the model trained on. The dataset is simulated only when none exists.
     """
-    from pathlib import Path as _Path
-    from seismo_sbi.sbi.configuration import SBI_Configuration
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
     from seismo_sbi.sbi.datasets.training_data import build_pipeline, event_noise_for_compressors
 
@@ -87,7 +85,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     original_parameters = deepcopy(sbi_pipeline.parameters)
 
     existing_sims = sorted(
-        _Path(sbi_pipeline.simulations_output_path).glob("random_event_*.h5"))
+        Path(sbi_pipeline.simulations_output_path).glob("random_event_*.h5"))
     if regenerate_dataset or not existing_sims:
         if not existing_sims:
             logger.info("No existing sims found — generating the dataset.")
@@ -127,7 +125,6 @@ def build_ml_posterior(ckpt_dir, sbi_pipeline, dim=256):
     reading the architecture from the checkpoint's model_meta.json sidecar so any
     encoder (cnn / pno / tcn) reloads correctly.  Returns the sbi DirectPosterior.
     """
-    import json as _json
     from seismo_sbi.sbi.npe.training.train import CompressionTrainer, recorded_stf_alignment
 
     ckpt_dir = Path(ckpt_dir)
@@ -135,7 +132,7 @@ def build_ml_posterior(ckpt_dir, sbi_pipeline, dim=256):
     station_locations = sbi_pipeline.simulation_parameters.receivers.get_station_locations_array()
 
     meta_path = ckpt_dir / "model_meta.json"
-    meta = _json.load(open(meta_path)) if meta_path.exists() else {}
+    meta = json.load(open(meta_path)) if meta_path.exists() else {}
     trainer = CompressionTrainer(
         components, station_locations, dim, dim,
         trace_length=meta.get("trace_length", sbi_pipeline.trace_length),

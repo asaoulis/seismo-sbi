@@ -23,6 +23,7 @@ from seismo_sbi.data_handling.preprocessing.catalogue_builder import (
 )
 from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
 from seismo_sbi.data_handling.preprocessing.quality import partition_window_quality
+from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.data_handling.preprocessing.windowing import (
     compute_event_arrival_windows,
     get_continuous_regions,
@@ -228,7 +229,6 @@ def _simple_event_windows(interfering_events, duration_s: float) -> List[Tuple]:
 
 def _dummy_receivers(station_networks):
     """Minimal Receivers with zero lat/lon for TauPy distance calculations."""
-    from seismo_sbi.simulators.receivers import Receiver, Receivers
     return Receivers(receivers=[
         Receiver(0.0, 0.0, net, sta, ["Z"])
         for sta, net in station_networks.items()

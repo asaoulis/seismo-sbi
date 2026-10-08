@@ -5,6 +5,7 @@ either as it arrives or after every inversion has run.
 """
 
 import logging
+import traceback
 import os
 import pickle
 import multiprocessing as mp
@@ -39,7 +40,6 @@ def asynchronous_plotting(plotting_callable, results_queue, plotting_complete_ev
             plotting_callable(job_result, inversion_result)
         plotting_complete_event.set()
     except Exception as e:
-        import traceback
         traceback.print_exc()
         logger.warning('Exception in results plotting: %s', e)
         raise e
@@ -54,7 +54,6 @@ def run_asynchronous_plotting(sbi_pipeline, results_generator):
         plotting_complete_event.wait()
     except Exception as e:
         logger.warning('Exception in the main thread: %s', e)
-        import traceback
         traceback.print_exc()
     finally:
                 # Terminate all child processes if an exception occurs
@@ -83,7 +82,6 @@ def asynchronous_saving(job_data,output_path, results_queue, saving_complete_eve
                 pickle.dump((job_data, job_results, inversion_results), f)
         saving_complete_event.set()
     except Exception as e:
-        import traceback
         traceback.print_exc()
         logger.warning('Exception in results saving: %s', e)
         raise e
@@ -98,7 +96,6 @@ def run_asynchronous_results_saving(job_data, results_generator, output_path):
         saving_complete_event.wait()
     except Exception as e:
         logger.warning('Exception in the main thread: %s', e)
-        import traceback
         traceback.print_exc()
     finally:
             # Terminate all child processes if an exception occurs

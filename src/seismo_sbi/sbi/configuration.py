@@ -5,6 +5,7 @@ values, the simulation and sampling options, the compression and SBI settings, a
 jobs, into the records of :mod:`seismo_sbi.sbi.types.parameters`.
 """
 
+import math
 import yaml
 from dataclasses import dataclass
 from functools import partial
@@ -454,7 +455,6 @@ def generic_scaler_callable(scale, x):
 
 
 def nearest_power_of_ten(number):
-    import math
     # Calculate the exponent of the number in base 10
     exponent = math.floor(math.log10(abs(number)))
     

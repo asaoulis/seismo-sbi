@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from seismo_sbi.moment_tensor.conventions import create_matrix
 from seismo_sbi.evaluation.posterior_metrics import _gamma_delta_mw, spread_stats
 
 
@@ -122,9 +123,7 @@ def add_decomposition_beachballs(ax, theta0_mt, color="salmon"):
     in axes coordinates. ``theta0_mt`` is a 6-component moment tensor in the pipeline
     (up-south-east) convention. Adapted from the project's reference snippet.
     """
-    import numpy as np
     from pyrocko import moment_tensor as pmt
-    from seismo_sbi.moment_tensor.conventions import create_matrix
     from seismo_sbi.plotting.rocko_beachball_patch import plot_beachball_on_axes
 
     mt_matrix = create_matrix(theta0_mt)
