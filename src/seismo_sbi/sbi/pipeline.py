@@ -396,19 +396,6 @@ class SingleEventPipeline(SBIPipeline):
     
         self.mcmc_chain_for_mle = dataset_parameters.iterative_least_squares.mcmc_chain_for_mle
     
-    def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
-
-        only_moment_tensor_variable = all([sampler == 'constant' for param, sampler in sampling_methods.items() if param != 'moment_tensor'])
-
-        if only_moment_tensor_variable:
-            self.simulator_wrapper.set_simulation_objects(
-                    'kernel', self.simulation_parameters,
-                    deepcopy(self.parameters), deepcopy(self.data_manager.data_loader), self.parameter_sampler,
-                    score_compression_data=score_compression_data
-                )
-            self.least_squares_solver.simulator = self.simulator_wrapper.simulator
-
-    
     def run_compressions_and_inversions(self, job_data : List[JobData], sbi_method, likelihood_config, dataset_details, do_plots = True):
 
         from ..plotting.results_plotting import SBIPipelinePlotter

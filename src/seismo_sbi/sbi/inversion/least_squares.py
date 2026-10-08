@@ -30,7 +30,6 @@ class IterativeLeastSquaresSolver:
         self.data_manager = data_manager
         self.data_loader = data_manager.data_loader
         self.stencil_args = (compression_methods, simulator_wrapper, self.sim_parameters)
-        self.simulator = simulator_wrapper.simulator
         self.least_squares_configuration = least_squares_configuration
 
         self.num_parallel_jobs = num_parallel_jobs
