@@ -11,9 +11,9 @@ import os
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.nuisance_effects.post_processing import apply_chain_to_array
 import numpy as np
 
+from seismo_sbi.sbi.npe.data.sample_augmentation import SampleAugmentation
 from seismo_sbi.sbi.npe.data.simulation_cache import SimulationCache
 from seismo_sbi.sbi.npe.data.station_selection import (
     StationSubsampler, select_stations, variable_station_collate)
@@ -86,20 +86,14 @@ class TorchSimulationDataset(Dataset):
                 np.asarray(conditioning_noise_std, dtype=float), dtype=torch_dtype)
 
         self.parameter_name_map = parameter_name_map or {}
-        self.synthetic_noise_model_sampler = synthetic_noise_model_sampler
         self.data_scaler = data_scaler
         self.return_tensors = return_tensors
         self.torch_dtype = torch_dtype
 
-        # A chain of post-processing effects folded into the clean data on the fly, before
-        # noise is added.
-        self.augmentation_chain = augmentation_chain
-        self.augmentation_nuisance_params = augmentation_nuisance_params or {}
-
-        # A chain applied to the noisy data, for effects like component dropout that must zero
-        # a channel exactly and so cannot run before noise is added.
-        self.post_noise_augmentation_chain = post_noise_augmentation_chain
-        self.post_noise_nuisance_params = post_noise_nuisance_params or {}
+        self.augmentation = SampleAugmentation(
+            data_loader, synthetic_noise_model_sampler, augmentation_chain,
+            augmentation_nuisance_params, post_noise_augmentation_chain,
+            post_noise_nuisance_params, torch_dtype)
 
     def _index_simulations(self, data_folder, glob_pattern, cache_in_memory, cache_preload_workers,
                            cache_dtype):
@@ -121,15 +115,11 @@ class TorchSimulationDataset(Dataset):
 
     def __getitem__(self, idx):
         theta, D = self.simulation_cache.load(idx)
-        D = self._augment_clean(D)
+        x, noise_present = self.augmentation(D)
 
         if self.data_scaler is not None and theta.size > 0:
             theta = self.data_scaler.transform(theta[np.newaxis, :]).flatten()
         theta = torch.as_tensor(theta, dtype=self.torch_dtype)
-        D = torch.as_tensor(D, dtype=self.torch_dtype)
-
-        x, noise_present = self._add_noise(D)
-        x = self._augment_noisy(x)
 
         if self.return_tensors:
             x = torch.as_tensor(x, dtype=self.torch_dtype)
@@ -141,50 +131,10 @@ class TorchSimulationDataset(Dataset):
                                station_subsampler=self.station_subsampler,
                                station_coords=self.station_coords, torch_dtype=self.torch_dtype)
 
-    def _augment_clean(self, D):
-        """Apply the nuisance augmentation to the clean data ``(N, C, T)``, before noise is added."""
-        if self.augmentation_chain is not None and self.augmentation_chain.effects:
-            D = apply_chain_to_array(
-                self.augmentation_chain,
-                D,
-                self.data_loader.receivers,
-                self.data_loader.components,
-                self.augmentation_nuisance_params,
-            )
-        return D
-
-    def _add_noise(self, D):
-        """``(x, noise_present)``: ``D`` plus one noise draw, and the stations the noise window
-        carried (``None`` unless the sampler allows incomplete windows)."""
-        draw = self.synthetic_noise_model_sampler.draw()
-        noise_present = None if draw.present is None else np.asarray(draw.present, dtype=bool)
-        noise = np.asarray(draw.noise)
-        noise_rows = self.data_loader.zero_fill_unused_components(
-            noise.reshape(-1, D.shape[-1]), D.shape[-1]
-        )
-        noise_arr = np.asarray(noise_rows)
-        x = D + torch.as_tensor(noise_arr, dtype=self.torch_dtype).reshape(*D.shape)
-        return x, noise_present
-
-    def _augment_noisy(self, x):
-        """Apply the post-noise chain (component dropout) on the full station set."""
-        post_chain = getattr(self, "post_noise_augmentation_chain", None)
-        if post_chain is not None and post_chain.effects:
-            x_aug = apply_chain_to_array(
-                post_chain,
-                x.numpy(),
-                self.data_loader.receivers,
-                self.data_loader.components,
-                self.post_noise_nuisance_params,
-            )
-            x = torch.as_tensor(x_aug, dtype=self.torch_dtype).reshape(*x.shape)
-        return x
-
     def _source_vector(self, idx):
         """The perturbed raw source-conditioning vector, or ``None`` without conditioning."""
-        fixed_cond = getattr(self, "fixed_conditioning", None)
-        if fixed_cond is not None:
-            raw_cond = np.asarray(fixed_cond[idx], dtype=float)
+        if self.fixed_conditioning is not None:
+            raw_cond = np.asarray(self.fixed_conditioning[idx], dtype=float)
         else:
             raw_cond = self.simulation_cache.conditioning(idx)
         if raw_cond is None:
@@ -194,11 +144,11 @@ class TorchSimulationDataset(Dataset):
 
     def _perturb_conditioning(self, source_vec):
         """Source-location uncertainty augmentation: add per-coordinate Gaussian noise to the
-        raw conditioning vector. Fresh draw per call (⇒ training augmentation). ``getattr`` keeps
-        ``__new__`` test stubs working. No-op when ``conditioning_noise_std`` is unset. The model
-        then sees a noisy source (and, in relative-coords mode, noisy source-relative station
-        geometry) — matching the catalogue location error present at inference."""
-        std = getattr(self, "conditioning_noise_std", None)
+        raw conditioning vector. Fresh draw per call (⇒ training augmentation). No-op when
+        ``conditioning_noise_std`` is unset. The model then sees a noisy source (and, in
+        relative-coords mode, noisy source-relative station geometry) — matching the catalogue
+        location error present at inference."""
+        std = self.conditioning_noise_std
         if std is None:
             return source_vec
         return source_vec + torch.randn_like(source_vec) * std

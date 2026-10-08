@@ -186,18 +186,25 @@ def test_perturb_conditioning_applies_per_coordinate_gaussian():
     """v3 source-location uncertainty: _perturb_conditioning adds per-coordinate Gaussian noise
     (mean≈clean, std≈configured) and is a no-op when conditioning_noise_std is None."""
     import torch
-    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
+    from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
+    from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
 
-    ds = TorchSimulationDataset.__new__(TorchSimulationDataset)
+    def dataset(conditioning_noise_std):
+        receivers = Receivers(receivers=[Receiver(0.0, 0.0, "XX", "STA1", ["Z"])])
+        return ArraySimulationDataset(None, np.zeros((1, 1, 1, 4)), receivers, "Z",
+                                      WhiteNoiseSampler(1.0, 4),
+                                      conditioning_noise_std=conditioning_noise_std)
+
     base = torch.tensor([36.5, 25.6, 8.0])
 
     # No-op when unset.
-    ds.conditioning_noise_std = None
+    ds = dataset(None)
     assert torch.equal(ds._perturb_conditioning(base), base)
 
     # Per-coordinate Gaussian with the configured std (lat°, lon°, depth km).
     std = torch.tensor([0.010, 0.013, 1.5])
-    ds.conditioning_noise_std = std
+    ds = dataset(std)
     torch.manual_seed(0)
     samples = torch.stack([ds._perturb_conditioning(base) for _ in range(8000)])
     assert torch.allclose(samples.mean(0), base, atol=0.1)        # mean ≈ clean location
