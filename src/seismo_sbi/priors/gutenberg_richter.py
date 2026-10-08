@@ -1,9 +1,9 @@
 """Gutenberg-Richter magnitude statistics for the moment-tensor prior.
 
 :func:`estimate_mc_maxcurvature` gives a maximum-curvature completeness magnitude,
-:func:`fit_b_value_aki` the Aki (1965) maximum-likelihood b-value, :func:`magnitude_to_m0` the
-Hanks-Kanamori scalar moment in N.m, and :class:`GutenbergRichterModel` a truncated
-Gutenberg-Richter magnitude distribution with inverse-CDF sampling.
+:func:`fit_b_value_aki` the Aki (1965) maximum-likelihood b-value, and
+:class:`GutenbergRichterModel` a truncated Gutenberg-Richter magnitude distribution with
+inverse-CDF sampling.
 """
 from __future__ import annotations
 
@@ -13,15 +13,6 @@ import numpy as np
 
 #: ln(10), the conversion factor between the GR b-value and the exponential rate.
 _LN_10 = np.log(10.0)
-
-
-def magnitude_to_m0(mw):
-    """Hanks-Kanamori scalar moment ``M0 = 10**(1.5*Mw + 9.1)`` (N.m).
-
-    Inverse of the moment-magnitude relation used throughout the library
-    (e.g. ``plotting/velocity_models.py``). Vectorised.
-    """
-    return 10.0 ** (1.5 * np.asarray(mw, dtype=float) + 9.1)
 
 
 def estimate_mc_maxcurvature(magnitudes, *, delta_m: float = 0.1) -> float:

@@ -4,7 +4,8 @@
 builds the symmetric 3x3 tensor from six components in that index order, the matrix pyrocko's
 ``m_up_south_east`` takes. ``scalar_moment`` is the full-tensor moment of Silver and Jordan
 (1982), ``M0 = sqrt(0.5 * sum_ij M_ij^2)``, in which each off-diagonal component counts twice, and
-``moment_magnitude`` is the IASPEI (2013) ``Mw = (2/3) (log10 M0 - 9.1)`` with ``M0`` in N.m.
+``moment_magnitude`` is the IASPEI (2013) ``Mw = (2/3) (log10 M0 - 9.1)`` with ``M0`` in N.m, and
+``magnitude_to_m0`` its inverse.
 """
 import numpy as np
 
@@ -47,3 +48,10 @@ def moment_magnitude(mt6):
 def moment_magnitude_from_scalar_moment(m0_nm):
     """``Mw = (2/3) (log10 M0 - 9.1)`` of a scalar moment ``m0_nm`` in N.m (IASPEI, 2013)."""
     return (2.0 / 3.0) * (np.log10(m0_nm) - 9.1)
+
+
+def magnitude_to_m0(mw):
+    """Scalar moment ``M0 = 10**(1.5*Mw + 9.1)`` in N.m of a moment magnitude ``mw``, the inverse of
+    :func:`moment_magnitude_from_scalar_moment`; a scalar or an array.
+    """
+    return 10.0 ** (1.5 * np.asarray(mw, dtype=float) + 9.1)

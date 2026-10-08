@@ -12,13 +12,14 @@ from typing import Optional, Union
 
 import numpy as np
 
+from seismo_sbi.moment_tensor.conventions import magnitude_to_m0
+
 from .catalogue import EventCatalogue, load_catalogue
 from .geo import km_offsets_to_latlon
 from .gutenberg_richter import (
     GutenbergRichterModel,
     estimate_mc_maxcurvature,
     fit_b_value_aki,
-    magnitude_to_m0,
 )
 from .moment_tensor_sampling import uniform_moment_tensor_on_sphere
 

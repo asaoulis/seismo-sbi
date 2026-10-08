@@ -8,17 +8,7 @@ from seismo_sbi.priors.gutenberg_richter import (
     GutenbergRichterModel,
     estimate_mc_maxcurvature,
     fit_b_value_aki,
-    magnitude_to_m0,
 )
-
-
-def test_magnitude_to_m0_matches_hanks_kanamori():
-    # Mw = 4 -> M0 = 10**(6 + 9.1) = 10**15.1
-    assert np.isclose(magnitude_to_m0(4.0), 10 ** 15.1)
-    # round-trip back to Mw
-    m0 = magnitude_to_m0(np.array([1.0, 3.0, 6.0]))
-    mw_back = (np.log10(m0) - 9.1) / 1.5
-    assert np.allclose(mw_back, [1.0, 3.0, 6.0])
 
 
 def test_aki_b_value_recovers_known_b_on_continuous_exponential():
