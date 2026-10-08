@@ -4,7 +4,7 @@
 ``outputs``; :class:`SimulationDataLoader` reads that layout back and flattens it into the
 ``(n_traces * n_samples,)`` data vector the inference pipeline consumes, in receiver order.
 :func:`seismogram_map_to_array` does the same for a simulator's in-memory ``{station: {component:
-waveform}}`` map. Horizontal components may be stored as 1 and 2 rather than E and N;
+waveform}}`` map, and :func:`seismogram_array_to_map` builds that map from the traces. Horizontal components may be stored as 1 and 2 rather than E and N;
 ``component_alias`` maps them.
 """
 
@@ -34,6 +34,20 @@ def seismogram_map_to_array(seismogram_map: dict, receivers: Receivers, stacked:
     components = "".join(receivers.receivers[0].components)
     loader = SimulationDataLoader(components, receivers)
     return loader.convert_sim_data_to_array({"outputs": seismogram_map}, stacked=stacked)
+
+
+def seismogram_array_to_map(traces, receivers: Receivers) -> dict:
+    """``{station: {component: waveform}}`` of ``traces`` ``(n_traces, n_samples)``, one row per
+    receiver component in receiver order; the inverse of :func:`seismogram_map_to_array`.
+    """
+    seismogram_map = {}
+    trace_counter = 0
+    for receiver in receivers.iterate():
+        seismogram_map[receiver.station_name] = {}
+        for component in receiver.components:
+            seismogram_map[receiver.station_name][component] = traces[trace_counter]
+            trace_counter += 1
+    return seismogram_map
 
 
 class SimulationSaver:

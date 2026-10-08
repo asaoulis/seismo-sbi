@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .base import Simulator
+from .simulation_io import seismogram_array_to_map
 from .sources import GenericPointSource
 
 if TYPE_CHECKING:
@@ -32,21 +33,9 @@ class FixedLocationKernelSimulator(Simulator):
             self.trace_length = self.sensitivity_kernels.shape[1] // num_traces
 
     def generic_point_source_simulation(self, source: GenericPointSource, *, stf_duration=None, **kwargs):
-        
-        all_seismograms_map = {}
-
         seismograms = self._compute_seismograms_from_kernels(source)
-
         seismograms = seismograms.reshape(-1, self.trace_length)
-
-        trace_counter = 0
-        for rec_idx, receiver in enumerate(self.receivers.iterate()):
-            all_seismograms_map[receiver.station_name] = {}
-            for comp_idx, component in enumerate(receiver.components):
-                all_seismograms_map[receiver.station_name][component] = seismograms[trace_counter]
-                trace_counter +=1
-            
-        return all_seismograms_map
+        return seismogram_array_to_map(seismograms, self.receivers)
     
     def _compute_seismograms_from_kernels(self, source: GenericPointSource):
 

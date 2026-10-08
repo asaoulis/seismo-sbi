@@ -9,6 +9,7 @@ import numpy as np
 
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
+from seismo_sbi.simulators.simulation_io import seismogram_array_to_map
 from seismo_sbi.utils.parallel import parallel_execution, worker_seeds
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 
@@ -58,12 +59,4 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         demeaned = seismograms - mean_obs
         cov_blocks = np.einsum('nrt,nru->ntu', demeaned, demeaned) / (demeaned.shape[1] - 1)
         cov_blocks = cov_blocks.reshape(self.num_traces, -1)
-        all_cov_blocks_map = {}
-        counter = 0
-        for receiver in self.simulator.receivers.iterate():
-            all_cov_blocks_map[receiver.station_name] = {}
-            for component in receiver.components:
-                all_cov_blocks_map[receiver.station_name][component] = cov_blocks[counter]
-                counter += 1
-
-        return all_cov_blocks_map
+        return seismogram_array_to_map(cov_blocks, self.simulator.receivers)

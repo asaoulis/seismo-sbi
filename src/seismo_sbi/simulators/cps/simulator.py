@@ -20,6 +20,7 @@ from seismo_sbi.simulators.cps.CPS import update_with_Gtensor
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.multi_region import MultiModelSimulator
+from seismo_sbi.simulators.simulation_io import seismogram_array_to_map
 from seismo_sbi.simulators.sources import GenericPointSource
 from seismo_sbi.moment_tensor.conventions import create_matrix
 from seismo_sbi.utils.errors import InvalidConfiguration
@@ -74,7 +75,6 @@ class CPSSimulator(Simulator):
             raise InvalidConfiguration(
                 "CPS synthetics start at the origin and apply no source time shift; "
                 f"got {source.source_location.time_shift} s")
-        all_seismograms_map = {}
         velocity_model = kwargs.pop('velocity_model', None)
         # CPS Green's functions carry no source time function, and update_with_Gtensor would
         # raise on the unexpected keyword.
@@ -85,15 +85,7 @@ class CPSSimulator(Simulator):
         seismograms = self.synthetics_summary(seismograms)
         num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         seismograms = seismograms.reshape(num_traces, -1)
-
-        trace_counter = 0
-        for rec_idx, receiver in enumerate(self.receivers.iterate()):
-            all_seismograms_map[receiver.station_name] = {}
-            for comp_idx, component in enumerate(receiver.components):
-                all_seismograms_map[receiver.station_name][component] = seismograms[trace_counter]
-                trace_counter +=1
-            
-        return all_seismograms_map
+        return seismogram_array_to_map(seismograms, self.receivers)
 
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
