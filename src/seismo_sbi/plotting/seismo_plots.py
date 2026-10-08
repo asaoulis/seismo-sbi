@@ -50,7 +50,7 @@ class MisfitsPlotting:
         synthetics = np.reshape(synthetics, (-1, time_series_length))
 
 
-        fig, axes = plt.subplots(len(self.receivers.receivers), 3, figsize=(5*3, 2*len(self.receivers.receivers)))
+        fig, axes = plt.subplots(len(self.receivers.receivers), 3, figsize=(5*3, 2*len(self.receivers.receivers)), squeeze=False)
 
         seismogram_index = 0
         component_to_index = {'Z':0, 'E':1, 'N':2}
@@ -101,7 +101,7 @@ class MisfitsPlotting:
         data_vector = np.reshape(data_vector, (-1, time_series_length))
         synthetics = np.reshape(synthetics, (-1, time_series_length))
 
-        fig, axes = plt.subplots(len(self.receivers.receivers), 3, figsize=(5*3, 2*len(self.receivers.receivers)))
+        fig, axes = plt.subplots(len(self.receivers.receivers), 3, figsize=(5*3, 2*len(self.receivers.receivers)), squeeze=False)
 
         seismogram_index = 0
         component_to_index = {'Z':0, 'E':1, 'N':2}

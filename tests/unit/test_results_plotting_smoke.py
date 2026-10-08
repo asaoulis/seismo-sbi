@@ -123,9 +123,37 @@ def test_vertical_only_misfits_are_one_figure(tmp_path):
     job = JobData("job", "real_noise", data_vector, {})
 
     SBIPipelinePlotter(tmp_path, _Parameters()).plot_synthetic_misfits(
-        job, receivers, 0.5 * data_vector, (0.0, 0.0), vertical_only=True)
+        job, receivers, 0.5 * data_vector, (0.0, 0.0, 20.0), 1.0, vertical_only=True)
 
     assert sorted(path.name for path in (tmp_path / "misfits").iterdir()) == ["stacked_job.png"]
+
+
+def test_misfit_figures_use_the_sampling_rate_and_source_depth_given(tmp_path, monkeypatch):
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    class _Parameters:
+        def parameter_to_vector(self, key):
+            return np.zeros(6)
+
+    depths_km = []
+    original_arrivals = MisfitsPlotting._get_arrivals_dict
+
+    def recording_arrivals(self, event_location):
+        depths_km.append(event_location[2])
+        return original_arrivals(self, event_location)
+
+    monkeypatch.setattr(MisfitsPlotting, "_get_arrivals_dict", recording_arrivals)
+    monkeypatch.setattr(plt, "close", lambda *args: None)
+    receivers = Receivers.from_arrays(["AAA", "BBB"], ["XX", "XX"], [1.0, 2.0], [0.0, 0.0])
+    data_vector = np.random.default_rng(0).normal(size=2 * 3 * 300)
+    job = JobData("job", "real_noise", data_vector, {})
+
+    SBIPipelinePlotter(tmp_path, _Parameters()).plot_synthetic_misfits(
+        job, receivers, 0.5 * data_vector, (0.0, 0.0, 7.5), 2.0, savefig=False, vertical_only=True)
+
+    times_s = plt.gcf().axes[0].get_lines()[0].get_xdata()
+    assert depths_km == [7.5] and np.isclose(times_s[-1], 299 / 2.0)
 
 
 def test_vertical_traces_are_scaled_to_the_largest_vertical_and_cut_to_the_window(monkeypatch):

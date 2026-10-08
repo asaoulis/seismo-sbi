@@ -430,7 +430,7 @@ class SingleEventPipeline(SBIPipeline):
                 
                 logger.info(f"Time taken for {single_job.job_name} with {compressor_name}: {time.time() - start_time}s")
                 if do_plots:
-                    plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:2], covariance = self.compressors[compressor_name].C)
+                    plotter.plot_synthetic_misfits(single_job, self.simulation_parameters.receivers, compression_data.data_fiducial, self.parameters.get_parameter_values('source_location')[:3], self.simulation_parameters.sampling_rate, covariance = self.compressors[compressor_name].C)
 
                 inversion_result = InversionResult(single_job.job_name, inversion_data, inversion_config)
 
