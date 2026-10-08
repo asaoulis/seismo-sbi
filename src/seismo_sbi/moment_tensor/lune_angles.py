@@ -7,6 +7,8 @@ from eigenvalues, following Carl Tape's ``lam2lune.m``.
 
 import numpy as np
 
+from seismo_sbi.moment_tensor.conventions import create_matrix
+
 
 def sort_eigvals_desc(lam: np.ndarray) -> np.ndarray:
     idx = np.argsort(lam, axis=-1)[..., ::-1]
@@ -67,30 +69,12 @@ def lam2lune(lam: np.ndarray):
     return gamma, delta, M0, thetadc, lamdev, lamiso
 
 
-def m6_to_matrix(m6: np.ndarray) -> np.ndarray:
-    """
-    Convert 6-component moment tensor(s) [Mxx, Myy, Mzz, Mxy, Mxz, Myz]
-    into 3x3 symmetric matrices. Accepts shape (6,) or (n,6).
-    """
-    m6 = np.asarray(m6)
-    if m6.ndim == 1:
-        m6 = m6.reshape(1, 6)
-    M = np.zeros((m6.shape[0], 3, 3), dtype=m6.dtype)
-    M[:, 0, 0] = m6[:, 0]
-    M[:, 1, 1] = m6[:, 1]
-    M[:, 2, 2] = m6[:, 2]
-    M[:, 0, 1] = M[:, 1, 0] = m6[:, 3]
-    M[:, 0, 2] = M[:, 2, 0] = m6[:, 4]
-    M[:, 1, 2] = M[:, 2, 1] = m6[:, 5]
-    return M
-
-
 def mts6_to_gamma_delta(m6: np.ndarray):
     """
     Vectorized conversion from 6-component MT(s) to Tape & Tape lune (gamma, delta).
     Returns gamma, delta in degrees (shape (n,)).
     """
-    M = m6_to_matrix(m6)
+    M = create_matrix(np.asarray(m6).reshape(-1, 6))
     # eigvalsh returns ascending; reverse for descending
     lam = np.linalg.eigvalsh(M)[:, ::-1]
     gamma, delta, *_ = lam2lune(lam)

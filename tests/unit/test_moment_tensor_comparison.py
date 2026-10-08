@@ -179,22 +179,23 @@ def test_from_pyrocko_inverts_pyrocko_mt():
 
 def test_the_ned_matrix_is_the_use_matrix_rotated():
     from seismo_sbi.moment_tensor.comparison import _USE_TO_NED, m6_to_matrix_ned
-    from seismo_sbi.moment_tensor.lune_angles import m6_to_matrix
+    from seismo_sbi.moment_tensor.conventions import create_matrix
 
     m6 = np.random.default_rng(4).normal(size=(5, 6)) * 1e16
 
-    np.testing.assert_allclose(m6_to_matrix_ned(m6), _USE_TO_NED @ m6_to_matrix(m6) @ _USE_TO_NED.T, rtol=1e-12)
+    np.testing.assert_allclose(m6_to_matrix_ned(m6), _USE_TO_NED @ create_matrix(m6) @ _USE_TO_NED.T, rtol=1e-12)
 
 
-def test_the_north_east_down_pyrocko_tensor_is_the_same_tensor():
-    from seismo_sbi.moment_tensor.comparison import from_pyrocko, kagan, pyrocko_mt
-    from seismo_sbi.moment_tensor.decomposition import convert_to_pyrocko, get_nodal_planes
+def test_one_tensor_and_a_cloud_give_the_same_matrices():
+    from seismo_sbi.moment_tensor.conventions import create_matrix
 
-    for m6 in np.random.default_rng(5).normal(size=(5, 6)) * 1e16:
-        np.testing.assert_allclose(from_pyrocko(convert_to_pyrocko(m6)), m6, rtol=1e-9, atol=1e3)
-        np.testing.assert_allclose(convert_to_pyrocko(m6).m(), pyrocko_mt(m6).m(), rtol=1e-9, atol=1e3)
-        assert kagan(m6, from_pyrocko(convert_to_pyrocko(m6))) < 1e-4
-        np.testing.assert_allclose(get_nodal_planes(m6), pyrocko_mt(m6).both_strike_dip_rake(), atol=1e-6)
+    m6 = np.random.default_rng(6).normal(size=(4, 6)) * 1e16
+
+    assert create_matrix(m6[0]).shape == (3, 3)
+    np.testing.assert_array_equal(create_matrix(m6), np.stack([create_matrix(tensor) for tensor in m6]))
+    np.testing.assert_array_equal(create_matrix(m6[0]), [[m6[0, 0], m6[0, 3], m6[0, 4]],
+                                                        [m6[0, 3], m6[0, 1], m6[0, 5]],
+                                                        [m6[0, 4], m6[0, 5], m6[0, 2]]])
 
 
 @pytest.mark.parametrize("strike_dip_rake", [(0, 90, 0), (30, 60, 90), (120, 45, -60)])

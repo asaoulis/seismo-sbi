@@ -10,7 +10,8 @@ from scipy.spatial.transform import Rotation
 from scipy.stats import kstest
 
 from seismo_sbi.moment_tensor.conventions import scalar_moment
-from seismo_sbi.moment_tensor.lune_angles import m6_to_matrix, mts6_to_gamma_delta
+from seismo_sbi.moment_tensor.conventions import create_matrix
+from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
 from seismo_sbi.priors.moment_tensor_sampling import uniform_moment_tensor_on_sphere
 
 N_TENSORS = 100_000
@@ -38,7 +39,7 @@ def symmetric_gaussian_reference(n_tensors, seed):
 
 def orientation_statistics(m6):
     """``(P(T-axis plunge > 60 deg), P(|delta| > 30 deg))`` of a set of tensors ``(n, 6)``."""
-    _, eigenvectors = np.linalg.eigh(m6_to_matrix(m6))
+    _, eigenvectors = np.linalg.eigh(create_matrix(m6))
     t_axis_up = np.abs(eigenvectors[:, 0, 2])
     _, delta_deg = mts6_to_gamma_delta(m6)
     return np.mean(t_axis_up > np.sin(np.radians(60.0))), np.mean(np.abs(delta_deg) > 30.0)
@@ -56,7 +57,7 @@ def test_scalar_moment_equals_requested_m0():
 def test_orientations_match_a_rotation_invariant_reference():
     tensors = sampled_tensors(N_TENSORS, seed=1)
     rotations = Rotation.random(N_TENSORS, random_state=2).as_matrix()
-    rotated = as_m6(rotations @ m6_to_matrix(tensors) @ np.transpose(rotations, (0, 2, 1)))
+    rotated = as_m6(rotations @ create_matrix(tensors) @ np.transpose(rotations, (0, 2, 1)))
     reference = orientation_statistics(symmetric_gaussian_reference(N_TENSORS, seed=3))
     np.testing.assert_allclose(reference, [0.128, 0.252], atol=PROPORTION_TOLERANCE)
     np.testing.assert_allclose(orientation_statistics(tensors), reference, atol=PROPORTION_TOLERANCE)

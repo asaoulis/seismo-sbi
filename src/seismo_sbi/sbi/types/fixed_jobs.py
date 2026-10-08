@@ -7,6 +7,7 @@ double-couple and CLVD sources at one scalar moment.
 import numpy as np
 from copy import deepcopy
 
+from seismo_sbi.moment_tensor.conventions import moment_magnitude_from_scalar_moment
 from seismo_sbi.sbi.types.parameters import ModelParameters 
 
 class FixedEventJobs:
@@ -25,7 +26,7 @@ class FixedEventJobs:
 
         self.parameters = parameters
         self.M_0 = M_0
-        self.mag_string = f"{(np.log10(M_0) - 9.1)/1.5:.2f}"
+        self.mag_string = f"{moment_magnitude_from_scalar_moment(M_0):.2f}"
         self.output_path = output_path
 
 

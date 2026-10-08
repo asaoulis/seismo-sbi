@@ -10,11 +10,19 @@ import numpy as np
 
 
 def create_matrix(moment_tensor_sol):
-    moment_tensor_matrix = np.array([[moment_tensor_sol[0], moment_tensor_sol[3], moment_tensor_sol[4]],
-                                        [moment_tensor_sol[3], moment_tensor_sol[1], moment_tensor_sol[5]],
-                                        [moment_tensor_sol[4], moment_tensor_sol[5], moment_tensor_sol[2]]])
+    """The symmetric tensor ``[[m_rr, m_rt, m_rp], [m_rt, m_tt, m_tp], [m_rp, m_tp, m_pp]]``.
 
-    return moment_tensor_matrix
+    ``(3, 3)`` for one tensor ``(6,)``, ``(n, 3, 3)`` for a cloud ``(n, 6)``, in the dtype of the input.
+    """
+    m6 = np.asarray(moment_tensor_sol)
+    M = np.zeros(m6.shape[:-1] + (3, 3), dtype=m6.dtype)
+    M[..., 0, 0] = m6[..., 0]
+    M[..., 1, 1] = m6[..., 1]
+    M[..., 2, 2] = m6[..., 2]
+    M[..., 0, 1] = M[..., 1, 0] = m6[..., 3]
+    M[..., 0, 2] = M[..., 2, 0] = m6[..., 4]
+    M[..., 1, 2] = M[..., 2, 1] = m6[..., 5]
+    return M
 
 
 def scalar_moment(mt6):
@@ -33,4 +41,9 @@ def moment_magnitude(mt6):
 
     A float for one tensor ``(6,)``, an array ``(n,)`` for a cloud ``(n, 6)``.
     """
-    return (2.0 / 3.0) * (np.log10(scalar_moment(mt6)) - 9.1)
+    return moment_magnitude_from_scalar_moment(scalar_moment(mt6))
+
+
+def moment_magnitude_from_scalar_moment(m0_nm):
+    """``Mw = (2/3) (log10 M0 - 9.1)`` of a scalar moment ``m0_nm`` in N.m (IASPEI, 2013)."""
+    return (2.0 / 3.0) * (np.log10(m0_nm) - 9.1)

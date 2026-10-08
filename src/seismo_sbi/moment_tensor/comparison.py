@@ -9,15 +9,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from seismo_sbi.moment_tensor.conventions import create_matrix
+
 
 def pyrocko_mt(m6):
     """pyrocko ``MomentTensor`` from ``m6 = [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]`` (GCMT
     up-south-east), built directly in ``m_up_south_east`` with no sign flip."""
     from pyrocko import moment_tensor as pmt
-    M = np.array([[m6[0], m6[3], m6[4]],
-                  [m6[3], m6[1], m6[5]],
-                  [m6[4], m6[5], m6[2]]])
-    return pmt.MomentTensor(m_up_south_east=M)
+    return pmt.MomentTensor(m_up_south_east=create_matrix(m6))
 
 
 def from_pyrocko(mt):
@@ -55,14 +54,7 @@ _PBT_TO_TPB = np.array([[0.0, 0.0, 1.0],
 
 def m6_to_matrix_ned(m6):
     """Batched ``(n, 3, 3)`` NED moment-tensor matrices from ``(n, 6)`` USE m6."""
-    m6 = np.asarray(m6, dtype=float).reshape(-1, 6)
-    M = np.empty((m6.shape[0], 3, 3), dtype=float)
-    M[:, 0, 0] = m6[:, 0]
-    M[:, 1, 1] = m6[:, 1]
-    M[:, 2, 2] = m6[:, 2]
-    M[:, 0, 1] = M[:, 1, 0] = m6[:, 3]
-    M[:, 0, 2] = M[:, 2, 0] = m6[:, 4]
-    M[:, 1, 2] = M[:, 2, 1] = m6[:, 5]
+    M = create_matrix(np.asarray(m6, dtype=float).reshape(-1, 6))
     return _USE_TO_NED @ M @ _USE_TO_NED.T
 
 
