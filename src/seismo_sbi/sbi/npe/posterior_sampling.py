@@ -3,7 +3,7 @@
 :func:`robust_posterior_sample` and its batched form draw samples inside the prior box.
 :class:`StationConfig`, :func:`make_dropout_configs` and :func:`config_from_kept` choose the
 stations a configuration keeps, as the training-time
-:class:`~seismo_sbi.sbi.npe.data.dataloading.StationSubsampler` does, and
+:class:`~seismo_sbi.sbi.npe.data.station_selection.StationSubsampler` does, and
 :func:`sample_station_dropout_ensemble` draws the posterior for each configuration; the figures
 live in :mod:`seismo_sbi.plotting.evaluation`.
 """
@@ -63,7 +63,7 @@ def make_dropout_configs(station_names: Sequence[str], *, keep_fraction: float =
     ``[min_stations, N - 1]`` so a subset always drops at least one station). Warns if too
     few distinct subsets are feasible for the requested ``n_subsets``.
 
-    Mirrors the training-time :class:`~seismo_sbi.sbi.npe.data.dataloading.StationSubsampler` selection (which draws a
+    Mirrors the training-time :class:`~seismo_sbi.sbi.npe.data.station_selection.StationSubsampler` selection (which draws a
     *range* of fractions per sample); here a single ``keep_fraction`` is used for a clean,
     reproducible evaluation grid.
     """
@@ -240,7 +240,7 @@ def pack_subset_batch(items, device=None):
 
     ``items`` is a sequence of ``(obs (N_i, C, T), coords (N_i, 2), source_vec | None)``;
     the ``N_i`` may differ.  Every item is zero-padded to ``max_N`` with a False mask
-    entry, mirroring :func:`~seismo_sbi.sbi.npe.data.dataloading.variable_station_collate`, then flattened by
+    entry, mirroring :func:`~seismo_sbi.sbi.npe.data.station_selection.variable_station_collate`, then flattened by
     :func:`~seismo_sbi.sbi.npe.source_conditioning.pack_variable_context`.
 
     Returns a ``(B, W)`` float32 tensor on ``device`` (default: the current CUDA device

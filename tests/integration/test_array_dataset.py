@@ -13,8 +13,8 @@ from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
-from seismo_sbi.sbi.npe.data.dataloading import (
-    StationSubsampler, TorchSimulationDataset, make_torch_dataloaders)
+from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset, make_torch_dataloaders
+from seismo_sbi.sbi.npe.data.station_selection import StationSubsampler
 from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 
 TRACE_LENGTH = 40
@@ -77,10 +77,11 @@ def _datasets(folder, preloaded, conditioned=False, station_subsampler=None):
         conditioning_param_map=CONDITIONING_MAP if conditioned else None,
         conditioning_noise_std=noise_std, cache_in_memory=preloaded,
         **_processing(station_subsampler))
-    loaded = [from_files._load_sim(path) for path in from_files.paths]
+    loaded = [from_files.simulation_cache.load(index) for index in range(len(from_files))]
     theta = np.stack([theta for theta, _ in loaded])
     x = np.stack([data for _, data in loaded]).astype(np.float32 if preloaded else np.float64)
-    conditioning = (np.stack([from_files._load_conditioning(path) for path in from_files.paths])
+    conditioning = (np.stack([from_files.simulation_cache.conditioning(index)
+                              for index in range(len(from_files))])
                     if conditioned else None)
     from_arrays = ArraySimulationDataset(
         theta, x, _receivers(), COMPONENTS, conditioning=conditioning,

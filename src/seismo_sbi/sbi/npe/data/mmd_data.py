@@ -16,7 +16,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset, variable_station_collate
+from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
+from seismo_sbi.sbi.npe.data.station_selection import variable_station_collate
 from seismo_sbi.sbi.npe.source_conditioning import pack_variable_context
 
 

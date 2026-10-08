@@ -3,7 +3,7 @@
 These verify that the Category-2 nuisance effects, when supplied as an
 `augmentation_chain`, are folded into the CLEAN loaded data BEFORE noise is added
 in `TorchSimulationDataset.__getitem__`, and that the absence of a chain is exact
-back-compat (clean load + noise).  No h5 files are needed — `_load_sim` is stubbed.
+back-compat (clean load + noise).  No h5 files are needed: the clean data is held as an array.
 """
 
 import os
@@ -18,12 +18,9 @@ from seismo_sbi.nuisance_effects.amplitude_effect import AmplitudeErrorEffect
 from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect, InstrumentDropoutEffect
 from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 from seismo_sbi.nuisance_effects.scattering_coda_effect import ScatteringCodaEffect
-from seismo_sbi.sbi.npe.data.dataloading import (
-    TorchSimulationDataset,
-    make_torch_dataloader,
-    StationSubsampler,
-    _seed_worker,
-)
+from seismo_sbi.sbi.npe.data.array_dataset import ArraySimulationDataset
+from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloader, _seed_worker
+from seismo_sbi.sbi.npe.data.station_selection import StationSubsampler
 from seismo_sbi.sbi.noises.noise_samplers import NoiseDraw, NoiseSampler
 
 TRACE_LEN = 32
@@ -47,24 +44,12 @@ def _receivers():
 
 
 def _make_dataset(augmentation_chain, augmentation_nuisance_params, D_clean):
-    """Build a TorchSimulationDataset with _load_sim and noise stubbed out."""
-    receivers = _receivers()
-    loader = SimulationDataLoader(components=["Z"], receivers=receivers)
-
-    ds = TorchSimulationDataset.__new__(TorchSimulationDataset)
-    ds.data_loader = loader
-    ds.parameter_name_map = {}
-    ds.conditioning_param_map = {}
-    ds.data_scaler = None
-    ds.return_tensors = True
-    ds.torch_dtype = torch.float32
-    ds.augmentation_chain = augmentation_chain
-    ds.augmentation_nuisance_params = augmentation_nuisance_params or {}
-    ds.paths = ["dummy.h5"]
-    # Zero noise → x == (possibly augmented) D, isolating the augmentation effect.
-    ds.synthetic_noise_model_sampler = _FixedNoise(np.zeros((2, TRACE_LEN)))
-    ds._load_sim = lambda path: (np.array([]), D_clean.copy())
-    return ds
+    """A one-sample dataset over ``D_clean`` with zero noise, so x is the augmented D."""
+    return ArraySimulationDataset(
+        None, D_clean[np.newaxis].copy(), _receivers(), ["Z"],
+        _FixedNoise(np.zeros((2, TRACE_LEN))),
+        augmentation_chain=augmentation_chain,
+        augmentation_nuisance_params=augmentation_nuisance_params)
 
 
 def _clean_D():
@@ -272,26 +257,13 @@ def _multicomp_clean_D():
 
 
 def _make_post_noise_dataset(post_chain, post_params, D_clean, station_subsampler=None):
-    receivers = _multicomp_receivers()
-    loader = SimulationDataLoader(components=_GLOBAL_COMPS, receivers=receivers)
-    ds = TorchSimulationDataset.__new__(TorchSimulationDataset)
-    ds.data_loader = loader
-    ds.parameter_name_map = {}
-    ds.conditioning_param_map = {}
-    ds.data_scaler = None
-    ds.return_tensors = True
-    ds.torch_dtype = torch.float32
-    ds.augmentation_chain = None
-    ds.augmentation_nuisance_params = {}
-    ds.post_noise_augmentation_chain = post_chain
-    ds.post_noise_nuisance_params = post_params or {}
-    ds.station_subsampler = station_subsampler
-    ds.station_coords = receivers.get_station_locations_array()
-    ds.paths = ["dummy.h5"]
-    # Constant NON-ZERO noise on present channels (zero-filled for absent ones by the loader).
-    ds.synthetic_noise_model_sampler = _FixedNoise(np.full((_N_PRESENT, TRACE_LEN), _NOISE_LEVEL))
-    ds._load_sim = lambda path: (np.array([]), D_clean.copy())
-    return ds
+    """A one-sample dataset over ``D_clean`` with constant non-zero noise on the present channels."""
+    return ArraySimulationDataset(
+        None, D_clean[np.newaxis].copy(), _multicomp_receivers(), _GLOBAL_COMPS,
+        _FixedNoise(np.full((_N_PRESENT, TRACE_LEN), _NOISE_LEVEL)),
+        post_noise_augmentation_chain=post_chain,
+        post_noise_nuisance_params=post_params,
+        station_subsampler=station_subsampler)
 
 
 def test_component_dropout_zeros_channel_exactly_after_noise():

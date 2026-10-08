@@ -15,7 +15,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from seismo_sbi.sbi.npe.source_conditioning import pack_subset_observation
-from seismo_sbi.sbi.npe.data.dataloading import variable_station_collate
+from seismo_sbi.sbi.npe.data.station_selection import variable_station_collate
 from seismo_sbi.sbi.npe.posterior_sampling import (
     pack_subset_batch, robust_posterior_sample_batched, sample_subsets_batched)
 

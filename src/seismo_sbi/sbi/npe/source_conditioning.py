@@ -247,7 +247,7 @@ def pack_subset_observation(
     a ``variable_stations=True`` model expects at inference time.
 
     This is the single-sample inference counterpart of
-    :func:`~seismo_sbi.sbi.npe.data.dataloading.variable_station_collate`: a lone observation defines its own
+    :func:`~seismo_sbi.sbi.npe.data.station_selection.variable_station_collate`: a lone observation defines its own
     ``N`` so no padding is needed, and the returned tensor has a leading batch dim of 1.
 
     Parameters

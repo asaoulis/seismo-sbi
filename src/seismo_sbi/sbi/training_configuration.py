@@ -130,7 +130,7 @@ class VariableStationsConfig:
         """The dataloader's station subsampler, or ``None`` when every station is kept."""
         if not self.enabled:
             return None
-        from seismo_sbi.sbi.npe.data.dataloading import StationSubsampler
+        from seismo_sbi.sbi.npe.data.station_selection import StationSubsampler
         return StationSubsampler(keep_fraction=self.keep_fraction,
                                  min_stations=self.min_stations)
 

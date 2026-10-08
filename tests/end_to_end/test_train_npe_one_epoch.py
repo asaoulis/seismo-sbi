@@ -449,9 +449,8 @@ def test_variable_stations_one_epoch(kernel_pipeline, tmp_path, coords_mode):
     packed alongside the seismograms.
     """
     import torch
-    from seismo_sbi.sbi.npe.data.dataloading import (
-        make_torch_dataloaders, StationSubsampler,
-    )
+    from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
+    from seismo_sbi.sbi.npe.data.station_selection import StationSubsampler
 
     pipeline, _, data_vector_length = kernel_pipeline
     components = pipeline.data_manager.data_loader.components
@@ -1225,7 +1224,7 @@ def _replace_the_folder_by_its_arrays(trainer, dataloader_args):
     from_files = TorchSimulationDataset(
         dataloader_args.pop("data_loader"), dataloader_args.pop("data_folder"),
         dataloader_args.pop("parameter_name_map"), None)
-    loaded = [from_files._load_sim(path) for path in from_files.paths]
+    loaded = [from_files.simulation_cache.load(index) for index in range(len(from_files))]
     dataloader_args["dataset"] = ArraySimulationDataset(
         np.stack([theta for theta, _ in loaded]), np.stack([data for _, data in loaded]),
         from_files.data_loader.receivers, from_files.data_loader.components,

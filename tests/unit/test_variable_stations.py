@@ -18,7 +18,7 @@ from seismo_sbi.sbi.npe.source_conditioning import (
     unpack_variable_context,
     relative_station_geometry,
 )
-from seismo_sbi.sbi.npe.data.dataloading import (
+from seismo_sbi.sbi.npe.data.station_selection import (
     StationSubsampler,
     variable_station_collate,
 )

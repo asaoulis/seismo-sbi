@@ -5,11 +5,12 @@ same clean-data augmentation, noise draw, parameter scaling, post-noise augmenta
 selection as :class:`~seismo_sbi.sbi.npe.data.dataloading.TorchSimulationDataset`, so a
 training run needs no HDF5 files on disk.
 """
-import numpy as np
 import torch
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
-from seismo_sbi.sbi.npe.data.dataloading import StationSubsampler, TorchSimulationDataset
+from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
+from seismo_sbi.sbi.npe.data.simulation_cache import ArraySimulationCache
+from seismo_sbi.sbi.npe.data.station_selection import StationSubsampler
 
 
 class ArraySimulationDataset(TorchSimulationDataset):
@@ -51,26 +52,5 @@ class ArraySimulationDataset(TorchSimulationDataset):
             augmentation_chain, augmentation_nuisance_params, return_tensors, torch_dtype,
             {}, conditioning_noise_std, station_subsampler,
             post_noise_augmentation_chain, post_noise_nuisance_params, None)
-        self._hold_arrays(theta, x, conditioning, len(receivers.receivers))
-
-    def _hold_arrays(self, theta, x, conditioning, n_stations):
-        """Keep the arrays as the in-memory cache the per-sample steps read."""
-        x = np.asarray(x)
-        if x.ndim != 4 or x.shape[1] != n_stations:
-            raise ValueError(f"x must be (n_simulations, {n_stations}, n_components, "
-                             f"trace_length) for {n_stations} receivers, got {x.shape}")
-        self.paths = [f"array_{index}" for index in range(x.shape[0])]
-        self._cache_D = x
-        self._cache_theta = None
-        if theta is not None and np.size(theta):
-            self._cache_theta = np.asarray(theta, dtype=np.float64).reshape(x.shape[0], -1)
-        self._cache_cond = None
-        if conditioning is not None:
-            self._cache_cond = np.asarray(conditioning, dtype=np.float64).reshape(x.shape[0], -1)
-
-    def _source_vector(self, idx, sim_path):
-        """The perturbed conditioning row ``idx``, or ``None`` without conditioning."""
-        if self._cache_cond is None:
-            return None
-        source_vec = torch.as_tensor(self._cache_cond[idx], dtype=self.torch_dtype)
-        return self._perturb_conditioning(source_vec)
+        self.simulation_cache = ArraySimulationCache(theta, x, conditioning, len(receivers.receivers))
+        self.paths = self.simulation_cache.paths

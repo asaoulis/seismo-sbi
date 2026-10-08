@@ -168,18 +168,17 @@ def test_compression_trainer_log_prob_on_packed_context():
 # ---------------------------------------------------------------------------
 
 def test_dataset_load_conditioning_extraction():
-    """_load_conditioning concatenates the requested raw attrs in order."""
-    from seismo_sbi.sbi.npe.data.dataloading import TorchSimulationDataset
+    """The conditioning vector concatenates the requested raw attrs in order."""
+    from seismo_sbi.sbi.npe.data.simulation_cache import SimulationCache
 
     class _StubLoader:
         def load_input_data(self, path):
             return {"source_location": {"latitude": 12.0, "longitude": -34.0,
                                         "depth": 7.0, "time_shift": 1.0}}
 
-    ds = TorchSimulationDataset.__new__(TorchSimulationDataset)
-    ds.data_loader = _StubLoader()
-    ds.conditioning_param_map = {"source_location": ["latitude", "longitude", "depth"]}
-    vec = ds._load_conditioning("dummy.h5")
+    cache = SimulationCache(["dummy.h5"], _StubLoader(), {},
+                            {"source_location": ["latitude", "longitude", "depth"]})
+    vec = cache.conditioning(0)
     assert np.allclose(vec, [12.0, -34.0, 7.0])           # order preserved, time_shift excluded
 
 

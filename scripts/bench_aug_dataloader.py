@@ -1,6 +1,6 @@
 """Benchmark of the training-time nuisance-augmentation dataloader.
 
-On a synthetic simulation set (no Instaseis or CPS), times ``_load_sim``, ``__getitem__`` with
+On a synthetic simulation set (no Instaseis or CPS), times the simulation load, ``__getitem__`` with
 and without the augmentation chain, each effect through ``apply_chain_to_array``, and DataLoader
 throughput over ``num_workers``; prints a fixed-seed checksum of one augmented sample. Not a
 test. Usage: ``python scripts/bench_aug_dataloader.py --stations 30 --num-sims 128``.
@@ -100,11 +100,10 @@ def main():
 
     npaths = len(ds_aug.paths)
 
-    # --- (a) _load_sim only ---
+    # --- (a) simulation load only ---
     counter = {"i": 0}
     def load_only():
-        p = ds_aug.paths[counter["i"] % npaths]; counter["i"] += 1
-        ds_aug._load_sim(p)
+        ds_aug.simulation_cache.load(counter["i"] % npaths); counter["i"] += 1
     a = _time(load_only, args.getitem_iters)
 
     # --- (b) full __getitem__, baked (chain=None) ---
@@ -121,7 +120,7 @@ def main():
 
     # --- (d) apply_chain_to_array per effect on a fixed D ---
     receivers = pipeline.data_manager.data_loader.receivers
-    _, D0 = ds_aug._load_sim(ds_aug.paths[0])
+    _, D0 = ds_aug.simulation_cache.load(0)
     per_effect = {}
     # empty-chain round-trip floor
     from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
@@ -138,7 +137,7 @@ def main():
             args.getitem_iters)
 
     print("\n--- per-sample timings (ms/call, single process) ---")
-    print(f"  (a) _load_sim only              : {a:8.3f}")
+    print(f"  (a) simulation load only        : {a:8.3f}")
     print(f"  (b) __getitem__ baked (no aug)  : {b:8.3f}")
     print(f"  (c) __getitem__ augmented       : {c:8.3f}")
     print(f"      -> aug overhead (c-b)       : {c - b:8.3f}  ({(c-b)/b*100:5.1f}% over baked)")
