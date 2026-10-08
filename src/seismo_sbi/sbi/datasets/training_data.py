@@ -69,7 +69,7 @@ def generate_training_dataset(pipeline, config, skip_compression_stencil=False):
         simulation_paths = pipeline.simulate_test_jobs(config.dataset_parameters,
                                                        config.test_job_simulations)
     else:
-        simulation_paths = list(Path(pipeline.simulations_output_path).glob('*.h5'))
+        simulation_paths = training_simulation_paths(pipeline)
 
     pipeline.compute_data_vector_properties(simulation_paths, config.real_event_jobs)
     if skip_compression_stencil:
@@ -82,6 +82,13 @@ def generate_training_dataset(pipeline, config, skip_compression_stencil=False):
     print(f"Training dataset ready: {len(simulation_paths)} simulations at "
           f"{pipeline.simulations_output_path}")
     return simulation_paths
+
+
+def training_simulation_paths(pipeline):
+    """The simulations a training run and its evaluation read: every ``*.h5`` file in the
+    pipeline's simulation folder, sorted, as :class:`~seismo_sbi.sbi.npe.data.dataloading.TorchSimulationDataset`
+    reads them."""
+    return sorted(Path(pipeline.simulations_output_path).glob('*.h5'))
 
 
 def training_scaler(parameters, ml_scaler, sampling_method, training, models_output_path) -> FlexibleScaler:

@@ -110,3 +110,37 @@ def test_load_trained_posterior_samples_as_build_ml_posterior_does(monkeypatch):
 
     np.testing.assert_array_equal(draws[0], draws[1])
     assert trained.data_scaler.inverse_transform(draws[0]).shape == (50, 6)
+
+
+def test_the_evaluation_pipeline_reads_the_training_simulations_and_noise(tmp_path, monkeypatch):
+    import seismo_sbi.evaluation.inference as inference
+    import seismo_sbi.sbi.datasets.training_data as training_data
+    from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
+
+    for name in ("random_event_1", "random_event_0", "normal_3.00M", "custom_event"):
+        (tmp_path / f"{name}.h5").touch()
+    event_noise = {"STA": {"Z": [1.0]}}
+
+    class Configuration:
+        sbi_noise_model = NoiseModelConfiguration.from_yaml_block({"type": "gaussian_filtered"})
+        real_event_jobs = {"event": "event.h5"}
+        test_noise_models = None
+
+        def parse_config_file(self, path):
+            pass
+
+    pipeline = SimpleNamespace(
+        simulations_output_path=str(tmp_path), parameters=None,
+        data_manager=SimpleNamespace(data_loader=SimpleNamespace(load_misc_data=lambda path: event_noise)),
+        compute_data_vector_properties=lambda paths, events: setattr(pipeline, "paths", paths),
+        load_test_noises=lambda *args: None,
+        rescale_training_noise=lambda covariance_data: setattr(pipeline, "rescaled_to", covariance_data))
+    monkeypatch.setattr(inference, "SBI_Configuration", Configuration)
+    monkeypatch.setattr(training_data, "build_pipeline", lambda *args, **kwargs: pipeline)
+
+    inference.build_eval_pipeline("config.yaml", skip_compression=True)
+
+    assert pipeline.paths == training_data.training_simulation_paths(pipeline)
+    assert [path.name for path in pipeline.paths] == [
+        "custom_event.h5", "normal_3.00M.h5", "random_event_0.h5", "random_event_1.h5"]
+    assert pipeline.rescaled_to is event_noise

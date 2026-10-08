@@ -73,10 +73,14 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
 
     By default (``regenerate_dataset=False``) the simulation dataset on disk is reused:
     ``simulate_test_jobs`` would redraw every ``random_events`` simulation and overwrite
-    the dataset the model trained on. The dataset is simulated only when none exists.
+    the dataset the model trained on. The dataset is simulated only when none exists. The
+    simulations and the training noise are those of training: every file of
+    :func:`~seismo_sbi.sbi.datasets.training_data.training_simulation_paths`, and noise rescaled to
+    the first real event by :func:`~seismo_sbi.sbi.datasets.training_data.rescale_training_noise_to_event`.
     """
     from seismo_sbi.sbi.pipeline import SingleEventPipeline
-    from seismo_sbi.sbi.datasets.training_data import build_pipeline, event_noise_for_compressors
+    from seismo_sbi.sbi.datasets.training_data import (
+        build_pipeline, event_noise_for_compressors, rescale_training_noise_to_event, training_simulation_paths)
 
     config = SBI_Configuration()
     config.parse_config_file(config_path)
@@ -84,8 +88,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     sbi_pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
     original_parameters = deepcopy(sbi_pipeline.parameters)
 
-    existing_sims = sorted(
-        Path(sbi_pipeline.simulations_output_path).glob("random_event_*.h5"))
+    existing_sims = training_simulation_paths(sbi_pipeline)
     if regenerate_dataset or not existing_sims:
         if not existing_sims:
             logger.info("No existing sims found — generating the dataset.")
@@ -116,6 +119,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
         logger.info("skip_compression_data set — skipping score/Fisher stencil + compressor "
                     "load (ML-NPE eval needs no compressors).")
     sbi_pipeline.load_test_noises(config.sbi_noise_model, config.test_noise_models)
+    rescale_training_noise_to_event(sbi_pipeline, config)
     return config, sbi_pipeline, original_parameters
 
 
