@@ -251,8 +251,7 @@ class RealNoiseSampler(NoiseSampler):
         averaged, in file-name order."""
         sums, count = {}, 0
         for window_path in sorted(self.noise_paths):
-            noise, _ = self._read_window(window_path)
-            if noise is None:
+            if not self._window_is_usable(window_path):
                 continue
             for station, components in self.data_loader.load_misc_data(window_path).items():
                 for component, autocovariance in components.items():
@@ -292,6 +291,30 @@ class RealNoiseSampler(NoiseSampler):
         if self._expected_length is not None and noise.size != self._expected_length:
             return None, None
         return noise, None
+
+    def _window_is_usable(self, window_path):
+        """Whether :meth:`_read_window` would use the window at ``window_path``, decided from its
+        trace lengths without reading the traces."""
+        try:
+            lengths = self.data_loader.trace_lengths(window_path)
+        except KeyError:
+            if self.allow_incomplete:
+                raise
+            return False
+        complete = [station is not None and None not in station for station in lengths]
+        first_trace_present = lengths[0] is not None and lengths[0][0] is not None
+        if self.allow_incomplete:
+            if not first_trace_present and self.data_loader.data_length is None:
+                raise KeyError(f"No first trace for {self.data_loader.receivers.receivers[0].station_name}")
+            return any(complete)
+        if not all(complete):
+            return False
+        if self._expected_length is None:
+            return True
+        window_length = lengths[0][0]
+        if self.data_loader.data_length is not None:
+            window_length = min(window_length, self.data_loader.data_length)
+        return sum(min(length, window_length) for station in lengths for length in station) == self._expected_length
 
     def _load_noise_file(self, path : Path):
         return self.data_loader.load_simulation_data_array(path)

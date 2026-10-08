@@ -145,6 +145,28 @@ class SimulationDataLoader():
             return self.convert_sim_data_to_array(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
                                                   data_length=data_length)
 
+    def trace_lengths(self, sim_name):
+        """Samples per trace in the file ``sim_name``, read from its metadata alone: one entry per
+        receiver in order, a list over the receiver's components (None where a component is absent),
+        or None for a station the file does not hold. A file without ``outputs`` raises ``KeyError``.
+        """
+        with h5py.File(sim_name, 'r') as simulation_data_map:
+            outputs_group = simulation_data_map["outputs"]
+            lengths = []
+            for receiver in self.receivers.iterate():
+                station_outputs = outputs_group.get(receiver.station_name)
+                if station_outputs is None:
+                    lengths.append(None)
+                    continue
+                station_lengths = []
+                for component in receiver.components:
+                    trace_data = station_outputs.get(component)
+                    if trace_data is None:
+                        trace_data = station_outputs.get(component_alias(component))
+                    station_lengths.append(None if trace_data is None else len(trace_data))
+                lengths.append(station_lengths)
+            return lengths
+
     def load_simulation_data_array_with_presence(self, sim_name, *, stacked=False, fill_unused=False):
         """``(array, present_mask)`` of the file ``sim_name``, tolerating stations absent from it."""
         with h5py.File(sim_name, 'r') as simulation_data_map:

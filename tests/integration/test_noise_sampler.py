@@ -258,3 +258,24 @@ def test_the_pool_covariance_is_the_mean_of_the_recorded_autocovariances(tmp_pat
         for component, autocovariance in components.items():
             np.testing.assert_allclose(autocovariance, np.mean(variances) * np.exp(-np.arange(4) / 2.0), rtol=1e-12)
             np.testing.assert_array_equal(autocovariance, second[station][component])
+
+
+def test_the_pool_covariance_skips_the_windows_a_draw_skips(tmp_path, two_receivers):
+    def write(name, variance, lengths):
+        with h5py.File(tmp_path / f"{name}.h5", "w") as window:
+            window.create_group("outputs")
+            for station, length in lengths.items():
+                window.create_dataset(f"outputs/{station}/Z", data=np.zeros(length))
+                window.create_dataset(f"misc/{station}/Z", data=variance * np.ones(3))
+
+    write("complete", 1.0, {"STA1": TRACE_LEN, "STA2": TRACE_LEN})
+    write("long", 3.0, {"STA1": TRACE_LEN + 5, "STA2": TRACE_LEN + 5})
+    write("short", 50.0, {"STA1": TRACE_LEN, "STA2": TRACE_LEN - 4})
+    write("one_station", 70.0, {"STA1": TRACE_LEN})
+    sampler = RealNoiseSampler(_make_sim_params(two_receivers), tmp_path, TRACE_LEN)
+
+    usable = {path.name for path in sampler.noise_paths if sampler._read_window(path)[0] is not None}
+    assert usable == {path.name for path in sampler.noise_paths if sampler._window_is_usable(path)}
+    assert usable == {"complete.h5", "long.h5"}
+    for components in sampler.mean_covariance_data().values():
+        np.testing.assert_array_equal(components["Z"], 2.0 * np.ones(3))
