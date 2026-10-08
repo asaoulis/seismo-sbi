@@ -28,6 +28,7 @@ from seismo_sbi.data_handling.preprocessing.processing import deconvolve_and_fil
 from seismo_sbi.data_handling.preprocessing.sbi_export import export_to_sbi_h5
 from seismo_sbi.data_handling.preprocessing.quality import partition_window_quality
 from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
+from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 
@@ -42,7 +43,7 @@ def build_event_catalogue(
     duration_s: float,
     sampling_rate: float,
     covariance_window_s: float = 200.0,
-    pre_event_window_s: float = 60.0,
+    pre_event_window_s: float = SYNTHETICS_PRE_EVENT_PAD_S,
     prefilter_kwargs: Optional[dict] = None,
     filter_kwargs: Optional[dict] = None,
     channel_glob: str = "BH?",

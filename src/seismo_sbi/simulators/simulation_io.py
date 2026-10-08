@@ -18,6 +18,11 @@ from .sources import GenericPointSource
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 from seismo_sbi.utils.errors import InvalidConfiguration
 
+#: Seconds of pre-origin pad every Instaseis seismogram carries, so the source origin sits at
+#: t = +this in the exported window. Observed windows must use the same lead or they are
+#: misaligned with the synthetics by this much.
+SYNTHETICS_PRE_EVENT_PAD_S = 60.0
+
 
 def component_alias(components: str) -> str:
     """``components`` with E and N renamed 1 and 2; one component or a string of them."""

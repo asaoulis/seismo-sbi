@@ -13,17 +13,13 @@ import numpy as np
 from datetime import timedelta
 
 from ..receivers import Receiver
+from ..simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 from ..sources import STF_ALIGNMENTS, GenericPointSource, _gcmt_half_duration, build_stf_sliprate, sliprate_centroid_s
 from ..spectral_filter import filter_and_shift
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
 import instaseis
 
-
-#: Seconds of pre-origin pad every simulated seismogram carries, so the source origin sits at
-#: t = +this in the exported window. Observed windows must use the same lead or they are
-#: misaligned with the synthetics by this much.
-SYNTHETICS_PRE_EVENT_PAD_S = 60.0
 #: Lowest rate (Hz) the filtered synthetics are kept at, so the 20-lobe Lanczos step to the output
 #: rate spans under the 10 s the traces run past the end of the window.
 FILTERED_GRID_MIN_RATE_HZ = 2.0

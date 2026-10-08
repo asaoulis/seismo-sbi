@@ -6,7 +6,7 @@ regions lives in :class:`~seismo_sbi.simulators.multi_region.MultiModelSimulator
 
 from ..multi_region import MultiModelSimulator
 from .ensemble import InstaseisEnsembleSimulator
-from .querier import SYNTHETICS_PRE_EVENT_PAD_S
+from ..simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 
 
 class InstaseisMultiModelSimulator(MultiModelSimulator):

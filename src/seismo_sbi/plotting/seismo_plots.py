@@ -12,12 +12,11 @@ from collections import OrderedDict
 from obspy.taup import tau
 from obspy.geodetics import locations2degrees
 
+from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
+
 def get_epicentral_distances_function(event_lat, event_long, station):
     lat, long = station
     return locations2degrees(event_lat, event_long, lat, long)
-
-#: Seconds of record before the origin time in every synthetic and observed window.
-PRE_EVENT_PAD_S = 60
 
 class MisfitsPlotting:
 
@@ -248,7 +247,7 @@ class MisfitsPlotting:
             station_arrival = taup.get_travel_times(source_depth_in_km=depth,
                                                     distance_in_degree=distance
                                                     )      
-            arrivals[station_details.station_name] = station_arrival[0].time + PRE_EVENT_PAD_S
+            arrivals[station_details.station_name] = station_arrival[0].time + SYNTHETICS_PRE_EVENT_PAD_S
         
         return arrivals
 

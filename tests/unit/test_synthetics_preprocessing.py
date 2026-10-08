@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 from obspy import Stream, Trace, UTCDateTime
 
-from seismo_sbi.simulators.instaseis.querier import SYNTHETICS_PRE_EVENT_PAD_S, SyntheticsPreprocessing
+from seismo_sbi.simulators.instaseis.querier import SyntheticsPreprocessing
+from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 from seismo_sbi.simulators.spectral_filter import filter_and_shift
 
 ORIGIN = UTCDateTime(2020, 1, 1)

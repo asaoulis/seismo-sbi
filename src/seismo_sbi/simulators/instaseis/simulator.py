@@ -6,7 +6,8 @@ Opens the Instaseis database once per simulation and reads one seismogram per re
 
 from ..base import Simulator
 from ..sources import GenericPointSource
-from .querier import SYNTHETICS_PRE_EVENT_PAD_S, InstaseisDBQuerier
+from ..simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
+from .querier import InstaseisDBQuerier
 
 
 class InstaseisSourceSimulator(Simulator):

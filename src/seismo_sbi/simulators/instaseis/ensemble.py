@@ -13,7 +13,8 @@ import numpy as np
 
 from ..gf_ensemble import GFEnsembleSimulator
 from ..sources import GenericPointSource
-from .querier import SYNTHETICS_PRE_EVENT_PAD_S, InstaseisDBQuerier
+from ..simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
+from .querier import InstaseisDBQuerier
 
 
 #: Stride the seed is offset by per station under per-station member resampling, so each station

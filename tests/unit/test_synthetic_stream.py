@@ -8,7 +8,7 @@ from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.cps.simulator import CPSPrecomputedSimulator, CPSSimulator, MultiModelCPSSimulator
 from seismo_sbi.simulators.instaseis.ensemble import InstaseisEnsembleSimulator
 from seismo_sbi.simulators.instaseis.multi_model import InstaseisMultiModelSimulator
-from seismo_sbi.simulators.instaseis.querier import SYNTHETICS_PRE_EVENT_PAD_S
+from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
 from seismo_sbi.simulators.kernel import FixedLocationKernelSimulator
 from seismo_sbi.simulators.receivers import Receivers

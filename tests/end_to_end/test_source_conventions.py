@@ -16,7 +16,7 @@ from pyrocko import orthodrome
 
 from seismo_sbi.simulators.cps.compatibility import load_velocity_model
 from seismo_sbi.simulators.cps.simulator import CPSVariableKernelSimulator
-from seismo_sbi.simulators.instaseis.querier import SYNTHETICS_PRE_EVENT_PAD_S
+from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 

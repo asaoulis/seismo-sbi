@@ -18,11 +18,11 @@ from pyrocko import orthodrome
 
 from seismo_sbi.data_handling.preprocessing.prepare_event import PreprocessingConfiguration, prepare_event
 from seismo_sbi.moment_tensor.comparison import from_pyrocko, kagan
-from seismo_sbi.simulators.instaseis.querier import (SYNTHETICS_PRE_EVENT_PAD_S,
-                                                     keep_inverse_mapping_out_of_the_numba_disk_cache)
+from seismo_sbi.simulators.instaseis.querier import keep_inverse_mapping_out_of_the_numba_disk_cache
 from seismo_sbi.simulators.instaseis.simulator import InstaseisSourceSimulator
 from seismo_sbi.simulators.receivers import Receiver, Receivers
-from seismo_sbi.simulators.simulation_io import SimulationDataLoader, seismogram_map_to_array
+from seismo_sbi.simulators.simulation_io import (SYNTHETICS_PRE_EVENT_PAD_S, SimulationDataLoader,
+                                                 seismogram_map_to_array)
 from seismo_sbi.simulators.sources import build_stf_sliprate
 
 INSTASEIS_DB = os.environ.get("INSTASEIS_DB", "")
