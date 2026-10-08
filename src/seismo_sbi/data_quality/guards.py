@@ -20,9 +20,6 @@ from .policy import (
     sigma_outlier_verdicts,
 )
 
-# Trace component (Z/E/N, receiver order) -> h5 /misc key (Z/1/2, the E->1 N->2 rename).
-_MISC_KEY = {"Z": "Z", "E": "1", "N": "2", "1": "1", "2": "2"}
-
 
 def data_qa_thresholds(level: str = "minimal", **overrides) -> QAThresholds:
     """Calibrated QA presets, checked against reference-MT forward models.
@@ -63,6 +60,8 @@ def read_noise_sigma(event_h5, stations, components) -> Dict[Tuple[str, str], fl
     omitted (the SNR gate then treats them as dead channels).
     """
     import h5py
+
+    from seismo_sbi.simulators.simulation_io import component_alias
     out: Dict[Tuple[str, str], float] = {}
     with h5py.File(event_h5, "r") as f:
         misc = f.get("misc")
@@ -73,7 +72,7 @@ def read_noise_sigma(event_h5, stations, components) -> Dict[Tuple[str, str], fl
             if g is None:
                 continue
             for comp in components:
-                ds = g.get(_MISC_KEY.get(comp, comp))
+                ds = g.get(component_alias(comp))
                 if ds is None:
                     continue
                 arr = np.asarray(ds)

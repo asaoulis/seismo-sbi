@@ -9,19 +9,14 @@ posterior-predictive fidelity metrics (``correlation_misfit``, ``envelope_misfit
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import List, Optional
 
 import numpy as np
 from obspy.geodetics.base import gps2dist_azimuth
+from scipy.signal import hilbert
 
 from seismo_sbi.utils.seismograms import shift_1d_with_padding
-
-# Optional: Hilbert envelope (mirrors the guard in posterior_predictive_checks).
-try:
-    from scipy.signal import hilbert
-except Exception:  # pragma: no cover - scipy is a hard dep in practice
-    hilbert = None
 
 
 @dataclass(frozen=True)
@@ -52,14 +47,8 @@ class TraceMetrics:
     syn_peak: float
 
     def to_row(self) -> dict:
-        """Flat dict in the legacy CSV column order (for ``*_metrics.csv``)."""
-        return dict(
-            station=self.station, component=self.component,
-            dist_km=self.dist_km, azimuth=self.azimuth,
-            vr=self.vr, aligned_vr=self.aligned_vr,
-            max_xcorr=self.max_xcorr, best_lag_samples=self.best_lag_samples,
-            amp_ratio_obs_syn=self.amp_ratio_obs_syn,
-            obs_peak=self.obs_peak, syn_peak=self.syn_peak)
+        """The fields as a flat dict, in the column order of ``*_metrics.csv``."""
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -206,7 +195,7 @@ def compute_trace_metrics(
             vr=variance_reduction(o, s),
             aligned_vr=aligned_variance_reduction(o, s, lag),
             max_xcorr=maxc, best_lag_samples=lag,
-            amp_ratio_obs_syn=oamp / samp if samp > 0 else float("inf"),
+            amp_ratio_obs_syn=peak_amplitude_ratio(o, s),
             obs_peak=oamp, syn_peak=samp))
     return out
 
@@ -242,10 +231,8 @@ def envelope_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
 
     Computed per trace, to avoid Hilbert edge artefacts at trace boundaries, unlike the
     envelope misfit of ``PosteriorPredictiveChecks``, which takes the envelope of the whole
-    concatenated vector. Returns NaN if scipy is unavailable.
+    concatenated vector.
     """
-    if hilbert is None:
-        return float("nan")
     vals = []
     for o, s in zip(obs2d_sta, syn2d_sta):
         env_o = np.abs(hilbert(o))

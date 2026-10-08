@@ -294,20 +294,21 @@ def decide_component(m: TraceMetrics, thresholds: QAThresholds,
           and np.isfinite(snr.sigma) and snr.sigma > t.snr_sigma_floor):
         if snr.snr_syn < t.snr_fit_min_syn or snr.snr_sig < t.snr_fit_sig_min:
             verdict = "keep"                       # signal not expected / not observed
-        elif m.max_xcorr < t.xcorr_drop:
-            verdict = "drop-corr"
-        elif m.amp_ratio_obs_syn > t.amp_hi or m.amp_ratio_obs_syn < t.amp_lo:
-            verdict = "drop-amp"
         else:
-            verdict = "keep"
-    elif m.max_xcorr < t.xcorr_drop:
-        verdict = "drop-corr"
-    elif m.amp_ratio_obs_syn > t.amp_hi or m.amp_ratio_obs_syn < t.amp_lo:
-        verdict = "drop-amp"
+            verdict = _coherence_amplitude_verdict(m, t)
     else:
-        verdict = "keep"
+        verdict = _coherence_amplitude_verdict(m, t)
     return ComponentVerdict(m.station, m.component, verdict,
                             m.max_xcorr, m.amp_ratio_obs_syn)
+
+
+def _coherence_amplitude_verdict(m: TraceMetrics, t: QAThresholds) -> str:
+    """The classical gate for one trace: incoherent, then gross amplitude error, else keep."""
+    if m.max_xcorr < t.xcorr_drop:
+        return "drop-corr"
+    if m.amp_ratio_obs_syn > t.amp_hi or m.amp_ratio_obs_syn < t.amp_lo:
+        return "drop-amp"
+    return "keep"
 
 
 def component_verdicts(

@@ -14,14 +14,8 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.signal import hilbert
 from tqdm import tqdm
-
-# Optional seismology helpers
-try:
-    from scipy.signal import hilbert, welch
-except Exception:
-    hilbert = None
-    welch = None
 
 from seismo_sbi.data_quality.metrics import correlation_misfit, station_reduced_chi2
 from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
@@ -433,10 +427,7 @@ class PosteriorPredictiveChecks:
     def _metric_envelope_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
         """
         Envelope-based misfit: mean absolute relative difference of envelope over time.
-        Requires scipy.signal.hilbert.
         """
-        if hilbert is None:
-            raise RuntimeError("scipy.signal.hilbert required for envelope_misfit metric")
         env_obs = np.abs(hilbert(obs))
         vals = np.empty((synthetics.shape[0],), dtype=float)
         for i, s in enumerate(synthetics):
