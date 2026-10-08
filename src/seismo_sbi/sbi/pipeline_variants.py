@@ -68,7 +68,7 @@ class MultiEventPipeline(SingleEventPipeline):
                 self.set_compressor(compressor_name, job_compression_data, job_extra_gradients,
                                     covariance_data=single_job.covariance, prior=single_job.prior)
                 job_result = None
-                if likelihood_config["run"]:
+                if likelihood_config.run:
                     logger.info('Starting likelihood inversions.')
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
@@ -181,7 +181,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                         inversion_result = InversionResult(single_job.job_name+f'_{num_sims}_{repeat}', inversion_data, inversion_config)
                         yield job_result, inversion_result
 
-                        if likelihood_config["run"] and num_sims == 10000 and repeat == 0:
+                        if likelihood_config.run and num_sims == 10000 and repeat == 0:
                             logger.info('Starting likelihood inversions.')
                             start_time = time.time()
                             for result in self.run_single_gaussian_likelihood_inversion(

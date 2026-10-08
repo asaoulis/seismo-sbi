@@ -15,8 +15,8 @@ parses it once. The training options are parsed from the same file into
 | `parameters` | `ModelParameters` (`model_parameters`) | `inference` and `nuisance` parameters: fiducial values, stencil deltas, bounds, and each nuisance's `stage` |
 | `simulations` | `DatasetGenerationParameters` (`dataset_parameters`) | `num_simulations`, per-parameter `sampling_method`, iterative least squares |
 | `compression` | `compression_methods` | score compressors and their options, or `{}` for none |
-| `inference` | `sbi_method`, `sbi_seed`, `likelihood_config` | the SBI method, pipeline type, training noise model and optional `seed`. Gaussian-likelihood options |
-| `jobs` | `test_job_simulations`, `real_event_jobs` | synthetic test events, noise models to test against, real events, plots |
+| `inference` | `sbi_method`, `sbi_seed`, `LikelihoodConfiguration` (`likelihood_config`) | the SBI method, pipeline type, training noise model and optional `seed`. Gaussian-likelihood options |
+| `jobs` | `test_job_simulations`, `real_event_jobs`, `PlotsConfiguration` (`plotting_options`) | synthetic test events, noise models to test against, real events, plots |
 | `ml_*` | `TrainingConfiguration` (`training`) | NPE architecture, encoder, conditioning, flow, optimiser, batches, caches, logging, scaler |
 
 `inference.sbi.seed` (an integer) makes the SBI inversion of `scripts/event_inversion.py`

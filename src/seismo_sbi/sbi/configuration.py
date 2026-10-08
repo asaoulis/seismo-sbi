@@ -6,6 +6,7 @@ jobs, into the records of :mod:`seismo_sbi.sbi.types.parameters`.
 """
 
 import yaml
+from dataclasses import dataclass
 from functools import partial
 from copy import copy
 
@@ -32,6 +33,60 @@ SAMPLER_FACTORIES = {
     "catalogue_kde": make_catalogue_location_sampler,
     "gutenberg_richter": make_gutenberg_richter_mt_sampler,
 }
+
+
+@dataclass(frozen=True)
+class LikelihoodConfiguration:
+    """``inference.likelihood``: the Gaussian-likelihood inversion run beside the SBI one.
+
+    With ``run`` the posterior is sampled with ``num_samples`` samples after ``walker_burn_in`` steps,
+    split between ``num_processes`` chains (None: the run's ``num_jobs``), under the compressor's
+    ``covariance`` (``empirical``) or white noise of that standard deviation (m). ``ensemble`` uses
+    emcee's affine-invariant ensemble, otherwise independent Gaussian-move chains of step ``move_size``
+    (one value, or ``[burn-in step, sampling step]`` in unit-box coordinates). ``mle_use_best`` takes the
+    highest-probability sample of an MCMC refinement of the MLE instead of the chain mean.
+    """
+
+    run: bool = False
+    covariance: object = "empirical"
+    ensemble: bool = True
+    walker_burn_in: int = None
+    num_samples: int = None
+    move_size: object = None
+    num_processes: int = None
+    mle_use_best: bool = False
+
+    @classmethod
+    def from_yaml_block(cls, block):
+        unknown = sorted(set(block) - set(cls.__dataclass_fields__))
+        if unknown:
+            raise InvalidConfiguration(f"inference.likelihood: unknown keys {unknown}; allowed: "
+                                       f"{sorted(cls.__dataclass_fields__)}.")
+        configuration = cls(**block)
+        if configuration.run and (configuration.walker_burn_in is None or configuration.num_samples is None):
+            raise InvalidConfiguration("inference.likelihood: run: true needs walker_burn_in and num_samples.")
+        return configuration
+
+
+@dataclass(frozen=True)
+class PlotsConfiguration:
+    """``jobs.plots``: whether the inversions are plotted (``disable_plotting``), whether the plots are made
+    while the next job runs (``async_plotting``), and the posterior comparisons
+    (``test_posteriors.chain_consumer``: one list of ``[compressor, test noise]`` pairs per figure)."""
+
+    disable_plotting: bool = False
+    async_plotting: bool = True
+    chain_consumer: tuple = ()
+
+    @classmethod
+    def from_yaml_block(cls, block):
+        block = dict(block or {})
+        test_posteriors = block.pop("test_posteriors", None) or {}
+        unknown = sorted(set(block) - {"disable_plotting", "async_plotting"}) + sorted(
+            f"test_posteriors.{key}" for key in set(test_posteriors) - {"chain_consumer"})
+        if unknown:
+            raise InvalidConfiguration(f"jobs.plots: unknown keys {unknown}.")
+        return cls(chain_consumer=tuple(test_posteriors.get("chain_consumer") or ()), **block)
 
 
 class SBI_Configuration:
@@ -334,7 +389,7 @@ class SBI_Configuration:
                 f"inference.sbi.pipeline must be one of {', '.join(PIPELINE_TYPES)}, not {self.pipeline_type!r}.")
         self.sbi_noise_model = NoiseModelConfiguration.from_yaml_block(inference_config["sbi"]["noise_model"])
         self.sbi_seed = inference_config["sbi"].get("seed")
-        self.likelihood_config = inference_config["likelihood"]
+        self.likelihood_config = LikelihoodConfiguration.from_yaml_block(inference_config["likelihood"])
 
     def parse_jobs_config(self, config):
         jobs_config = config
@@ -343,7 +398,7 @@ class SBI_Configuration:
         test_simulations_config = jobs_config["simulations"]
         self.test_job_simulations = TestJobs(**test_simulations_config)
 
-        self.plotting_options = jobs_config["plots"]
+        self.plotting_options = PlotsConfiguration.from_yaml_block(jobs_config.get("plots"))
 
         for noise_model, options in jobs_config["noise_models"].items():
             if noise_model not in SBI_Configuration.test_noise_models:

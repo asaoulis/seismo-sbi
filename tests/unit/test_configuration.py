@@ -805,3 +805,23 @@ def test_the_raw_configuration_stays_the_yaml_as_read(monkeypatch):
     cfg.process_configuration_data(raw_config)
     assert callable(cfg.dataset_parameters.sampling_method["moment_tensor"])
     assert cfg.raw_config == as_read
+
+
+def test_the_likelihood_block_is_typed_with_its_defaults():
+    from seismo_sbi.sbi.configuration import LikelihoodConfiguration
+
+    likelihood = LikelihoodConfiguration.from_yaml_block({"run": True, "num_samples": 400, "walker_burn_in": 50})
+    assert (likelihood.covariance, likelihood.ensemble, likelihood.num_processes) == ("empirical", True, None)
+    with pytest.raises(InvalidConfiguration, match="needs walker_burn_in and num_samples"):
+        LikelihoodConfiguration.from_yaml_block({"run": True})
+    with pytest.raises(InvalidConfiguration, match="unknown keys \\['num_sample'\\]"):
+        LikelihoodConfiguration.from_yaml_block({"run": False, "num_sample": 3})
+
+
+def test_the_plots_block_flattens_the_chain_consumer_comparisons():
+    from seismo_sbi.sbi.configuration import PlotsConfiguration
+
+    plots = PlotsConfiguration.from_yaml_block({"disable_plotting": True,
+                                                "test_posteriors": {"chain_consumer": [[["a", "b"]]]}})
+    assert (plots.disable_plotting, plots.async_plotting, plots.chain_consumer) == (True, True, ([["a", "b"]],))
+    assert PlotsConfiguration.from_yaml_block(None) == PlotsConfiguration()

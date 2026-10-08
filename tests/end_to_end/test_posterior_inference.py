@@ -45,6 +45,7 @@ from tests.end_to_end.test_pipeline_simulators import (
 
 from seismo_sbi.utils.seismograms import compute_data_vector_length
 
+from seismo_sbi.sbi.configuration import LikelihoodConfiguration
 from seismo_sbi.sbi.compression.gaussian import ScoreCompressionData
 from seismo_sbi.sbi.noises.noise_samplers import WhiteNoiseSampler
 from seismo_sbi.sbi.types.parameters import (
@@ -168,14 +169,14 @@ def _run_gaussian_likelihood_inversion(
         theta0=None,
     )
 
-    likelihood_config = {
-        "run": True,
-        "ensemble": False,       # joblib/loky: no Pool, cloudpickle-safe
-        "covariance": "empirical",  # → ScalarEmpiricalCovariance(σ)
-        "walker_burn_in": N_MCMC_BURN_IN,
-        "num_samples": N_MCMC_SAMPLES,
-        "move_size": move_size,
-    }
+    likelihood_config = LikelihoodConfiguration(
+        run=True,
+        ensemble=False,          # joblib/loky: no Pool, cloudpickle-safe
+        covariance="empirical",  # → ScalarEmpiricalCovariance(σ)
+        walker_burn_in=N_MCMC_BURN_IN,
+        num_samples=N_MCMC_SAMPLES,
+        move_size=move_size,
+    )
 
     results = list(
         pipeline.run_single_gaussian_likelihood_inversion(

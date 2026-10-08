@@ -67,14 +67,14 @@ def main():
     job_data = sbi_pipeline.create_job_data(test_jobs_paths, config.real_event_jobs)
 
     results_generator = sbi_pipeline.run_compressions_and_inversions(
-        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters, do_plots = not config.plotting_options['disable_plotting'])
+        job_data, config.sbi_method, config.likelihood_config, config.dataset_parameters, do_plots = not config.plotting_options.disable_plotting)
     
     output_path = Path(config.pipeline_parameters.output_directory) / 'jobs' / config.pipeline_parameters.run_name / config.pipeline_parameters.job_name
     output_path.mkdir(parents=True, exist_ok=True)
 
-    if config.plotting_options['disable_plotting']:
+    if config.plotting_options.disable_plotting:
         job_results, inversion_results = job_runners.run_asynchronous_results_saving(job_data, results_generator, output_path)
-    elif config.plotting_options['async_plotting']:
+    elif config.plotting_options.async_plotting:
         job_results, inversion_results = job_runners.run_asynchronous_plotting(sbi_pipeline, results_generator)
     else:
         job_results, inversion_results = job_runners.run_all_inversions_before_plotting(sbi_pipeline, results_generator)
@@ -82,7 +82,7 @@ def main():
     with open(output_path / "inversion_results.pkl", 'wb') as f:
         pickle.dump((job_data, job_results, inversion_results), f)
             
-    sbi_pipeline.plot_comparisons(inversion_results, config.plotting_options['test_posteriors']['chain_consumer'])
+    sbi_pipeline.plot_comparisons(inversion_results, config.plotting_options.chain_consumer)
 
 
 if __name__ == '__main__':

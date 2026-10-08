@@ -13,6 +13,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 from copy import deepcopy
+from dataclasses import replace
 import time
 from typing import List
 from functools import partial
@@ -449,7 +450,7 @@ class SingleEventPipeline(SBIPipeline):
                 yield job_result, inversion_result
 
             
-                if likelihood_config["run"]:
+                if likelihood_config.run:
                     logger.info('Starting likelihood inversions.')
                     start_time = time.time()
                     for result in self.run_single_gaussian_likelihood_inversion(
@@ -463,17 +464,10 @@ class SingleEventPipeline(SBIPipeline):
                                               compressor_name="theory_optimal_score"):
         """Refine the MLE with a Gaussian-likelihood chain of the compressor ``compressor_name`` and re-centre
         the compressor on it; returns the compression data there."""
-        MLE_likelihood_config = deepcopy(likelihood_config)
-        use_best = MLE_likelihood_config.get('mle_use_best', False)
+        use_best = likelihood_config.mle_use_best
         logger.info('Finding MLE with MCMC, use_best: %s', use_best)
-        if use_best:
-            MLE_likelihood_config['walker_burn_in'] = 30
-            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 400
-        else:
-            MLE_likelihood_config['walker_burn_in'] = 300
-            MLE_likelihood_config['num_samples'] = self.num_parallel_jobs * 400
-        MLE_likelihood_config['ensemble'] = False
-        MLE_likelihood_config['return_log_prob'] = bool(use_best)
+        MLE_likelihood_config = replace(likelihood_config, walker_burn_in=30 if use_best else 300,
+                                        num_samples=self.num_parallel_jobs * 400, ensemble=False)
         result = next(iter(self.run_single_gaussian_likelihood_inversion(
             single_job,
             MLE_likelihood_config,
@@ -482,6 +476,7 @@ class SingleEventPipeline(SBIPipeline):
             prior,
             mle_start=mle_start,
             seed=self.seed,
+            return_log_prob=bool(use_best),
         )))
         if len(result) == 3:
             _, res, logps = result
@@ -625,25 +620,26 @@ class SingleEventPipeline(SBIPipeline):
             theta0 = None
         return theta0, deepcopy(original_dataset_details)
 
-    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, prior=None, mle_start = None, seed = None):
-        """Sample the Gaussian-likelihood posterior of one job with emcee; yields
+    def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, prior=None, mle_start = None, seed = None,
+                                                 return_log_prob=False):
+        """Sample the Gaussian-likelihood posterior of one job with emcee, as ``likelihood_config``
+        (:class:`~seismo_sbi.sbi.configuration.LikelihoodConfiguration`) sets; yields
         ``(None, inversion_result)``, with the log-probabilities when ``return_log_prob`` is set.
         """
 
         param_names = self.parameters.names
-        ensemble = likelihood_config.get('ensemble', True)
-        covariance = likelihood_config['covariance']
+        ensemble = likelihood_config.ensemble
+        covariance = likelihood_config.covariance
 
         self.check_compressor_is_current(compressor_name)
         covariance = likelihood_covariance(covariance, self.compressors[compressor_name].C, self.data_vector_length)
-        walker_burn_in = likelihood_config['walker_burn_in']
-        num_samples = likelihood_config['num_samples']
-        move_size = likelihood_config.get('move_size')
+        walker_burn_in = likelihood_config.walker_burn_in
+        num_samples = likelihood_config.num_samples
+        move_size = likelihood_config.move_size
         # Decoupled from num_jobs: with the kernel simulator each log-prob is a cheap
         # mat-vec, so the process fan-out costs more than it saves and can deadlock on HDF5.
-        num_processes = likelihood_config.get('num_processes') or self.num_parallel_jobs
+        num_processes = likelihood_config.num_processes or self.num_parallel_jobs
         nsamples_per_walker = num_samples//num_processes
-        return_log_prob = bool(likelihood_config.get('return_log_prob', False))
 
 
         scaler = FlexibleScaler(parameters)
