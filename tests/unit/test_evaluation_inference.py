@@ -21,7 +21,7 @@ def test_an_unknown_job_name_lists_the_available_events():
         load_real_observation(config, None, "not_an_event")
 
 
-def test_load_observation_undoes_the_receiver_time_shifts(tmp_path):
+def test_load_observation_undoes_the_time_shifts_and_leaves_the_receivers_unshifted(tmp_path):
     import numpy as np
 
     from seismo_sbi.evaluation.inference import load_observation
@@ -39,7 +39,7 @@ def test_load_observation_undoes_the_receiver_time_shifts(tmp_path):
     assert observation.shape == (2, 1, 8)
     np.testing.assert_array_equal(observation[0, 0], np.r_[traces["AAA"][2:], 0.0, 0.0])
     np.testing.assert_array_equal(observation[1, 0], traces["BBB"])
-    assert [receiver.time_shift for receiver in receivers] == [-2, 0]
+    assert [receiver.time_shift for receiver in receivers] == [0, 0]
 
 
 def test_resolve_ckpt_dir_finds_the_nested_run_directory(tmp_path):
@@ -144,3 +144,19 @@ def test_the_evaluation_pipeline_reads_the_training_simulations_and_noise(tmp_pa
     assert [path.name for path in pipeline.paths] == [
         "custom_event.h5", "normal_3.00M.h5", "random_event_0.h5", "random_event_1.h5"]
     assert pipeline.rescaled_to is event_noise
+
+
+def test_a_shifted_load_keeps_the_loaders_own_receiver_shifts(tmp_path):
+    import numpy as np
+
+    from seismo_sbi.simulators.receivers import Receiver, Receivers
+    from seismo_sbi.simulators.simulation_io import SimulationDataLoader, SimulationSaver
+
+    receivers = Receivers(receivers=[Receiver(37.0, -118.0, "XX", "AAA", ["Z"], 3)])
+    path = tmp_path / "event.h5"
+    SimulationSaver(output_data={"AAA": {"Z": np.arange(1.0, 9.0)}}).dump_data_as_hdf5(path)
+
+    shifted = SimulationDataLoader("Z", receivers).load_simulation_data_array_with_shifts(path, {"AAA": 2})
+
+    np.testing.assert_array_equal(shifted, np.r_[0.0, 0.0, np.arange(1.0, 7.0)])
+    assert receivers.receivers[0].time_shift == 3

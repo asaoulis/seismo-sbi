@@ -181,10 +181,13 @@ class SimulationDataLoader():
         return input_data, data
 
     def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *, stacked=False, fill_unused=False):
-        """Load a simulation with per-station time shifts ``shift_dict`` applied to its traces."""
-        self.receivers.set_time_shifts(shift_dict)
+        """Load a simulation with per-station time shifts ``shift_dict`` (``{station: samples}``) applied
+        to its traces; the loader's receivers keep their own shifts."""
+        shifted_receivers = Receivers(receivers=list(self.receivers.receivers))
+        shifted_receivers.set_time_shifts(shift_dict)
         with h5py.File(sim_name, 'r') as simulation_data_map:
-            shifted_map = {"outputs": apply_station_time_shifts(self.receivers, to_numpy(simulation_data_map["outputs"]))}
+            shifted_map = {"outputs": apply_station_time_shifts(shifted_receivers,
+                                                                to_numpy(simulation_data_map["outputs"]))}
             return self.convert_sim_data_to_array(shifted_map, stacked=stacked, fill_unused=fill_unused)
 
     def load_event_subset(self, sim_name, subset_station_names, stacked=True):

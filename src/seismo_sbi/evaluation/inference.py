@@ -192,8 +192,7 @@ def load_observation(event_path, receivers, components, time_shifts=None):
     """One event file as an ``(n_stations, n_components, n_samples)`` array, with the receiver
     time shifts ``time_shifts`` (``{station: samples}``) undone.
 
-    ``receivers`` is left carrying the inverted shifts, and a simulator holding the same object
-    applies them to what it simulates next; ``components`` is the component layout, such as ``"ZEN"``.
+    ``receivers`` keeps its own shifts; ``components`` is the component layout, such as ``"ZEN"``.
     """
     inverted_shifts = {k: -v for k, v in (time_shifts or {}).items()}
     shifted = SimulationDataLoader(components, receivers).load_simulation_data_array_with_shifts(
