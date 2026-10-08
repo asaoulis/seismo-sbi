@@ -17,7 +17,7 @@ class OptimalScoreOptions:
 
     covariance: str
     path: str = None
-    type: ClassVar[str] = "optimal_score"
+    compressor_type: ClassVar[str] = "optimal_score"
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class TheoryOptimalScoreOptions:
     data_covariance: str = None
     noise_level: float = None
     diag_regularisation_magnitude: float = 0.0
-    type: ClassVar[str] = "theory_optimal_score"
+    compressor_type: ClassVar[str] = "theory_optimal_score"
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class MultiOptimalScoreOptions:
     """``multi_optimal_score``: white noise of standard deviation ``noise_level`` (m)."""
 
     noise_level: float
-    type: ClassVar[str] = "multi_optimal_score"
+    compressor_type: ClassVar[str] = "multi_optimal_score"
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,10 @@ class SecondOrderScoreOptions:
     """``second_order_score``: white noise of standard deviation ``noise_level`` (m)."""
 
     noise_level: float
-    type: ClassVar[str] = "second_order_score"
+    compressor_type: ClassVar[str] = "second_order_score"
 
 
-COMPRESSOR_OPTIONS = {options.type: options for options in (
+COMPRESSOR_OPTIONS = {options.compressor_type: options for options in (
     OptimalScoreOptions, TheoryOptimalScoreOptions, MultiOptimalScoreOptions, SecondOrderScoreOptions)}
 
 

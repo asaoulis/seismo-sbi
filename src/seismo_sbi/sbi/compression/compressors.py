@@ -24,7 +24,7 @@ def build_compressor(options, score_compression_data, simulation_parameters, lay
     theory covariance of a ``theory_optimal_score`` compressor, or the Hessian of a second-order one;
     ``layout`` is the data vector's :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout`.
     """
-    ctype = options.type
+    ctype = options.compressor_type
 
     if ctype == "optimal_score":
         if covariance_data is None:

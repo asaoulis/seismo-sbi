@@ -157,7 +157,7 @@ def rescale_training_noise_to_event(pipeline, config):
 def event_noise_for_compressors(pipeline, config):
     """The first real event's pre-event noise ``{station: {component: autocovariance}}`` when a theory
     compressor takes its noise level from the event (``noise_level: null``), else None."""
-    if not any(options.type == "theory_optimal_score" and options.noise_level is None
+    if not any(options.compressor_type == "theory_optimal_score" and options.noise_level is None
                for _, options in config.compression_methods) or not config.real_event_jobs:
         return None
     event = next(iter(config.real_event_jobs.values()))
