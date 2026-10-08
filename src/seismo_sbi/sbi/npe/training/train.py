@@ -18,6 +18,7 @@ from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
 from seismo_sbi.sbi.npe.maf import build_nsf
 from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 from seismo_sbi.sbi.npe.training.checkpoint_loading import unpickling_torch_load
+from seismo_sbi.sbi.npe.training.model_meta import MODEL_META_FILENAME, read_model_meta
 from seismo_sbi.sbi.scalers import scaler_provenance
 
 import pytorch_lightning as pl
@@ -209,10 +210,7 @@ class CompressionTrainer:
         Raises ``FileNotFoundError`` when the sidecar is missing.
         """
         run_directory = Path(run_directory)
-        meta_path = run_directory / "model_meta.json"
-        if not meta_path.exists():
-            raise FileNotFoundError(f"{meta_path} is missing; a run is rebuilt from its sidecar.")
-        meta = json.loads(meta_path.read_text())
+        meta = read_model_meta(run_directory)
         trainer = cls(
             range(meta["num_seismic_components"]), np.asarray(meta["station_locations"]),
             latent_dim=meta["latent_dim"], architecture=meta["architecture"],
@@ -329,7 +327,7 @@ class CompressionTrainer:
             # load_best can rebuild the embedding net without re-supplying them.
             "station_locations": np.asarray(self._station_locations).tolist(),
         }
-        meta_path = output_path / "model_meta.json"
+        meta_path = output_path / MODEL_META_FILENAME
         meta_path.parent.mkdir(parents=True, exist_ok=True)
         with open(meta_path, "w") as f:
             # default=str guards against a non-JSON value sneaking into a config dict
@@ -350,10 +348,8 @@ class CompressionTrainer:
 
         # Rebuild from the sidecar so a checkpoint loads into a structurally matching flow
         # whatever this trainer was constructed with; without one, keep the flow from __init__.
-        meta_path = output_path / "model_meta.json"
-        if meta_path.exists():
-            with open(meta_path) as f:
-                meta = json.load(f)
+        if (output_path / MODEL_META_FILENAME).exists():
+            meta = read_model_meta(output_path)
             station_locations = (
                 np.asarray(meta["station_locations"])
                 if meta.get("station_locations") is not None

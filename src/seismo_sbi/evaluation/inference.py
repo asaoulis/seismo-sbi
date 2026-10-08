@@ -8,7 +8,6 @@ real event (:func:`load_observation` reads one event file).
 """
 from __future__ import annotations
 
-import json
 import logging
 from copy import deepcopy
 from pathlib import Path
@@ -17,6 +16,7 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
+from seismo_sbi.sbi.npe.training.model_meta import MODEL_META_FILENAME, read_model_meta
 from seismo_sbi.sbi.scalers import build_flexible_scaler, check_scaler_provenance
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
@@ -54,7 +54,7 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
 
     run_directory = resolve_ckpt_dir(run_directory)
     posterior = CompressionTrainer.from_run_directory(run_directory).build_posterior()
-    model_meta = json.loads((run_directory / "model_meta.json").read_text())
+    model_meta = read_model_meta(run_directory)
     config = SBI_Configuration.from_file(config_path)
     config.sim_parameters = config.sim_parameters._replace(stf_alignment=recorded_stf_alignment(model_meta))
     pipeline = build_pipeline(config, config_path, pipeline_class=SingleEventPipeline)
@@ -135,8 +135,7 @@ def build_ml_posterior(ckpt_dir, sbi_pipeline, dim=256):
     components = sbi_pipeline.data_manager.data_loader.components
     station_locations = sbi_pipeline.simulation_parameters.receivers.get_station_locations_array()
 
-    meta_path = ckpt_dir / "model_meta.json"
-    meta = json.load(open(meta_path)) if meta_path.exists() else {}
+    meta = read_model_meta(ckpt_dir) if (ckpt_dir / MODEL_META_FILENAME).exists() else {}
     trainer = CompressionTrainer(
         components, station_locations, dim, dim,
         trace_length=meta.get("trace_length", sbi_pipeline.trace_length),
@@ -153,9 +152,9 @@ def resolve_ckpt_dir(ckpt_dir) -> Path:
     one run directory found beneath it.
     """
     ckpt_dir = Path(ckpt_dir)
-    if (ckpt_dir / "model_meta.json").exists():
+    if (ckpt_dir / MODEL_META_FILENAME).exists():
         return ckpt_dir
-    matches = sorted(ckpt_dir.glob("**/model_meta.json"))
+    matches = sorted(ckpt_dir.glob(f"**/{MODEL_META_FILENAME}"))
     if not matches:
         # Fall back to a checkpoint glob (staged runs may lack a meta sidecar).
         ckpts = sorted(ckpt_dir.glob("**/checkpoints/best_model-*.ckpt"))

@@ -6,13 +6,13 @@ chains. The result is a :class:`TrainingData` holding everything the trainer and
 need; the training script calls these in order.
 """
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from ..pipeline_variants import PIPELINE_CLASSES
+from ..npe.training.model_meta import MODEL_META_FILENAME, read_model_meta
 from ..scalers import FlexibleScaler, build_flexible_scaler, check_scaler_provenance, recorded_theta_scaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters
 from ...utils.errors import InvalidConfiguration
@@ -102,8 +102,8 @@ def training_scaler(parameters, ml_scaler, sampling_method, training, models_out
     """
     if not training.warm_start_run_name:
         return build_flexible_scaler(parameters, ml_scaler, sampling_method)
-    meta_path = Path(models_output_path) / training.warm_start_run_name / "model_meta.json"
-    source_meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    source_run = Path(models_output_path) / training.warm_start_run_name
+    source_meta = read_model_meta(source_run) if (source_run / MODEL_META_FILENAME).exists() else {}
     scaler = build_flexible_scaler(parameters, ml_scaler, sampling_method, model_meta=source_meta)
     check_scaler_provenance(source_meta, scaler, strict=bool(recorded_theta_scaler(source_meta)))
     return scaler
