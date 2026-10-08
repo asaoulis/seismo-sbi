@@ -9,10 +9,10 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 
-def smooth_frac_field(npts, dz_km, corr_length_km, std_frac, seed=None):
-    """A Gaussian-smoothed fractional perturbation field over ``npts`` layers of ``dz_km``."""
-    rng = np.random.default_rng(seed)
-    white = rng.normal(size=npts)
+def smooth_frac_field(npts, dz_km, corr_length_km, std_frac):
+    """A Gaussian-smoothed fractional perturbation field over ``npts`` layers of ``dz_km``, drawn
+    from numpy's global random state like every other prior sampler."""
+    white = np.random.normal(size=npts)
     sigma_samples = max(0.5, corr_length_km / dz_km)
     smooth = gaussian_filter(white, sigma=sigma_samples, mode='reflect')
     smooth -= np.mean(smooth)
@@ -39,8 +39,7 @@ def perturb_cps_model(vmodel,
                       std_vp=0.03,
                       std_vs=0.03,
                       std_thickness=0.03,
-                      vp_vs_corr=0.9,
-                      seed=None):
+                      vp_vs_corr=0.9):
     """A perturbed copy of the CPS velocity model ``vmodel``, shaped ``(6, n_layers)``.
 
     The rows are layer thickness in km, compressional and shear speed in km/s, density in
