@@ -19,7 +19,7 @@ from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as rocko_beachball
 import pyrocko.moment_tensor as mtm
 from seismo_sbi.moment_tensor.conventions import create_matrix
-from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon, get_nodal_planes
+from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon, mechanism_parameters
 from .rocko_beachball_patch import plot_beachball_on_axes
 from contextlib import contextmanager
 import logging
@@ -83,30 +83,18 @@ class MomentTensorReparametrised:
         self.chain_plotter = PosteriorPlotter(dummy_scaler, self.parameters_info)
 
     def convert_samples(self, samples, theta0, custom_select):
-        
-        converted = []
-        for sample in samples:
-            mt = self._moment_tensor(sample)
-            # Use lune utilities to compute gamma and delta (in degrees)
-            g, d = mts6_to_gamma_delta(np.asarray(mt).reshape(1, -1))
-            # Keep Mw from scalar moment
-            MW, _ = get_MW_and_epsilon(mt)
-            # Choose nodal plane
-            nodal_plane_pair = get_nodal_planes(mt)
-            nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
-            converted.append(np.array([float(g[0]),float(d[0]), MW, nodal_plane[0], nodal_plane[1], nodal_plane[2]]))
+        """``(converted samples (n, 6), converted theta0 (6,) or None)``: each vector as
+        ``gamma_deg, delta_deg, Mw, strike_deg, dip_deg, rake_deg``
+        (:func:`~seismo_sbi.moment_tensor.decomposition.mechanism_parameters`), the
+        nodal plane the first one or the one ``custom_select`` picks from the pair."""
+        moment_tensors = np.array([self._moment_tensor(sample) for sample in samples])
+        converted = mechanism_parameters(moment_tensors, nodal_plane_choice=custom_select or None)
         if theta0 is not None:
-            theta_mt = self._moment_tensor(theta0)
-            tg, td = mts6_to_gamma_delta(np.asarray(theta_mt).reshape(1, -1))
-            theta_MW, _ = get_MW_and_epsilon(theta_mt)
-            nodal_plane_pair = get_nodal_planes(theta_mt)
-            nodal_plane = nodal_plane_pair[0] if not custom_select else custom_select(nodal_plane_pair)
-            theta0_converted = np.array([float(tg[0]), float(td[0]), theta_MW, nodal_plane[0], nodal_plane[1], nodal_plane[2],])
+            theta0_converted = mechanism_parameters(np.asarray(self._moment_tensor(theta0))[None],
+                                                    nodal_plane_choice=custom_select or None)[0]
         else:
             theta0_converted = None
-        return np.array(converted), theta0_converted
-
-
+        return converted, theta0_converted
 
     def _moment_tensor(self, vector):
         if self.parameters is None:

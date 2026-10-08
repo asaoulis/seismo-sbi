@@ -15,8 +15,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from seismo_sbi.moment_tensor.decomposition import get_MW_and_epsilon, get_nodal_planes
-from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
+from seismo_sbi.moment_tensor.decomposition import lune_angles_and_magnitude, mechanism_parameters
 
 METRICS_FILENAME = "evaluation_metrics.json"
 METRICS_SCHEMA_VERSION = 1
@@ -34,7 +33,7 @@ _FOM_SUBSETS = {
 
 def spread_stats(mt_samples) -> Dict[str, float]:
     """Median + 68% interval width of gamma/delta/Mw for an (N, 6) MT sample set."""
-    gamma, delta, mw = _gamma_delta_mw(np.asarray(mt_samples))
+    gamma, delta, mw = lune_angles_and_magnitude(np.asarray(mt_samples))
 
     def med_width(a):
         a = np.asarray(a, dtype=float)
@@ -95,29 +94,6 @@ def tarp_coverage(samples_per_sim: np.ndarray, theta_true: np.ndarray,
         norm=True, bootstrap=True, seed=seed,
     )
     return ecp, alpha
-
-
-def _gamma_delta_mw(mt_samples: np.ndarray):
-    """Vectorised (gamma_deg, delta_deg) and per-sample Mw for (N,6) MT samples."""
-    gamma, delta = mts6_to_gamma_delta(mt_samples)
-    mw = np.array([get_MW_and_epsilon(s)[0] for s in mt_samples])
-    return gamma, delta, mw
-
-
-def _derived_matrix(mt_samples: np.ndarray) -> np.ndarray:
-    """
-    Map ``(N, 6)`` moment-tensor vectors to ``(N, 6)`` derived quantities
-    ``(gamma, delta, Mw, strike, dip, rake)`` — degrees for the angles. Reuses the
-    project's lune / pyrocko converters; the nodal-plane ambiguity is resolved by
-    consistently taking the first plane (as ``MomentTensorReparametrised`` does).
-    """
-    mt_samples = np.asarray(mt_samples, dtype=float)
-    gamma, delta, mw = _gamma_delta_mw(mt_samples)
-    out = np.empty((len(mt_samples), 6), dtype=float)
-    for i, mt in enumerate(mt_samples):
-        sdr = get_nodal_planes(mt)[0]
-        out[i] = [gamma[i], delta[i], mw[i], float(sdr[0]), float(sdr[1]), float(sdr[2])]
-    return out
 
 
 def _per_param_stats(truth: np.ndarray, samples: np.ndarray) -> Dict[str, list]:
@@ -258,10 +234,10 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
         else:
             sel = np.arange(n_samples)
 
-        derived_truth = _derived_matrix(theta)                          # (n_sims, 6)
+        derived_truth = mechanism_parameters(theta)                          # (n_sims, 6)
         derived_samples = np.empty((len(sel), n_sims, 6))
         for j in range(n_sims):
-            derived_samples[:, j, :] = _derived_matrix(samples[sel, j, :])
+            derived_samples[:, j, :] = mechanism_parameters(samples[sel, j, :])
 
         metrics["derived"] = _named(
             _per_param_stats(derived_truth, derived_samples), _DERIVED_NAMES)

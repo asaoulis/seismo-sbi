@@ -14,7 +14,8 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from seismo_sbi.moment_tensor.conventions import create_matrix
-from seismo_sbi.evaluation.posterior_metrics import _gamma_delta_mw, spread_stats
+from seismo_sbi.moment_tensor.decomposition import lune_angles_and_magnitude
+from seismo_sbi.evaluation.posterior_metrics import spread_stats
 
 
 # Pickle / run discovery
@@ -328,13 +329,13 @@ def plot_recovery_scatter(theta_true: np.ndarray, samples_per_sim: np.ndarray,
     samples_per_sim = np.asarray(samples_per_sim)
     n_sims = theta_true.shape[0]
 
-    tg, td, tmw = _gamma_delta_mw(theta_true)
+    tg, td, tmw = lune_angles_and_magnitude(theta_true)
 
     med = np.zeros((n_sims, 3))
     lo = np.zeros((n_sims, 3))
     hi = np.zeros((n_sims, 3))
     for j in range(n_sims):
-        g, d, mw = _gamma_delta_mw(samples_per_sim[:, j, :])
+        g, d, mw = lune_angles_and_magnitude(samples_per_sim[:, j, :])
         for k, arr in enumerate((g, d, mw)):
             med[j, k] = np.median(arr)
             lo[j, k] = np.percentile(arr, 16)
