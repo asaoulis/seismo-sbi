@@ -246,6 +246,24 @@ class RealNoiseSampler(NoiseSampler):
             return NoiseDraw(noise, present)
         return NoiseDraw(noise, None, self.data_loader.load_misc_data(window_path))
 
+    def mean_covariance_data(self):
+        """``{station: {component: autocovariance}}``: the recorded autocovariances of every usable window,
+        averaged, in file-name order."""
+        sums, count = {}, 0
+        for window_path in sorted(self.noise_paths):
+            noise, _ = self._read_window(window_path)
+            if noise is None:
+                continue
+            for station, components in self.data_loader.load_misc_data(window_path).items():
+                for component, autocovariance in components.items():
+                    station_sums = sums.setdefault(station, {})
+                    station_sums[component] = station_sums.get(component, 0.0) + np.asarray(autocovariance, dtype=float)
+            count += 1
+        if count == 0:
+            raise RuntimeError(f"RealNoiseSampler: no usable noise window among {len(self.noise_paths)}.")
+        return {station: {component: total / count for component, total in components.items()}
+                for station, components in sums.items()}
+
     def _usable_window(self, window_index):
         """``(path, noise, present)`` of the first usable window from ``window_index`` on, a random
         start when None, walking at most once round the pool."""

@@ -238,3 +238,23 @@ def test_a_pool_of_mostly_unusable_windows_still_finds_the_usable_one(tmp_path, 
     good_index = [path.name for path in sampler.noise_paths].index("good.h5")
     noise = sampler.draw_with_covariance(window_index=good_index + 1).noise
     assert noise.shape == (TRACE_LEN,)
+
+
+def test_the_pool_covariance_is_the_mean_of_the_recorded_autocovariances(tmp_path, receivers):
+    variances = [1.0, 4.0, 9.0, 0.25]
+    for index, variance in enumerate(variances):
+        with h5py.File(tmp_path / f"noise_{index}.h5", "w") as window:
+            for receiver in receivers.iterate():
+                for component in receiver.components:
+                    window.create_dataset(f"outputs/{receiver.station_name}/{component}", data=np.zeros(TRACE_LEN))
+                    window.create_dataset(f"misc/{receiver.station_name}/{component}",
+                                          data=variance * np.exp(-np.arange(4) / 2.0))
+    np.random.seed(1)
+    first = RealNoiseSampler(_make_sim_params(receivers), tmp_path, TRACE_LEN).mean_covariance_data()
+    np.random.seed(2)
+    second = RealNoiseSampler(_make_sim_params(receivers), tmp_path, TRACE_LEN).mean_covariance_data()
+
+    for station, components in first.items():
+        for component, autocovariance in components.items():
+            np.testing.assert_allclose(autocovariance, np.mean(variances) * np.exp(-np.arange(4) / 2.0), rtol=1e-12)
+            np.testing.assert_array_equal(autocovariance, second[station][component])

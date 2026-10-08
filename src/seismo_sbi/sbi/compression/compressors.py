@@ -19,7 +19,8 @@ def build_compressor(options, score_compression_data, simulation_parameters, lay
     """The compressor of ``options`` around ``score_compression_data``.
 
     ``covariance_data`` is the job's noise ``{station: {component: autocovariance}}``, or None to estimate
-    an ``optimal_score`` covariance from the noise windows of ``options.path``; ``extra_gradients`` is the
+    an ``optimal_score`` covariance from the mean recorded autocovariance of the noise windows of
+    ``options.path``; ``extra_gradients`` is the
     theory covariance of a ``theory_optimal_score`` compressor, or the Hessian of a second-order one;
     ``layout`` is the data vector's :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout`.
     """
@@ -27,8 +28,7 @@ def build_compressor(options, score_compression_data, simulation_parameters, lay
 
     if ctype == "optimal_score":
         if covariance_data is None:
-            sampler = RealNoiseSampler(simulation_parameters, options.path, layout.trace_length)
-            covariance_data = sampler.draw_with_covariance(window_index=0).covariance_data
+            covariance_data = RealNoiseSampler(simulation_parameters, options.path, layout.trace_length).mean_covariance_data()
         covariance = build_covariance_matrix(options.covariance, covariance_data, layout)
         return GaussianCompressor(score_compression_data, covariance, prior=prior)
 
