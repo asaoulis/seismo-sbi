@@ -6,12 +6,9 @@ each simulation is written to.
 """
 
 import logging
-import joblib
-import traceback
 
-from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
-
-from tqdm import tqdm
+from seismo_sbi.utils.errors import skip_after_retries
+from seismo_sbi.utils.parallel import run_tasks, worker_seeds
 
 logger = logging.getLogger(__name__)
 
@@ -20,39 +17,11 @@ class DatasetGenerator:
 
     def __init__(self, simulator, num_parallel_jobs=1, seed=None):
 
-        self.simulator = self._error_handling_wrapper(simulator)
+        self.simulator = skip_after_retries(simulator)
         self.num_parallel_jobs = num_parallel_jobs
         #: Seeds each simulation's ensemble-member draw when set; None leaves the draws unseeded.
         self.seed = seed
 
-    def _error_handling_wrapper(self, simulation_callable, num_attempts = 3):
-
-        def _error_handled_simulation_callable(*args, **kwargs):
-
-            # Bound outside the except block, whose target Python deletes on exit, so the
-            # real worker error survives to be re-raised.
-            last_exc = None
-            for attempt_number in range(num_attempts):
-                try:
-                    simulation_callable(*args, **kwargs)
-                    return True
-                except Exception as exc:
-                    last_exc = exc
-                    # Printed, not logged: this runs in joblib worker processes, which carry no
-                    # logging handlers of their own.
-                    print(f"Simulation terminated with exception {attempt_number + 1} times:")
-                    print(traceback.format_exc())
-                    print("Retrying simulation...")
-
-            # A sampled source can fall outside the forward model's valid domain, which no
-            # retry recovers; skip it and let run_parallel_simulations catch a large fraction.
-            print(f"Simulation FAILED after {num_attempts} attempts; SKIPPING sample. "
-                  f"Last error: {type(last_exc).__name__}: {last_exc}")
-            return False
-            
-        
-        return _error_handled_simulation_callable
-    
     def run_and_save_simulations(self, simulation_inputs, output_paths):
         """Simulate each input map of ``simulation_inputs`` and write it to the matching path of
         ``output_paths``."""
@@ -65,25 +34,8 @@ class DatasetGenerator:
 
     def run_parallel_simulations(self, simulation_job_args_list):
 
-        if self.num_parallel_jobs not in [0, 1]:
-            try:
-                with tqdm_joblib(tqdm(desc="Running simulations: ", total=len(simulation_job_args_list))):
-                    with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
-                        results = joblib.Parallel()(
-                            joblib.delayed(self.simulator)(*simulation_job_args) for
-                                simulation_job_args in simulation_job_args_list
-                        )
-            except Exception as exc:
-                logger.warning("Parallel simulations failed. Exiting.")
-                raise exc
-            finally:
-                from joblib.externals.loky import get_reusable_executor
-                # reuse=True kills the pool Parallel used; with default arguments loky would first
-                # restart that pool gracefully, which can hang on a worker that never exits.
-                get_reusable_executor(reuse=True).shutdown(wait=True, kill_workers=True)
-        else:
-            results = [self.simulator(*simulation_job_args)
-                       for simulation_job_args in simulation_job_args_list]
+        results = run_tasks(self.simulator, simulation_job_args_list, self.num_parallel_jobs,
+                            "Running simulations")
 
         self._guard_against_excessive_skips(results)
 

@@ -5,12 +5,10 @@ compressor, and runs the stencil simulations the score compression needs.
 """
 
 import numpy as np
-import joblib
 
 from ..compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
 from ..compression.gaussian import Compressor, ScoreCompressionData
-from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
-from tqdm import tqdm
+from seismo_sbi.utils.parallel import run_tasks, worker_seeds
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
@@ -75,29 +73,10 @@ class DatasetCompressor:
         sim_seeds = worker_seeds(seed, len(simulation_data_paths), "training noise")
         cov = self.compressor.C
         matmul_callable = cov.create_matmul_inverse_covariance(cov.inverse_metadata, cov.data_vector_length)
-        if self.num_parallel_jobs not in [0,1]:
-            try:
-                with tqdm_joblib(tqdm(desc="Compressing dataset: ", total=len(simulation_data_paths))):
-
-                    with joblib.parallel_backend('loky', n_jobs=self.num_parallel_jobs):
-                        results = joblib.Parallel()(
-                            joblib.delayed(self._load_and_compress_sim)(sim_path, param_names, matmul_callable, sim_seed)
-                                    for sim_path, sim_seed in zip(simulation_data_paths, sim_seeds)
-                        )
-            except Exception as e:
-                print("Error during parallel compression:", e)
-                raise e
-            finally:
-                from joblib.externals.loky import get_reusable_executor
-                # reuse=True kills the pool Parallel used; with default arguments loky would first
-                # restart that pool gracefully, which can hang on a worker that never exits.
-                get_reusable_executor(reuse=True).shutdown(wait=True, kill_workers=True)
-            
-        else:
-            results = []
-            for sim_path, sim_seed in zip(simulation_data_paths, sim_seeds):
-                    results.append(self._load_and_compress_sim(sim_path, param_names, matmul_callable, sim_seed))
-
+        args_list = [(sim_path, param_names, matmul_callable, sim_seed)
+                     for sim_path, sim_seed in zip(simulation_data_paths, sim_seeds)]
+        results = run_tasks(self._load_and_compress_sim, args_list, self.num_parallel_jobs,
+                            "Compressing dataset")
         return np.stack(results)
 
     def _load_and_compress_sim(self, sim_path, param_names, matmul_callable, sim_seed=None):

@@ -29,3 +29,12 @@ def test_garbage_collection_pauses_while_forking_only_inside_a_jupyter_kernel(mo
     with gc_paused_in_notebooks():
         assert not gc.isenabled()
     assert gc.isenabled()
+
+
+def test_run_tasks_returns_the_results_in_order_serially_and_on_workers():
+    from seismo_sbi.utils.parallel import run_tasks
+
+    args_list = [(value,) for value in range(7)]
+    assert run_tasks(_square, args_list, 1, "squares") == [value * value for value in range(7)]
+    assert run_tasks(_square, args_list, 2, "squares") == [value * value for value in range(7)]
+    assert reusable_executor._executor._flags.shutdown
