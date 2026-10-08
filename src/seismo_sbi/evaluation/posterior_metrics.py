@@ -3,8 +3,8 @@
 :func:`tarp_coverage` computes TARP expected coverage; :func:`compute_evaluation_metrics` turns a
 validation result into per-parameter bias, width, coverage and figures of merit, including the
 derived gamma, delta, Mw, strike, dip and rake; :func:`write_run_metrics` and
-:func:`scan_run_metrics` store and collect them per run; :func:`spread_stats` summarises the
-source-type spread of one posterior.
+:func:`scan_run_metrics` store and collect them per run as one :func:`run_metrics_payload` record;
+:func:`spread_stats` summarises the source-type spread of one posterior.
 """
 from __future__ import annotations
 
@@ -252,6 +252,20 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
     return metrics
 
 
+def run_metrics_payload(run_label, config_path, metrics: dict, **run_details) -> dict:
+    """The ``evaluation_metrics.json`` record of one run: ``schema_version``, ``run_label``,
+    ``config``, ``timestamp`` and ``metrics``, then any ``run_details`` (validation settings,
+    figure paths). ``run_label`` and ``config_path`` may be None."""
+    return {
+        "schema_version": METRICS_SCHEMA_VERSION,
+        "run_label": run_label,
+        "config": None if config_path is None else str(config_path),
+        "timestamp": time.time(),
+        "metrics": metrics,
+        **run_details,
+    }
+
+
 def write_run_metrics(out_dir, run_label: str, config_path, metrics: dict) -> Path:
     """
     Dump ``evaluation_metrics.json`` into a run's artifacts dir in a self-describing,
@@ -259,13 +273,7 @@ def write_run_metrics(out_dir, run_label: str, config_path, metrics: dict) -> Pa
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema_version": METRICS_SCHEMA_VERSION,
-        "run_label": run_label,
-        "config": str(config_path),
-        "timestamp": time.time(),
-        "metrics": metrics,
-    }
+    payload = run_metrics_payload(run_label, config_path, metrics)
     path = out_dir / METRICS_FILENAME
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)

@@ -204,12 +204,16 @@ def write_validation_outputs(
     num_samples: int,
     conditioned: bool,
     n_show: int,
+    run_label: Optional[str] = None,
+    config_path=None,
 ) -> dict:
     """Figures and ``evaluation_metrics.json`` in ``out_dir`` from a :func:`run_validation` dict.
 
     Writes ``tarp_coverage.png`` (TARP expected coverage), ``recovery_scatter.svg`` (true
     against recovered gamma, delta and Mw), ``n_show`` example panels under ``examples/`` and
-    the metrics JSON, which records ``num_samples`` and ``conditioned`` with the metrics.
+    the metrics JSON, the record of
+    :func:`~seismo_sbi.evaluation.posterior_metrics.run_metrics_payload` labelled ``run_label``
+    and ``config_path``, with ``n_val``, ``num_samples``, ``conditioned`` and the figure paths.
     ``parameters`` are the pipeline's parameters, for the panel labels.
 
     :returns: the dict written to ``evaluation_metrics.json``.
@@ -230,7 +234,7 @@ def write_validation_outputs(
     if shows:
         write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figures)
     return write_metrics_json(val, ecp, alpha, out_dir, figures, n_val=n_val, num_samples=num_samples,
-                              conditioned=conditioned)
+                              conditioned=conditioned, run_label=run_label, config_path=config_path)
 
 
 def write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures):
@@ -295,9 +299,10 @@ def write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figure
         logger.warning(f"    [warn] example panels failed: {type(e).__name__}: {e}")
 
 
-def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples, conditioned):
+def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples, conditioned,
+                       run_label=None, config_path=None):
     """The evaluation metrics of ``val`` with the run's settings and ``figures``, written to
-    ``evaluation_metrics.json``.
+    ``evaluation_metrics.json`` as a :func:`~seismo_sbi.evaluation.posterior_metrics.run_metrics_payload`.
     """
     metrics: dict = {}
     try:
@@ -305,14 +310,10 @@ def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples,
     except Exception as e:  # noqa: BLE001
         logger.warning(f"    [warn] metric computation failed: {type(e).__name__}: {e}")
 
-    result = {
-        "n_val": n_val,
-        "num_samples": num_samples,
-        "conditioned": conditioned,
-        "figures": figures,
-        "metrics": metrics,
-    }
-    with open(out_dir / "evaluation_metrics.json", "w") as f:
+    result = posterior_metrics.run_metrics_payload(
+        run_label, config_path, metrics,
+        n_val=n_val, num_samples=num_samples, conditioned=conditioned, figures=figures)
+    with open(out_dir / posterior_metrics.METRICS_FILENAME, "w") as f:
         json.dump(result, f, indent=2)
 
     return result

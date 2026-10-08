@@ -464,6 +464,23 @@ def test_write_validation_outputs_writes_json(tmp_path):
     assert "metrics" in on_disk
 
 
+def test_validation_metrics_file_is_the_run_metrics_record(tmp_path):
+    """The validation JSON has the run-metrics schema, so scan_run_metrics lists it by its label."""
+    from seismo_sbi.evaluation.posterior_metrics import scan_run_metrics
+    from seismo_sbi.evaluation.validation import write_validation_outputs
+
+    out_dir = tmp_path / "runs" / "some_directory" / "artifacts"
+    write_validation_outputs(_make_val_dict(), out_dir, _MinimalParameters(), _MinimalScaler(),
+                             num_samples=2, conditioned=False, n_show=0,
+                             run_label="model_a", config_path="run.yaml")
+    with open(out_dir / "evaluation_metrics.json") as f:
+        on_disk = json.load(f)
+    assert {"schema_version", "run_label", "config", "timestamp", "metrics", "n_val", "num_samples",
+            "conditioned", "figures"} <= set(on_disk)
+    assert on_disk["config"] == "run.yaml"
+    assert list(scan_run_metrics(tmp_path / "runs")) == ["model_a"]
+
+
 def test_write_validation_outputs_conditioned_flag_propagated(tmp_path):
     """The ``conditioned`` flag must be faithfully written to the JSON."""
     from seismo_sbi.evaluation.validation import write_validation_outputs
