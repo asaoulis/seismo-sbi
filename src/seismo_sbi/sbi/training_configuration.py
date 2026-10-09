@@ -16,7 +16,7 @@ TRAINING_BLOCKS = frozenset({
     "ml_architecture", "ml_encoder", "ml_conditioning", "ml_variable_stations",
     "ml_amplitude_embedding", "ml_positional_encoding", "ml_pooling", "ml_summary_bottleneck",
     "ml_flow", "ml_perf", "ml_optimizer", "ml_cache", "ml_batch", "ml_mmd", "ml_warm_start",
-    "ml_logging", "ml_scaler",
+    "ml_logging", "ml_scaler", "ml_real_width_gate",
 })
 
 #: Keys of the blocks read by name here; every other block is forwarded verbatim to a
@@ -30,6 +30,7 @@ NAMED_BLOCK_KEYS = {
     "ml_cache": {"sims", "noise", "dtype", "preload_workers"},
     "ml_warm_start": {"from_run_name"},
     "ml_logging": {"wandb", "csv"},
+    "ml_real_width_gate": {"observations", "every_n_epochs", "num_samples", "max_lune_area"},
 }
 
 
@@ -37,11 +38,14 @@ NAMED_BLOCK_KEYS = {
 class EncoderConfig:
     """Per-station encoder choice (``ml_architecture``) and its keyword arguments (``ml_encoder``).
 
-    ``input_decimate`` is a Nyquist-aware decimation applied at the model entry, before the
-    encoder, so it is not one of the encoder's own arguments.
+    ``band_limit`` is a zero-phase low-pass at ``cutoff_hz`` applied to every trace at the model
+    entry, and ``input_decimate`` a Nyquist-aware decimation after it; neither is one of the
+    encoder's own arguments. The band limit's ``sampling_rate_hz`` defaults to the data's
+    ``seismic_context.sampling_rate``.
     """
 
     station_encoder: str = "cnn"
+    band_limit: dict = None
     input_decimate: dict = None
     options: dict = field(default_factory=dict)
 
@@ -51,9 +55,23 @@ class EncoderConfig:
         decimate = options.pop("input_decimate", None) if options else None
         if decimate:
             decimate = dict(decimate) if isinstance(decimate, dict) else {"factor": int(decimate)}
+        limit = options.pop("band_limit", None) if options else None
+        if limit:
+            limit = dict(limit) if isinstance(limit, dict) else {"cutoff_hz": float(limit)}
+            limit.setdefault("sampling_rate_hz", _data_sampling_rate(config))
         return cls(station_encoder=config.get("ml_architecture") or "cnn",
+                   band_limit=limit or None,
                    input_decimate=decimate or None,
                    options=options or {})
+
+
+def _data_sampling_rate(config) -> float:
+    """``seismic_context.sampling_rate`` in Hz, or the processing block's, else 1.0."""
+    context = config.get("seismic_context") or {}
+    rate = context.get("sampling_rate")
+    if rate is None:
+        rate = (context.get("processing") or {}).get("sampling_rate", 1.0)
+    return float(rate)
 
 
 @dataclass
@@ -251,6 +269,29 @@ class LoggingConfig:
 
 
 @dataclass
+class RealWidthGateConfig:
+    """Posterior width on a fixed set of recordings, logged during training (``ml_real_width_gate``).
+
+    ``observations`` is a directory of ``.npz`` recordings written by
+    :func:`seismo_sbi.sbi.npe.training.real_width_gate.write_observation`; absent, the gate is
+    off. An event is kept when its lune 95 % credible area is at most ``max_lune_area``.
+    """
+
+    observations: str = None
+    every_n_epochs: int = 5
+    num_samples: int = 500
+    max_lune_area: float = 0.25
+
+    @classmethod
+    def from_yaml_block(cls, config):
+        block = config.get("ml_real_width_gate") or {}
+        return cls(observations=block.get("observations"),
+                   every_n_epochs=int(block.get("every_n_epochs", 5)),
+                   num_samples=int(block.get("num_samples", 500)),
+                   max_lune_area=float(block.get("max_lune_area", 0.25)))
+
+
+@dataclass
 class TrainingConfiguration:
     """Everything an NPE training run reads from its configuration file.
 
@@ -266,6 +307,7 @@ class TrainingConfiguration:
     batch: BatchConfig = field(default_factory=BatchConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    real_width_gate: RealWidthGateConfig = field(default_factory=RealWidthGateConfig)
     flow: dict = None
     perf: dict = None
     mmd: dict = field(default_factory=dict)
@@ -281,6 +323,7 @@ class TrainingConfiguration:
         reject_unknown_training_keys(config)
         return cls(
             encoder=EncoderConfig.from_yaml_block(config),
+            real_width_gate=RealWidthGateConfig.from_yaml_block(config),
             conditioning=ConditioningConfig.from_yaml_block(config),
             variable_stations=VariableStationsConfig.from_yaml_block(config),
             embeddings=EmbeddingConfig.from_yaml_block(config),
@@ -316,6 +359,8 @@ class TrainingConfiguration:
         """
         model_config = {"station_encoder": self.encoder.station_encoder,
                         "theta_scaler": theta_scaler_provenance}
+        if self.encoder.band_limit:
+            model_config["band_limit"] = self.encoder.band_limit
         if self.encoder.input_decimate:
             model_config["input_decimate"] = self.encoder.input_decimate
         if self.encoder.options:

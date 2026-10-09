@@ -10,7 +10,7 @@ import torch
 from torch import nn
 
 from seismo_sbi.sbi.npe.networks.axial_transformer import SeismogramAxialTransformer
-from seismo_sbi.sbi.npe.networks.station_encoders import build_station_encoder, InputDecimator
+from seismo_sbi.sbi.npe.networks.station_encoders import build_station_encoder, BandLimit, InputDecimator
 from seismo_sbi.sbi.npe.networks.amplitude_embedding import AmplitudeTokenEmbedding
 from seismo_sbi.sbi.npe.source_conditioning import (
     SourceConditioner,
@@ -59,6 +59,10 @@ class SeismogramTransformer(nn.Module):
         self._amp_dtype = torch.bfloat16 if _amp_dtype in ("bfloat16", "bf16") else torch.float16
         # SDPA (fused scaled_dot_product_attention) for the axial / PMA attentions.
         self._use_sdpa = bool(perf.get("sdpa", False))
+
+        # The same spectral limit on every input, before anything else sees the traces.
+        limit_cfg = transformer_config.get("band_limit", None) or {}
+        self.band_limit = BandLimit(**limit_cfg) if limit_cfg else None
 
         # Band-limited data sampled above its Nyquist rate decimates losslessly. Unpacking keeps
         # the original trace length; only the encoder and everything after it sees T/k.
@@ -323,6 +327,9 @@ class SeismogramTransformer(nn.Module):
                 "(n_cond == 0). Did you set source_location on an unconditioned model, or load "
                 "a conditioned checkpoint into a default-constructed trainer?"
             )
+
+        if self.band_limit is not None:
+            x = self.band_limit(x)
 
         # Model-entry decimation: after unpacking (which needs the original trace length),
         # before the encoder/amplitude paths — everything downstream sees T/k samples.

@@ -19,6 +19,7 @@ stamp_arviz_daily_warning()
 from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.sbi.datasets.training_data import (build_pipeline, generate_training_dataset,
                                           prepare_training_data, preload_noise_cache)
+from seismo_sbi.sbi.npe.training.real_width_gate import gate_callbacks
 from seismo_sbi.sbi.npe.training.train import (CompressionTrainer, apply_warm_start,
                                                  attach_loggers, enable_mmd_loss)
 
@@ -71,7 +72,8 @@ def main():
                   dataloader_args=training.dataloader_args(pipeline, data),
                   logger=attach_loggers(training.logging,
                                         pipeline.models_output_path / args.run_name),
-                  devices=training.devices)
+                  devices=training.devices,
+                  extra_callbacks=gate_callbacks(training, data))
 
 
 if __name__ == '__main__':

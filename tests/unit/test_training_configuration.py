@@ -64,6 +64,15 @@ def test_an_empty_configuration_gives_the_library_defaults():
     assert training.to_model_config({}) == {"station_encoder": "cnn", "theta_scaler": {}}
 
 
+def test_a_band_limit_takes_the_data_sampling_rate_and_reaches_the_model_config():
+    training = TrainingConfiguration.from_yaml_block(
+        {"ml_encoder": {"band_limit": {"cutoff_hz": 0.144}},
+         "seismic_context": {"sampling_rate": 1.0, "processing": {"sampling_rate": 1.0}}})
+    assert training.encoder.band_limit == {"cutoff_hz": 0.144, "sampling_rate_hz": 1.0}
+    assert training.to_model_config({})["band_limit"] == {"cutoff_hz": 0.144, "sampling_rate_hz": 1.0}
+    assert "band_limit" not in TrainingConfiguration.from_yaml_block({}).to_model_config({})
+
+
 def test_skip_compression_data_sets_the_stencil_skip():
     assert not TrainingConfiguration.from_yaml_block({}).skip_compression_stencil
     assert TrainingConfiguration.from_yaml_block({"skip_compression_data": True}).skip_compression_stencil

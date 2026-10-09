@@ -79,3 +79,41 @@ def mts6_to_gamma_delta(m6: np.ndarray):
     lam = np.linalg.eigvalsh(M)[:, ::-1]
     gamma, delta, *_ = lam2lune(lam)
     return gamma, delta
+
+
+def lune_credible_area(gamma, delta, mass: float = 0.95, grid_res=(121, 181),
+                       bw_method="scott") -> float:
+    """Fraction of the lune's area inside the ``mass`` highest-density region of the (γ, δ)
+    posterior, from a Gaussian KDE of the samples on a ``grid_res`` grid; small means the
+    source type is tightly resolved, 1 means unconstrained.
+
+    The lune area element is ``cos δ`` over ``γ ∈ [-30, 30]``, ``δ ∈ [-90, 90]`` degrees; the
+    region is found by accumulating area-weighted density to ``mass``. ``nan`` with fewer
+    than five finite samples or a degenerate cloud.
+    """
+    from scipy.stats import gaussian_kde
+
+    gamma = np.asarray(gamma, float); delta = np.asarray(delta, float)
+    m = np.isfinite(gamma) & np.isfinite(delta)
+    gamma, delta = gamma[m], delta[m]
+    if gamma.size < 5 or np.allclose(gamma, gamma[0]) and np.allclose(delta, delta[0]):
+        return float("nan")
+    gg = np.linspace(-30.0, 30.0, grid_res[0])
+    dd = np.linspace(-90.0, 90.0, grid_res[1])
+    G, Dl = np.meshgrid(gg, dd)
+    try:
+        kde = gaussian_kde(np.vstack([gamma, delta]), bw_method=bw_method)
+    except Exception:
+        return float("nan")
+    Z = kde(np.vstack([G.ravel(), Dl.ravel()])).reshape(G.shape)
+    w = np.cos(np.radians(Dl))
+    dens = Z * w
+    order = np.argsort(dens.ravel())[::-1]
+    mass_sorted = dens.ravel()[order]
+    area_sorted = w.ravel()[order]
+    cum_mass = np.cumsum(mass_sorted)
+    cum_mass /= cum_mass[-1]
+    k = int(np.searchsorted(cum_mass, mass))
+    k = min(max(k, 0), area_sorted.size - 1)
+    area_in = float(np.sum(area_sorted[: k + 1]))
+    return area_in / float(np.sum(w))

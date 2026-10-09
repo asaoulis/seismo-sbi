@@ -10,6 +10,7 @@ An encoder maps flattened station traces ``(B*N, n_components, n_samples)`` to t
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable, Dict
 
 import torch
@@ -107,6 +108,42 @@ def build_station_encoder(
 
 
 # InputDecimator — Nyquist-aware model-entry decimation (opt-in)
+
+class BandLimit(nn.Module):
+    """Zero-phase low-pass of every trace at the model entry, by a fixed mask on its spectrum.
+
+    Everything the network sees, synthetics, noise and recordings alike, loses its content
+    above ``cutoff_hz``: the mask is one up to the cutoff, falls as a raised cosine over
+    ``edge_hz`` and is zero beyond. ``sampling_rate_hz`` is the trace sampling rate. The
+    limit is part of the architecture, so a checkpoint applies at inference exactly the mask
+    it trained with.
+    """
+
+    def __init__(self, cutoff_hz: float, sampling_rate_hz: float, edge_hz: float = 0.01):
+        super().__init__()
+        nyquist_hz = 0.5 * float(sampling_rate_hz)
+        if not 0.0 < float(cutoff_hz) < nyquist_hz:
+            raise ValueError(f"cutoff_hz must lie in (0, {nyquist_hz}); got {cutoff_hz}")
+        if float(edge_hz) < 0.0:
+            raise ValueError(f"edge_hz must be >= 0; got {edge_hz}")
+        self.cutoff_hz = float(cutoff_hz)
+        self.sampling_rate_hz = float(sampling_rate_hz)
+        self.edge_hz = float(edge_hz)
+
+    def mask(self, n_samples: int, device=None) -> torch.Tensor:
+        """The ``(n_samples // 2 + 1,)`` spectral weights for traces of ``n_samples``."""
+        freqs = torch.fft.rfftfreq(int(n_samples), 1.0 / self.sampling_rate_hz).to(device)
+        if self.edge_hz == 0.0:
+            return (freqs <= self.cutoff_hz).to(torch.float32)
+        ramp = ((self.cutoff_hz + self.edge_hz - freqs) / self.edge_hz).clamp(0.0, 1.0)
+        return 0.5 * (1.0 - torch.cos(math.pi * ramp))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Any ``(..., T)`` layout, band-limited along the last axis, same shape and dtype."""
+        spectrum = torch.fft.rfft(x.float(), dim=-1)
+        limited = torch.fft.irfft(spectrum * self.mask(x.shape[-1], x.device), n=x.shape[-1], dim=-1)
+        return limited.to(x.dtype)
+
 
 class InputDecimator(nn.Module):
     """Decimate input traces by an integer factor at the model entry.

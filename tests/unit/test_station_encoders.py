@@ -136,6 +136,29 @@ def test_input_decimator_flat_layouts_agree_and_finite():
         InputDecimator(1, C)   # factor < 2 is rejected
 
 
+def test_band_limit_keeps_the_band_removes_the_shoulder_and_adds_no_phase():
+    from seismo_sbi.sbi.npe.networks.station_encoders import BandLimit
+
+    T = 201
+    t = torch.arange(T, dtype=torch.float64)
+    inside = torch.sin(2 * math.pi * (20 / T) * t + 0.4)      # 0.0995 Hz, on the FFT grid
+    above = 0.3 * torch.sin(2 * math.pi * (50 / T) * t + 1.3)  # 0.249 Hz, on the FFT grid
+    x = (inside + above).to(torch.float32).view(1, 1, 1, -1).repeat(2, 3, 3, 1)
+    limit = BandLimit(cutoff_hz=0.144, sampling_rate_hz=1.0, edge_hz=0.01)
+    y = limit(x)
+    assert y.shape == x.shape and y.dtype == x.dtype
+    residual = (y[0, 0, 0] - inside.to(torch.float32)).abs().max()
+    assert residual < 1e-4, f"above-band content survived or the band was altered: {residual:.2e}"
+    assert int(torch.argmax(y[0, 0, 0, 20:120])) == int(torch.argmax(inside[20:120]))
+    mask = limit.mask(T)
+    freqs = torch.fft.rfftfreq(T, 1.0)
+    assert torch.all(mask[freqs <= 0.144] == 1.0) and torch.all(mask[freqs >= 0.155] == 0.0)
+    flat = limit(x.reshape(6, 3, T)).reshape(2, 3, 3, T)
+    assert torch.allclose(flat, y, atol=1e-6)
+    with pytest.raises(ValueError):
+        BandLimit(cutoff_hz=0.6, sampling_rate_hz=1.0)
+
+
 def test_input_decimation_train_inference_symmetric():
     """A model built with ml_encoder input_decimate sizes its encoder to the decimated
     length and applies the SAME decimation in embed() on both the 4-D and packed paths,
