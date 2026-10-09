@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.nuisance_effects.amplitude_effect import AmplitudeErrorEffect
+from seismo_sbi.nuisance_effects.lanczos_shift import _shift_components
 from seismo_sbi.nuisance_effects.post_processing import build_post_processing_chain
 from seismo_sbi.nuisance_effects.seismogram_effect import station_value
 from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
@@ -50,11 +51,22 @@ def test_a_time_shift_width_per_station_shifts_only_the_stations_given_one():
     assert not np.allclose(out["NOISY"]["Z"], trace)
 
 
+def test_a_time_shift_static_per_station_delays_that_station_by_exactly_its_static():
+    trace = np.sin(np.linspace(0.0, 6.0, 64))
+    traces = {station: {"Z": trace} for station in TRACES}
+    effect = TimeShiftErrorEffect(1.0, gaussian_sigma=0.0, station_mean_s={"NOISY": 3.0, "default": 0.0})
+    out = effect(traces, None, time_shift_error=1.0)
+    np.testing.assert_allclose(out["NOISY"]["Z"], _shift_components({"Z": trace}, 3.0, 5)["Z"], atol=1e-12)
+    np.testing.assert_allclose(out["QUIET"]["Z"], trace, atol=1e-12)
+
+
 def test_a_per_station_map_from_a_configuration_reaches_the_effect():
     chain = build_post_processing_chain(
         ["amplitude_error", "time_shift_error"],
         {"amplitude_error": {"scale_range": {"NOISY": [3.0, 4.0], "default": [1.0, 1.0]}},
-         "time_shift_error": {"sampling_rate": 1.0, "gaussian_sigma": {"NOISY": 2.0, "default": 0.5}}})
+         "time_shift_error": {"sampling_rate": 1.0, "gaussian_sigma": {"NOISY": 2.0, "default": 0.5},
+                              "station_mean_s": {"NOISY": -1.5}}})
     amplitude, time_shift = chain.effects
     assert amplitude._scale_low == {"NOISY": 3.0, "default": 1.0}
     assert time_shift._sigma == {"NOISY": 2.0, "default": 0.5}
+    assert time_shift._mean == {"NOISY": -1.5}

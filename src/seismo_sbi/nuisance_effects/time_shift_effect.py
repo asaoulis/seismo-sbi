@@ -17,12 +17,14 @@ class TimeShiftErrorEffect(SeismogramEffect):
     """Shift a station's traces in time by a sub-sample amount, via Lanczos interpolation.
 
     The shift in s is an array-wide common offset plus an independent per-station draw from
-    ``N(0, gaussian_sigma)``. The common offset models a constant velocity or source-time
-    bias and is drawn once per call, from ``uniform(-uniform_offset, uniform_offset)`` or,
-    under ``common_offset_dist='gaussian'``, from ``N(0, common_offset_sigma)``; measured
+    ``N(station_mean_s, gaussian_sigma)``. The common offset models a constant velocity or
+    source-time bias and is drawn once per call, from ``uniform(-uniform_offset, uniform_offset)``
+    or, under ``common_offset_dist='gaussian'``, from ``N(0, common_offset_sigma)``; measured
     array-wide offsets are peaked at zero rather than flat. Positive shifts delay.
-    ``gaussian_sigma`` takes a ``{station: width in s}`` map as well as one width, with a
-    ``"default"`` entry for the stations it does not name.
+    ``station_mean_s`` is a station's fixed timing static, the observed-minus-synthetic delay that
+    repeats from event to event (a site or path term of the one-dimensional model), zero by
+    default. It and ``gaussian_sigma`` take a ``{station: seconds}`` map as well as one value,
+    with a ``"default"`` entry for the stations the map does not name.
 
     ``sigma_per_1000km`` and ``distance_cap_km`` grow the per-station width with path length
     and need the source location; zero keeps it flat. ``sampling_rate`` in samples per second
@@ -37,6 +39,8 @@ class TimeShiftErrorEffect(SeismogramEffect):
     DEFAULT_UNIFORM_OFFSET: float = 0.0
     #: Default Gaussian standard deviation (seconds).
     DEFAULT_GAUSSIAN_SIGMA: float = 1.0
+    #: Default per-station timing static (seconds).
+    DEFAULT_STATION_MEAN_S: float = 0.0
     #: Default Lanczos kernel order.
     DEFAULT_LANCZOS_ORDER: int = 5
     #: Default common-offset distribution ("uniform" for back-compat).
@@ -50,6 +54,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
         lanczos_order: Optional[int] = None,
         common_offset_dist: Optional[str] = None,
         common_offset_sigma: Optional[float] = None,
+        station_mean_s: Optional[float] = None,
         sigma_per_1000km: float = 0.0,
         distance_cap_km: Optional[float] = None,
         source_latitude: Optional[float] = None,
@@ -71,6 +76,11 @@ class TimeShiftErrorEffect(SeismogramEffect):
             per_station(gaussian_sigma)
             if gaussian_sigma is not None
             else self.DEFAULT_GAUSSIAN_SIGMA
+        )
+        self._mean = (
+            per_station(station_mean_s)
+            if station_mean_s is not None
+            else self.DEFAULT_STATION_MEAN_S
         )
         self._order = (
             int(lanczos_order)
@@ -135,8 +145,9 @@ class TimeShiftErrorEffect(SeismogramEffect):
         result = {}
         for station, components in seismograms_map.items():
             station_shift_s = common_offset_s + np.random.normal(
-                0.0, station_sigma.get(station, station_value(self._sigma, station,
-                                                              self.DEFAULT_GAUSSIAN_SIGMA)))
+                station_value(self._mean, station, self.DEFAULT_STATION_MEAN_S),
+                station_sigma.get(station, station_value(self._sigma, station,
+                                                         self.DEFAULT_GAUSSIAN_SIGMA)))
             shift_samples = station_shift_s * self._sampling_rate
             comps = list(components)
             if not comps:
