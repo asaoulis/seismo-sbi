@@ -101,3 +101,10 @@ def test_non_finite_draws_are_dropped_and_a_mostly_non_finite_event_is_not_kept(
     gate.on_validation_epoch_end(FakeTrainer(epoch=0), module)
     assert module.logged["real/kept_fraction"] == pytest.approx(0.5)
     assert module.logged["real/median_lune_area95"] < 0.05
+
+
+def test_an_event_whose_eigenvalues_do_not_converge_gets_a_nan_area(monkeypatch):
+    def fail(_):
+        raise np.linalg.LinAlgError("Eigenvalues did not converge")
+    monkeypatch.setattr(real_width_gate, "mts6_to_gamma_delta", fail)
+    assert np.isnan(real_width_gate.finite_lune_area(narrow_samples()))

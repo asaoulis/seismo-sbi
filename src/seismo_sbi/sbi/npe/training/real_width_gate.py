@@ -48,12 +48,16 @@ def load_observation_set(directory) -> tuple:
 
 def finite_lune_area(moment_tensors) -> float:
     """Lune 95 % credible area of the finite rows of ``moment_tensors`` ``(n_draws, >= 6)``,
-    or NaN when fewer than ``MIN_FINITE_DRAWS`` rows are finite."""
+    or NaN when fewer than ``MIN_FINITE_DRAWS`` rows are finite or their eigenvalues do not
+    converge."""
     moment_tensors = np.asarray(moment_tensors, float)[:, :6]
     finite = moment_tensors[np.isfinite(moment_tensors).all(axis=1)]
     if len(finite) < MIN_FINITE_DRAWS:
         return float("nan")
-    gamma, delta = mts6_to_gamma_delta(finite)
+    try:
+        gamma, delta = mts6_to_gamma_delta(finite)
+    except np.linalg.LinAlgError:
+        return float("nan")
     return float(lune_credible_area(gamma, delta, 0.95))
 
 
