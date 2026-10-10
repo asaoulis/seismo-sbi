@@ -15,6 +15,10 @@ import pytorch_lightning as pl
 from seismo_sbi.moment_tensor.lune_angles import lune_credible_area, mts6_to_gamma_delta
 from seismo_sbi.sbi.npe.posterior_sampling import sample_subsets_batched
 
+#: Least number of finite draws an event needs for its lune area; with fewer the area is NaN,
+#: which counts as not kept.
+MIN_FINITE_DRAWS = 10
+
 
 def write_observation(path, data, coords, source_vec=None, event_id: str = "") -> Path:
     """Save one recording for the gate: ``data`` ``(n_stations, n_components, n_samples)``,
@@ -42,6 +46,17 @@ def load_observation_set(directory) -> tuple:
     return ids, items
 
 
+def finite_lune_area(moment_tensors) -> float:
+    """Lune 95 % credible area of the finite rows of ``moment_tensors`` ``(n_draws, >= 6)``,
+    or NaN when fewer than ``MIN_FINITE_DRAWS`` rows are finite."""
+    moment_tensors = np.asarray(moment_tensors, float)[:, :6]
+    finite = moment_tensors[np.isfinite(moment_tensors).all(axis=1)]
+    if len(finite) < MIN_FINITE_DRAWS:
+        return float("nan")
+    gamma, delta = mts6_to_gamma_delta(finite)
+    return float(lune_credible_area(gamma, delta, 0.95))
+
+
 class RealWidthGate(pl.Callback):
     """Log the kept fraction and median lune area of the flow on real recordings.
 
@@ -63,7 +78,8 @@ class RealWidthGate(pl.Callback):
         self.history = []
 
     def lune_areas(self, pl_module) -> np.ndarray:
-        """Lune 95 % credible area of the posterior on every item, in lune-area fraction."""
+        """Lune 95 % credible area of the posterior on every item, in lune-area fraction; NaN
+        for an item with fewer than ``MIN_FINITE_DRAWS`` finite draws."""
         posterior = SimpleNamespace(posterior_estimator=pl_module.flow, prior=None)
         was_training = pl_module.training
         pl_module.eval()
@@ -71,11 +87,7 @@ class RealWidthGate(pl.Callback):
                                          num_samples=self.num_samples, device=pl_module.device)
         if was_training:
             pl_module.train()
-        areas = []
-        for moment_tensors in samples:
-            gamma, delta = mts6_to_gamma_delta(np.asarray(moment_tensors)[:, :6])
-            areas.append(lune_credible_area(gamma, delta, 0.95))
-        return np.asarray(areas, float)
+        return np.asarray([finite_lune_area(moment_tensors) for moment_tensors in samples], float)
 
     def on_validation_epoch_end(self, trainer, pl_module):
         if trainer.sanity_checking or (trainer.current_epoch + 1) % self.every_n_epochs:

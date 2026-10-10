@@ -86,3 +86,18 @@ def test_the_configuration_block_builds_the_callback_or_nothing(tmp_path):
     from seismo_sbi.utils.errors import InvalidConfiguration
     with pytest.raises(InvalidConfiguration):
         TrainingConfiguration.from_yaml_block({"ml_real_width_gate": {"observatons": str(tmp_path)}})
+
+
+def test_non_finite_draws_are_dropped_and_a_mostly_non_finite_event_is_not_kept(monkeypatch):
+    with_nan = narrow_samples()
+    with_nan[:5] = np.nan
+    with_nan[5, 2] = np.inf
+    all_nan = np.full((400, 6), np.nan)
+    items = [(np.zeros((2, 3, 20)), np.zeros((2, 2)), None)] * 2
+    monkeypatch.setattr(real_width_gate, "sample_subsets_batched",
+                        lambda posterior, items, scaler, **_: [with_nan, all_nan])
+    gate = RealWidthGate(items, ["a", "b"], data_scaler=None, every_n_epochs=1, num_samples=10)
+    module = LogRecorder()
+    gate.on_validation_epoch_end(FakeTrainer(epoch=0), module)
+    assert module.logged["real/kept_fraction"] == pytest.approx(0.5)
+    assert module.logged["real/median_lune_area95"] < 0.05
