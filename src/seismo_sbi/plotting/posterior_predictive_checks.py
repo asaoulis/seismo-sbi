@@ -1,8 +1,8 @@
 """Posterior predictive checks: re-simulate posterior draws and score them against the data.
 
 :class:`PosteriorPredictiveChecks` simulates an ensemble per method, selects the best synthetics,
-and evaluates registered misfit metrics against the observation; :func:`plot_metric_bars`
-compares the metrics across methods.
+and evaluates registered misfit metrics against the observation, by default those of
+:mod:`seismo_sbi.evaluation.ppc_metrics`; :func:`plot_metric_bars` compares the metrics across methods.
 """
 
 import traceback
@@ -14,10 +14,9 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.signal import hilbert
 from tqdm import tqdm
 
-from seismo_sbi.data_quality.metrics import correlation_misfit, station_reduced_chi2
+from seismo_sbi.evaluation import ppc_metrics
 from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
 from seismo_sbi.simulators.simulation_io import component_alias
 from seismo_sbi.utils.parallel import tqdm_joblib
@@ -100,15 +99,15 @@ class PosteriorPredictiveChecks:
         # metric registry: name -> callable(obs, synthetics, meta) -> per-sample np.array
         self.metrics = OrderedDict()
         # register defaults
-        self.add_metric(r"$\\chi^2$", self._metric_reduced_chi2)
-        self.add_metric("Correlation misfit", self._metric_corr_misfit)
-        self.add_metric("Power misfit", self._metric_power_misfit)
-        self.add_metric("Envelope misfit", self._metric_envelope_misfit)
-        self.add_metric("MSE", self._metric_mse)
+        self.add_metric(r"$\\chi^2$", ppc_metrics.reduced_chi2_misfit)
+        self.add_metric("Correlation misfit", ppc_metrics.correlation_misfit_per_sample)
+        self.add_metric("Power misfit", ppc_metrics.power_misfit)
+        self.add_metric("Envelope misfit", ppc_metrics.envelope_misfit)
+        self.add_metric("MSE", ppc_metrics.mse)
         # Shift-tolerant pair: judge waveform shape with the arrival free, so a mechanism is not
         # charged for travel-time error from the 1-D model and hypocentre.
-        self.add_metric("Shifted corr misfit", self._metric_shifted_corr_misfit)
-        self.add_metric("Autocorr misfit", self._metric_autocorr_misfit)
+        self.add_metric("Shifted corr misfit", ppc_metrics.shifted_correlation_misfit)
+        self.add_metric("Autocorr misfit", ppc_metrics.autocorrelation_misfit)
 
     # --- Public API ---
     def add_metric(self, name: str, func: Callable):
@@ -119,8 +118,17 @@ class PosteriorPredictiveChecks:
         if name in self.metrics:
             raise KeyError(f"Metric {name} already exists")
         self.metrics[name] = func
-    def _metric_mse(self, obs, synthetics, meta):
-        return np.mean((synthetics - obs) ** 2, axis=1)
+
+    def _metric_meta(self):
+        """The ``meta`` dict every metric receives (see :mod:`seismo_sbi.evaluation.ppc_metrics`)."""
+        return {
+            "sample_rate": self.sample_rate,
+            "n_traces": self.n_traces,
+            "covariance_matrix": self.covariance_matrix,
+            "dof_override": self.dof_override,
+            "max_shift_samples": self.max_shift_samples,
+            "autocorr_maxlag": self.autocorr_maxlag,
+        }
 
     def simulate_ensemble(self, param_list: List[dict], num_samples: int = 100, *, ensemble_name: Optional[str] = None):
         """
@@ -229,12 +237,7 @@ class PosteriorPredictiveChecks:
             synthetics array, or None if no selection was applied.
         """
         obs = np.asarray(observation).ravel()
-        meta = {
-            "sample_rate": self.sample_rate,
-            "n_traces": self.n_traces,
-            "covariance_matrix": self.covariance_matrix,
-            "dof_override": self.dof_override,
-        }
+        meta = self._metric_meta()
 
         selected_synthetics: Dict[str, np.ndarray] = {}
         selection_indices: Dict[str, Optional[np.ndarray]] = {}
@@ -276,12 +279,7 @@ class PosteriorPredictiveChecks:
             results[name] -> dict[metric_name] -> {"mean", "var", "raw"}
         """
         obs = np.asarray(observation).ravel()
-        meta = {
-            "sample_rate": self.sample_rate,
-            "n_traces": self.n_traces,
-            "covariance_matrix": self.covariance_matrix,
-            "dof_override": self.dof_override,
-        }
+        meta = self._metric_meta()
 
         results: Dict[str, Dict[str, dict]] = {}
         for name, synthetics in ensembles_synthetics.items():
@@ -354,179 +352,6 @@ class PosteriorPredictiveChecks:
                 }
 
         return results, ensembles_synthetics_sel
-
-    # --- Built-in metrics: each returns an array of length n_synthetics ---
-
-    def _metric_reduced_chi2(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
-        n_samples = synthetics.shape[0]
-        obs_len = obs.size
-        dof = meta.get("dof_override", None)
-        if dof is None:
-            dof = obs_len if obs_len > 0 else 1
-
-        chi2s = np.empty((n_samples,), dtype=float)
-        for i in range(n_samples):
-            chi2s[i] = station_reduced_chi2(obs, synthetics[i], self.covariance_matrix, dof)
-        return chi2s
-
-    def _reshape_to_traces(self, vec: np.ndarray, n_traces: int):
-        vec = np.asarray(vec).ravel()
-        if n_traces is None or n_traces <= 0:
-            return None
-        if len(vec) % n_traces != 0:
-            return None
-        tlen = len(vec) // n_traces
-        return vec.reshape((n_traces, tlen))
-
-    def _metric_corr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
-        """
-        Per-sample misfit = mean over traces of (1 - Pearson corr) if trace shape known,
-        else whole-vector (1 - corr) per sample.
-        """
-        n_samples = synthetics.shape[0]
-        n_traces = meta.get("n_traces", self.n_traces)
-
-        obs_mat = self._reshape_to_traces(obs, n_traces)
-        if obs_mat is None:
-            # fallback whole vector
-            x = obs - obs.mean()
-            xnorm = np.linalg.norm(x) + 1e-12
-            vals = []
-            for s in synthetics:
-                y = s - s.mean()
-                denom = xnorm * (np.linalg.norm(y) + 1e-12)
-                corr = 0.0 if denom == 0.0 else float(np.dot(x, y) / denom)
-                vals.append(1.0 - corr)
-            return np.asarray(vals, dtype=float)
-
-        # reshape synthetics -> (n_samples, n_traces, tlen)
-        tlen = obs_mat.shape[1]
-        try:
-            syn_mat = synthetics.reshape((n_samples, obs_mat.shape[0], tlen))
-        except Exception:
-            # fallback
-            return self._metric_corr_misfit(obs, synthetics, {**meta, "n_traces": None})
-
-        vals = np.empty((n_samples,), dtype=float)
-        for i in range(n_samples):
-            vals[i] = correlation_misfit(obs_mat, syn_mat[i])
-        return vals
-
-    def _metric_power_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
-        p_obs = float(np.dot(obs, obs)) + 1e-12
-        p_syn = np.sum(synthetics ** 2, axis=1)
-        vals = np.abs(p_obs - p_syn) / p_obs
-        return vals
-
-    def _metric_envelope_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
-        """
-        Envelope-based misfit: mean absolute relative difference of envelope over time.
-        """
-        env_obs = np.abs(hilbert(obs))
-        vals = np.empty((synthetics.shape[0],), dtype=float)
-        for i, s in enumerate(synthetics):
-            env_s = np.abs(hilbert(s))
-            denom = env_obs + 1e-12
-            vals[i] = float(np.mean(np.abs(env_obs - env_s) / denom))
-        return vals
-
-    @staticmethod
-    def _acf_matrix(mat: np.ndarray, maxlag: int) -> np.ndarray:
-        """Normalised autocorrelation at lags 1..maxlag for each row of ``mat``.
-
-        FFT-based and vectorised over rows: the per-lag dot products are one transform
-        pair regardless of ``maxlag``.
-        """
-        n = mat.shape[1]
-        x = mat - mat.mean(axis=1, keepdims=True)
-        nfft = int(2 ** np.ceil(np.log2(2 * n)))
-        F = np.fft.rfft(x, n=nfft, axis=1)
-        ac = np.fft.irfft(F * np.conj(F), n=nfft, axis=1)[:, : maxlag + 1]
-        return ac[:, 1:] / (ac[:, :1] + 1e-12)
-
-    def _metric_autocorr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict,
-                                maxlag: Optional[int] = None):
-        """Difference in short-lag autocorrelation SHAPE, per trace.
-
-        ``mean_{lag=1..maxlag} |acf_obs(lag) - acf_syn(lag)|``, averaged over traces.
-
-        The autocorrelation of a trace is invariant to a time shift of that trace, so this
-        scores pulse shape, duration and frequency content while ignoring arrival time entirely:
-        the complement to the zero-lag correlation, which cannot separate the two.
-
-        Computed PER TRACE (falling back to the whole vector only when the trace layout is
-        unknown): run over concatenated traces the lag products would straddle trace
-        boundaries and measure the packing order rather than the waveforms.
-
-        .. warning::
-           Blind to polarity by construction: ``ACF(-x) == ACF(x)``, so an inverted
-           waveform scores exactly 0.  Never use this metric alone to argue about the sign
-           of the isotropic component; pair it with ``Shifted corr misfit`` (which keeps
-           polarity as long as the lag budget stays under half a dominant period), the
-           zero-lag correlation, or the first-motion polarity analysis.
-        """
-        maxlag = int(self.autocorr_maxlag if maxlag is None else maxlag)
-        n_samples = synthetics.shape[0]
-        n_traces = meta.get("n_traces", self.n_traces)
-        obs_mat = self._reshape_to_traces(np.asarray(obs).ravel(), n_traces)
-        if obs_mat is None:
-            obs_mat = np.asarray(obs).ravel()[None, :]
-            syn_mat = np.asarray(synthetics).reshape(n_samples, 1, -1)
-        else:
-            try:
-                syn_mat = synthetics.reshape((n_samples,) + obs_mat.shape)
-            except Exception:  # noqa: BLE001
-                obs_mat = np.asarray(obs).ravel()[None, :]
-                syn_mat = np.asarray(synthetics).reshape(n_samples, 1, -1)
-        maxlag = max(1, min(maxlag, obs_mat.shape[1] - 1))
-        acf_obs = self._acf_matrix(obs_mat, maxlag)
-        vals = np.empty((n_samples,), dtype=float)
-        for i in range(n_samples):
-            vals[i] = float(np.mean(np.abs(acf_obs - self._acf_matrix(syn_mat[i], maxlag))))
-        return vals
-
-    def _metric_shifted_corr_misfit(self, obs: np.ndarray, synthetics: np.ndarray, meta: dict):
-        """``1 - max_{|lag| <= L} corr(obs, syn)``, per trace, averaged over traces.
-
-        The zero-lag correlation misfit charges a mechanism for travel-time error it did not
-        cause: a 1-D velocity model and a catalogue hypocentre both translate whole traces,
-        which decorrelates them without saying anything about the source. Maximising over a
-        bounded lag lets the arrival time float and scores waveform shape and polarity alone.
-
-        ``L`` = ``max_shift_samples`` (constructor) or 10 % of the trace length. The lag band
-        is bounded on purpose: an unbounded search would align a P arrival onto an S.
-
-        Normalised cross-correlation via FFT, vectorised over traces.
-        """
-        n_samples = synthetics.shape[0]
-        n_traces = meta.get("n_traces", self.n_traces)
-        obs_mat = self._reshape_to_traces(np.asarray(obs).ravel(), n_traces)
-        if obs_mat is None:
-            return self._metric_corr_misfit(obs, synthetics, meta)
-        try:
-            syn_mat = synthetics.reshape((n_samples,) + obs_mat.shape)
-        except Exception:  # noqa: BLE001
-            return self._metric_corr_misfit(obs, synthetics, meta)
-
-        tlen = obs_mat.shape[1]
-        L = meta.get("max_shift_samples", self.max_shift_samples)
-        L = int(L) if L else max(1, int(round(0.10 * tlen)))
-        L = max(1, min(L, tlen - 1))
-
-        nfft = int(2 ** np.ceil(np.log2(2 * tlen)))
-        x = obs_mat - obs_mat.mean(axis=1, keepdims=True)
-        xn = np.linalg.norm(x, axis=1) + 1e-12
-        FX = np.conj(np.fft.rfft(x, n=nfft, axis=1))
-        vals = np.empty((n_samples,), dtype=float)
-        for i in range(n_samples):
-            y = syn_mat[i] - syn_mat[i].mean(axis=1, keepdims=True)
-            yn = np.linalg.norm(y, axis=1) + 1e-12
-            cc = np.fft.irfft(FX * np.fft.rfft(y, n=nfft, axis=1), n=nfft, axis=1)
-            # lag k lives at index k for k >= 0 and at nfft+k for k < 0
-            band = np.concatenate([cc[:, : L + 1], cc[:, nfft - L:]], axis=1)
-            best = band.max(axis=1) / (xn * yn)
-            vals[i] = float(np.mean(1.0 - np.clip(best, -1.0, 1.0)))
-        return vals
 
     # --- Time-shift helpers ---
     def _vec_to_outputs_map(self, vec: np.ndarray) -> Dict[str, Dict[str, np.ndarray]]:
