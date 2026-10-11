@@ -3,7 +3,7 @@
 A ``SeismogramEffect`` owns exactly one nuisance key, is a strict no-op when that key is absent
 from ``nuisance_params``, and returns a new dict rather than mutating its input. The base class
 gates a transform per station, resolves the source location and measures source-station
-distances; ``_bearing_and_distance_km`` is the spherical-Earth geometry under the last two.
+distances. ``_bearing_and_distance_km`` is the spherical-Earth geometry under the last two.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class SeismogramEffect(ABC):
         """Apply ``transform(components, station)`` to each station independently with the given
         probability.
 
-        ``probability`` is clipped to ``[0, 1]``; a station that does not fire is copied through
+        ``probability`` is clipped to ``[0, 1]``. A station that does not fire is copied through
         as float64. The gate is drawn before whatever ``transform`` draws, which fixes the order
         the random number generator is called in.
         """
@@ -81,7 +81,7 @@ class SeismogramEffect(ABC):
 def per_station(value, convert=float):
     """A configured value as one number for every station or a ``{station: number}`` map.
 
-    A scalar is converted and returned as is; a map has each entry converted, and may hold a
+    A scalar is converted and returned as is. A map has each entry converted, and may hold a
     ``"default"`` entry for the stations it does not name (see :func:`station_value`).
     """
     if isinstance(value, dict):
@@ -90,7 +90,7 @@ def per_station(value, convert=float):
 
 
 def station_value(value, station, fallback):
-    """``value`` at ``station``: a scalar applies to every station; a map gives the stations it
+    """``value`` at ``station``: a scalar applies to every station. A map gives the stations it
     names their entry and every other station its ``"default"`` entry, else ``fallback``.
     """
     if isinstance(value, dict):

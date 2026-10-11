@@ -1,7 +1,7 @@
 """Empirical noise autocovariances estimated from windows of recorded noise.
 
 ``EmpiricalCovarianceEstimator`` averages per-trace autocovariances over a directory of noise
-windows (h5), optionally with an exponential taper; ``build_cov_sigma2_dict`` reduces them to
+windows (h5), optionally with an exponential taper. ``build_cov_sigma2_dict`` reduces them to
 lag-0 variances.
 """
 import h5py
@@ -102,10 +102,10 @@ class EmpiricalCovarianceEstimator:
         """Per-trace autocovariances ``{station: {component: (n_samples,)}}`` from noise windows
         held in memory, ``(n_windows, n_traces, n_samples)`` or the flat ``(n_windows, n_traces *
         n_samples)`` rows :meth:`~seismo_sbi.sbi.noises.real_noise.RealNoiseSampler.from_windows`
-        takes, with traces in receiver order and each station's own components in its order;
-        tapered like the directory path.
+        takes, with traces in receiver order and each station's own components in its order.
+        Tapered like the directory path.
 
-        ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; an absent
+        ``present`` ``(n_windows, n_stations)`` marks the stations each window holds. An absent
         station's traces are skipped, as the directory path skips a station missing from a file.
         """
         noise_windows = np.asarray(noise_windows)
@@ -185,7 +185,7 @@ class EmpiricalCovarianceEstimator:
     @staticmethod
     def taper_covariances(station_component_covariances, data_len=None, fit_length=30, ols_fit=True, return_fit= False):
         """Exponentially taper each autocovariance in place over its first ``data_len`` lags (all of
-        them when None); a longer autocovariance is cut to ``data_len`` lags."""
+        them when None). A longer autocovariance is cut to ``data_len`` lags."""
         for receiver in station_component_covariances.keys():
             for component in station_component_covariances[receiver].keys():
                 covar_data = station_component_covariances[receiver][component]

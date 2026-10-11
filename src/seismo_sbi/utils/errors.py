@@ -1,7 +1,7 @@
 """Shared error types and the two retry wrappers.
 
 :func:`error_handling_wrapper` retries a flaky forward-model call a fixed number of times and then
-raises; :func:`skip_after_retries` retries a simulation and then skips it.
+raises. :func:`skip_after_retries` retries a simulation and then skips it.
 """
 
 import traceback

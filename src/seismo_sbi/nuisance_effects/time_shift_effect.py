@@ -19,7 +19,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
     The shift in s is an array-wide common offset plus an independent per-station draw from
     ``N(station_mean_s, gaussian_sigma)``. The common offset models a constant velocity or
     source-time bias and is drawn once per call, from ``uniform(-uniform_offset, uniform_offset)``
-    or, under ``common_offset_dist='gaussian'``, from ``N(0, common_offset_sigma)``; measured
+    or, under ``common_offset_dist='gaussian'``, from ``N(0, common_offset_sigma)``. Measured
     array-wide offsets are peaked at zero rather than flat. Positive shifts delay.
     ``station_mean_s`` is a station's fixed timing static, the observed-minus-synthetic delay that
     repeats from event to event (a site or path term of the one-dimensional model), zero by
@@ -27,11 +27,11 @@ class TimeShiftErrorEffect(SeismogramEffect):
     with a ``"default"`` entry for the stations the map does not name.
 
     ``sigma_per_1000km`` and ``distance_cap_km`` grow the per-station width with path length
-    and need the source location; zero keeps it flat. ``sampling_rate`` in samples per second
+    and need the source location. Zero keeps it flat. ``sampling_rate`` in samples per second
     converts the shift to samples and is injected by the caller rather than configured.
 
     Nuisance key ``time_shift_error``: a switch, not a probability. Absent or zero is the
-    identity; any other value makes the effect active, with the magnitude set entirely by the
+    identity. Any other value makes the effect active, with the magnitude set entirely by the
     configuration.
     """
 

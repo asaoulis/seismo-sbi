@@ -22,7 +22,7 @@ class FixedLocationKernelSimulator(Simulator):
     def __init__(self, score_compression_data: "ScoreCompressionData" = None,  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # None when the simulator is built before the kernels are known; they are required
+        # None when the simulator is built before the kernels are known. They are required
         # before any simulation runs.
         if score_compression_data is None:
             self.sensitivity_kernels = None

@@ -177,7 +177,7 @@ def rotate_to_moment_tensor_frame(gfarr, azimuths_deg, back_azimuths_deg):
     ne = 6
     gf_tensor = np.zeros((ns, nc, ne, nt))
     phi = np.deg2rad(azimuths_deg).reshape((ns, 1))
-    # Rotation to the receiver azimuths, after Minson and Dreger (2008); vertical positive up.
+    # Rotation to the receiver azimuths, after Minson and Dreger (2008). Vertical positive up.
     gf_tensor[:,0,0] =  np.cos(2*phi) * gfarr[:,5]/2 - gfarr[:,0]/6 + gfarr[:,8]/3
     gf_tensor[:,0,1] = -np.cos(2*phi) * gfarr[:,5]/2 - gfarr[:,0]/6 + gfarr[:,8]/3
     gf_tensor[:,0,2] =                                 gfarr[:,0]/3 + gfarr[:,8]/3

@@ -1,6 +1,6 @@
 """Records for jobs and inversion results.
 
-:class:`JobData` holds one job's data vector and truth; :class:`InversionConfig`,
+:class:`JobData` holds one job's data vector and truth. :class:`InversionConfig`,
 :class:`InversionData` and :class:`InversionResult` hold what an inversion used and returned.
 """
 

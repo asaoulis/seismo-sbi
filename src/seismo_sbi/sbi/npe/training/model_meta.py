@@ -12,7 +12,8 @@ MODEL_META_FILENAME = "model_meta.json"
 
 
 def read_model_meta(run_directory) -> dict:
-    """The parsed sidecar of the run in ``run_directory``; raises ``FileNotFoundError`` when it is missing."""
+    """The parsed sidecar of the run in ``run_directory``.
+    Raises ``FileNotFoundError`` when it is missing."""
     meta_path = Path(run_directory) / MODEL_META_FILENAME
     if not meta_path.exists():
         raise FileNotFoundError(f"{meta_path} is missing; a run is rebuilt from its sidecar.")

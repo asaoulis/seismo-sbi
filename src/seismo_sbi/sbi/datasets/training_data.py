@@ -3,7 +3,7 @@
 Builds the pipeline named by a configuration, simulates or finds the training set on disk, then
 loads the compressors, the noise model and the parameter scaler and builds the augmentation
 chains. The result is a :class:`TrainingData` holding everything the trainer and the dataloaders
-need; the training script calls these in order.
+need. The training script calls these in order.
 """
 
 from dataclasses import dataclass
@@ -22,8 +22,8 @@ from ...utils.errors import InvalidConfiguration
 class TrainingData:
     """The simulated dataset and the per-run objects an NPE training run consumes.
 
-    ``station_locations`` has shape (n_stations, n_coordinates); ``trace_length`` is the
-    per-trace sample count; the two augmentation chains are applied to a training sample before
+    ``station_locations`` has shape (n_stations, n_coordinates). ``trace_length`` is the
+    per-trace sample count. The two augmentation chains are applied to a training sample before
     and after sensor noise is added. ``stf_alignment`` is the forward model's source-time
     convention (:attr:`~seismo_sbi.simulators.base.Simulator.stf_alignment`).
     """
@@ -43,7 +43,7 @@ class TrainingData:
 def build_pipeline(config, config_path, num_simulations=None, pipeline_class=None):
     """Build the pipeline named by ``config.pipeline_type`` and load its seismic parameters.
 
-    ``num_simulations`` overrides the size of the training dataset, ``jobs.simulations.random_events``;
+    ``num_simulations`` overrides the size of the training dataset, ``jobs.simulations.random_events``.
     ``pipeline_class`` overrides the class the configuration names.
     """
     if num_simulations is not None:

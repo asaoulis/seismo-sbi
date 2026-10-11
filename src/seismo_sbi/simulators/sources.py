@@ -4,7 +4,7 @@ A :class:`GenericPointSource` pairs a :class:`SourceLocation` with a moment tens
 six components (``m_rr, m_tt, m_pp, m_rt, m_rp, m_tp``, in N.m) or an isotropic magnitude.
 :func:`build_stf_sliprate` builds the unit-moment sliprate handed to the forward model: a Dirac
 by default, or a triangle whose half-duration scales the GCMT law. Under the ``"peak"`` alignment the
-source time is the centroid of the moment-rate function; under ``"onset"`` it is its start.
+source time is the centroid of the moment-rate function. Under ``"onset"`` it is its start.
 """
 
 import numpy as np
@@ -73,7 +73,7 @@ def _gcmt_half_duration(mt_components: np.ndarray) -> float:
     """Half-duration in s of the triangular source time function the GCMT law predicts.
 
     ``mt_components`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m. The law gives the
-    mean duration at a magnitude; individual earthquakes scatter by about a factor of two.
+    mean duration at a magnitude. Individual earthquakes scatter by about a factor of two.
     """
     m0 = scalar_moment(mt_components)
     return GCMT_SCALE_FACTOR * m0 ** (1.0 / 3.0)
@@ -137,7 +137,7 @@ def build_stf_sliprate(
     sliprate = _build_triangular_stf(effective_half, dt)
     if len(sliprate) < _MIN_STF_SAMPLES:
         sliprate = np.concatenate([sliprate, np.zeros(_MIN_STF_SAMPLES - len(sliprate))])
-    # A half-duration below about dt/2 discretises to a zero-area triangle; it is unresolvable
+    # A half-duration below about dt/2 discretises to a zero-area triangle. It is unresolvable
     # at this sample interval, so fall back to the Dirac rather than divide by zero.
     area = float(sliprate.sum()) * dt
     if not area > 0.0:
@@ -148,7 +148,7 @@ def build_stf_sliprate(
 def sliprate_centroid_s(sliprate: np.ndarray, dt: float) -> float:
     """Centroid time in s, after the sliprate's first sample, of a sliprate sampled every ``dt`` s.
 
-    Zero for the Dirac of :func:`build_stf_sliprate`; for its triangle, the peak of the sampled
+    Zero for the Dirac of :func:`build_stf_sliprate`. For its triangle, the peak of the sampled
     moment rate, which a source under the ``"peak"`` alignment places at the source time.
     """
     sliprate = np.asarray(sliprate, dtype=float)

@@ -2,7 +2,7 @@
 
 A model is an array shaped ``(6, n_layers)`` with rows layer thickness in km, compressional and
 shear speed in km/s, density in g/cm^3, then qp and qs. ``perturb_model`` scales the thickness and
-both speeds of each layer by independent normal factors; ``perturb_cps_model`` draws smooth
+both speeds of each layer by independent normal factors. ``perturb_cps_model`` draws smooth
 correlated perturbations with a correlation length in depth, the density following the
 compressional speed through the Brocher (2005) relation.
 """

@@ -22,7 +22,7 @@ from seismo_sbi.nuisance_effects.time_shift_effect import TimeShiftErrorEffect
 
 
 class PostProcessingChain:
-    """Effects applied in order, each one's output feeding the next; an empty chain is
+    """Effects applied in order, each one's output feeding the next. An empty chain is
     the identity.
     """
 
@@ -56,7 +56,7 @@ class NuisanceEffect:
 
 _SIMULATED_OR_AUGMENTED = ("simulation", "training_augmentation")
 
-#: Nuisance parameter key to the effect it builds; the one table every stage reads.
+#: Nuisance parameter key to the effect it builds. The one table every stage reads.
 EFFECT_REGISTRY: dict[str, NuisanceEffect] = {
     "amplitude_error": NuisanceEffect(AmplitudeErrorEffect, _SIMULATED_OR_AUGMENTED),
     "instrument_dropout": NuisanceEffect(InstrumentDropoutEffect, _SIMULATED_OR_AUGMENTED),
@@ -87,7 +87,7 @@ def register_nuisance_effect(key: str, effect: type, *, stages=("simulation",),
 
     ``effect`` subclasses :class:`~seismo_sbi.nuisance_effects.seismogram_effect.SeismogramEffect`.
     Its constructor takes the extra keys of the configuration's nuisance block for ``key``, plus
-    ``sampling_rate`` (samples per second) when ``needs_sampling_rate``; its ``__call__`` maps a
+    ``sampling_rate`` (samples per second) when ``needs_sampling_rate``. Its ``__call__`` maps a
     ``{station: {component: trace}}`` dict and the receivers to a new dict, reading its activation
     value from ``nuisance_params[key]`` and returning the input unchanged when the key is absent.
     Raises ``ValueError`` for a key already registered or a stage not in :data:`STAGES`.
@@ -109,7 +109,7 @@ def effect_keys_at(stage: str) -> tuple:
 
 def with_sampling_rate(nuisance_keys, effect_configs: Optional[dict], sampling_rate) -> dict:
     """``effect_configs`` with ``sampling_rate`` added for every key in ``nuisance_keys`` whose
-    effect takes it; the caller's dicts are not changed. A ``sampling_rate`` of None adds nothing.
+    effect takes it. The caller's dicts are not changed. A ``sampling_rate`` of None adds nothing.
     """
     configs = dict(effect_configs or {})
     if sampling_rate is None:
@@ -190,7 +190,7 @@ def build_augmentation_chain(
     ``nuisance`` is ``{key: fiducial values}`` and ``nuisance_stage`` is ``{key: stage}``, a
     key absent from it defaulting to the simulation stage and so not augmented. Only keys
     staged at ``stage`` and eligible there are included. Each key's activation value in
-    ``nuisance_params`` is its configured fiducial scalar; the magnitudes live in
+    ``nuisance_params`` is its configured fiducial scalar. The magnitudes live in
     ``effect_configs``, and the effects draw their own randomness per call. ``sampling_rate``
     in samples per second is passed to the effects that take it. An empty selection gives an empty
     chain, which the dataloader treats as no augmentation.

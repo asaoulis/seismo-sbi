@@ -31,7 +31,7 @@ class EventCatalogue:
     magnitude:
         Event magnitudes, shape ``(N,)``.
     magnitude_type:
-        Per-event magnitude type strings (e.g. ``"Ml"``), shape ``(N,)``.
+        Per-event magnitude type strings (for example ``"Ml"``), shape ``(N,)``.
     err_h, err_z:
         Optional horizontal / vertical location errors in km, shape ``(N,)`` or
         ``None`` when the source does not provide them.
@@ -71,7 +71,7 @@ def load_catalogue(path, *, magnitude_type: Optional[str] = None,
     path:
         Path to the catalogue file.
     magnitude_type:
-        If given, keep only events whose magnitude type matches (e.g. ``"Ml"``).
+        If given, keep only events whose magnitude type matches (for example ``"Ml"``).
     csv_format:
         Which CSV layout to expect, one of :data:`CSV_FORMATS`. ``None`` detects it from the
         header, which is convenient but silent about a file that is neither.
@@ -194,7 +194,7 @@ def _load_obspy(path: Path) -> EventCatalogue:
             continue
         lats.append(origin.latitude)
         lons.append(origin.longitude)
-        # obspy depth is metres; the prior works in km.
+        # obspy depth is metres. The prior works in km.
         depths.append((origin.depth or 0.0) / 1000.0)
         mags.append(magnitude.mag)
         mag_types.append(magnitude.magnitude_type or "")

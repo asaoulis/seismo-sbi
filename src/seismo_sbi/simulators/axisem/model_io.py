@@ -3,7 +3,7 @@
 The format is a small ASCII file: comment lines, ``NAME`` / ``ANELASTIC`` / ``ANISOTROPIC`` /
 ``UNITS`` headers, a ``COLUMNS`` header naming the fields, then one row per node ordered by
 descending radius. A discontinuity is represented by two consecutive rows sharing a radius, the
-values just above and just below the boundary; the ``# Discontinuity`` comments AxiSEM emits are
+values just above and just below the boundary. The ``# Discontinuity`` comments AxiSEM emits are
 regenerated on write but carry no information. Reading is keyed on ``COLUMNS``, so isotropic and
 anisotropic models both round-trip.
 """
@@ -24,7 +24,7 @@ class BackgroundModel:
     """An AxiSEM external one-dimensional background model.
 
     ``columns`` names the fields of ``data``, a ``(n_rows, n_columns)`` table ordered by
-    descending radius; ``meta`` holds the header key-value pairs; ``header_comments`` holds the
+    descending radius. ``meta`` holds the header key-value pairs. ``header_comments`` holds the
     leading free-form comment lines, kept verbatim on write.
     """
 
@@ -76,7 +76,7 @@ def read_bm(path) -> BackgroundModel:
             if not stripped:
                 continue
             if stripped.startswith("#"):
-                # Only the leading comments are kept; the discontinuity markers below the
+                # Only the leading comments are kept. The discontinuity markers below the
                 # COLUMNS header are regenerated on write.
                 if not seen_columns:
                     header_comments.append(stripped.lstrip("#").strip())

@@ -25,7 +25,7 @@ PER_STATION_SEED_STRIDE = 10_000
 #: source_depth_offset_km, stf_alignment)``.
 _QUERIER_CACHE = OrderedDict()
 
-#: Cap on :data:`_QUERIER_CACHE`; ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides the default.
+#: Cap on :data:`_QUERIER_CACHE`. ``SEISMO_QUERIER_CACHE_MAXSIZE`` overrides the default.
 _QUERIER_CACHE_MAXSIZE = max(1, int(os.environ.get("SEISMO_QUERIER_CACHE_MAXSIZE", "64")))
 
 #: True when the cap came from ``SEISMO_QUERIER_CACHE_MAXSIZE``, in which case it is
@@ -34,7 +34,7 @@ _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT = "SEISMO_QUERIER_CACHE_MAXSIZE" in os.enviro
 
 
 def _ensure_querier_cache_capacity(n_members: int) -> None:
-    """Let the open-database cache hold one full ensemble; a no-op against an explicit cap."""
+    """Let the open-database cache hold one full ensemble. A no-op against an explicit cap."""
     global _QUERIER_CACHE_MAXSIZE
     if _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT:
         return
@@ -44,7 +44,7 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     """Instaseis simulator backed by an ensemble of Instaseis databases.
 
     ``instaseis_ensemble_dir`` is a directory whose immediate subdirectories are each a full
-    database; ``instaseis_fiducial_loc`` is the reference one. One member is drawn per
+    database. ``instaseis_fiducial_loc`` is the reference one. One member is drawn per
     simulation and used for every station, unless ``resample_member_per_station`` draws an
     independent member per station, which is the faithful model when the members are
     path-specific 1-D models. ``use_fiducial=True`` always overrides both.
@@ -106,7 +106,7 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
         return self._fiducial_member
 
     def _open_querier(self, db_path) -> InstaseisDBQuerier:
-        # str() converts the numpy.str_ that np.random.choice returns; instaseis.open_db walks
+        # str() converts the numpy.str_ that np.random.choice returns. Instaseis.open_db walks
         # the path and cannot mix strings and bytes.
         return InstaseisDBQuerier(
             str(db_path), self.synthetics_processing, self.seismogram_length,
@@ -176,7 +176,7 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
     def draw_sector_members(self, source: GenericPointSource, *, seed=None):
         """``(member per station, sector boundaries in deg)`` for one simulation.
 
-        Seeded, sector ``j`` uses ``seed + j * PER_STATION_SEED_STRIDE``; unseeded, every draw
+        Seeded, sector ``j`` uses ``seed + j * PER_STATION_SEED_STRIDE``. Unseeded, every draw
         comes from the shared global generator.
         """
         rng = np.random.default_rng(seed) if seed is not None else np.random
@@ -205,7 +205,7 @@ class InstaseisEnsembleSimulator(GFEnsembleSimulator):
                               seed=None, stf_duration=None) -> dict:
         """Seismograms with an independent member drawn per station.
 
-        Seeded, station ``i`` uses ``seed + i * PER_STATION_SEED_STRIDE``; unseeded, every draw
+        Seeded, station ``i`` uses ``seed + i * PER_STATION_SEED_STRIDE``. Unseeded, every draw
         comes from the shared global generator.
         """
         all_seismograms_map = {}

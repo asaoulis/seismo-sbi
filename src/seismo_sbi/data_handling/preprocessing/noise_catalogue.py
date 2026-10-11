@@ -3,7 +3,7 @@
 :func:`build_noise_catalogue` finds the stretches of continuous data clear of the interfering
 events and exports one HDF5 file per clean window. Windows are sliced from daily-processed files
 by default, as the event windows of :mod:`~seismo_sbi.data_handling.preprocessing.catalogue_builder`
-are; they feed the real-noise models.
+are. They feed the real-noise models.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def build_noise_catalogue(
     use_daily_processing: bool = True,
     processed_dir: Optional[Path] = None,
 ) -> List[Path]:
-    """Export one HDF5 file per event-free noise window; returns the paths written.
+    """Export one HDF5 file per event-free noise window. Returns the paths written.
 
     :param noise_start: start of the search period.
     :param noise_end: end of the search period.
@@ -76,16 +76,16 @@ def build_noise_catalogue(
     :param max_flat_fraction: maximum fraction of consecutive identical samples per trace, 0-1
         (default 0.05).
     :param taup_model: TauPy model name, used when ``use_taup``.
-    :param use_taup: compute arrival windows with TauPy for event avoidance; False (default) uses
+    :param use_taup: compute arrival windows with TauPy for event avoidance. False (default) uses
         the onset time, which suits local and regional catalogues.
-    :param rolling_window_gap_s: step between consecutive noise windows in seconds (default 30);
+    :param rolling_window_gap_s: step between consecutive noise windows in seconds (default 30).
         ``duration_s`` gives non-overlapping windows.
     :param n_jobs: parallel workers.
-    :param receivers: ``Receivers`` with coordinates for the TauPy distances (``use_taup`` only);
+    :param receivers: ``Receivers`` with coordinates for the TauPy distances (``use_taup`` only).
         None uses a zero-latitude, zero-longitude station.
-    :param error_log: path to append failures to; None logs nothing.
+    :param error_log: path to append failures to. None logs nothing.
     :param use_daily_processing: process the raw data in daily files first (default True).
-    :param processed_dir: where the daily files live; defaults to ``output_dir / "_daily"``.
+    :param processed_dir: where the daily files live. Defaults to ``output_dir / "_daily"``.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -186,7 +186,7 @@ def _compute_continuous_regions(
     """Return event-free continuous regions within [noise_start, noise_end].
 
     When use_taup=False (default), builds unavailability windows from each
-    event's onset time directly — no TauPy model needed.  Each event occupies
+    event's onset time directly: no TauPy model needed.  Each event occupies
     [origin_time, origin_time + duration_s].  The buffer applied by
     make_noise_windows ensures adequate separation from these windows.
 

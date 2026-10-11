@@ -1,6 +1,6 @@
 """One recorded event, from raw MiniSEED and StationXML on disk to the SBI event file.
 
-:class:`PreprocessingConfiguration` mirrors a ``preprocessing:`` YAML block; :func:`prepare_event`
+:class:`PreprocessingConfiguration` mirrors a ``preprocessing:`` YAML block. :func:`prepare_event`
 reads each station's waveforms around the event, removes the instrument response, band-passes
 and resamples them, keeps a MiniSEED copy of the processed stream, and writes the event window
 with the pre-event noise autocorrelations as the HDF5 file the pipeline reads.
@@ -43,8 +43,8 @@ class BandpassFilter:
 class PreprocessingConfiguration:
     """The ``preprocessing:`` block. Relative paths are taken from the working directory.
 
-    ``event_start_utc`` and ``event_end_utc`` are ISO 8601 times; ``prefilter_hz`` gives the
-    four corner frequencies of the response-removal taper (None keeps the library default);
+    ``event_start_utc`` and ``event_end_utc`` are ISO 8601 times. ``prefilter_hz`` gives the
+    four corner frequencies of the response-removal taper (None keeps the library default).
     ``event_file`` names the HDF5 file written under ``<output_dir>/events``.
     """
 

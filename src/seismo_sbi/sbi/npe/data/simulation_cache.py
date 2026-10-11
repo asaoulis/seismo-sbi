@@ -15,7 +15,7 @@ from tqdm import tqdm
 class SimulationCache:
     """The simulations at ``paths``, read with ``data_loader``.
 
-    ``parameter_name_map`` is ``{parameter type: [names]}``, the order of ``theta``;
+    ``parameter_name_map`` is ``{parameter type: [names]}``, the order of ``theta``.
     ``conditioning_param_map`` is ``{input type: [attribute names]}``, the order of the raw,
     unscaled source-conditioning vector. Nothing is read until :meth:`load`, :meth:`conditioning`
     or :meth:`preload` is called.

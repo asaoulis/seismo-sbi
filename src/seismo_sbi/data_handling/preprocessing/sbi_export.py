@@ -1,10 +1,10 @@
 """Turn preprocessed obspy streams into the data the pipeline reads, in memory or as HDF5.
 
 :func:`observation_from_stream` gives an event's data vector and station presence mask from a
-``Stream``; :func:`event_seismogram_map` and :func:`pre_event_autocorrelations` give the ``{station:
+``Stream``. :func:`event_seismogram_map` and :func:`pre_event_autocorrelations` give the ``{station:
 {component: waveform}}`` event window and the pre-event noise autocorrelations that
 :func:`export_to_sbi_h5` writes in the ``SimulationSaver`` schema. Channel keys are ``Z``, ``1`` (east)
-and ``2`` (north); a window holds ``compute_data_vector_length(duration, sr) + 1`` samples.
+and ``2`` (north). A window holds ``compute_data_vector_length(duration, sr) + 1`` samples.
 """
 
 from datetime import timedelta
@@ -55,7 +55,7 @@ def stream_to_seismogram_map(stream: Stream, station_names: List[str], t_start, 
     """``{station: {component: waveform}}`` for ``station_names`` from the traces of ``stream``
     between ``t_start`` and ``t_end`` (inclusive), component keys ``Z``, ``1``, ``2``.
 
-    A station absent from the stream is absent from the map; a component absent from the
+    A station absent from the stream is absent from the map. A component absent from the
     window is absent from its station.
     """
     station_channel_map: dict = {}
@@ -100,7 +100,7 @@ def pre_event_autocorrelations(stream: Stream, station_names: List[str], event_s
     """``{station: {component: autocorrelation}}`` of the ``covariance_window_s`` seconds before
     ``event_start``, the noise statistics the event file holds under ``/misc``.
 
-    The autocorrelation is averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -1)``; with
+    The autocorrelation is averaged as ``auto_correlate[:n][::-1] / arange(n, 0, -1)``. With
     ``full_auto_correlation`` False each entry is the scalar variance instead.
     """
     t_start = UTCDateTime(event_start)
@@ -122,7 +122,7 @@ def observation_from_stream(stream: Stream, receivers: Receivers, event_window, 
     ``stream`` must already be filtered and resampled to ``sampling_rate_hz``. ``data_vector`` is
     ``(n_traces * n_samples,)`` in receiver order, or ``(n_stations, n_components, n_samples)`` when
     ``stacked``, with ``n_samples = compute_data_vector_length(t_end - t_start, sampling_rate_hz) + 1``.
-    ``present_mask`` is a boolean per receiver; a station without all three components in the window
+    ``present_mask`` is a boolean per receiver. A station without all three components in the window
     is absent and its samples are zeros.
     """
     station_names = [receiver.station_name for receiver in receivers]
@@ -153,11 +153,11 @@ def export_to_sbi_h5(
         receivers: Ordered list of station names to include.
         event_window: (t_start, t_end) as datetime or UTCDateTime.
         out_path: Destination .h5 file path.
-        sampling_rate: Target sampling rate (Hz); must match stream traces.
+        sampling_rate: Target sampling rate (Hz). Must match stream traces.
         covariance_window: Pre-event window length for autocorrelation.
             If None, no /misc group is written.
         full_auto_correlation: When True write the full normalised
-            autocorrelation array; when False write a scalar variance.
+            autocorrelation array. When False write a scalar variance.
     """
     data_map = event_seismogram_map(stream, receivers, event_window, sampling_rate)
 

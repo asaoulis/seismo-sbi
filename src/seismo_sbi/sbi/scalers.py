@@ -1,7 +1,7 @@
 """Parameter scalers between physical and network space.
 
 :class:`ZeroOneScaler`, :class:`SymmetricLogScaler` and :class:`MomentTensorScaler` (log M0
-plus a unit tensor) are combined per parameter block by :class:`FlexibleScaler`;
+plus a unit tensor) are combined per parameter block by :class:`FlexibleScaler`.
 :func:`scaler_provenance` and :func:`check_scaler_provenance` record and verify the scaler a
 checkpoint was trained with.
 """
@@ -56,7 +56,7 @@ class MomentTensorScaler:
 
     The catalogue Gutenberg-Richter prior spans the scalar moment M0 over many orders
     of magnitude, so a plain min-max (:class:`ZeroOneScaler`) collapses small-magnitude
-    events into a vanishing region of scaled space — a near-singular density the flow
+    events into a vanishing region of scaled space, a near-singular density the flow
     cannot model well.  This scaler instead separates a *log-scaled magnitude* from the
     *scale-invariant orientation*, packed back into a dimension-preserving 6-vector so it
     drops into :class:`FlexibleScaler` unchanged:
@@ -69,7 +69,7 @@ class MomentTensorScaler:
     direction, so the map is invertible (a.e.) with no dropped components or sign loss.
     ``M0`` and ``m_hat`` are taken in the metric of ``m0_convention``: ``"full_tensor"`` weights
     the off-diagonal components by sqrt(2), so ``M0`` is
-    :func:`~seismo_sbi.moment_tensor.conventions.scalar_moment`; ``"six_components"`` counts each
+    :func:`~seismo_sbi.moment_tensor.conventions.scalar_moment`. ``"six_components"`` counts each
     component once, ``M0 = ||m6|| / sqrt(2)``, the convention of checkpoints whose provenance
     records none.
 
@@ -84,15 +84,15 @@ class MomentTensorScaler:
         n_decades`` (used only when ``log10_m0_range`` is None). Must exceed the prior's
         span ``1.5 * (mw_max - mw_min)`` so that all sampled tensors map to ``u in [0, 1]``.
         NB the window's upper edge comes from ``bounds`` (not ``mw_max``), so the true
-        minimum is ``log10 M0_max(bounds) - log10 M0_min(prior)`` — slightly larger than
+        minimum is ``log10 M0_max(bounds) - log10 M0_min(prior)``, slightly larger than
         the prior span. Prefer ``log10_m0_range`` (``mt_log_decades: auto``) to avoid this.
     m0_convention:
         ``"full_tensor"`` (default) or ``"six_components"``, see above.
     log10_m0_range:
         Optional ``(log10 M0_min, log10 M0_max)`` window, overriding ``bounds``/``n_decades``.
         Set from the GR prior's ``[mw_min, mw_max]`` (via ``build_flexible_scaler`` with
-        ``mt_log_decades: auto``) so the sampled magnitude maps to ``u in [0, 1]`` exactly
-        — the prior limits land on the scaled-space limits, no clipping, no wasted range.
+        ``mt_log_decades: auto``) so the sampled magnitude maps to ``u in [0, 1]`` exactly:
+        the prior limits land on the scaled-space limits, no clipping, no wasted range.
     """
 
     _SQRT2 = np.sqrt(2.0)
@@ -110,7 +110,7 @@ class MomentTensorScaler:
         self.m0_convention = m0_convention
         self._weights = self.COMPONENT_WEIGHTS[m0_convention]
         if log10_m0_range is not None:
-            # Explicit magnitude window (e.g. derived from the GR prior's
+            # Explicit magnitude window (for example derived from the GR prior's
             # [mw_min, mw_max] so the sampled range maps to u in [0, 1] exactly).
             lo, hi = float(log10_m0_range[0]), float(log10_m0_range[1])
             if hi <= lo:
@@ -160,7 +160,7 @@ class FlexibleScaler:
         """Per-parameter-block scaler into [0, 1].
 
         ``moment_tensor_scaling`` selects how the moment-tensor block is scaled:
-        ``"linear"`` (default) uses the plain :class:`ZeroOneScaler` min-max;
+        ``"linear"`` (default) uses the plain :class:`ZeroOneScaler` min-max.
         ``"scale_shape"`` uses :class:`MomentTensorScaler` (log-magnitude +
         scale-invariant unit tensor), better-behaved when M0 spans many orders of
         magnitude. ``mt_log_decades`` and ``m0_convention`` are forwarded to
@@ -201,7 +201,7 @@ class FlexibleScaler:
         the block, blocks in data-vector order (the dict's order).
 
         ``theta_fiducial`` (``{block: values}``) sets the block order and sizes when given, and
-        defaults to the midpoint of each block's bounds; ``kwargs`` are those of the constructor.
+        defaults to the midpoint of each block's bounds. ``kwargs`` are those of the constructor.
         """
         parameters = ModelParameters()
         parameters.bounds = {block: [np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)]
@@ -279,7 +279,7 @@ def check_scaler_provenance(meta: dict, scaler, *, strict: bool = False) -> bool
     ``meta`` is the parsed ``model_meta.json``.  Returns True when they agree.  A mismatch
     produces a constant offset in every recovered parameter rather than a crash, so it is
     reported loudly and, with ``strict``, raises ``ValueError``.  A checkpoint with no record
-    raises under ``strict`` and otherwise warns and returns True; a record without
+    raises under ``strict`` and otherwise warns and returns True. A record without
     ``linear_bounds`` (written before they were recorded) warns that the bounds are unchecked.
     A scale-shape record without ``m0_convention`` was trained with ``"six_components"``.
     """
@@ -323,7 +323,7 @@ def recorded_theta_scaler(meta: dict) -> dict:
 def recorded_m0_convention(meta: dict) -> str:
     """The M0 convention a checkpoint's moment-tensor scaler was trained with.
 
-    ``meta`` is the parsed ``model_meta.json``; a record written before the convention was
+    ``meta`` is the parsed ``model_meta.json``. A record written before the convention was
     recorded, or no record, means ``"six_components"``.
     """
     return (recorded_theta_scaler(meta) or {}).get("m0_convention", "six_components")
@@ -350,13 +350,14 @@ class ScalerConfiguration:
 
 def build_flexible_scaler(parameters: ModelParameters, ml_scaler: ScalerConfiguration = None,
                           sampling_method: dict = None, model_meta: dict = None) -> FlexibleScaler:
-    """Build the :class:`FlexibleScaler` of ``ml_scaler`` (:class:`ScalerConfiguration`; None gives
+    """Build the :class:`FlexibleScaler` of ``ml_scaler`` (:class:`ScalerConfiguration`, or None for
     the linear scaling), the same at training and at inference.
 
-    ``sampling_method`` is the parsed ``simulations.sampling_method``; ``mt_log_decades: auto`` reads
-    the log10 M0 window of its built Gutenberg-Richter ``moment_tensor`` sampler. ``model_meta``,
-    the parsed ``model_meta.json`` of a trained checkpoint, sets the M0 convention it was trained
-    with (:func:`recorded_m0_convention`); without it the scaler is the full-tensor one of a new run.
+    ``sampling_method`` is the parsed ``simulations.sampling_method``. ``mt_log_decades: auto``
+    reads the log10 M0 window of its built Gutenberg-Richter ``moment_tensor`` sampler.
+    ``model_meta``, the parsed ``model_meta.json`` of a trained checkpoint, sets the M0 convention
+    it was trained with (:func:`recorded_m0_convention`). Without it the scaler is the full-tensor
+    one of a new run.
     """
     ml_scaler = ml_scaler or ScalerConfiguration()
     mt_scaling = ml_scaler.moment_tensor

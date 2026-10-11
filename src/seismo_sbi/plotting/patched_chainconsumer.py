@@ -3,7 +3,7 @@
 A modified copy of the figure methods of ``Plotter`` from ChainConsumer 0.34.0 (Samuel Hinton,
 MIT licence). ``CustomChainConsumer.configure(inverse=True)`` flips the trade-off triangle and
 moves and rotates every label to match. Ticks within 8 % of a panel's range from either edge are
-left out, so the labels of abutting panels do not print into each other; otherwise the plot is
+left out, so the labels of abutting panels do not print into each other. Otherwise the plot is
 ChainConsumer's own.
 """
 

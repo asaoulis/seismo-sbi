@@ -1,6 +1,6 @@
 """Uncorrelated-noise covariances: one variance for all samples, or one per trace.
 
-``ScalarEmpiricalCovariance`` takes a single noise level; ``DiagonalEmpiricalCovariance`` takes
+``ScalarEmpiricalCovariance`` takes a single noise level. ``DiagonalEmpiricalCovariance`` takes
 a variance per station and component, repeated over the samples of each trace.
 """
 from functools import partial

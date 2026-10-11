@@ -1,7 +1,7 @@
 """Posterior predictive misfit metrics: one score per synthetic against the observation.
 
 Each metric is ``f(obs, synthetics, meta) -> (n_synthetics,)`` for an observation of shape
-``(data_len,)`` and synthetics ``(n_synthetics, data_len)``; lower is a better fit. ``meta`` holds
+``(data_len,)`` and synthetics ``(n_synthetics, data_len)``. Lower is a better fit. ``meta`` holds
 ``sample_rate``, ``n_traces``, ``covariance_matrix``, ``dof_override``, ``max_shift_samples`` and
 ``autocorr_maxlag``. :class:`~seismo_sbi.plotting.posterior_predictive_checks.PosteriorPredictiveChecks`
 registers them by default.
@@ -126,7 +126,7 @@ def autocorrelation_misfit(obs: np.ndarray, synthetics: np.ndarray, meta: dict, 
     .. warning::
        Blind to polarity by construction: ``ACF(-x) == ACF(x)``, so an inverted
        waveform scores exactly 0.  Never use this metric alone to argue about the sign
-       of the isotropic component; pair it with ``Shifted corr misfit`` (which keeps
+       of the isotropic component. Pair it with ``Shifted corr misfit`` (which keeps
        polarity as long as the lag budget stays under half a dominant period), the
        zero-lag correlation, or the first-motion polarity analysis.
     """

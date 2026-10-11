@@ -21,7 +21,7 @@ def pyrocko_mt(m6):
 
 def from_pyrocko(mt):
     """``m6 = [Mrr, Mtt, Mpp, Mrt, Mrp, Mtp]`` in N.m (up-south-east) of a pyrocko
-    ``MomentTensor``; the inverse of :func:`pyrocko_mt`."""
+    ``MomentTensor``. The inverse of :func:`pyrocko_mt`."""
     M = mt.m_up_south_east()
     return np.array([M[0, 0], M[1, 1], M[2, 2], M[0, 1], M[0, 2], M[1, 2]])
 
@@ -29,8 +29,8 @@ def from_pyrocko(mt):
 def kagan(m6_a, m6_b):
     """Kagan angle (degrees) between two moment tensors ``m6_a``, ``m6_b``.
 
-    Symmetric; ``kagan(m, m) == 0``.  Returns ``nan`` if pyrocko's
-    ``kagan_angle`` raises (e.g. a degenerate tensor)."""
+    Symmetric. ``kagan(m, m) == 0``.  Returns ``nan`` if pyrocko's
+    ``kagan_angle`` raises (for example a degenerate tensor)."""
     from pyrocko import moment_tensor as pmt
     try:
         return float(pmt.kagan_angle(pyrocko_mt(m6_a), pyrocko_mt(m6_b)))
@@ -40,13 +40,13 @@ def kagan(m6_a, m6_b):
 
 # --- Batched eigen-frame primitives: pyrocko's algebra in numpy ---
 
-# USE -> NED (north = -south, east = east, down = -up); pyrocko stores m() in NED, so the
+# USE -> NED (north = -south, east = east, down = -up). Pyrocko stores m() in NED, so the
 # results are identical to pyrocko's rather than merely equivalent.
 _USE_TO_NED = np.array([[0.0, -1.0, 0.0],
                         [0.0, 0.0, 1.0],
                         [-1.0, 0.0, 0.0]])
 
-# eigh returns columns (p, b, t) in ascending eigenvalue order; pyrocko's frame is rows (t, p, b).
+# eigh returns columns (p, b, t) in ascending eigenvalue order. Pyrocko's frame is rows (t, p, b).
 _PBT_TO_TPB = np.array([[0.0, 0.0, 1.0],
                         [1.0, 0.0, 0.0],
                         [0.0, 1.0, 0.0]])
@@ -72,13 +72,13 @@ def _eigen_frames(m6):
 
 
 def kagan_batch(m6_a, m6_b):
-    """Kagan angles (degrees) between batches of moment tensors — vectorised.
+    """Kagan angles (degrees) between batches of moment tensors, vectorised.
 
     ``m6_a``/``m6_b`` are ``(n, 6)`` or a single ``(6,)``/``(1, 6)`` tensor,
     which broadcasts against the other.  Returns a ``(n,)`` array.
 
     Numerically identical to :func:`kagan` (max ``|Δ|`` ~1e-12 deg over random and
-    real posterior tensors — locked by ``tests/unit/test_moment_tensor_comparison.py``)
+    real posterior tensors, locked by ``tests/unit/test_moment_tensor_comparison.py``)
     but ~4e4x faster, which is what makes posterior-wide orientation statistics
     affordable.  The rotation between the two eigen-frames is converted to a
     quaternion and the *largest* component taken, which is exactly pyrocko's
@@ -108,11 +108,11 @@ def mt_axes(m6):
     """Batched P/T/N axis azimuth & plunge (degrees, NED lower hemisphere).
 
     Returns a dict of ``(n,)`` arrays ``p_az, p_plunge, t_az, t_plunge,
-    n_az, n_plunge`` — the quantities pyrocko gives per tensor, off one batched
+    n_az, n_plunge``: the quantities pyrocko gives per tensor, off one batched
     eigen-decomposition.
 
     Axes are sign-ambiguous, so each is forced into the lower hemisphere
-    (``plunge >= 0``); a *near-horizontal* axis is therefore azimuth-ambiguous
+    (``plunge >= 0``). A *near-horizontal* axis is therefore azimuth-ambiguous
     by 180° and either convention is correct.
     """
     _, evecs = np.linalg.eigh(m6_to_matrix_ned(m6))     # columns ascending: p, b, t

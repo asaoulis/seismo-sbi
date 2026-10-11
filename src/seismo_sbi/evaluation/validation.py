@@ -2,7 +2,7 @@
 
 :func:`run_validation` takes the held-out tail of the simulation set (:func:`validation_dataset`),
 samples the posterior for each simulation (:func:`sample_validation_posteriors`) and returns the
-arrays for TARP coverage and recovery scatter; :func:`write_validation_outputs` writes the TARP
+arrays for TARP coverage and recovery scatter. :func:`write_validation_outputs` writes the TARP
 figure, the recovery scatter, example panels and the metrics JSON, one function each.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ def run_validation(
     augmentations and ``num_samples`` posterior samples taken for each.
     ``variable_stations`` (or a ``cond_param_map``, ``{block: [parameter names]}`` of the
     conditioning source parameters) packs the full station set as a variable-station context,
-    conditioned on each simulation's true source; otherwise the flat data vector is the input.
+    conditioned on each simulation's true source. Otherwise the flat data vector is the input.
 
     :returns: a dict of ``theta_phys`` and ``theta_scaled`` ``(n_val, n_dims)``,
         ``samples_phys`` and ``samples_scaled`` ``(num_samples, n_val, n_dims)`` (scaled to
@@ -216,7 +216,7 @@ def write_validation_outputs(
     :func:`~seismo_sbi.evaluation.posterior_metrics.run_metrics_payload` labelled ``run_label``
     and ``config_path``, with ``n_val``, ``num_samples``, ``conditioned`` and the figure paths.
     ``parameters`` are the pipeline's parameters, for the panel labels. A failing TARP or metric
-    computation raises; a figure that fails is logged as a warning and left out of the figure paths.
+    computation raises. A figure that fails is logged as a warning and left out of the figure paths.
 
     :returns: the dict written to ``evaluation_metrics.json``.
     """
@@ -242,7 +242,7 @@ def write_validation_outputs(
 
 
 def write_tarp_figure(ecp, alpha, out_dir):
-    """The TARP expected coverage ``(ecp, alpha)`` drawn to ``tarp_coverage.png``; returns its path,
+    """The TARP expected coverage ``(ecp, alpha)`` drawn to ``tarp_coverage.png``. Returns its path,
     or None when the figure failed.
     """
     from seismo_sbi.plotting.coverage import plot_coverage
@@ -263,7 +263,7 @@ def write_tarp_figure(ecp, alpha, out_dir):
 
 
 def write_recovery_scatter(theta_phys, samples_phys, out_dir):
-    """True against recovered gamma, delta and Mw, drawn to ``recovery_scatter.svg``; returns its
+    """True against recovered gamma, delta and Mw, drawn to ``recovery_scatter.svg``. Returns its
     path, or None when the figure failed.
     """
     try:
@@ -277,7 +277,7 @@ def write_recovery_scatter(theta_phys, samples_phys, out_dir):
 
 
 def write_example_panels(shows, n_show, parameters, data_scaler, out_dir):
-    """Posterior panels for the first ``n_show`` examples under ``out_dir/examples``; returns that
+    """Posterior panels for the first ``n_show`` examples under ``out_dir/examples``. Returns that
     directory, or None when the panels failed."""
     from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
 

@@ -26,7 +26,7 @@ class SeismogramTransformer(nn.Module):
     and a head mapping the pooled result to a fixed-length summary.
 
     Input is ``(batch, n_stations, n_components, n_samples)``, or a packed 2-D context when
-    source conditioning or variable stations are configured; output is ``(batch, num_outputs)``.
+    source conditioning or variable stations are configured. Output is ``(batch, num_outputs)``.
     """
 
     def __init__(self, num_seismic_components, transformer_config,
@@ -34,8 +34,8 @@ class SeismogramTransformer(nn.Module):
                         seismogram_locations : torch.Tensor, device,
                         aggregation: str = "mean", input_length: int = 200) -> None:
         """``transformer_config`` holds ``channels`` and the optional encoder, conditioning, pooling,
-        amplitude, bottleneck and performance entries; ``seismogram_locations`` is
-        ``(n_stations, 2)`` latitude and longitude in degrees; ``input_length`` is the per-trace
+        amplitude, bottleneck and performance entries. ``seismogram_locations`` is
+        ``(n_stations, 2)`` latitude and longitude in degrees. ``input_length`` is the per-trace
         sample count.
         """
         super().__init__()
@@ -43,7 +43,7 @@ class SeismogramTransformer(nn.Module):
         self.feature_length = feature_length
         self.noise_model = noise_model
         # Per-trace sample count the encoder will receive. Used to size the encoder's
-        # output length; must match the actual trace length of the data at train time.
+        # output length. Must match the actual trace length of the data at train time.
         self.input_length = input_length
 
         # Validate aggregation choice
@@ -52,7 +52,7 @@ class SeismogramTransformer(nn.Module):
         self.aggregation = aggregation
         d_model = transformer_config['channels']
 
-        # ``perf.amp`` runs the embedding net in reduced precision; the flow head stays in fp32.
+        # ``perf.amp`` runs the embedding net in reduced precision. The flow head stays in fp32.
         perf = transformer_config.get("perf", {}) or {}
         self._amp = bool(perf.get("amp", False))
         _amp_dtype = str(perf.get("amp_dtype", "bfloat16")).lower()
@@ -65,7 +65,7 @@ class SeismogramTransformer(nn.Module):
         self.band_limit = BandLimit(**limit_cfg) if limit_cfg else None
 
         # Band-limited data sampled above its Nyquist rate decimates losslessly. Unpacking keeps
-        # the original trace length; only the encoder and everything after it sees T/k.
+        # the original trace length. Only the encoder and everything after it sees T/k.
         dec_cfg = transformer_config.get("input_decimate", None) or {}
         dec_factor = int(dec_cfg.get("factor", 1) or 1)
         self.input_decimator = (
@@ -122,14 +122,14 @@ class SeismogramTransformer(nn.Module):
             if self.summary_bottleneck_dim else None
         )
 
-        # --- Optional source-location conditioning (opt-in; see source_conditioning.py) ---
+        # --- Optional source-location conditioning (opt-in, see source_conditioning.py) ---
         # Absent ⇒ self._n_cond == 0 and embed() takes the unchanged 4-D context path.
         self.d_model = d_model
         self._n_components = num_seismic_components
         self._n_stations = int(seismogram_locations.shape[0])
         self._configure_conditioning(transformer_config.get("conditioning", None), d_model)
 
-        # --- Optional per-station amplitude embedding (opt-in; see amplitude_embedding.py) ---
+        # --- Optional per-station amplitude embedding (opt-in, see amplitude_embedding.py) ---
         # Absent ⇒ self.amplitude_embedding is None and embed() is byte-identical to before.
         amp_cfg = transformer_config.get("amplitude_embedding", None)
         self.amplitude_embedding = (
@@ -146,7 +146,7 @@ class SeismogramTransformer(nn.Module):
         # When enabled, embed() expects the packed context from variable_station_collate and
         # feeds per-sample station coordinates instead of the fixed buffer.
         self._variable_stations = bool(transformer_config.get("variable_stations", False))
-        # "absolute" feeds raw (lat, lon); "relative" feeds source-relative (distance, azimuth)
+        # "absolute" feeds raw (lat, lon). "relative" feeds source-relative (distance, azimuth)
         # and needs source conditioning, so there is a source vector to measure against.
         self._station_coords_mode = transformer_config.get("station_coords_mode", "absolute")
         if self._variable_stations and self._station_coords_mode not in ("absolute", "relative"):
@@ -161,7 +161,7 @@ class SeismogramTransformer(nn.Module):
             )
 
         # Built last, so the positional encoder knows whether station coordinates are
-        # source-relative; without a config it keeps the plain sinusoidal encoding.
+        # source-relative. Without a config it keeps the plain sinusoidal encoding.
         posemb_config = transformer_config.get("positional_encoding", None)
         # coords_kind is static per model: source-relative iff the source-relative station
         # embedding is in use (relative_posemb injection, or variable-station relative mode).
@@ -174,7 +174,7 @@ class SeismogramTransformer(nn.Module):
             posemb_config.get("inject_every_layer", True) if posemb_config else True
         )
         # With a pooling head the seeds live in the head and pool the final token set, so the
-        # in-block query cross-attention is switched off; without one the encoder pools itself.
+        # in-block query cross-attention is switched off. Without one the encoder pools itself.
         pma_cfg = transformer_config.get("pma_pooling", None)
         if pma_cfg and use_cls:
             raise ValueError(
@@ -189,7 +189,7 @@ class SeismogramTransformer(nn.Module):
             time_steps=self.L,
             conv_length=d_model,
             # Size the sinusoidal time-embedding buffer to the encoder's token count (PNO/TCN
-            # can emit L > the old default of 60; without this the time_embed[:L] add fails).
+            # can emit L > the old default of 60. Without this the time_embed[:L] add fails).
             max_time_steps=max(self.L, 60),
             mode=mode,
             pool_queries=pool_method,
@@ -211,7 +211,7 @@ class SeismogramTransformer(nn.Module):
             )
 
     def _configure_conditioning(self, cond_cfg, d_model):
-        """Build the source conditioner and the injection layers ``cond_cfg['inject']`` names; with
+        """Build the source conditioner and the injection layers ``cond_cfg['inject']`` names. With
         no ``cond_cfg`` conditioning stays off.
         """
         self._n_cond = 0
@@ -266,7 +266,7 @@ class SeismogramTransformer(nn.Module):
         """The vector the MMD auxiliary loss should compare.
 
         With ``summary_bottleneck`` configured this is the NARROW pre-expansion summary
-        (``summary_bottleneck_dim`` wide); without it, it is the ordinary ``forward`` output,
+        (``summary_bottleneck_dim`` wide). Without it, it is the ordinary ``forward`` output,
         so callers need no branch and behaviour is unchanged for existing configs.
         """
         if self.summary_expand is None:
@@ -320,7 +320,7 @@ class SeismogramTransformer(nn.Module):
                 x, self._n_stations, self._n_components, self.input_length, self._n_cond
             )
         elif self._n_cond == 0 and x.dim() == 2:
-            # A packed context reached a model with no conditioning configured; fail clearly
+            # A packed context reached a model with no conditioning configured. Fail clearly
             # rather than on the shape unpacking below.
             raise ValueError(
                 "Received a packed 2-D context but this model has no conditioning configured "
@@ -332,14 +332,14 @@ class SeismogramTransformer(nn.Module):
             x = self.band_limit(x)
 
         # Model-entry decimation: after unpacking (which needs the original trace length),
-        # before the encoder/amplitude paths — everything downstream sees T/k samples.
+        # before the encoder/amplitude paths: everything downstream sees T/k samples.
         if self.input_decimator is not None:
             x = self.input_decimator(x)
 
         (batch_size, num_stations, num_seismic_components, trace_length) = x.shape
         B, N = batch_size, num_stations
 
-        # Source embedding (shared across stations/time) — only when conditioning is active.
+        # Source embedding (shared across stations/time): only when conditioning is active.
         source_emb = self.source_conditioner(source_vec) if (source_vec is not None) else None
 
         # Source depth (km), RFF-encoded by the positional encoder when include_depth is set.
@@ -387,7 +387,7 @@ class SeismogramTransformer(nn.Module):
             key_padding_mask = (~var_mask).unsqueeze(-1).expand(B, N, self.L)
 
         # The radiation-pattern token goes in before the transformer so cross-station attention
-        # sees relative amplitude; the per-event scale vector is added to the pooled embedding.
+        # sees relative amplitude. The per-event scale vector is added to the pooled embedding.
         amp_global = None
         if self.amplitude_embedding is not None:
             station_distance = None

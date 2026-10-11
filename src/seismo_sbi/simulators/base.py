@@ -17,7 +17,7 @@ from seismo_sbi.utils.seismograms import apply_station_time_shifts
 from seismo_sbi.nuisance_effects.post_processing import PostProcessingChain
 
 
-#: Source-parameter keys the forward model consumes; every other key is a nuisance parameter
+#: Source-parameter keys the forward model consumes. Every other key is a nuisance parameter
 #: and is forwarded to the post-processing chain.
 _SIMULATOR_KEYS = frozenset({
     "source_location",
@@ -41,7 +41,7 @@ def point_source_parameters(source: GenericPointSource) -> dict:
 
 class Simulator(ABC):
 
-    #: Seconds each seismogram starts before the origin time; None when the backend does not fix it.
+    #: Seconds each seismogram starts before the origin time. None when the backend does not fix it.
     pre_event_pad_s = None
 
     def __init__(
@@ -54,7 +54,7 @@ class Simulator(ABC):
         source_depth_offset_km: float = 0.0,
         stf_alignment=None,
     ):
-        """``stf_alignment`` is ``"peak"`` or ``"onset"`` (see :attr:`stf_alignment`); None is the
+        """``stf_alignment`` is ``"peak"`` or ``"onset"`` (see :attr:`stf_alignment`). None is the
         backend's own convention."""
         if stf_alignment is not None and stf_alignment not in STF_ALIGNMENTS:
             raise InvalidConfiguration(f"stf_alignment must be one of {STF_ALIGNMENTS}, got {stf_alignment!r}")
@@ -63,7 +63,7 @@ class Simulator(ABC):
         self.receivers = receivers
         self.seismogram_length = seismogram_duration_in_s
         self.synthetics_processing = synthetics_processing
-        # Applied only where a depth is handed to the backend; zero means the catalogue datum
+        # Applied only where a depth is handed to the backend. Zero means the catalogue datum
         # is the model's free surface.
         self.source_depth_offset_km = float(source_depth_offset_km)
         self.post_processing_chain = PostProcessingChain(post_processing_effects or [])
@@ -117,7 +117,7 @@ class Simulator(ABC):
         }
 
         source_location_params = combined_params["source_location"]
-        # Path-dependent effects need the source position; the others swallow it.
+        # Path-dependent effects need the source position. The others swallow it.
         post_proc_params.setdefault("source_location", source_location_params)
         velocity_model_params = combined_params.pop("velocity_model", None)
         stf_duration = combined_params.pop("stf_duration", None)

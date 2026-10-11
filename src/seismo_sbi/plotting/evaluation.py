@@ -49,7 +49,7 @@ def discover_ml_runs(pipeline_outputs_dir) -> Dict[str, Path]:
 
     Globs ``<pipeline_outputs_dir>/continuity_ml_*/inversion_results_ml.pkl`` and
     returns ``{run_label: pkl_path}`` where ``run_label`` is the directory suffix
-    after ``continuity_ml_`` (e.g. ``train_cnn_nonuisance``).
+    after ``continuity_ml_`` (for example ``train_cnn_nonuisance``).
     """
     base = Path(pipeline_outputs_dir)
     out: Dict[str, Path] = {}
@@ -92,7 +92,7 @@ def build_recovery_dict(
     gold_results : list of InversionResult
         From the gold-standard ``inversion_results.pkl``.
     ml_runs : dict[label -> list of InversionResult], optional
-        One entry per trained run to overlay (e.g. ``{"train_cnn_nonuisance": [...]}``).
+        One entry per trained run to overlay (for example ``{"train_cnn_nonuisance": [...]}``).
     gold_methods : tuple
         Which gold methods to include, in order. Missing methods are skipped.
     """
@@ -195,9 +195,9 @@ def plot_recovery_lune(recovery_dict, plotter, figsave=None, num_samples=2500,
     reference (gold) solution. Reuses ``PosteriorPlotter.plot_lunes_kde``.
 
     ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional published
-    reference solutions, overlaid as distinct scatter markers (e.g. extra catalogues).
+    reference solutions, overlaid as distinct scatter markers (for example extra catalogues).
     ``reference_name`` (optional) is the legend label for the primary (gold diamond) reference,
-    such as a catalogue's name; ``reference_label`` still selects which ensemble's theta0 feeds the
+    such as a catalogue's name. ``reference_label`` still selects which ensemble's theta0 feeds the
     decomposition beachballs.
     """
     import matplotlib.pyplot as plt
@@ -239,7 +239,7 @@ def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
 
     Wraps the house ``plotter.posterior_plotter.plot_lunes_kde`` (whole lune in shot, no
     crop), forwarding the per-config legend it now builds in-house. ``ensemble_dict`` maps
-    ``label -> InversionData``; contour colours follow dict order (matched by the legend).
+    ``label -> InversionData``. Contour colours follow dict order (matched by the legend).
     ``extra_references`` (optional) maps ``label -> MT 6-vector`` for additional reference
     overlays drawn as distinct scatter markers. ``primary_reference`` + ``reference_label``
     draw and label the primary (gold diamond) reference, which the dropout-ensemble configs need
@@ -264,9 +264,9 @@ def plot_ensemble_lune_kde(ensemble_dict, plotter, figsave=None, *,
 def plot_ensemble_spread_summary(configs, ensemble_dict, figsave=None):
     """Posterior spread vs station config / count for a station-dropout ensemble.
 
-    ``configs`` is a sequence of ``StationConfig`` (provides ``.label`` / ``.n``);
+    ``configs`` is a sequence of ``StationConfig`` (provides ``.label`` / ``.n``).
     ``ensemble_dict`` maps ``label -> InversionData``. Left panel: per-config 68%
-    gamma/delta widths (bars); right panel: the same widths vs station count.
+    gamma/delta widths (bars). Right panel: the same widths vs station count.
     """
     import matplotlib.pyplot as plt
 
@@ -316,9 +316,9 @@ def plot_recovery_scatter(theta_true: np.ndarray, samples_per_sim: np.ndarray,
     """
     True-vs-recovered scatter for the source-type quantities γ, δ, Mw across the
     validation set. For each sim the posterior median is plotted with 68% CI error
-    bars against the truth; the diagonal is the perfect-recovery line.
+    bars against the truth. The diagonal is the perfect-recovery line.
 
-    ``theta_true`` shape ``(n_sims, 6)``; ``samples_per_sim`` shape
+    ``theta_true`` shape ``(n_sims, 6)``. ``samples_per_sim`` shape
     ``(n_samples, n_sims, 6)``, in the moment-tensor parametrisation.
     """
     import matplotlib.pyplot as plt
@@ -397,7 +397,7 @@ def plot_cross_run_comparison(this_label: str, all_metrics: Dict[str, dict],
     """
     For each headline metric build a bar chart of every run that reports it, with
     ``this_label`` highlighted. ``all_metrics`` maps ``run_label -> payload`` (as from
-    ``scan_run_metrics``; values may also be bare metrics dicts). Writes one PNG per
+    ``scan_run_metrics``. Values may also be bare metrics dicts). Writes one PNG per
     metric into ``out_dir/cross_run`` and returns ``{metric_label: path}``.
     """
     import matplotlib.pyplot as plt

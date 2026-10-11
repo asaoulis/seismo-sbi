@@ -2,7 +2,7 @@
 
 Those checkpoints name the station CNN ``CNN_feature_extractor.seismic_trace_CNN`` and carry
 the weights of a feed-forward head the forward pass never used. :func:`remap_legacy_state_dict`
-renames each old key by the table below and drops the unused head; a current checkpoint passes
+renames each old key by the table below and drops the unused head. A current checkpoint passes
 through untouched.
 """
 

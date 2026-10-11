@@ -49,7 +49,7 @@ class QAThresholds:
     The classical gates judge coherence first (an incoherent trace is useless), then
     gross amplitude (a response/units error the MT scale cannot absorb), then timing
     (fixable with a static shift). ``enable_ppc_drops`` activates the extra aligned
-    multi-component coherence gate; the zero-lag misfit gates stay off unless their
+    multi-component coherence gate. The zero-lag misfit gates stay off unless their
     thresholds are set.
     """
 
@@ -59,8 +59,8 @@ class QAThresholds:
     shift_min: int = 2             # |best lag Z| at/above this -> recommend a shift
     xcorr_shift_ok: float = 0.55   # ... but only if the Z xcorr is at least this
 
-    # The aligned multi-component coherence gate is on by default because it is lag-robust;
-    # the zero-lag misfit gates are confounded by timing and amplitude, so they stay off.
+    # The aligned multi-component coherence gate is on by default because it is lag-robust.
+    # The zero-lag misfit gates are confounded by timing and amplitude, so they stay off.
     enable_ppc_drops: bool = True
     coherence_drop: float = 0.45         # mean aligned xcorr (all comp.) below -> drop-fit
     corr_misfit_drop: Optional[float] = None
@@ -86,7 +86,7 @@ class QAThresholds:
     snr_fit_min_syn: float = 5.0
     snr_fit_sig_min: float = 2.0
     # Pre-event noise width above this multiple of the network median (same component) means a
-    # broken channel; a trace that visibly matches the synthetic is kept anyway.
+    # broken channel. A trace that visibly matches the synthetic is kept anyway.
     sigma_rel_max: Optional[float] = None            # calibrated value: 50.0
     sigma_outlier_escape_xcorr: float = 0.4
     sigma_outlier_escape_amp: tuple = (0.1, 10.0)
@@ -205,7 +205,7 @@ def summarise_event(
 
 
 # Per-component verdicts drop individual channels, zero-filled at load, rather than the whole
-# station; they are additive to the station-level policy above, not a replacement for it.
+# station. They are additive to the station-level policy above, not a replacement for it.
 
 @dataclass(frozen=True)
 class ComponentVerdict:
@@ -241,7 +241,7 @@ def _snr_component_gate(snr: Optional[SNRMetrics], t: QAThresholds,
     * unrecognisable (set ``snr_dead_unrecog_ratio`` to use it): the observed energy
       is marginal (``snr_sig < snr_dead_unrecog_ratio * snr_syn``) and nothing resembling
       the predicted waveform is present at any lag (``max_xcorr < xcorr_dead``). Requires
-      the trace's :class:`TraceMetrics` ``m``; skipped when ``m`` is None.
+      the trace's :class:`TraceMetrics` ``m``. Skipped when ``m`` is None.
     * excess (set ``enable_snr_excess`` to use it): the whole-window observed energy
       exceeds the signal+noise budget
       ``snr_obs_full^2 > snr_excess_factor^2 * (snr_syn_full^2 + 1)``: an overlapping event,
@@ -312,7 +312,7 @@ def component_verdicts(
     """``{station: {component: ComponentVerdict}}`` from per-trace metrics.
 
     ``snr_metrics`` (optional) attaches the pre-event-noise SNR gates per (station,
-    component); ``None`` reproduces the classical per-component verdicts exactly.
+    component). ``None`` reproduces the classical per-component verdicts exactly.
     """
     snr_lookup = {(s.station, s.component): s for s in (snr_metrics or [])}
     out: Dict[str, Dict[str, ComponentVerdict]] = {}

@@ -60,7 +60,7 @@ class AxialOrFullBlock(nn.Module):
         input_dim: only needed if mode="full" (will project L*D → d_model)
         temporal_pool_tokens: if >0, use PMA-style temporal summarization per station before station-wise attention
         use_sdpa: route every attention through the fused scaled_dot_product_attention drop-in
-            (numerically equivalent; opt-in perf path). Absent ⇒ stock nn.MultiheadAttention.
+            (numerically equivalent, opt-in perf path). Absent ⇒ stock nn.MultiheadAttention.
         """
         super().__init__()
         self.mode = mode
@@ -254,7 +254,7 @@ class SeismogramAxialTransformer(nn.Module):
         # CLS token(s)
         if self.use_cls_token:
             if self.mode == "axial":
-                # acts as an extra "station"; broadcast across time
+                # acts as an extra "station". Broadcast across time
                 self.cls_token_axial = nn.Parameter(torch.randn(1, 1, 1, d_model))
             elif self.mode == "full":
                 input_dim = self.conv_length * self.timesteps
@@ -354,7 +354,7 @@ class SeismogramAxialTransformer(nn.Module):
     def _station_position_embedding_batched(self, pos: torch.Tensor, d_model: int = 128):
         """Per-batch variant of :meth:`station_position_embedding`.
 
-        pos: ``(B, N, 2)`` per-sample station coordinates (e.g. source-relative
+        pos: ``(B, N, 2)`` per-sample station coordinates (for example source-relative
         ``(distance, azimuth)``). Returns ``(B, N, d_model)``. Uses the identical
         sinusoidal scheme so it is consistent with the shared-coords path.
         """
@@ -382,7 +382,7 @@ class SeismogramAxialTransformer(nn.Module):
         return self.station_position_embedding(self.station_coords, d_model=d_model, batch_size=B)
 
     def _masked_mean(self, x: torch.Tensor, mask: Optional[torch.Tensor]):
-        # x: (B, T, D); mask: (B, T) True means keep/valid
+        # x: (B, T, D). Mask: (B, T) True means keep/valid
         if mask is None:
             return x.mean(dim=1)
         m = mask.to(x.dtype).unsqueeze(-1)
@@ -445,11 +445,11 @@ class SeismogramAxialTransformer(nn.Module):
         Parameters
         ----------
         x : torch.Tensor
-            ``(B, N, L, D)``; the fixed station coordinates are ``(B, N, 2)`` or ``(1, N, 2)``.
+            ``(B, N, L, D)``. The fixed station coordinates are ``(B, N, 2)`` or ``(1, N, 2)``.
         key_padding_mask : optional
-            Axial mode: ``(B, N, L)`` booleans (True=pad); full mode accepts the same input.
+            Axial mode: ``(B, N, L)`` booleans (True=pad). Full mode accepts the same input.
         station_coords_override : optional
-            ``(B, N, 2)`` per-sample coordinates (e.g. source-relative distance/azimuth)
+            ``(B, N, 2)`` per-sample coordinates (for example source-relative distance/azimuth)
             used instead of the shared station coords. ``None`` reproduces the original
             shared-coords behaviour.
         source_depth : optional
@@ -465,10 +465,10 @@ class SeismogramAxialTransformer(nn.Module):
         x = x + t_e.unsqueeze(0).unsqueeze(1)  # (B, N, L, D)
 
         # ``posenc_to_inject`` holds a ``(B, N, d_model)`` embedding the block loop re-adds
-        # before every block; it stays None when the encoding is added once, just below.
+        # before every block. It stays None when the encoding is added once, just below.
         posenc_to_inject = None
         if self.station_posenc is not None:
-            # RFF path (axial only; CLS disabled at construction so N is preserved).
+            # RFF path (axial only, CLS disabled at construction so N is preserved).
             if station_coords_override is not None:
                 coords = station_coords_override
             else:
@@ -540,7 +540,7 @@ class SeismogramAxialTransformer(nn.Module):
                 cls_seq = x[:, 0, :, :]  # (B, L, D)
                 time_keep = None
                 if key_padding_mask is not None:
-                    # A time step is padded only when every station is padded there; a padded
+                    # A time step is padded only when every station is padded there. A padded
                     # station alone must not invalidate the time step for the others.
                     time_keep = ~key_padding_mask.all(dim=1)  # (B, L)
                 pooled = self._apply_pool(cls_seq, time_keep)

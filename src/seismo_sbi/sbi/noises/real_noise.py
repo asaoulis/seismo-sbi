@@ -27,7 +27,7 @@ class RealNoiseSampler(NoiseSampler):
 
     def __init__(self, simulation_parameters : SimulationParameters, directory, data_length = None,
                  allow_incomplete: bool = False):
-        """``simulation_parameters`` supplies the receivers and components; ``directory`` holds one
+        """``simulation_parameters`` supplies the receivers and components. ``directory`` holds one
         HDF5 noise window per file, or is None when the windows are given in memory
         (:meth:`from_windows`).
 
@@ -71,7 +71,7 @@ class RealNoiseSampler(NoiseSampler):
     @classmethod
     def from_receivers(cls, receivers, components, seismogram_duration_s, sampling_rate_hz, directory, **kwargs):
         """A sampler for ``receivers`` recording ``components`` (a string such as ``"ZEN"``) over
-        ``seismogram_duration_s`` at ``sampling_rate_hz``; ``kwargs`` are those of the constructor.
+        ``seismogram_duration_s`` at ``sampling_rate_hz``. ``kwargs`` are those of the constructor.
         """
         simulation_parameters = SimulationParameters(
             receivers=receivers, components=components, seismogram_duration=seismogram_duration_s,
@@ -85,7 +85,7 @@ class RealNoiseSampler(NoiseSampler):
 
         ``noise_windows`` is ``(n_windows, data_vector_length)``: each row one window's traces for
         every component each receiver records, in receiver order, as :meth:`draw` returns
-        them. ``present`` ``(n_windows, n_stations)`` marks the stations each window holds; with
+        them. ``present`` ``(n_windows, n_stations)`` marks the stations each window holds. With
         it a draw carries its window's row of ``present`` as with ``allow_incomplete``, and the
         rows are zero where a station is absent. Windows are drawn as recorded.
         """
@@ -104,7 +104,7 @@ class RealNoiseSampler(NoiseSampler):
         """Pack each cached window's station presence into one integer, so :meth:`sample_containing` can find the windows holding a station subset in one comparison."""
         n = self._presence_cache.shape[1]
         if n > 64:
-            # Fall back to the boolean matrix; the query below stays vectorised, just wider.
+            # Fall back to the boolean matrix. The query below stays vectorised, just wider.
             self._presence_bits = None
             return
         weights = (np.uint64(1) << np.arange(n, dtype=np.uint64))
@@ -145,8 +145,8 @@ class RealNoiseSampler(NoiseSampler):
         return np.array(list(Path(directory).glob('*.h5')))
 
     def preload_cache(self, max_workers: int = 16, dtype=np.float32):
-        """Load every valid noise window into ``self._noise_cache`` ``(n_valid, L)``; :meth:`draw` then
-        returns a uniformly random row.
+        """Load every valid noise window into ``self._noise_cache`` ``(n_valid, L)``. :meth:`draw`
+        then returns a uniformly random row.
 
         Windows whose flattened length differs from the data-vector length (missing stations or data
         gaps) are skipped as the on-disk path skips them. With a rescale target the pool also holds
@@ -177,7 +177,7 @@ class RealNoiseSampler(NoiseSampler):
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
             loaded = list(tqdm(ex.map(_try_load, paths), total=len(paths),
                                desc="[noise-cache] preloading", unit="win"))
-        # Keep windows matching the modal length (the data-vector length); drop gaps/mismatches.
+        # Keep windows matching the modal length (the data-vector length). Drop gaps/mismatches.
         kept = [(p, vp) for p, vp in zip(paths, loaded) if vp is not None]
         if not kept:
             raise RuntimeError("RealNoiseSampler.preload_cache: no valid noise windows found.")
@@ -224,7 +224,7 @@ class RealNoiseSampler(NoiseSampler):
 
         A random row of the in-memory pool when it is preloaded, otherwise a random window read from
         disk with its recorded covariance data. Either is rescaled to the target variances when they
-        are set; the traces of an absent station stay zero.
+        are set. The traces of an absent station stay zero.
         """
         if self._noise_cache is not None and (self.target_variances is None or self._variance_cache is not None):
             row = np.random.randint(0, self._noise_cache.shape[0])
@@ -321,7 +321,7 @@ class RealNoiseSampler(NoiseSampler):
     
     def variance_ratios(self, covariance_data):
         """``{station: {component: ratio}}``: each trace's pre-event variance in a window's
-        ``covariance_data`` over the target variance it is rescaled to; the trace is divided by
+        ``covariance_data`` over the target variance it is rescaled to. The trace is divided by
         the square root of its ratio."""
         window_variances = pre_event_variances(covariance_data)
         return {station: {component: variance / station_component_value(self.target_variances, station, component)
@@ -330,7 +330,7 @@ class RealNoiseSampler(NoiseSampler):
 
     def _rescaled(self, noise, covariance_data):
         """``noise`` with each trace divided by the square root of its variance ratio
-        (:meth:`variance_ratios`); a trace without a ratio is kept."""
+        (:meth:`variance_ratios`). A trace without a ratio is kept."""
         ratios = self.variance_ratios(covariance_data)
         receivers = list(self.data_loader.receivers.iterate())
         traces = np.asarray(noise).reshape(sum(len(receiver.components) for receiver in receivers), -1)
@@ -346,7 +346,7 @@ class RealNoiseSampler(NoiseSampler):
 
     def _rescaled_by(self, noise, window_variances):
         """``noise`` with each trace divided by the square root of its ``window_variances`` ``(n_traces,)``
-        over the target variance; a trace with no window variance (NaN) is kept."""
+        over the target variance. A trace with no window variance (NaN) is kept."""
         ratios = window_variances / self._target_trace_variances
         traces = np.asarray(noise).reshape(ratios.size, -1)
         return np.concatenate([trace / np.sqrt(ratio) if not np.isnan(ratio) and ratio != 1.0 else trace

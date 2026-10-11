@@ -32,8 +32,8 @@ def plot_beachball_mpl(
     ``(collection, base_transform, position, size, raw_data)``.
 
     ``collection`` holds the polygons in unit-beachball coordinates with an identity transform for
-    the caller to set; ``base_transform``, ``position`` and ``size`` come from
-    ``choose_transform(axes, size_units, ...)``; ``raw_data`` is the list of
+    the caller to set. ``base_transform``, ``position`` and ``size`` come from
+    ``choose_transform(axes, size_units, ...)``. ``raw_data`` is the list of
     ``(verts, facecolor, edgecolor, linewidth)`` the polygons were drawn from.
     """
     # Resolve transform/position/size like original code

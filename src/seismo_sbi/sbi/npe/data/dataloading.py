@@ -59,7 +59,7 @@ class TorchSimulationDataset(Dataset):
         """What is done to each sample: augmentation, noise, scaling, station selection and conditioning."""
         self.data_loader = data_loader
 
-        # Per-item ``(keep_indices, zero_channels)`` in the sorted order of ``paths``; they replace
+        # Per-item ``(keep_indices, zero_channels)`` in the sorted order of ``paths``. They replace
         # the random subsampling and dropout, reproducing the parent event's station availability.
         self.fixed_item_masks = fixed_item_masks
         # Same alignment: a simulation stores its true source location, but the model must be
@@ -69,7 +69,7 @@ class TorchSimulationDataset(Dataset):
         # With a subsampler, __getitem__ draws a station subset per sample and returns
         # ``(theta, (x_sub, coords_sub, source_vec))`` for ``variable_station_collate`` to pack.
         self.station_subsampler = station_subsampler
-        # Master station coordinates (N, 2) in canonical receiver-iteration order — matches
+        # Master station coordinates (N, 2) in canonical receiver-iteration order: matches
         # the station axis of the (N, C, T) data array, so subsampling indexes both alike.
         self.station_coords = data_loader.receivers.get_station_locations_array()
 
@@ -146,7 +146,7 @@ class TorchSimulationDataset(Dataset):
         """Source-location uncertainty augmentation: add per-coordinate Gaussian noise to the
         raw conditioning vector. Fresh draw per call (⇒ training augmentation). No-op when
         ``conditioning_noise_std`` is unset. The model then sees a noisy source (and, in
-        relative-coords mode, noisy source-relative station geometry) — matching the catalogue
+        relative-coords mode, noisy source-relative station geometry): matching the catalogue
         location error present at inference."""
         std = self.conditioning_noise_std
         if std is None:
@@ -183,7 +183,7 @@ def make_torch_dataloader(
     post_noise_augmentation_chain=None,
     post_noise_nuisance_params=None,
 ) -> DataLoader:
-    """One loader over every simulation under ``data_folder``, without a validation split; the
+    """One loader over every simulation under ``data_folder``, without a validation split. The
     dataset arguments go to :class:`TorchSimulationDataset`."""
     dataset = TorchSimulationDataset(
         data_loader=data_loader,
@@ -238,7 +238,7 @@ def make_torch_dataloaders(
 ):
     """``(train_loader, val_loader)`` over one dataset, split at ``train_max_index``.
 
-    The dataset arguments go to :class:`TorchSimulationDataset`; a ``dataset`` already built, such
+    The dataset arguments go to :class:`TorchSimulationDataset`. A ``dataset`` already built, such
     as an :class:`~seismo_sbi.sbi.npe.data.array_dataset.ArraySimulationDataset`, is split
     as it is instead. ``val_batch_size`` defaults to ``train_batch_size``.
     """
@@ -246,7 +246,7 @@ def make_torch_dataloaders(
         val_batch_size = train_batch_size
 
     # Train and val share one dataset, so nuisance augmentation is applied to BOTH
-    # (val augmentation ON by design — val loss reflects the augmented distribution).
+    # (val augmentation ON by design: val loss reflects the augmented distribution).
     if dataset is not None:
         if data_loader is not None or data_folder is not None:
             raise ValueError("Pass either a dataset or the folder to build one from, not both.")
@@ -300,7 +300,7 @@ def _loader_options(num_workers, pin_memory, persistent_workers, prefetch_factor
         persistent_workers = num_workers > 0
     options = {"num_workers": num_workers, "pin_memory": pin_memory,
                "persistent_workers": persistent_workers}
-    # prefetch_factor is only valid with worker processes; a larger value keeps more augmented
+    # prefetch_factor is only valid with worker processes. A larger value keeps more augmented
     # batches queued ahead of the accelerator.
     if num_workers > 0:
         options["prefetch_factor"] = prefetch_factor

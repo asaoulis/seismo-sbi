@@ -19,7 +19,7 @@ TRAINING_BLOCKS = frozenset({
     "ml_logging", "ml_scaler", "ml_real_width_gate",
 })
 
-#: Keys of the blocks read by name here; every other block is forwarded verbatim to a
+#: Keys of the blocks read by name here. Every other block is forwarded verbatim to a
 #: constructor, so its keys are only validated there.
 NAMED_BLOCK_KEYS = {
     "ml_conditioning": {"param_map", "n_cond", "d_cond", "coord_mode", "inject", "n_fourier"},
@@ -39,7 +39,7 @@ class EncoderConfig:
     """Per-station encoder choice (``ml_architecture``) and its keyword arguments (``ml_encoder``).
 
     ``band_limit`` is a zero-phase low-pass at ``cutoff_hz`` applied to every trace at the model
-    entry, and ``input_decimate`` a Nyquist-aware decimation after it; neither is one of the
+    entry, and ``input_decimate`` a Nyquist-aware decimation after it. Neither is one of the
     encoder's own arguments. The band limit's ``sampling_rate_hz`` defaults to the data's
     ``seismic_context.sampling_rate``.
     """
@@ -79,7 +79,7 @@ class ConditioningConfig:
     """Source-location conditioning of the encoder (``ml_conditioning``).
 
     ``coordinate_noise_std`` holds the per-coordinate Gaussian widths, in the ``param_map``
-    order, of the training-time perturbation of the conditioning vector; it comes from a
+    order, of the training-time perturbation of the conditioning vector. It comes from a
     ``source_location_error`` nuisance staged as a training augmentation.
     """
 
@@ -158,7 +158,7 @@ class EmbeddingConfig:
     """Optional token features and pooling head of the set encoder.
 
     Each entry is its YAML block minus the ``enabled`` switch, forwarded verbatim to the
-    embedding net; ``None`` means the feature is off and the model is built without it.
+    embedding net. ``None`` means the feature is off and the model is built without it.
     """
 
     amplitude: dict = None
@@ -205,7 +205,7 @@ class BatchConfig:
     """Per-GPU batch sizes and dataloader settings (``ml_batch``).
 
     Each rank of a multi-GPU run consumes a full ``train`` batch, so the global batch is
-    ``train * devices``. ``val`` defaults to twice ``train``; read it through :attr:`val_size`.
+    ``train * devices``. ``val`` defaults to twice ``train``. Read it through :attr:`val_size`.
     ``train_fraction`` is the share of the simulations used for training rather than validation.
     """
 
@@ -236,7 +236,7 @@ class BatchConfig:
 class CacheConfig:
     """In-RAM caches that remove the per-sample HDF5 reads (``ml_cache``).
 
-    ``dtype`` is the storage precision of the cached simulations; float32 matches the model.
+    ``dtype`` is the storage precision of the cached simulations. Float32 matches the model.
     """
 
     sims: bool = False
@@ -273,7 +273,7 @@ class RealWidthGateConfig:
     """Posterior width on a fixed set of recordings, logged during training (``ml_real_width_gate``).
 
     ``observations`` is a directory of ``.npz`` recordings written by
-    :func:`seismo_sbi.sbi.npe.training.real_width_gate.write_observation`; absent, the gate is
+    :func:`seismo_sbi.sbi.npe.training.real_width_gate.write_observation`. Absent, the gate is
     off. An event is kept when its lune 95 % credible area is at most ``max_lune_area``.
     """
 
@@ -319,7 +319,7 @@ class TrainingConfiguration:
 
     @classmethod
     def from_yaml_block(cls, config):
-        """Build from a parsed configuration file; every key it reads is optional."""
+        """Build from a parsed configuration file. Every key it reads is optional."""
         reject_unknown_training_keys(config)
         return cls(
             encoder=EncoderConfig.from_yaml_block(config),
@@ -340,7 +340,7 @@ class TrainingConfiguration:
 
     def apply_overrides(self, station_encoder=None, epochs=None, devices=None,
                         train_batch_size=None):
-        """Fold in the command-line overrides a scheduler sets; ``None`` keeps the config value."""
+        """Fold in the command-line overrides a scheduler sets. ``None`` keeps the config value."""
         if station_encoder is not None:
             self.encoder.station_encoder = station_encoder
         if epochs is not None:
@@ -414,7 +414,7 @@ class TrainingConfiguration:
 
         These are the keyword arguments of
         :func:`~seismo_sbi.sbi.npe.data.dataloading.make_torch_dataloaders` that do not
-        build the dataset; with ``dataset=`` added they are the ``dataloader_args`` of a training
+        build the dataset. With ``dataset=`` added they are the ``dataloader_args`` of a training
         run on an :class:`~seismo_sbi.sbi.npe.data.array_dataset.ArraySimulationDataset`.
         """
         return {

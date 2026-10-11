@@ -1,6 +1,6 @@
 """Multi-model Instaseis simulator: one Instaseis database ensemble per receiver region.
 
-Each sub-model dict carries ``receivers``, ``ensemble_dir`` and ``fiducial_dir``; the merge over
+Each sub-model dict carries ``receivers``, ``ensemble_dir`` and ``fiducial_dir``. The merge over
 regions lives in :class:`~seismo_sbi.simulators.multi_region.MultiModelSimulator`.
 """
 
@@ -15,7 +15,7 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
     Each sub-model dict carries ``"receivers"`` and either a pre-built ``"simulator"`` or
     ``"ensemble_dir"`` and ``"fiducial_dir"``. Under ``use_fiducial=True`` each region uses its
     own reference database, so the merged output is regionally consistent.
-    ``resample_member_per_station`` is forwarded to every region built here; a pre-built
+    ``resample_member_per_station`` is forwarded to every region built here. A pre-built
     simulator keeps the flag it was built with.
     """
 
@@ -28,7 +28,7 @@ class InstaseisMultiModelSimulator(MultiModelSimulator):
         self.member_sampling = member_sampling
         self.sector_lambda = sector_lambda
         super().__init__(models, *args, **kwargs)
-        # Every region shares the sampling rate; via getattr so a mock sub-simulator with no
+        # Every region shares the sampling rate. Via getattr so a mock sub-simulator with no
         # database still constructs.
         self.sampling_rate = getattr(self.sub_sims[0], "sampling_rate", None)
 

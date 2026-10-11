@@ -26,7 +26,8 @@ def cap_blas_threads(num_threads=1):
 
 
 def configure_numba_cache():
-    """Point numba's JIT cache at a writable per-user temp dir; HOME may be read-only on compute nodes.
+    """Point numba's JIT cache at a writable per-user temp dir. HOME may be read-only on compute
+    nodes.
 
     Must run before numba is first imported, which happens inside instaseis.
     """
@@ -63,8 +64,8 @@ def stamp_arviz_daily_warning():
 
 
 def log_progress_to_stdout(level=logging.INFO):
-    """Print the library's log records at ``level`` and above to stdout, one message per line;
-    calling it again changes only the level.
+    """Print the library's log records at ``level`` and above to stdout, one message per line.
+    Calling it again changes only the level.
     """
     library_logger = logging.getLogger("seismo_sbi")
     library_logger.setLevel(level)

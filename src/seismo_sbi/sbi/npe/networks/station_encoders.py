@@ -82,13 +82,13 @@ def build_station_encoder(
     Parameters
     ----------
     name:
-        Key into ``PER_STATION_ENCODER_REGISTRY`` (e.g. ``"cnn"``, ``"pno"``, ``"tcn"``).
+        Key into ``PER_STATION_ENCODER_REGISTRY`` (for example ``"cnn"``, ``"pno"``, ``"tcn"``).
     num_seismic_components:
-        Number of seismic channels C (e.g. 1 for Z-only, 3 for ZNE).
+        Number of seismic channels C (for example 1 for Z-only, 3 for ZNE).
     input_length:
         Per-trace sample count T.
     d_model:
-        Transformer width.  Encoders may produce a different width D; the
+        Transformer width.  Encoders may produce a different width D. The
         calling code will project if necessary.
     **encoder_config:
         Forwarded verbatim to the encoder ``__init__``.
@@ -107,7 +107,7 @@ def build_station_encoder(
     )
 
 
-# InputDecimator — Nyquist-aware model-entry decimation (opt-in)
+# InputDecimator. Nyquist-aware model-entry decimation (opt-in)
 
 class BandLimit(nn.Module):
     """Zero-phase low-pass of every trace at the model entry, by a fixed mask on its spectrum.
@@ -149,8 +149,8 @@ class InputDecimator(nn.Module):
     """Decimate input traces by an integer factor at the model entry.
 
     Data band-limited below the post-decimation Nyquist frequency loses no
-    information (e.g. a 0.03–0.08 Hz bandpass at 1 Hz sampling tolerates factor
-    ≥ 3; a 6 s minimum period tolerates exactly 3).  Every station encoder then
+    information (for example a 0.03–0.08 Hz bandpass at 1 Hz sampling tolerates factor
+    ≥ 3. A 6 s minimum period tolerates exactly 3).  Every station encoder then
     sees ``ceil(T / factor)`` samples, cutting encoder FLOPs by ~factor and the
     transformer's time-token count proportionally.
 
@@ -201,7 +201,7 @@ class InputDecimator(nn.Module):
 class CNNEncoder(nn.Module):
     """Default per-station encoder: wraps ``SeismicTraceCNN`` unchanged.
 
-    The CNN outputs ``(B*N, D, L)`` (channels-first); this adapter permutes
+    The CNN outputs ``(B*N, D, L)`` (channels-first). This adapter permutes
     to the canonical ``(B*N, L, D)`` token layout.
 
     All encoder_config kwargs are forwarded to ``SeismicTraceCNN`` so any
@@ -233,12 +233,12 @@ class CNNEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: (B*N, C, T)  →  (B*N, L, D)"""
-        # CNN returns (B*N, D, L) — permute to (B*N, L, D)
+        # CNN returns (B*N, D, L): permute to (B*N, L, D)
         feats = self._cnn(x)                        # (B*N, D, L)
         return feats.permute(0, 2, 1).contiguous()  # (B*N, L, D)
 
 
-# FNO primitives (vendored — no new dependency)
+# FNO primitives (vendored: no new dependency)
 
 class SpectralConv1d(nn.Module):
     """Fourier-domain conv: rfft → complex weight multiply (lowest *modes*) → irfft.
@@ -260,7 +260,7 @@ class SpectralConv1d(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, T = x.shape
         # torch.fft has no half-precision kernels, so the spectral path runs in fp32 under an
-        # autocast and the result is cast back; autocast is disabled over the complex einsum.
+        # autocast and the result is cast back. Autocast is disabled over the complex einsum.
         in_dtype = x.dtype
         with torch.autocast(device_type=x.device.type, enabled=False):
             xf = x.float()
@@ -330,7 +330,7 @@ class PhaseNeuralOperatorEncoder(nn.Module):
     5. Projection Conv1d: ``width → out_dim``.
     6. Permute to ``(B*N, L, D=out_dim)``.
 
-    Cross-station coupling is intentionally **not** reproduced here — the
+    Cross-station coupling is intentionally **not** reproduced here: the
     axial-transformer aggregator already plays that role.
 
     Config keys (``model_config["encoder_config"]``)
@@ -445,7 +445,7 @@ class DilatedTCNEncoder(nn.Module):
     1. Amplitude normalisation + log-amplitude feature channel.
     2. Lifting Conv1d: ``C+1 → channels``.
     3. ``n_blocks`` ``_GLUBlock`` layers with exponentially growing dilation
-       ``(1, 2, 4, …, 2^(n_blocks-1))`` — receptive field doubles each block.
+       ``(1, 2, 4, …, 2^(n_blocks-1))``: receptive field doubles each block.
     4. Optional strided Conv1d downsampling: ``L = T // downsample``.
     5. Projection Conv1d: ``channels → out_dim``.
     6. Permute to ``(B*N, L, D=out_dim)``.
@@ -455,7 +455,7 @@ class DilatedTCNEncoder(nn.Module):
     channels      int   Intermediate channel count (default 32).
     n_blocks      int   Number of GLU blocks (default 4).
     kernel_size   int   Dilated conv kernel width (default 3).
-    dilation_base int   Dilation base (default 2; block k gets dilation_base^k).
+    dilation_base int   Dilation base (default 2, block k gets dilation_base^k).
     dropout       float Dropout rate (default 0.0).
     out_dim       int   Output feature dim D (default == d_model).
     downsample    int   Temporal stride for downsampling step (default 4).
@@ -481,7 +481,7 @@ class DilatedTCNEncoder(nn.Module):
         out_dim = out_dim if out_dim is not None else d_model
 
         # Symmetric padding ``dilation * (k - 1) // 2`` preserves the trace length only for an
-        # odd kernel; an even one comes back a sample short and breaks the residual add.
+        # odd kernel. An even one comes back a sample short and breaks the residual add.
         if kernel_size % 2 == 0:
             raise ValueError(
                 f"DilatedTCNEncoder requires an odd kernel_size to preserve length; got {kernel_size}."

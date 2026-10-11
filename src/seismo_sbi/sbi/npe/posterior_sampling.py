@@ -4,7 +4,7 @@
 :class:`StationConfig`, :func:`make_dropout_configs` and :func:`config_from_kept` choose the
 stations a configuration keeps, as the training-time
 :class:`~seismo_sbi.sbi.npe.data.station_selection.StationSubsampler` does, and
-:func:`sample_station_dropout_ensemble` draws the posterior for each configuration; the figures
+:func:`sample_station_dropout_ensemble` draws the posterior for each configuration. The figures
 live in :mod:`seismo_sbi.plotting.evaluation`.
 """
 from collections import OrderedDict
@@ -20,7 +20,7 @@ from seismo_sbi.sbi.types.results import InversionData, InversionResult, Inversi
 class StationConfig:
     """One named station configuration.
 
-    ``keep`` are sorted integer indices into the master station-name list; ``kept`` /
+    ``keep`` are sorted integer indices into the master station-name list. ``kept`` /
     ``dropped`` are the corresponding names. ``n`` is the number of kept stations.
     """
 
@@ -66,7 +66,7 @@ def make_dropout_configs(station_names: Sequence[str], *, keep_fraction: float =
     few distinct subsets are feasible for the requested ``n_subsets``.
 
     Mirrors the training-time :class:`~seismo_sbi.sbi.npe.data.station_selection.StationSubsampler` selection (which draws a
-    *range* of fractions per sample); here a single ``keep_fraction`` is used for a clean,
+    *range* of fractions per sample). Here a single ``keep_fraction`` is used for a clean,
     reproducible evaluation grid.
     """
     names = list(station_names)
@@ -133,15 +133,15 @@ def robust_posterior_sample(posterior, ctx, num_samples, *, oversample=4, max_fa
     """Sample a sbi ``DirectPosterior`` WITHOUT the leakage-rejection hang.
 
     sbi 0.21's ``DirectPosterior.sample`` rejects flow draws outside the prior box to
-    correct for leakage; if the trained flow puts ~all mass outside the prior for an
+    correct for leakage. If the trained flow puts ~all mass outside the prior for an
     out-of-distribution observation, the acceptance rate is ~0% and the rejection loop
     never terminates (the ``Only 0.000% proposal samples are accepted`` warning that
     stalled some catalogue events).
 
     This draws directly from the underlying flow in bounded batches, keeps the
     in-prior-box samples (identical to sbi's rejection for the healthy, high-acceptance
-    case), and — only when the posterior leaks so badly it cannot fill the request
-    within ``max_factor`` × ``num_samples`` candidates — tops up with flow samples
+    case), and, only when the posterior leaks so badly it cannot fill the request
+    within ``max_factor`` × ``num_samples`` candidates, tops up with flow samples
     *clipped* to the prior box so the call always returns ``num_samples`` and never
     hangs.  Returns a torch tensor ``(num_samples, dim)`` on the estimator's device.
     """
@@ -149,7 +149,7 @@ def robust_posterior_sample(posterior, ctx, num_samples, *, oversample=4, max_fa
     est = getattr(posterior, "posterior_estimator", None)
     if est is None:
         # Duck-typed posterior (no sbi flow internals to bypass): the plain sample
-        # path IS the whole contract — leakage rejection only exists on DirectPosterior.
+        # path IS the whole contract: leakage rejection only exists on DirectPosterior.
         return posterior.sample((num_samples,), ctx, show_progress_bars=False)
     prior = getattr(posterior, "_prior", None) or getattr(posterior, "prior", None)
     lo, hi = _prior_bounds(prior)
@@ -190,17 +190,18 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     Parameters
     ----------
     posterior : sbi DirectPosterior (or any object with ``.sample((n,), x)``).
-    obs : array ``(N, C, T)`` -- the full observation, rows aligned to the master station list.
-    coords : array ``(N, 2)`` -- station ``(lat, lon)`` in the same order.
+    obs : array ``(N, C, T)``, the full observation, rows aligned to the master station list.
+    coords : array ``(N, 2)``, station ``(lat, lon)`` in the same order.
     configs : sequence of :class:`StationConfig`.
-    data_scaler : the training-time scaler; ``inverse_transform`` maps samples to physical MT.
+    data_scaler : the training-time scaler. ``inverse_transform`` maps samples to physical MT.
     num_samples : posterior samples per config.
-    device : torch device string; defaults to cuda if available.
+    device : torch device string. Defaults to cuda if available.
     event_name : optional prefix for the per-config ``InversionResult.event_name``.
-    source_vec : array ``(n_cond,)``, optional. Raw source-conditioning vector (e.g. the event's
-        ``[latitude, longitude, depth]`` in ``ml_conditioning.param_map`` order) required by a
-        **conditioned** model at inference. ``None`` (default) ⇒ unconditioned model; the source
-        vector is shared across all station configs of one event (same source, different stations).
+    source_vec : array ``(n_cond,)``, optional. Raw source-conditioning vector (for example the
+        event's ``[latitude, longitude, depth]`` in ``ml_conditioning.param_map`` order) required
+        by a **conditioned** model at inference. ``None`` (default) ⇒ unconditioned model. The
+        source vector is shared across all station configs of one event (same source, different
+        stations).
 
     Returns
     -------
@@ -239,8 +240,8 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
 def pack_subset_batch(items, device=None):
     """Pack many ``(seismograms, coords, source_vec)`` subsets into one ``(B, W)`` context.
 
-    ``items`` is a sequence of ``(obs (N_i, C, T), coords (N_i, 2), source_vec | None)``;
-    the ``N_i`` may differ.  Every item is zero-padded to ``max_N`` with a False mask
+    ``items`` is a sequence of ``(obs (N_i, C, T), coords (N_i, 2), source_vec | None)``.
+    The ``N_i`` may differ.  Every item is zero-padded to ``max_N`` with a False mask
     entry, mirroring :func:`~seismo_sbi.sbi.npe.data.station_selection.variable_station_collate`, then flattened by
     :func:`~seismo_sbi.sbi.npe.source_conditioning.pack_variable_context`.
 
@@ -290,9 +291,9 @@ def flow_sample_chunked(est, ctx, num_samples, *, chunk=None):
 
     * the nflows LU transform's batched triangular solve fails with
       ``CUBLAS_STATUS_NOT_SUPPORTED`` once ``B * num_samples`` exceeds 2**19 rows, which
-      caps the usable context batch far below the GPU's memory;
+      caps the usable context batch far below the GPU's memory.
     * ``nflows.distributions.Distribution.sample(..., batch_size=...)``, which looks like
-      the fix, is broken for the CONDITIONAL case — it concatenates the chunks (``torch.cat``) along
+      the fix, is broken for the CONDITIONAL case: it concatenates the chunks (``torch.cat``) along
       dim 0, which is the *context* dimension when a context is given, so the returned
       tensor is mis-shaped. It also re-runs the embedding net per chunk.
 
@@ -314,7 +315,7 @@ def flow_sample_chunked(est, ctx, num_samples, *, chunk=None):
             return est.sample(num_samples, context=ctx)
 
     with torch.no_grad():
-        emb = embed(ctx)                                        # (B, E) — computed ONCE
+        emb = embed(ctx)                                        # (B, E): computed ONCE
         parts, drawn = [], 0
         while drawn < num_samples:
             m = min(chunk, num_samples - drawn)
@@ -334,14 +335,14 @@ def robust_posterior_sample_batched(posterior, ctx, num_samples, *, oversample=2
     Draws ``num_samples * oversample`` candidates for the whole batch in ONE flow call,
     keeps each row's first ``num_samples`` in-prior-box draws, and re-draws only for the
     rows that came up short (up to ``max_rounds``).  Rows that still cannot be filled —
-    the pathological leakage case ``robust_posterior_sample`` exists to survive — are
+    the pathological leakage case ``robust_posterior_sample`` exists to survive: are
     topped up with samples *clipped* into the prior box, so the call always returns a
     full ``(B, num_samples, D)`` tensor and never hangs.
 
     ``flow_chunk`` caps how many draws per row go through the flow at once (see
-    :func:`flow_sample_chunked`); ``None`` sends them all in one call.
+    :func:`flow_sample_chunked`). ``None`` sends them all in one call.
 
-    Equivalent in distribution to calling :func:`robust_posterior_sample` per row; it is
+    Equivalent in distribution to calling :func:`robust_posterior_sample` per row. It is
     NOT sample-identical (one shared RNG stream for the batch).
     """
     import torch
@@ -392,12 +393,12 @@ def sample_subsets_batched(posterior, items, data_scaler, *, num_samples: int,
                            flow_chunk=None, progress=None):
     """Sample the variable-station posterior for MANY subsets, ``max_batch`` at a time.
 
-    ``items``: sequence of ``(obs (N_i, C, T), coords (N_i, 2), source_vec | None)`` — one
+    ``items``: sequence of ``(obs (N_i, C, T), coords (N_i, 2), source_vec | None)``: one
     entry per (event, station-subset) to invert.  Returns a list of ``(num_samples, D)``
     numpy arrays in PHYSICAL units (``data_scaler.inverse_transform`` applied), aligned
     with ``items``.
 
-    ``max_batch`` trades GPU memory for throughput; peak memory is dominated by the
+    ``max_batch`` trades GPU memory for throughput. Peak memory is dominated by the
     ``max_batch * num_samples * oversample`` flow draws and their repeated context
     embedding.  ``flow_chunk`` keeps each flow call under the nflows/cuBLAS batched-solve
     limit so ``max_batch`` can be raised past it (see :func:`flow_sample_chunked`).

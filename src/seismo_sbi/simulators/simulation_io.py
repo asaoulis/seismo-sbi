@@ -1,10 +1,10 @@
 """Write and read the HDF5 file that holds one simulation.
 
 :class:`SimulationSaver` writes the source parameters under ``inputs`` and the seismograms under
-``outputs``; :class:`SimulationDataLoader` reads that layout back and flattens it into the
+``outputs``. :class:`SimulationDataLoader` reads that layout back and flattens it into the
 ``(n_traces * n_samples,)`` data vector the inference pipeline consumes, in receiver order.
 :func:`seismogram_map_to_array` does the same for a simulator's in-memory ``{station: {component:
-waveform}}`` map, and :func:`seismogram_array_to_map` builds that map from the traces. Horizontal components may be stored as 1 and 2 rather than E and N;
+waveform}}`` map, and :func:`seismogram_array_to_map` builds that map from the traces. Horizontal components may be stored as 1 and 2 rather than E and N.
 ``component_alias`` maps them.
 """
 
@@ -25,14 +25,14 @@ SYNTHETICS_PRE_EVENT_PAD_S = 60.0
 
 
 def component_alias(components: str) -> str:
-    """``components`` with E and N renamed 1 and 2; one component or a string of them."""
+    """``components`` with E and N renamed 1 and 2. One component or a string of them."""
     return components.replace('E', '1').replace('N', '2')
 
 
 def seismogram_map_to_array(seismogram_map: dict, receivers: Receivers, stacked: bool = False):
     """The data vector of a ``{station: {component: waveform}}`` map, in receiver order.
 
-    Each receiver contributes its own ``components`` in its own order; ``stacked`` returns
+    Each receiver contributes its own ``components`` in its own order. ``stacked`` returns
     ``(n_stations, n_components, n_samples)`` instead of the flat ``(n_traces * n_samples,)``
     vector. A station or component missing from the map raises ``KeyError``.
     """
@@ -43,7 +43,7 @@ def seismogram_map_to_array(seismogram_map: dict, receivers: Receivers, stacked:
 
 def seismogram_array_to_map(traces, receivers: Receivers) -> dict:
     """``{station: {component: waveform}}`` of ``traces`` ``(n_traces, n_samples)``, one row per
-    receiver component in receiver order; the inverse of :func:`seismogram_map_to_array`.
+    receiver component in receiver order. The inverse of :func:`seismogram_map_to_array`.
     """
     seismogram_map = {}
     trace_counter = 0
@@ -108,14 +108,14 @@ class SimulationDataLoader():
     """Read simulation HDF5 files for a fixed set of receivers and components.
 
     Arrays come back as ``(n_stations, n_components, n_samples)`` when ``stacked``, else flattened
-    in receiver order; components a receiver lacks are zero-filled when ``fill_unused`` is set.
+    in receiver order. Components a receiver lacks are zero-filled when ``fill_unused`` is set.
     """
 
     def __init__(self,components : str,
                         receivers : Receivers,
                         data_length = None,):
         """``components`` (a string such as ``"ZEN"``, or a list) is the full component layout
-        a ``fill_unused`` array is padded to; each receiver's own ``components`` must follow the
+        a ``fill_unused`` array is padded to. Each receiver's own ``components`` must follow the
         same relative order. ``data_length`` truncates every trace to that many samples.
         """
         self.components = components
@@ -137,9 +137,9 @@ class SimulationDataLoader():
 
     def load_simulation_data_array(self, sim_name, *, stacked=False, fill_unused=False, data_length=None):
         """The seismograms of the file ``sim_name``, flat in receiver order or ``(n_stations,
-        n_components, n_samples)`` when ``stacked``; an absent station raises ``KeyError``.
+        n_components, n_samples)`` when ``stacked``. An absent station raises ``KeyError``.
 
-        ``data_length`` truncates every trace to that many samples; None keeps the loader's own.
+        ``data_length`` truncates every trace to that many samples. None keeps the loader's own.
         """
         with h5py.File(sim_name, 'r') as simulation_data_map:
             return self.convert_sim_data_to_array(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
@@ -182,7 +182,7 @@ class SimulationDataLoader():
 
     def load_simulation_data_array_with_shifts(self, sim_name, shift_dict, *, stacked=False, fill_unused=False):
         """Load a simulation with per-station time shifts ``shift_dict`` (``{station: samples}``) applied
-        to its traces; the loader's receivers keep their own shifts."""
+        to its traces. The loader's receivers keep their own shifts."""
         shifted_receivers = Receivers(receivers=list(self.receivers.receivers))
         shifted_receivers.set_time_shifts(shift_dict)
         with h5py.File(sim_name, 'r') as simulation_data_map:
@@ -194,7 +194,7 @@ class SimulationDataLoader():
         """``(data, coords)`` for the named stations only, in the order they are named.
 
         ``data`` is ``(n_stations, n_components, n_samples)`` when ``stacked``, else a flat
-        vector; ``coords`` is ``(n_stations, 2)`` of latitude and longitude in degrees.
+        vector. ``coords`` is ``(n_stations, 2)`` of latitude and longitude in degrees.
         """
         name_to_rec = {rec.station_name: rec for rec in self.receivers.iterate()}
         missing = [n for n in subset_station_names if n not in name_to_rec]
@@ -214,7 +214,7 @@ class SimulationDataLoader():
         """``(data, coords, kept_stations)`` keeping only the components ``components_map``
         names and zero-filling the rest.
 
-        ``components_map`` is ``{station: [kept components]}``; a station mapped to an empty
+        ``components_map`` is ``{station: [kept components]}``. A station mapped to an empty
         list or absent is dropped entirely, and a partial list keeps those channels and zeroes
         the others, which is the ``component_dropout`` nuisance the model trained on. Channel
         rows always follow each receiver's master component order, never the order inside
@@ -244,7 +244,7 @@ class SimulationDataLoader():
         return data, coords, kept_stations
 
     def convert_sim_data_to_array(self, simulation_data_map, *, stacked=False, fill_unused=False, data_length=None):
-        """Seismogram array from a simulation map; an absent station raises ``KeyError``."""
+        """Seismogram array from a simulation map. An absent station raises ``KeyError``."""
         array, _ = self._convert_sim_data(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
                                           allow_missing=False, data_length=data_length)
         return array
@@ -253,8 +253,8 @@ class SimulationDataLoader():
         """``(array, present_mask)``, tolerating absent stations.
 
         ``present_mask`` is a boolean over ``receivers`` saying which stations the map
-        carried. An absent station is zero-filled so the array keeps its full-station shape;
-        those samples are padding, not data, and the caller must mask them out.
+        carried. An absent station is zero-filled so the array keeps its full-station shape.
+        Those samples are padding, not data, and the caller must mask them out.
         """
         return self._convert_sim_data(simulation_data_map, stacked=stacked, fill_unused=fill_unused,
                                       allow_missing=True)
@@ -262,7 +262,7 @@ class SimulationDataLoader():
     def _convert_sim_data(self, simulation_data_map, *, stacked, fill_unused, allow_missing, data_length=None):
         """Shared implementation of the two public wrappers above.
 
-        ``stacked`` returns ``(n_stations, n_components, n_samples)`` instead of a flat vector;
+        ``stacked`` returns ``(n_stations, n_components, n_samples)`` instead of a flat vector.
         ``data_length`` (None: the loader's own) truncates every trace.
         """
         if data_length is None:
@@ -287,7 +287,7 @@ class SimulationDataLoader():
             if allow_missing:
                 station_outputs = outputs_group.get(receiver_name)
                 if station_outputs is None:
-                    # Zero-filled so the vector keeps its shape; the mask marks it as padding.
+                    # Zero-filled so the vector keeps its shape. The mask marks it as padding.
                     station_data.append([np.zeros(seismogram_array_length)
                                          for _ in rec_components])
                     present.append(False)
@@ -304,7 +304,7 @@ class SimulationDataLoader():
 
                 if trace_data is None:
                     if allow_missing:
-                        # A part-present station counts as absent; otherwise it would reach
+                        # A part-present station counts as absent. Otherwise it would reach
                         # the model as part-zero data.
                         comp_data = None
                         break
@@ -360,7 +360,7 @@ class SimulationDataLoader():
         """``{station: {component: autocovariance}}`` from the ``misc`` group of ``sim_name``.
 
         With ``allow_missing`` a station absent from the group, or missing one of its components, is
-        left out; otherwise it raises ``KeyError``.
+        left out. Otherwise it raises ``KeyError``.
         """
         with h5py.File(sim_name, 'r') as simulation_data_map:
             misc_data = {}

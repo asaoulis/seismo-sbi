@@ -76,8 +76,11 @@ class MomentTensorReparametrised:
                         ]
     
     def __init__(self, data_scaler=None, parameters=None):
-        """``parameters`` maps a sample vector to simulation inputs; None means each sample is the six
-        moment-tensor components (N m) in the order m_rr, m_tt, m_pp, m_rt, m_rp, m_tp."""
+        """``parameters`` maps a sample vector to simulation inputs.
+
+        None means each sample is the six moment-tensor components (N m) in the order m_rr, m_tt,
+        m_pp, m_rt, m_rp, m_tp.
+        """
         self.data_scaler = data_scaler
         self.parameters = parameters
         # no need for an extra scaling step
@@ -278,7 +281,8 @@ class PosteriorPlotter:
         beachball_specs = draw_lune_scatter(ax, bm, ensembles_mt, true_theta0, plot_beachballs)
         relocate_beachballs_outside_lune(ax, bm, beachball_specs)
         extra_specs = draw_extra_references(ax, bm, self._reference_tensors(extra_references or {}))
-        # The truth is the black dot drawn with the beachballs; without it a primary_reference takes its place.
+        # The truth is the black dot drawn with the beachballs. Without it a primary_reference
+        # takes its place.
         ref_specs = []
         if reference_label:
             if not (true_theta0 is not None and plot_beachballs) and primary_reference is not None:
@@ -307,7 +311,7 @@ class PosteriorPlotter:
         distinct scatter markers (see ``LUNE_REFERENCE_STYLES``) with their own legend entries.
         ``reference_label`` (optional) gives the primary 'truth' (gold diamond) its own legend
         entry. ``primary_reference`` (optional) is a primary-reference MT 6-vector drawn as that
-        gold diamond when the ensembles carry no ``theta0`` truth (e.g. the dropout lune)."""
+        gold diamond when the ensembles carry no ``theta0`` truth (for example the dropout lune)."""
         if ax is None:
             fig, ax = plt.subplots(figsize=(14, 14))
         else:
@@ -362,7 +366,7 @@ class PosteriorPlotter:
     def _primary_reference_legend(self, ax, bm, true_theta0, reference_label, primary_reference):
         """Return the legend spec ``[{label,color,marker}]`` for the primary reference, the
         'truth' diamond (a published solution, say). If the ensembles carried a ``theta0`` truth
-        it is already drawn by the main loop and only its legend entry is returned; if they did
+        it is already drawn by the main loop and only its legend entry is returned. If they did
         not (the station-dropout lune, whose configs have ``theta0=None``) but a
         ``primary_reference`` MT 6-vector is supplied, draw it here as the same peru diamond so it
         appears consistently. Returns ``[]`` when there is nothing to label."""
@@ -507,7 +511,7 @@ def plot_lune_histories(histories, figsave=None, linewidth=2.0, mark_endpoints=T
         Name -> sequence of MTs in 6-component form [Mxx, Myy, Mzz, Mxy, Mxz, Myz]. Each
         value can be an array of shape (T, 6) or an iterable of length T with 6-vectors.
     figsave : str, optional
-        Path to save the figure; if None, shows the plot.
+        Path to save the figure. If None, shows the plot.
     linewidth : float
         Line width for the trajectory.
     mark_endpoints : bool

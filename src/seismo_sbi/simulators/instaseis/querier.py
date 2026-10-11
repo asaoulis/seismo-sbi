@@ -28,7 +28,7 @@ class SyntheticsPreprocessing:
     """Taper, filter and trim raw synthetics that start at the origin.
 
     The filter is the one designed at ``processing['filter_sampling_rate']`` (Hz), the rate the
-    observed data are filtered at, so the two paths see the same filter response; it is applied at
+    observed data are filtered at, so the two paths see the same filter response. It is applied at
     the database's own sample interval. The result starts ``SYNTHETICS_PRE_EVENT_PAD_S`` before the
     origin exactly, whatever that interval, so the 1 Hz grid the querier interpolates to lines up
     with the observed windows.
@@ -68,7 +68,8 @@ class SyntheticsPreprocessing:
 
 
 def keep_inverse_mapping_out_of_the_numba_disk_cache():
-    """Compile instaseis' ``_inv_mapping_iterative`` in this process; a build of instaseis without numba has nothing to compile."""
+    """Compile instaseis' ``_inv_mapping_iterative`` in this process.
+    A build of instaseis without numba has nothing to compile."""
     try:
         from instaseis import finite_elem_mapping
         from numba.core.caching import NullCache
@@ -89,7 +90,7 @@ class InstaseisDBQuerier:
         catalogue's own datum. It defaults to zero, the two being the same.
 
         ``stf_alignment`` is ``"peak"`` (the source time is the centroid of the moment-rate
-        function) or ``"onset"`` (its start); it matters only for a triangular source time function.
+        function) or ``"onset"`` (its start). It matters only for a triangular source time function.
         """
         keep_inverse_mapping_out_of_the_numba_disk_cache()
         self.instaseis_database = instaseis.open_db(instaseis_model_loc)
@@ -171,7 +172,7 @@ class InstaseisDBQuerier:
         # The only place the moment tensor feeds back into the source time function.
         gcmt_t_half = _gcmt_half_duration(m_tensor) if stf_duration is not None else 0.0
         sliprate = build_stf_sliprate(stf_duration, self._dt, gcmt_half_duration=gcmt_t_half)
-        # build_stf_sliprate already carries unit moment under the sum*dt convention; letting
+        # build_stf_sliprate already carries unit moment under the sum*dt convention. Letting
         # Instaseis normalise with np.trapz would double a boundary-spike Dirac.
         onset_s = location.time_shift
         if self.stf_alignment == "peak":

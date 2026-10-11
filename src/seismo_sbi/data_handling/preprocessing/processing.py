@@ -1,7 +1,7 @@
 """Waveform processing: instrument response removal, rotation to north/east, bandpass, resampling.
 
-These are pure transformations on obspy.Stream — no file I/O. Horizontal channels coded 1 and 2
-are rotated to true north and east with the inventory azimuths; channels coded N and E are taken
+These are pure transformations on obspy.Stream: no file I/O. Horizontal channels coded 1 and 2
+are rotated to true north and east with the inventory azimuths. Channels coded N and E are taken
 at face value.
 """
 
@@ -34,7 +34,7 @@ def deconvolve_and_filter(
         (``pre_filt``, ``taper``, ``taper_fraction``).
     :param filter_kwargs: overrides for the bandpass (``freqmin``, ``freqmax``, ``corners``,
         ``zerophase``).
-    :param target_sr: resample to this rate in Hz after filtering; None keeps the rate.
+    :param target_sr: resample to this rate in Hz after filtering. None keeps the rate.
     :returns: the processed ``Stream``, displacement if the response was removed, else counts.
     """
     pf_kw = {**_DEFAULT_PREFILTER, **(prefilter_kwargs or {})}

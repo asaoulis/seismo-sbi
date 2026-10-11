@@ -1,6 +1,6 @@
 """Deterministic anisotropy: azimuthal travel-time anomalies and shear-wave splitting.
 
-``AzimuthalAnisotropyEffect`` delays each station by its path's azimuthal anomaly;
+``AzimuthalAnisotropyEffect`` delays each station by its path's azimuthal anomaly.
 ``ShearSplittingEffect`` splits the horizontals with the Silver and Chan operator.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ class AzimuthalAnisotropyEffect(SeismogramEffect):
     D at source-station azimuth phi accumulates ``-(D / V0) A cos(2 (phi - phi_fast))``, so
     the fast azimuth arrives early. The delay grows with path length and is coherent across
     the array, unlike the independent per-station shifts of :class:`TimeShiftErrorEffect`. All
-    components of a station share it, applied by Lanczos interpolation; there is no randomness.
+    components of a station share it, applied by Lanczos interpolation. There is no randomness.
 
     Nuisance key ``azimuthal_anisotropy``: a strength multiplier on ``aniso_fraction``, absent
     or zero being the identity. The source location comes from the nuisance dict or the

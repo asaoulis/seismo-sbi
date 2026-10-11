@@ -34,7 +34,7 @@ class SBIPipelinePlotter:
             self.reparametrised_plotter = MomentTensorReparametrised(data_scaler, self.parameters)
 
     def plot_synthetic_misfits(self, single_job : JobData, receivers : Receivers, synthetics : np.ndarray, event_location, sampling_rate_hz, covariance = None, only_raw=False, savefig=True, vertical_only=False, time_window_s=None):
-        """Observed against synthetic traces of one job; ``vertical_only`` draws the vertical traces
+        """Observed against synthetic traces of one job. ``vertical_only`` draws the vertical traces
         alone, ordered by P arrival, in one figure. ``event_location`` is ``(latitude, longitude,
         depth_km)`` of the source and ``sampling_rate_hz`` the traces' sampling rate. ``time_window_s``
         = (start, end) in seconds limits the stacked-trace figure to that part of the window."""
@@ -73,7 +73,7 @@ class SBIPipelinePlotter:
     def plot_chain_consumer(self, base_figure_path, test_name, inversion_data_dict, kde=True, savefig=True, **kwargs):
         """Corner plots (and lunes, for a tensor) of one job's inversions, under ``base_figure_path``."""
         lune_kwargs, reparam_kwargs = kwargs.get("lune_kwargs", {}), kwargs.get("reparam_kwargs", {})
-        # A relative base_figure_path nests under base_output_path; an absolute one is used as is.
+        # A relative base_figure_path nests under base_output_path. An absolute one is used as is.
         figure_dir = self.base_output_path / base_figure_path
         plot_path = figure_dir / f"{test_name}.svg" if savefig else None
         if savefig:

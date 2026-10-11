@@ -123,7 +123,7 @@ class CorridorPath:
 def sample_polyline(model: Model3D, p0_ll, p1_ll, spacing_m, halfwidth_m):
     """``(sample_lonlat, sample_xy, length_km)`` for the straight path from ``p0_ll`` to ``p1_ll``.
 
-    The endpoints are in degrees; the columns are spaced every ``spacing_m`` in projected metres.
+    The endpoints are in degrees. The columns are spaced every ``spacing_m`` in projected metres.
     """
     x0, y0 = model.lonlat_to_utm(*p0_ll)
     x1, y1 = model.lonlat_to_utm(*p1_ll)
@@ -156,7 +156,7 @@ def extract_profile(model: Model3D, path: CorridorPath, vp_ref, vs_ref) -> dict:
     present, which is the travel-time-preserving collapse and keeps the ratio internally
     coherent: a ratio of means over different cell populations can describe a pair of
     wavespeeds that never coexisted. Empty depths are filled from ``vp_ref`` and ``vs_ref``,
-    both in km/s on ``model.depth``, or interpolated; see :func:`fill_ladder_joint`.
+    both in km/s on ``model.depth``, or interpolated. See :func:`fill_ladder_joint`.
     """
     mask = corridor_mask(model, path)
     nz = model.vp.shape[0]
@@ -189,11 +189,11 @@ def extract_profile(model: Model3D, path: CorridorPath, vp_ref, vs_ref) -> dict:
 
 
 def fill_ladder_joint(vp, vs, depth, vp_ref, vs_ref) -> np.ndarray:
-    """Fill the missing depths of the pair ``(vp, vs)`` in place; returns the provenance codes.
+    """Fill the missing depths of the pair ``(vp, vs)`` in place. Returns the provenance codes.
 
     A depth counts as corridor-sourced only where both wavespeeds are present, so neither ever
     carries provenance the other does not. Gaps between covered depths are interpolated in
-    slowness, which is travel-time consistent; the ends fall back to the reference profile.
+    slowness, which is travel-time consistent. The ends fall back to the reference profile.
     """
     nz = len(vp)
     src = np.full(nz, SOURCE_CODES["empty"], dtype=int)

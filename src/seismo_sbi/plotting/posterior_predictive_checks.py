@@ -2,7 +2,8 @@
 
 :class:`PosteriorPredictiveChecks` simulates an ensemble per method, selects the best synthetics,
 and evaluates registered misfit metrics against the observation, by default those of
-:mod:`seismo_sbi.evaluation.ppc_metrics`; :func:`plot_metric_bars` compares the metrics across methods.
+:mod:`seismo_sbi.evaluation.ppc_metrics`. :func:`plot_metric_bars` compares the metrics across
+methods.
 """
 
 import traceback
@@ -52,7 +53,7 @@ class PosteriorPredictiveChecks:
         the chain.
     augmentation_nuisance_params : optional dict
         Maps ``ensemble_name -> {nuisance_key: value}`` activating the effects
-        in that ensemble's chain (e.g. ``{"time_shift_error": 1.0}``).  Missing
+        in that ensemble's chain (for example ``{"time_shift_error": 1.0}``).  Missing
         entries default to ``{}`` (effects inactive / identity).
     """
 
@@ -77,7 +78,7 @@ class PosteriorPredictiveChecks:
         self.sample_rate = sample_rate
         self.dof_override = dof_override
         #: Lag budget (samples, each direction) for "Shifted corr misfit".  ``None`` ->
-        #: 10 % of the trace length, i.e. scaled to whatever window the traces span.
+        #: 10 % of the trace length, that is, scaled to whatever window the traces span.
         self.max_shift_samples = max_shift_samples
         #: Max lag (samples) for the autocorrelation-shape metric.
         self.autocorr_maxlag = int(autocorr_maxlag)
@@ -113,7 +114,8 @@ class PosteriorPredictiveChecks:
     def add_metric(self, name: str, func: Callable):
         """
         Register a new metric. func(obs, synthetics, meta) -> np.ndarray (len = n_synthetics)
-        meta is a dict with helpful entries, e.g. sample_rate, n_traces, covariance_matrix, dof_override
+        meta is a dict with helpful entries, for example sample_rate, n_traces, covariance_matrix,
+        dof_override
         """
         if name in self.metrics:
             raise KeyError(f"Metric {name} already exists")
@@ -531,7 +533,7 @@ def extract_means(metrics_dict):
 
         flat = {}
         for name, val in metrics.items():
-            # remove double backslashes from metric names (e.g. from LaTeX formatting)
+            # remove double backslashes from metric names (for example from LaTeX formatting)
             name = name.replace(r'$', r'')
             name = name.replace(r'\\', r'')
             name = name.replace(r'^', r'')

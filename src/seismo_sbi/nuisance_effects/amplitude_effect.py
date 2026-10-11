@@ -20,7 +20,7 @@ class AmplitudeErrorEffect(SeismogramEffect):
     width, 2 double).
 
     By default one factor per station is drawn from ``uniform(*scale_range)``.
-    ``distribution='lognormal'`` draws ``10 ** (log_sigma_dex * N(0, 1))`` instead;
+    ``distribution='lognormal'`` draws ``10 ** (log_sigma_dex * N(0, 1))`` instead.
     ``per_component`` draws once per trace rather than once per station. Measured per-trace
     amplitude errors of regional records against one-dimensional synthetics are log-normal at
     about 0.3 dex and independent between a station's components, which is what those two
@@ -32,7 +32,7 @@ class AmplitudeErrorEffect(SeismogramEffect):
     DEFAULT_SCALE_LOW: float = 0.5
     #: Default upper bound of the per-station scale factor distribution.
     DEFAULT_SCALE_HIGH: float = 2.0
-    #: Default log-normal width in dex; measured per-trace widths on regional broadband
+    #: Default log-normal width in dex. Measured per-trace widths on regional broadband
     #: records run 0.31 to 0.38 dex.
     DEFAULT_LOG_SIGMA_DEX: float = 0.3
     VALID_DISTRIBUTIONS = ("uniform", "lognormal")
@@ -66,7 +66,8 @@ class AmplitudeErrorEffect(SeismogramEffect):
         self._always_on = bool(always_on)
 
     def _draw_scale(self, multiplier: float, station: str) -> float:
-        """One amplitude scale factor at ``station``; the uniform distribution ignores ``multiplier``."""
+        """One amplitude scale factor at ``station``.
+        The uniform distribution ignores ``multiplier``."""
         if self._distribution == "lognormal":
             log_sigma = station_value(self._log_sigma, station, self.DEFAULT_LOG_SIGMA_DEX)
             return float(10.0 ** (multiplier * log_sigma * np.random.normal()))

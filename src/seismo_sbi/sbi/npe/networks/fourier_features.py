@@ -1,6 +1,6 @@
 """Random Fourier Feature primitives for embedding scalars into a token.
 
-Networks are biased towards low frequencies, so a raw unbounded scalar is hard to learn from; a
+Networks are biased towards low frequencies, so a raw unbounded scalar is hard to learn from. A
 Fourier map lifts it into well-conditioned sin/cos dimensions. The failure mode is scale
 mismatch: over many orders of magnitude a fixed frequency bank either sees a constant input,
 whose features are dead, or a pseudo-random one, which aliases. :class:`ScalarFourierEmbedding`
@@ -23,7 +23,7 @@ class GaussianFourierFeatures(nn.Module):
     Maps ``x: (..., in_dim)`` to ``[sin(2\pi x B^T), cos(2\pi x B^T)]`` of shape
     ``(..., 2 * num_freqs)``, with the frequency matrix ``B \in R^{num_freqs x in_dim}``
     drawn from ``N(0, sigma^2)``. By default ``B`` is a **seeded, fixed buffer**
-    (reproducible, no spectral drift during training); set ``learnable=True`` to make it a
+    (reproducible, no spectral drift during training). Set ``learnable=True`` to make it a
     trainable ``nn.Parameter``.
 
     The input is expected to be ~O(1) (standardise upstream). ``sigma`` then sets how many
@@ -67,10 +67,10 @@ class RunningStandardizer(nn.Module):
     """Non-trainable running standardiser (BatchNorm-style, ``affine=False``, mask-aware).
 
     Normalises the last-dim features to ~unit scale using **running** mean/variance buffers
-    (so the forward pass — and its gradient — never couples samples within a batch, unlike
+    (so the forward pass, and its gradient, never couples samples within a batch, unlike
     standard BatchNorm). Running stats are updated from the *masked* batch in ``train()``
-    mode only; the first update seeds them directly. Used to bring an **absolute** physical
-    scalar (e.g. ``log`` amplitude, or the per-event reference) to O(1) without any
+    mode only. The first update seeds them directly. Used to bring an **absolute** physical
+    scalar (for example ``log`` amplitude, or the per-event reference) to O(1) without any
     dataset-specific config.
     """
 
@@ -90,7 +90,7 @@ class RunningStandardizer(nn.Module):
             m = mask.reshape(-1).to(x_flat.dtype)
             denom = m.sum().clamp_min(1.0)
             if float(m.sum()) == 0.0:
-                return  # nothing valid in this batch; leave stats untouched
+                return  # nothing valid in this batch. Leave stats untouched
             mean = (x_flat * m[:, None]).sum(dim=0) / denom
             var = ((x_flat - mean) ** 2 * m[:, None]).sum(dim=0) / denom
         else:
@@ -115,16 +115,16 @@ class ScalarFourierEmbedding(nn.Module):
     """Embed a small scalar / coordinate vector ``(..., in_dim)`` into ``(..., out_dim)``.
 
     Pipeline: ``standardise -> concat([raw_passthrough, GaussianFourierFeatures]) -> MLP``.
-    The raw pass-through guarantees a non-vanishing linear gradient path (dead-weight guard);
-    the RFF supplies the high-frequency capacity.
+    The raw pass-through guarantees a non-vanishing linear gradient path (dead-weight guard).
+    The RFF supplies the high-frequency capacity.
 
     Parameters
     ----------
     standardize:
-        ``"fixed"`` — subtract ``center`` and divide by ``scale`` (use when the input is
-        already centred, e.g. an array-relative feature). ``"running"`` — use a
+        ``"fixed"``, subtract ``center`` and divide by ``scale`` (use when the input is
+        already centred, for example an array-relative feature). ``"running"``, use a
         :class:`RunningStandardizer` (use for an absolute scalar with unknown offset).
-        ``"none"`` — assume the caller already standardised.
+        ``"none"``: assume the caller already standardised.
     center, scale:
         Per-feature affine constants for ``standardize="fixed"`` (broadcast scalars allowed).
     """

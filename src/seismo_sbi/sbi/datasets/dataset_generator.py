@@ -19,7 +19,7 @@ class DatasetGenerator:
 
         self.simulator = skip_after_retries(simulator)
         self.num_parallel_jobs = num_parallel_jobs
-        #: Seeds each simulation's ensemble-member draw when set; None leaves the draws unseeded.
+        #: Seeds each simulation's ensemble-member draw when set. None leaves the draws unseeded.
         self.seed = seed
 
     def run_and_save_simulations(self, simulation_inputs, output_paths):
@@ -43,7 +43,7 @@ class DatasetGenerator:
     def _guard_against_excessive_skips(results, max_skip_fraction=0.2):
         """Report the skipped simulations, and raise if too large a fraction failed.
 
-        A few out-of-domain sources are expected; a large fraction means a systemic problem
+        A few out-of-domain sources are expected. A large fraction means a systemic problem
         that would otherwise produce a near-empty dataset in silence.
         """
         total = len(results)

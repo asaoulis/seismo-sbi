@@ -1,7 +1,7 @@
 """Simulators backed by Computer Programs in Seismology Green's functions.
 
 :class:`CPSVariableKernelSimulator` computes the Green's functions for the velocity model it is
-handed; :class:`CPSPrecomputedSimulator` draws one from a stored ensemble;
+handed. :class:`CPSPrecomputedSimulator` draws one from a stored ensemble.
 :class:`MultiModelCPSSimulator` gives disjoint receiver regions their own stored model. All of
 them contract the Green's-function tensor with the six moment-tensor components.
 """
@@ -45,7 +45,7 @@ def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
 class CPSSimulator(Simulator):
     """CPS forward models. Every Green's function carries hpulse96's parabolic pulse of base 4 s
     (``-p -l 1`` at 1 s sampling), which starts at the source time and peaks 2 s after it, so the
-    source time is the onset; ``stf_duration`` is not applied."""
+    source time is the onset. ``stf_duration`` is not applied."""
 
     pre_event_pad_s = 0.0
 
@@ -113,7 +113,7 @@ class CPSSimulator(Simulator):
     
     @abstractmethod
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, rootdir='.', **kwargs):
-        """Green's functions for this simulator's receivers; implemented by each subclass."""
+        """Green's functions for this simulator's receivers. Implemented by each subclass."""
         raise NotImplementedError("This method should be implemented in subclasses.")
     
 class CPSVariableKernelSimulator(CPSSimulator):

@@ -1,6 +1,6 @@
 """Build the forward model a configuration's ``simulation_type`` asks for.
 
-One builder per name in :data:`SIMULATOR_REGISTRY`; :func:`build_simulator` looks the name up
+One builder per name in :data:`SIMULATOR_REGISTRY`. :func:`build_simulator` looks the name up
 and calls it with the simulation parameters. A forward model that lives outside this repository
 joins by calling :func:`register_simulator` with its own builder, after which its name is a
 valid ``simulation_type``.
@@ -22,7 +22,7 @@ from .cps.simulator import (
 
 
 def _sub_receivers(station_to_receiver, station_names, where):
-    """The receivers of ``station_names``, looked up in ``station_to_receiver``; ``where`` names the
+    """The receivers of ``station_names``, looked up in ``station_to_receiver``. ``where`` names the
     configuration entry in the error for a station that is not among the receivers."""
     sub_receivers_list = []
     for sta in station_names:
@@ -247,8 +247,9 @@ def build_simulator(name, simulation_parameters, post_processing_effects=None, *
     """Build the simulator the ``simulation_type`` ``name`` selects.
 
     ``payload`` is what the type needs beyond the simulation parameters: ``score_compression_data``
-    for ``kernel`` (None until a stencil has been run); ``ensemble_simulator`` and ``data_flattening`` (a simulation's outputs to a
-    flat data vector) for ``theory_covariance``; nothing for the others.
+    for ``kernel`` (None until a stencil has been run). ``ensemble_simulator`` and
+    ``data_flattening`` (a simulation's outputs to a
+    flat data vector) for ``theory_covariance``. Nothing for the others.
     """
     builder = SIMULATOR_REGISTRY.get(name)
     if builder is None:

@@ -56,8 +56,11 @@ class MisfitsPlotting:
         self._misfit_grid(data_vector, synthetics, figname, arrival_windows)
 
     def _misfit_grid(self, data_vector, synthetics, figname, arrival_windows=None):
-        """One row per station and a column per Z, E, N component; ``arrival_windows`` maps a station
-        to the sample slice drawn, and without it the whole trace is drawn with its noise level."""
+        """One row per station and a column per Z, E, N component.
+
+        ``arrival_windows`` maps a station to the sample slice drawn, and without it the whole trace
+        is drawn with its noise level.
+        """
         time_series_length = self._trace_length(data_vector)
 
         if self.covariance_matrix is not None:
@@ -138,7 +141,7 @@ class MisfitsPlotting:
             if time_window_s is not None:
                 ax.set_xlim(time_window_s)
 
-        # y tick labels on the first column only; x tick labels on the others
+        # y tick labels on the first column only. X tick labels on the others
         for i, ax in enumerate(axes):
             if i > 0:
                 ax.tick_params(labelleft=False)
@@ -224,7 +227,7 @@ class MisfitsPlotting:
 
     @staticmethod
     def _finish(fig, figname, **savefig_kwargs):
-        """Save to ``figname`` when given, otherwise show; then close."""
+        """Save to ``figname`` when given, otherwise show. Then close."""
         if figname is not None:
             fig.savefig(figname, **savefig_kwargs)
             fig.clear()
@@ -347,7 +350,7 @@ class MisfitsPlotting:
         seed : int or None
             RNG seed for reproducible subsampling.
         figname : str or None
-            If provided, saves figure to this path; otherwise shows interactively.
+            If provided, saves figure to this path. Otherwise shows interactively.
         """
         rng = np.random.default_rng(seed)
         components = ['Z', 'E', 'N']

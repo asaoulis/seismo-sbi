@@ -3,7 +3,7 @@
 The colours and reference marker styles shared with the corner plot, the HPD contours and the
 delta-percentile tensors of each ensemble, reference markers, beachballs moved into gutters beside
 the lune, the legend and a zoomed inset. Each function draws on a frame from
-:func:`~seismo_sbi.plotting.lune.plot_lune_frame`; a moment tensor is the 6-vector
+:func:`~seismo_sbi.plotting.lune.plot_lune_frame`. A moment tensor is the 6-vector
 ``m_rr, m_tt, m_pp, m_rt, m_rp, m_tp``.
 """
 
@@ -50,8 +50,8 @@ def relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1.
     if not specs:
         return
 
-    # A beachball is circular in display, so its diameter is a fraction of the axes height;
-    # offset the gutters by about one radius so the balls clear the frame at any delta.
+    # A beachball is circular in display, so its diameter is a fraction of the axes height.
+    # Offset the gutters by about one radius so the balls clear the frame at any delta.
     ax.figure.canvas.draw()
     bbox = ax.get_window_extent()
     xmin, xmax = ax.get_xlim()
@@ -99,7 +99,7 @@ def relocate_beachballs_outside_lune(ax, bm, specs, diameter=0.06, gutter_pad=1.
         load[chosen[0]] += len(g_specs[key])
         placement[key] = chosen
 
-    # draw each group at its slot's x; column index pushes outer columns further from the lune
+    # draw each group at its slot's x. Column index pushes outer columns further from the lune
     col_step = 2.3 * half_w
     for key in order:
         side, col_idx = placement[key]
@@ -120,7 +120,7 @@ def add_lune_legend(ax, labels, colors, title=None, loc='upper left', fontsize=1
     colour->label mapping shared by plot_lunes / plot_lunes_kde and the evaluation wrappers).
 
     ``extra_markers`` (optional) is a list of ``{label, color, marker}`` dicts for additional
-    reference-MT scatter overlays; each is appended as a marker handle below the line handles."""
+    reference-MT scatter overlays. Each is appended as a marker handle below the line handles."""
     from matplotlib.lines import Line2D
     extra_markers = list(extra_markers or [])
     if plt.rcParams.get('text.usetex', False):
@@ -149,7 +149,10 @@ def delta_percentile_tensors(moment_tensors, delta_deg, quantiles):
 
 
 def _mark_tensor(ax, bm, moment_tensor, **scatter_kwargs):
-    """Scatter one tensor at its lune position; returns ``(x, y, pyrocko MomentTensor)`` for its beachball."""
+    """Scatter one tensor at its lune position.
+
+    Returns ``(x, y, pyrocko MomentTensor)`` for its beachball.
+    """
     mt = np.array(moment_tensor)
     tg, td = mts6_to_gamma_delta(mt.reshape(1, -1))
     tx, ty = bm(tg, td)
@@ -158,9 +161,12 @@ def _mark_tensor(ax, bm, moment_tensor, **scatter_kwargs):
 
 
 def draw_lune_scatter(ax, bm, ensembles_mt, true_tensor, plot_beachballs):
-    """Each ensemble of ``ensembles_mt`` (``{name: (n, 6)}``) as points on the lune. With
-    ``plot_beachballs`` the true tensor and the 5th, 50th and 95th delta percentiles of the first
-    ensemble are marked; returns their beachball specs for :func:`relocate_beachballs_outside_lune`."""
+    """Each ensemble of ``ensembles_mt`` (``{name: (n, 6)}``) as points on the lune.
+
+    With ``plot_beachballs`` the true tensor and the 5th, 50th and 95th delta percentiles of the
+    first ensemble are marked. Returns their beachball specs for
+    :func:`relocate_beachballs_outside_lune`.
+    """
     colors = LUNE_ENSEMBLE_COLORS
     beachball_specs = []
     for i, samples_MT in enumerate(ensembles_mt.values()):
@@ -196,7 +202,7 @@ def draw_lune_kde(ax, bm, ensembles_mt, true_tensor, plot_beachballs):
         plot_kde_contours_on_lune(ax, bm, g, d, colors=colors[i % len(colors)])
         percentile_mts = delta_percentile_tensors(samples_MT, d, qs[i % len(qs)])
 
-        # truth drawn once (first ensemble, identical across ensembles); percentiles per ensemble
+        # truth drawn once (first ensemble, identical across ensembles). Percentiles per ensemble
         mts_to_draw = ([(true_tensor, True)] if i == 0 else []) + [(m, False) for m in percentile_mts]
         for mt, is_true_mt in mts_to_draw:
             if mt is None:
@@ -216,7 +222,7 @@ def draw_lune_kde(ax, bm, ensembles_mt, true_tensor, plot_beachballs):
 
 def draw_extra_references(ax, bm, reference_tensors):
     """Scatter each reference tensor of ``reference_tensors`` (``{label: 6-vector or None}``) with
-    the next style of ``LUNE_REFERENCE_STYLES``; a None entry is skipped but uses up its style.
+    the next style of ``LUNE_REFERENCE_STYLES``. A None entry is skipped but uses up its style.
     Returns the ``{label, color, marker}`` legend specs."""
     specs = []
     for j, (label, ref_mt) in enumerate(reference_tensors.items()):
@@ -242,7 +248,7 @@ def draw_primary_reference(ax, bm, moment_tensor, **scatter_kwargs):
 
 def add_lune_inset(ax, bm, lune_angles, true_tensor):
     """A zoomed inset of the HPD contours within 8 degrees of the true tensor, or of the first
-    ensemble's mean lune angles without one; returns the inset axes."""
+    ensemble's mean lune angles without one. Returns the inset axes."""
     colors = LUNE_ENSEMBLE_COLORS
     if true_tensor is not None:
         tg, td = mts6_to_gamma_delta(true_tensor.reshape(1, -1))

@@ -1,9 +1,9 @@
 """Calibration and accuracy metrics for a trained model's validation posteriors.
 
-:func:`tarp_coverage` computes TARP expected coverage; :func:`compute_evaluation_metrics` turns a
+:func:`tarp_coverage` computes TARP expected coverage. :func:`compute_evaluation_metrics` turns a
 validation result into per-parameter bias, width, coverage and figures of merit, including the
-derived gamma, delta, Mw, strike, dip and rake; :func:`write_run_metrics` and
-:func:`scan_run_metrics` store and collect them per run as one :func:`run_metrics_payload` record;
+derived gamma, delta, Mw, strike, dip and rake. :func:`write_run_metrics` and
+:func:`scan_run_metrics` store and collect them per run as one :func:`run_metrics_payload` record.
 :func:`spread_stats` summarises the source-type spread of one posterior.
 """
 from __future__ import annotations
@@ -100,7 +100,7 @@ def _per_param_stats(truth: np.ndarray, samples: np.ndarray) -> Dict[str, list]:
     """
     Per-parameter summary across the validation set.
 
-    ``truth`` shape ``(n_sims, n_dims)``; ``samples`` shape
+    ``truth`` shape ``(n_sims, n_dims)``. ``samples`` shape
     ``(n_samples, n_sims, n_dims)``. All values are lists over the n_dims, each the
     mean over the validation examples (except ``rmse`` which is a root-mean-square).
     Returns keys: ``std, bias, mae, rmse, ci68, ci90, iqr``.
@@ -138,7 +138,7 @@ def _named(stats: Dict[str, list], names: List[str]) -> Dict[str, Dict[str, floa
 def _empirical_coverage(truth: np.ndarray, samples: np.ndarray, q: float) -> float:
     """
     Mean (over params) fraction of examples whose truth falls inside the central
-    ``q`` credible interval of the marginal posterior. ``q`` e.g. 0.68 / 0.90.
+    ``q`` credible interval of the marginal posterior. ``q`` for example 0.68 / 0.90.
     """
     lo_q, hi_q = (1 - q) / 2 * 100, (1 - (1 - q) / 2) * 100
     lo = np.percentile(samples, lo_q, axis=0)                          # (n_sims, n_dims)
@@ -172,9 +172,9 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
 
     Computes per-parameter spread / bias / error in **moment-tensor space** and, when
     the inference is the 6-component moment tensor, in the **derived space**
-    (γ, δ, Mw, strike, dip, rake); the ``sqrt(det C)`` figure-of-merit for the
-    {δ, γ}, {strike, dip, rake} and full-MT subsets; empirical credible-interval
-    coverage; and (if a TARP curve is supplied) its calibration error.
+    (γ, δ, Mw, strike, dip, rake). The ``sqrt(det C)`` figure-of-merit for the
+    {δ, γ}, {strike, dip, rake} and full-MT subsets. Empirical credible-interval
+    coverage. And (if a TARP curve is supplied) its calibration error.
 
     Parameters
     ----------
@@ -223,7 +223,7 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
             "ecp_std": ecp_std.tolist(),
         }
 
-    # --- figure of merit (full MT always; δγ/sdr need the derived space) ----- #
+    # --- figure of merit (full MT always. δγ/sdr need the derived space) ----- #
     metrics["figure_of_merit"]["full_mt"] = _mean_sqrt_det_cov(samples[:, :, :6]) \
         if n_dims >= 6 else _mean_sqrt_det_cov(samples)
 

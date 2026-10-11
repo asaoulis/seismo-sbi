@@ -45,7 +45,8 @@ class EmpiricalCovariance(ABC):
 
 
 def station_component_value(station_component_values, station_name, component):
-    """Entry of ``station_component_values[station_name]`` for a component; E and N fall back to 1 and 2."""
+    """Entry of ``station_component_values[station_name]`` for a component.
+    E and N fall back to 1 and 2."""
     try:
         return station_component_values[station_name][component]
     except KeyError:
@@ -54,6 +55,6 @@ def station_component_value(station_component_values, station_name, component):
 
 def pre_event_variances(covariance_data):
     """``{station: {component: variance}}``: lag 0 of each autocovariance in ``covariance_data``
-    ``{station: {component: autocovariance}}``; an entry that is already a variance is kept."""
+    ``{station: {component: autocovariance}}``. An entry that is already a variance is kept."""
     return {station: {component: np.ravel(autocovariance)[0] for component, autocovariance in components.items()}
             for station, components in covariance_data.items()}

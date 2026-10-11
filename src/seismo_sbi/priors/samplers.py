@@ -57,7 +57,7 @@ def make_catalogue_location_sampler(
     std_x_km, std_y_km, std_z_km:
         Gaussian kernel widths (km) for east, north and depth.
     time_shift:
-        ``"constant"`` -> the lower bound (fiducial) is used for the 4th component;
+        ``"constant"`` -> the lower bound (fiducial) is used for the 4th component.
         ``"uniform"`` -> drawn uniformly over the time-shift bound.
     use_event_errors:
         If True and the catalogue carries ``err_h``/``err_z``, add them in
@@ -168,8 +168,8 @@ def make_gutenberg_richter_mt_sampler(
     """Moment-tensor prior: truncated Gutenberg-Richter M0 + uniform-on-sphere.
 
     Hierarchical draw: magnitude ~ truncated GR on ``[mw_min, mw_max]`` (rate
-    ``b*ln10``); converted to Mw (identity by default) and then to scalar moment
-    ``M0 = 10**(1.5*Mw + 9.1)``; finally a moment tensor is oriented uniformly on
+    ``b*ln10``). Converted to Mw (identity by default) and then to scalar moment
+    ``M0 = 10**(1.5*Mw + 9.1)``. Finally a moment tensor is oriented uniformly on
     the sphere of that ``M0``.
 
     Parameters

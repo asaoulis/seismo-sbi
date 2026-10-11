@@ -54,17 +54,17 @@ def build_event_catalogue(
     use_daily_processing: bool = True,
     processed_dir: Optional[Path] = None,
 ) -> List[Path]:
-    """Export one HDF5 file per event of ``events``; returns the paths written.
+    """Export one HDF5 file per event of ``events``. Returns the paths written.
 
     :param events: ``obspy.Catalog`` or a list of obspy ``Event`` objects.
     :param data_dir: root directory with per-station mseed subdirectories.
-    :param stationxml_dir: StationXML response files; None skips response removal.
+    :param stationxml_dir: StationXML response files. None skips response removal.
     :param station_networks: ``{station_code: network_code}``.
     :param output_dir: destination directory, created if absent.
     :param duration_s: event window length in seconds.
     :param sampling_rate: target sampling rate in Hz.
     :param covariance_window_s: pre-event covariance window length in seconds.
-    :param pre_event_window_s: the event window starts this many seconds before the origin time;
+    :param pre_event_window_s: the event window starts this many seconds before the origin time.
         60 s matches the pre-origin pad of the Instaseis synthetics (``SYNTHETICS_PRE_EVENT_PAD_S``),
         so observations and synthetics align. Pass 0 only for a forward model without that pad.
     :param prefilter_kwargs: overrides for the :func:`deconvolve_and_filter` pre-filter.
@@ -74,10 +74,10 @@ def build_event_catalogue(
     :param max_flat_fraction: maximum fraction of consecutive identical samples per trace, 0-1
         (default 0.05).
     :param n_jobs: parallel workers.
-    :param error_log: path to append failures to as CSV rows; None logs nothing.
+    :param error_log: path to append failures to as CSV rows. None logs nothing.
     :param use_daily_processing: process the raw data in daily files first, then slice windows
-        (default True; avoids taper edge effects on long catalogues).
-    :param processed_dir: where the daily files live; defaults to ``output_dir / "_daily"``.
+        (default True, which avoids taper edge effects on long catalogues).
+    :param processed_dir: where the daily files live. Defaults to ``output_dir / "_daily"``.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -182,7 +182,7 @@ def setup_data_source(
     """The data source the windows are sliced from.
 
     Returns ``(data_dir, inventory, remove_response, prefilter_kwargs, filter_kwargs)``. With ``use_daily_processing`` the daily files are produced first and the response and filter
-    are already applied, so the inventory and filter arguments come back None; otherwise the raw
+    are already applied, so the inventory and filter arguments come back None. Otherwise the raw
     directory, the inventory and the filter arguments are returned for slicing to apply.
     """
     if use_daily_processing:

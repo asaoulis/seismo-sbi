@@ -26,9 +26,9 @@ def seismogram_map_to_stream(seismogram_map: dict, simulator, origin_time_utc, c
     """The ``Stream`` of ``seismogram_map`` as ``simulator`` (a :class:`~seismo_sbi.simulators.base.Simulator`)
     produced it, for a source at ``origin_time_utc``.
 
-    Traces follow receiver order; stations absent from the map are left out. The sampling rate is
+    Traces follow receiver order. Stations absent from the map are left out. The sampling rate is
     the simulator's ``synthetics_processing['sampling_rate']`` in Hz and each trace starts
-    ``simulator.pre_event_pad_s`` before ``origin_time_utc`` (60 s for Instaseis, 0 for CPS); a
+    ``simulator.pre_event_pad_s`` before ``origin_time_utc`` (60 s for Instaseis, 0 for CPS). A
     simulator whose ``pre_event_pad_s`` is None raises ``ValueError``.
     """
     if simulator.pre_event_pad_s is None:

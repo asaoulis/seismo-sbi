@@ -1,7 +1,7 @@
 """Tape and Tape lune angles of moment tensors.
 
 :func:`mts6_to_gamma_delta` maps six-component tensors ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]``
-to the lune longitude ``gamma_deg`` and latitude ``delta_deg``; :func:`lam2lune` does the same
+to the lune longitude ``gamma_deg`` and latitude ``delta_deg``. :func:`lam2lune` does the same
 from eigenvalues, following Carl Tape's ``lam2lune.m``.
 """
 
@@ -75,7 +75,7 @@ def mts6_to_gamma_delta(m6: np.ndarray):
     Returns gamma, delta in degrees (shape (n,)).
     """
     M = create_matrix(np.asarray(m6).reshape(-1, 6))
-    # eigvalsh returns ascending; reverse for descending
+    # eigvalsh returns ascending. Reverse for descending
     lam = np.linalg.eigvalsh(M)[:, ::-1]
     gamma, delta, *_ = lam2lune(lam)
     return gamma, delta
@@ -84,10 +84,10 @@ def mts6_to_gamma_delta(m6: np.ndarray):
 def lune_credible_area(gamma, delta, mass: float = 0.95, grid_res=(121, 181),
                        bw_method="scott") -> float:
     """Fraction of the lune's area inside the ``mass`` highest-density region of the (γ, δ)
-    posterior, from a Gaussian KDE of the samples on a ``grid_res`` grid; small means the
+    posterior, from a Gaussian KDE of the samples on a ``grid_res`` grid. Small means the
     source type is tightly resolved, 1 means unconstrained.
 
-    The lune area element is ``cos δ`` over ``γ ∈ [-30, 30]``, ``δ ∈ [-90, 90]`` degrees; the
+    The lune area element is ``cos δ`` over ``γ ∈ [-30, 30]``, ``δ ∈ [-90, 90]`` degrees. The
     region is found by accumulating area-weighted density to ``mass``. ``nan`` with fewer
     than five finite samples or a degenerate cloud.
     """

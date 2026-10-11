@@ -19,7 +19,7 @@ class NoiseModelConfiguration:
 
     ``gaussian`` is white noise of standard deviation ``noise_level`` (m). ``gaussian_filtered`` and
     ``empirical_gaussian`` draw from the band-passed and the empirical covariance of the compressors.
-    ``real_noise`` draws recorded windows from ``noise_catalogue_path``; with ``rescale`` they are
+    ``real_noise`` draws recorded windows from ``noise_catalogue_path``. With ``rescale`` they are
     scaled to an event's pre-event variance, and ``allow_incomplete`` admits windows that lack stations.
     """
 
@@ -73,7 +73,7 @@ def build_noise_sampler(noise_model, simulation_parameters, trace_length, data_v
 
 
 def _sampler_of(covariance, what):
-    """``covariance``'s sampler; ``what`` names the noise model in the error when there is none."""
+    """``covariance``'s sampler. ``what`` names the noise model in the error when there is none."""
     if covariance is None:
         raise InvalidConfiguration(f"{what} draws from a compressor's covariance, and none is loaded: "
                                    "load the compressors first.")

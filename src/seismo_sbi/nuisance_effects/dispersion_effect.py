@@ -28,7 +28,7 @@ class DispersionSpreadEffect(SeismogramEffect):
     sampling can never produce. A systematic bias belongs in the reference model, not here.
 
     Nuisance key ``dispersion_spread``: a strength multiplier. Needs the source location, so
-    it is a simulation-stage effect; ``sampling_rate`` is injected by the caller.
+    it is a simulation-stage effect. ``sampling_rate`` is injected by the caller.
     """
 
     DEFAULT_OCTAVE_CENTRES_S = (12.5, 17.5, 25.0, 40.0)

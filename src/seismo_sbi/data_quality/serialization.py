@@ -4,7 +4,7 @@
 by ``Receivers._convert_to_instaseis_receivers``. ``time_shifts.json`` maps ``{station: int}``
 for the non-zero static shifts in samples, read by ``Receivers.set_time_shifts``.
 ``*_allstation_verdicts.json`` holds ``{"present": {station: {...}}, "absent_from_h5": [...]}``
-as the audit trail; each per-station record lists the nine summary fields first, then the
+as the audit trail. Each per-station record lists the nine summary fields first, then the
 multi-component coherence and any fidelity field computed.
 """
 from __future__ import annotations

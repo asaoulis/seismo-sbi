@@ -45,11 +45,11 @@ class StationSubsampler:
 
         available:
             Optional boolean mask over the master station axis. When given, the draw is
-            restricted to stations flagged available -- used with an incomplete real-noise
+            restricted to stations flagged available: used with an incomplete real-noise
             window so a station without noise is never kept (it would otherwise enter the
             model as exactly-zero data). The keep FRACTION is still drawn from the
             configured distribution and applied to the available count, so the dropout
-            distribution is unchanged in shape; only its support shrinks.
+            distribution is unchanged in shape. Only its support shrinks.
         """
         if available is None:
             pool = np.arange(num_stations)
@@ -69,7 +69,7 @@ def select_stations(theta, x, source_vec, noise_present, *, item_mask, station_s
     ``x`` is ``(n_stations, n_components, n_samples)`` and ``station_coords`` the master
     ``(n_stations, 2)`` coordinates in the same order. With ``item_mask``, a ``(keep_indices,
     zero_channels)`` pair, or a ``station_subsampler``, the item is ``(theta, (x_sub, coords_sub,
-    source_vec))``; otherwise it is ``(theta, x)`` with the source vector packed into ``x``.
+    source_vec))``. Otherwise it is ``(theta, x)`` with the source vector packed into ``x``.
     ``noise_present`` marks the stations the noise window carried, or is None.
     """
     if item_mask is not None:

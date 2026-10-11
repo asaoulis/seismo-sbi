@@ -1,7 +1,7 @@
 """The noise covariance a compressor and the Gaussian likelihood use, built by name.
 
 :func:`build_covariance_matrix` builds the covariance named by a ``compression`` option from its
-covariance data on the data-vector layout of a :class:`CovarianceLayout`;
+covariance data on the data-vector layout of a :class:`CovarianceLayout`.
 :func:`build_theory_covariance` adds the theory covariance of a Green's-function ensemble to a data
 covariance.
 """

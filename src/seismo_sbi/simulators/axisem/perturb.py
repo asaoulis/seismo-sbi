@@ -2,7 +2,7 @@
 
 An inference that treats one Earth model as exact reports a confidence the data cannot
 support, so the forward model is an ensemble of profiles. :func:`perturb_background_model`
-perturbs a whole AxiSEM background model, including its discontinuity depths; the functions
+perturbs a whole AxiSEM background model, including its discontinuity depths. The functions
 below it perturb a layered profile given as arrays, with the spread tapering or interpolated
 with depth. Every draw keeps the reference as its mean and stays a physically possible Earth:
 speeds keep their ordering, fluid layers stay fluid, and the ratio stays below the Poisson bound.
@@ -80,12 +80,12 @@ def perturb_background_model(
     """A perturbed copy of ``model``.
 
     ``vp_sigma`` and ``vs_sigma`` are the fractional spreads of the compressional and shear
-    speeds, ``width_sigma`` that of the layer widths, which moves the discontinuity depths;
-    zero disables it. ``rho_mode`` keeps the density or re-derives it from the perturbed
+    speeds, ``width_sigma`` that of the layer widths, which moves the discontinuity depths.
+    Zero disables it. ``rho_mode`` keeps the density or re-derives it from the perturbed
     compressional speed with Brocher (2005). ``max_depth_km`` perturbs only nodes shallower
     than that depth, which is how the uncertain crust is perturbed while a well-constrained
     deep reference is held fixed, and is also what keeps Brocher inside the crust where it is
-    valid; ``None`` perturbs the whole model.
+    valid. ``None`` perturbs the whole model.
     """
     rng = np.random.default_rng(seed)
     out = model.copy()
@@ -119,7 +119,7 @@ def perturb_background_model(
     data[:, vp_i] = vp_new
     data[:, vs_i] = vs_new
 
-    # Only the shallow block's radii move; the surface and the first fixed deep node are
+    # Only the shallow block's radii move. The surface and the first fixed deep node are
     # pinned, so deeper structure is untouched.
     if width_sigma > 0:
         k = int(mask.sum())

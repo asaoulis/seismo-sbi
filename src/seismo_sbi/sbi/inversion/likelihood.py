@@ -1,7 +1,7 @@
 """Gaussian-likelihood sampling with emcee.
 
 :class:`GaussianLikelihoodEvaluator` scores scaled source parameters against the data under a
-Gaussian noise covariance and a prior; :func:`generate_samples` runs the ensemble sampler and
+Gaussian noise covariance and a prior. :func:`generate_samples` runs the ensemble sampler and
 :func:`split_rhat` checks the chains' convergence.
 """
 
@@ -59,7 +59,7 @@ def split_rhat(chains):
     ``chains`` is a sequence of ``(nsteps, ndim)`` arrays (one per independent
     chain).  Each chain is split in half so the diagnostic is informative even
     with only a few chains.  Returns an ``ndim`` array: ~1.0 means the chains
-    agree (converged); ``> 1.1`` flags chains stuck in separate modes.
+    agree (converged). ``> 1.1`` flags chains stuck in separate modes.
     """
     chains = [np.asarray(c) for c in chains]
     nsteps = min(c.shape[0] for c in chains)

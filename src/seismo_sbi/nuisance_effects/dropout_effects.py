@@ -1,6 +1,6 @@
 """Zeroed stations and zeroed channels: data that is missing at random.
 
-``InstrumentDropoutEffect`` zeroes whole stations; ``ComponentDropoutEffect`` zeroes single
+``InstrumentDropoutEffect`` zeroes whole stations. ``ComponentDropoutEffect`` zeroes single
 channels after noise is added, always keeping one per station.
 """
 from __future__ import annotations

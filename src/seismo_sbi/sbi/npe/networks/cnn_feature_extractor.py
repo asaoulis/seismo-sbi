@@ -24,8 +24,9 @@ class SeismicTraceCNN(nn.Module):
         conv_strides=None,           # list[int]: stride per conv
         same_padding=False,          # if True, uses kernel_size//2 padding
         downsample=None,             # int: total temporal stride (single strided front conv,
-                                     #   same-padded rest). Uniform with tcn/pno; makes the stack
-                                     #   length-predictable + safe on short (e.g. decimated) inputs.
+                                     #   same-padded rest). Uniform with tcn/pno. Makes the stack
+                                     #   length-predictable + safe on short (for example decimated)
+                                     # inputs.
         activation="silu",           # "relu" | "gelu" | "silu"
         norm_type="batch",              # None | "batch" | "group" | "instance"
         dropout=0.1,                 # float in [0,1], applied after activation
@@ -39,7 +40,7 @@ class SeismicTraceCNN(nn.Module):
         if conv_kernels is None:
             conv_kernels = [5] * len(conv_channels)
         # ``downsample``: one strided front conv, all else stride 1 and same-padded, so the output is
-        # ceil(input_length / downsample) long; it overrides the multi-strided default.
+        # ceil(input_length / downsample) long. It overrides the multi-strided default.
         if downsample is not None:
             same_padding = True
             n = len(conv_channels)
@@ -103,7 +104,7 @@ class SeismicTraceCNN(nn.Module):
         if t == "instance":
             return nn.InstanceNorm1d(num_features, affine=True)
         if t == "group":
-            # Use 8 groups when possible; fall back to 1 (InstanceNorm-like) if small
+            # Use 8 groups when possible. Fall back to 1 (InstanceNorm-like) if small
             groups = 8 if num_features >= 8 else 1
             return nn.GroupNorm(num_groups=groups, num_channels=num_features)
         raise ValueError(f"Unsupported norm_type: {norm_type}")

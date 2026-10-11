@@ -30,7 +30,7 @@ class MultiModelSimulator(Simulator, ABC):
         # Cooperative init: the keyword arguments travel down the MRO to Simulator.__init__.
         super().__init__(*args, **kwargs)
         self.sub_sims, self.sub_receivers = self._init_sub_models(models)
-        # Per-region member count; the regions are equal-sized ensembles.
+        # Per-region member count. The regions are equal-sized ensembles.
         self.num_models = self.sub_sims[0].num_models if self.sub_sims else 0
 
     def _init_sub_models(self, models):

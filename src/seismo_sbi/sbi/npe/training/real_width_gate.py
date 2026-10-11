@@ -15,7 +15,7 @@ import pytorch_lightning as pl
 from seismo_sbi.moment_tensor.lune_angles import lune_credible_area, mts6_to_gamma_delta
 from seismo_sbi.sbi.npe.posterior_sampling import sample_subsets_batched
 
-#: Least number of finite draws an event needs for its lune area; with fewer the area is NaN,
+#: Least number of finite draws an event needs for its lune area. With fewer the area is NaN,
 #: which counts as not kept.
 MIN_FINITE_DRAWS = 10
 
@@ -64,7 +64,7 @@ def finite_lune_area(moment_tensors) -> float:
 class RealWidthGate(pl.Callback):
     """Log the kept fraction and median lune area of the flow on real recordings.
 
-    ``items`` and ``event_ids`` come from :func:`load_observation_set`; ``data_scaler`` is the
+    ``items`` and ``event_ids`` come from :func:`load_observation_set`. ``data_scaler`` is the
     training-time parameter scaler whose ``inverse_transform`` returns physical moment
     tensors. The gate runs after validation every ``every_n_epochs`` epochs on rank 0, with
     ``num_samples`` draws per event, and keeps an event when its lune 95 % area is at most
@@ -82,7 +82,7 @@ class RealWidthGate(pl.Callback):
         self.history = []
 
     def lune_areas(self, pl_module) -> np.ndarray:
-        """Lune 95 % credible area of the posterior on every item, in lune-area fraction; NaN
+        """Lune 95 % credible area of the posterior on every item, in lune-area fraction. NaN
         for an item with fewer than ``MIN_FINITE_DRAWS`` finite draws."""
         posterior = SimpleNamespace(posterior_estimator=pl_module.flow, prior=None)
         was_training = pl_module.training

@@ -1,6 +1,6 @@
 """Observed-versus-synthetic waveforms of many stations as one moveout record section.
 
-Arrays in, figures out; no pipeline or posterior object is needed. ``obs`` and ``syn`` are
+Arrays in, figures out. No pipeline or posterior object is needed. ``obs`` and ``syn`` are
 ``(n_stations, n_components, n_samples)`` in the same station and component order, ``coords`` is
 ``(n_stations, 2)`` of latitude and longitude, ``event_location`` is ``(lat, lon, depth_km)`` and
 ``sampling_rate_hz`` is in Hz. Components are assumed ordered Z, E, N. Cross-correlation and
@@ -40,7 +40,7 @@ def _finish(fig, figname):
 # --- Moveout record section: many stations x 3 components, deterministic overlays and ensembles ---
 
 #: Overlay colours, in assignment order. Deliberately distinct in hue AND lightness so the
-#: figure survives greyscale printing; the first is the "our solution" colour.
+#: figure survives greyscale printing. The first is the "our solution" colour.
 OVERLAY_COLORS = ("#b3446c", "#1f6fb4", "#2e8b57", "#d1701a", "#6a4c93")
 OBS_COLOR = "black"
 DROPPED_COLOR = "#b0b0b0"
@@ -127,7 +127,7 @@ def moveout_record_section(
         Observed waveforms, station-major, in the receivers' master order.
     overlays : dict, optional
         ``label -> array``. A ``(N, C, T)`` array is drawn as a single line (a best-fit or
-        reference-catalogue synthetic); a ``(S, N, C, T)`` array is an ensemble drawn per
+        reference-catalogue synthetic). A ``(S, N, C, T)`` array is an ensemble drawn per
         ``ensemble_style``. Insertion order sets colour assignment.
     station_names, coords, event_location
         Length-``N`` names, ``(N, 2)`` (lat, lon), and ``(lat, lon, depth_km)``.
@@ -135,13 +135,13 @@ def moveout_record_section(
         Vertical ordering. ``'azimuth'`` is the radiation-pattern view, the most
         diagnostic ordering for an ISO-vs-DC decision.
     y_scale : {'rank', 'true'}
-        ``'rank'`` spaces stations uniformly (readable when a cluster dominates);
+        ``'rank'`` spaces stations uniformly (readable when a cluster dominates).
         ``'true'`` puts them at their real distance/azimuth (honest moveout, but crowds).
     normalise : {'per_station', 'per_trace', 'global'}
         ``'per_station'`` keeps the relative size of Z/E/N within a station meaningful
         while still letting distant stations be seen, usually the right compromise.
     layout : {'panels', 'interleaved'}
-        ``'panels'`` gives one column per component; ``'interleaved'`` stacks all three
+        ``'panels'`` gives one column per component. ``'interleaved'`` stacks all three
         under each station in a single axis.
     window : None | (t0, t1) | ('arrival', pre_s, post_s)
         Time crop. The arrival form needs ``arrivals`` and aligns each trace on its own

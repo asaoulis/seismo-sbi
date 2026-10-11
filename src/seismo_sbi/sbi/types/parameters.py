@@ -1,6 +1,6 @@
 """Parameter records for the pipeline.
 
-The ``NamedTuple`` records hold the pipeline, simulation, dataset and least-squares options;
+The ``NamedTuple`` records hold the pipeline, simulation, dataset and least-squares options.
 :class:`ModelParameters` holds the inferred and nuisance parameters with their fiducial values,
 bounds and priors, and converts between parameter dictionaries and vectors.
 """
@@ -45,10 +45,10 @@ class SimulationParameters(NamedTuple):
     #: ``{ensemble_dir, fiducial_dir, receivers: [station_name, ...]}``.
     instaseis_multi_models: Optional[list] = None
     #: Depth offset (km, positive down) added only at the Green's-function call, for a model
-    #: whose free surface is not the catalogue's datum; 0.0 means they coincide.
+    #: whose free surface is not the catalogue's datum. 0.0 means they coincide.
     source_depth_offset_km: float = 0.0
     #: ``"peak"`` or ``"onset"``: whether the source time is the centroid or the start of the
-    #: moment-rate function; None is the forward model's own convention.
+    #: moment-rate function. None is the forward model's own convention.
     stf_alignment: Optional[str] = None
     #: Each station draws its own 1-D ensemble member per event, instead of one shared member.
     resample_member_per_station: bool = False
@@ -56,7 +56,7 @@ class SimulationParameters(NamedTuple):
     #: or 'sector' (Poisson(sector_lambda) azimuthal sectors, one member each).
     member_sampling: Optional[str] = None
     sector_lambda: Optional[float] = None
-    #: Cap on the open Instaseis database handles each worker keeps; None allows one per member.
+    #: Cap on the open Instaseis database handles each worker keeps. None allows one per member.
     querier_cache_maxsize: Optional[int] = None
 
 class IterativeLeastSquaresParameters(NamedTuple):
@@ -93,7 +93,7 @@ class ModelParameters:
 
         self.nuisance_effect_config: dict = {}
 
-        # Nuisance key -> "simulation" or "training_augmentation"; not part of the theta vector,
+        # Nuisance key -> "simulation" or "training_augmentation". Not part of the theta vector,
         # so not in ``_parameter_names``.
         self.nuisance_stage: dict = {}
 
@@ -112,7 +112,7 @@ class ModelParameters:
         return {name: getattr(self, name) for name in self._parameter_names}
 
     def parameter_to_vector(self, parameter_type, only_theta_fiducial=False):
-        """Flatten one register (e.g. ``'theta_fiducial'``) into a vector in parameter order."""
+        """Flatten one register (such as ``'theta_fiducial'``) into a vector in parameter order."""
 
         if only_theta_fiducial:
             flattened_parameters = [item for param_name, sublist in self._parameters_register[parameter_type].items() for item in sublist 
@@ -165,7 +165,7 @@ class ModelParameters:
         """Read one value per nuisance from a vector holding ONLY the nuisance slots.
 
         Each nuisance consumes ``len(fiducial)`` slots in the order the configuration declares
-        them; a scalar (0-D) fiducial and one whose fiducial is 2-D (a velocity model) each
+        them. A scalar (0-D) fiducial and one whose fiducial is 2-D (a velocity model) each
         consume a single slot, the latter holding the object itself.
         """
         i = 0

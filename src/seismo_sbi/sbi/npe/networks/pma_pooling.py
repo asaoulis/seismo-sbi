@@ -2,7 +2,7 @@
 
 ``k`` learnable seeds cross-attend to the final token set once and are combined by a learned
 linear map, replacing an unweighted mean over seeds that discards their specialisation.
-``pool_over='tokens'`` pools the flattened ``(N*L)`` tokens; ``pool_over='stations'`` first
+``pool_over='tokens'`` pools the flattened ``(N*L)`` tokens. ``pool_over='stations'`` first
 collapses each station's ``L`` time tokens to one, then pools the ``N`` station tokens. Seeds
 start at ``randn * seed_init_scale`` and the linear combine is initialised to the mean of the
 seeds. Absent from the config the head is not built and the encoder's read-out is unchanged.
@@ -29,7 +29,7 @@ def _unmask_all_true_rows(mask: Optional[torch.Tensor]) -> Optional[torch.Tensor
     """Set fully-padded (all-``True``) rows to all-``False`` so attention stays finite.
 
     ``mask`` is a key-padding mask ``(..., S)`` with ``True`` = pad. A query whose entire key set is
-    masked makes ``nn.MultiheadAttention`` return ``NaN``; that only happens for a fully-padded
+    masked makes ``nn.MultiheadAttention`` return ``NaN``. That only happens for a fully-padded
     sample / station, which downstream code discards anyway, so blanking its mask row is safe and
     purely keeps the forward finite. Returns ``None`` for ``None`` and leaves the mask untouched
     (no copy) when no row is fully padded.
@@ -64,7 +64,7 @@ class FeedForward(nn.Module):
 class _MAB(nn.Module):
     """Pre-LN Multihead-Attention Block (Set Transformer): ``Q`` attends to set ``Z``.
 
-    ``H = Q + MHA(LN_q(Q), LN_kv(Z), LN_kv(Z))``; then if ``ffn``: ``H = H + FFN(LN_ff(H))``.
+    ``H = Q + MHA(LN_q(Q), LN_kv(Z), LN_kv(Z))``. Then if ``ffn``: ``H = H + FFN(LN_ff(H))``.
     Self-attention (SAB) is just ``forward(Z, Z)``.
     """
 
@@ -107,7 +107,7 @@ class _TimePool(nn.Module):
     """Collapse each station's ``L`` time tokens to one token via a single-seed MAB.
 
     ``forward(x (B,N,L,D), time_mask (B,N,L)|None) -> (B, N, D)``. A learned query attends over the
-    time axis per station (batched over ``B·N``); fully-padded stations are unmasked first so the
+    time axis per station (batched over ``B·N``). Fully-padded stations are unmasked first so the
     MAB stays finite. Used only by ``pool_over="stations"``.
     """
 
@@ -143,11 +143,11 @@ class _TimePool(nn.Module):
 
 
 class SetTransformerPMAHead(nn.Module):
-    """Opt-in Set-Transformer PMA pooling head; see the module docstring.
+    """Opt-in Set-Transformer PMA pooling head. See the module docstring.
 
     ``forward(x (B,N,L,D), key_padding_mask (B,N,L)|None) -> (B, d_model)``. ``key_padding_mask``
     uses ``True`` = pad (the same convention the axial transformer feeds the blocks). The axial
-    encoder is unchanged; this head only replaces the read-out.
+    encoder is unchanged. This head only replaces the read-out.
     """
 
     def __init__(
@@ -245,7 +245,8 @@ class SetTransformerPMAHead(nn.Module):
         cls, d_model: int, num_heads_default: int, cfg: Dict[str, Any],
         use_sdpa: bool = False,
     ) -> "SetTransformerPMAHead":
-        """Build from the ``pma_pooling`` config dict, rejecting unknown keys; ``use_sdpa`` is passed separately."""
+        """Build from the ``pma_pooling`` config dict, rejecting unknown keys.
+        ``use_sdpa`` is passed separately."""
         unknown = set(cfg) - _CONFIG_KEYS
         if unknown:
             raise ValueError(

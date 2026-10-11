@@ -108,7 +108,7 @@ class ParameterSampler:
     def from_configuration(cls, parameters, sampling_method):
         """The sampler ``sampling_method`` names for each parameter of ``parameters``: a key of
         ``SAMPLERS`` or a catalogue-prior closure. A ``velocity model`` parameter's bounds are
-        ``(path, kappa[, "smooth"])``; the model at ``path`` is read here."""
+        ``(path, kappa[, "smooth"])``. The model at ``path`` is read here."""
         samplers = {key: sampling_method[key] if callable(sampling_method[key]) else SAMPLERS[sampling_method[key]]
                     for key in chain(parameters.names.keys(), parameters.nuisance.keys())}
         # A constant parameter fills len(fiducial) slots of the sample vector, not its two bounds.

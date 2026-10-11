@@ -36,7 +36,7 @@ def optimise_station_shift(
 
     ``obs2d_sta`` / ``syn2d_sta`` have shape ``(n_components, trace_length)``. Returns
     the shift maximising the station's aligned variance reduction, with the before/after
-    VR (``vr_before`` is the no-shift VR; ``vr_after >= vr_before`` always).
+    VR (``vr_before`` is the no-shift VR. ``vr_after >= vr_before`` always).
     """
     o = np.asarray(obs2d_sta)
     s = np.asarray(syn2d_sta)

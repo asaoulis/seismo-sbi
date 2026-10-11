@@ -57,7 +57,7 @@ def filter_tail_s(filter_items, filter_sampling_rate_hz):
 def filter_and_shift(data, dt_s, filter_kwargs, filter_sampling_rate_hz, shift_s=0.0, upsampling=1):
     """``data`` filtered as obspy would at ``filter_sampling_rate_hz``, read ``shift_s`` later.
 
-    ``data`` is ``(n_samples,)`` sampled every ``dt_s``; ``filter_kwargs`` are those of
+    ``data`` is ``(n_samples,)`` sampled every ``dt_s``. ``filter_kwargs`` are those of
     ``Stream.filter``. The result is ``(upsampling * n_samples,)``: sample ``m`` is the filtered
     trace at ``m * dt_s / upsampling + shift_s`` after the first input sample, with
     ``0 <= shift_s < dt_s``. Content above half the filter rate is removed.

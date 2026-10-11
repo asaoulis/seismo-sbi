@@ -50,7 +50,7 @@ def make_noise_windows(
     :param continuous_regions: ``(start, end)`` pairs of event-free time.
     :param window_length: length of each noise window.
     :param buffer: gap left at the start and end of each continuous region.
-    :param step: advance of the window start between consecutive windows; ``buffer`` when None,
+    :param step: advance of the window start between consecutive windows. ``buffer`` when None,
         a small value such as ``timedelta(seconds=30)`` for a rolling window.
     """
     advance = step if step is not None else buffer
@@ -110,7 +110,8 @@ def compute_event_arrival_windows(
     :param taup_model: TauPy Earth model name (default ``'prem'``).
     :param n_jobs: parallel jobs (1 = serial).
     :param padding: time added around each arrival window (default 5 min).
-    :returns: ``(start, end)`` ``UTCDateTime`` pairs; an event with no computable arrival is skipped.
+    :returns: ``(start, end)`` ``UTCDateTime`` pairs. An event with no computable arrival is
+        skipped.
     """
     from obspy.taup import TauPyModel
     import joblib

@@ -2,5 +2,5 @@
 station and component, whether to keep, time-shift or drop it.
 
 The metrics, policies, alignment and serialisation take numpy arrays and small trace
-descriptors; the caller reads the files and runs the forward model.
+descriptors. The caller reads the files and runs the forward model.
 """

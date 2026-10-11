@@ -14,7 +14,7 @@ class SampleAugmentation:
     """Augmentation and noise for data ``(n_stations, n_components, n_samples)`` laid out by
     ``data_loader``'s receivers and components.
 
-    ``synthetic_noise_model_sampler`` draws the noise; ``augmentation_chain`` acts on the clean
+    ``synthetic_noise_model_sampler`` draws the noise. ``augmentation_chain`` acts on the clean
     data before it, ``post_noise_augmentation_chain`` on the noisy data after it, each with its
     ``{nuisance key: activation}`` parameters.
     """

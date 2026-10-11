@@ -5,7 +5,7 @@ source-relative positional embeddings, :class:`SourceConditioner` maps a raw sou
 vector to a learned embedding ``(B, d_cond)``, :class:`FiLM` modulates features from it, and
 :func:`pack_context` / :func:`unpack_context` fold the source vector into the single context
 tensor the flow requires. The packed vector carries raw unscaled coordinates so the geometry is
-true; the conditioner normalises internally. With ``n_cond == 0`` none of this is built.
+true. The conditioner normalises internally. With ``n_cond == 0`` none of this is built.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def relative_station_geometry(
     station_coords:
         ``(N, 2)`` station coordinates shared across the batch, **or** ``(B, N, 2)``
         per-sample coordinates (used for variable-station configurations where each
-        sample carries its own — possibly padded — station set).  ``(lat, lon)``
+        sample carries its own, possibly padded, station set).  ``(lat, lon)``
         (geographic) or ``(x, y)`` (cartesian).
     coord_mode:
         ``"geographic"`` (great-circle central angle in radians + initial bearing) or
@@ -45,7 +45,7 @@ def relative_station_geometry(
     Returns
     -------
     ``(B, N, 2)`` tensor of ``(distance, azimuth)``.  Azimuth is in radians in
-    ``(-pi, pi]``; geographic distance is the central angle in radians ``[0, pi]``.
+    ``(-pi, pi]``. Geographic distance is the central angle in radians ``[0, pi]``.
     """
     if source.dim() == 1:
         source = source.unsqueeze(0)
@@ -94,7 +94,7 @@ class SourceConditioner(nn.Module):
 
     A small MLP with an optional Fourier-feature expansion of the (internally
     normalised) coordinates.  ``coord_mode`` only affects the internal normalisation
-    constants; the raw coordinates are expected as input so that callers can also use
+    constants. The raw coordinates are expected as input so that callers can also use
     them for :func:`relative_station_geometry`.
     """
 
@@ -160,7 +160,7 @@ class FiLM(nn.Module):
         self.d_model = d_model
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
-        """x: (..., d_model); cond: (B, d_cond). Broadcasts cond over the middle dims."""
+        """x: (..., d_model). Cond: (B, d_cond). Broadcasts cond over the middle dims."""
         gamma, beta = self.to_film(cond).chunk(2, dim=-1)     # each (B, d_model)
         # Reshape (B, d_model) → (B, 1, ..., d_model) to broadcast over x's middle dims.
         extra = x.dim() - 2
@@ -175,8 +175,8 @@ class FiLM(nn.Module):
 def pack_context(seismograms: torch.Tensor, source_vec: torch.Tensor) -> torch.Tensor:
     """Flatten seismograms and append the (raw) source vector along the last dim.
 
-    ``seismograms``: ``(..., N, C, T)`` or ``(..., N*C*T)``; ``source_vec``: ``(..., n_cond)``.
-    Returns ``(..., N*C*T + n_cond)`` — the single tensor nflows passes to the embedding net.
+    ``seismograms``: ``(..., N, C, T)`` or ``(..., N*C*T)``. ``source_vec``: ``(..., n_cond)``.
+    Returns ``(..., N*C*T + n_cond)``: the single tensor nflows passes to the embedding net.
     """
     lead = seismograms.shape[: -3] if seismograms.dim() >= 3 else seismograms.shape[:-1]
     flat = seismograms.reshape(*lead, -1)
@@ -200,7 +200,7 @@ def unpack_context(
     B = ctx.shape[0]
     nct = n_stations * n_components * trace_length
     # Fail loudly on a length mismatch rather than silently slicing the source vector
-    # out of the seismogram tail (e.g. trace-length / n_components / n_cond drift).
+    # out of the seismogram tail (for example trace-length / n_components / n_cond drift).
     expected = nct + n_cond
     if ctx.shape[1] != expected:
         raise ValueError(
@@ -214,7 +214,7 @@ def unpack_context(
 
 
 # --- Variable-station context packing: [seismograms | coords | mask | source_vec?] per sample ---
-# Each block is padded to max_N stations; max_N = (width - n_cond) // (C*T + 3) from the width.
+# Each block is padded to max_N stations. Max_N = (width - n_cond) // (C*T + 3) from the width.
 
 def pack_variable_context(
     seismograms: torch.Tensor,
@@ -224,8 +224,8 @@ def pack_variable_context(
 ) -> torch.Tensor:
     """Pack one (already padded) variable-station sample into a flat context vector.
 
-    ``seismograms``: ``(N, C, T)``; ``coords``: ``(N, 2)``; ``mask``: ``(N,)`` (True=real
-    station); ``source_vec``: ``(n_cond,)`` or ``None``.  Returns a 1-D tensor.
+    ``seismograms``: ``(N, C, T)``. ``coords``: ``(N, 2)``. ``mask``: ``(N,)`` (True=real
+    station). ``source_vec``: ``(n_cond,)`` or ``None``.  Returns a 1-D tensor.
     """
     parts = [
         seismograms.reshape(-1),
@@ -263,7 +263,7 @@ def pack_subset_observation(
 
     Returns
     -------
-    torch.Tensor ``(1, W)`` — ready to hand to the embedding net's ``forward``/``embed``.
+    torch.Tensor ``(1, W)``: ready to hand to the embedding net's ``forward``/``embed``.
     """
     seis = torch.as_tensor(np.asarray(stacked_data), dtype=torch.float32)
     if seis.dim() != 3:

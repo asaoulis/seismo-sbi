@@ -31,8 +31,8 @@ def load_mmd_manifest(manifest_path, *, clean_only=True, events_h5_dir=None,
     contamination flag): an interloper wavetrain is contamination, not model
     misspecification, and would pollute the MMD target.
 
-    The manifest stores ABSOLUTE paths from the machine that built it; on another
-    host (e.g. the cluster) pass ``events_h5_dir`` / ``solutions_root`` to rebuild
+    The manifest stores ABSOLUTE paths from the machine that built it. On another
+    host (for example the cluster) pass ``events_h5_dir`` / ``solutions_root`` to rebuild
     the per-event ``h5`` / ``samples`` paths as ``<events_h5_dir>/<event_id>.h5`` and
     ``<solutions_root>/<event_id>/samples.npy`` (these two keys are plain YAML leaves
     in the ``ml_mmd`` config block, so the cluster orchestrator's path remap covers
@@ -59,10 +59,10 @@ def build_real_context(manifest_path, data_loader, *, clean_only=True,
 
     Each event is loaded through ``load_event_subset_with_components`` (per-station
     component subsets in receiver master order, dropped channels zero-filled), padded to
-    the set-wide max station count, and packed with ``pack_variable_context`` — the same
+    the set-wide max station count, and packed with ``pack_variable_context``, the same
     packing the variable-station collate applies to training batches, so the embedding
     net unpacks both identically. The conditioning vector is the event's catalogue
-    location (NO perturbation — it IS the value inference conditions on).
+    location (NO perturbation, it IS the value inference conditions on).
     """
     events = load_mmd_manifest(manifest_path, clean_only=clean_only,
                                events_h5_dir=events_h5_dir)
@@ -92,7 +92,7 @@ def build_real_context(manifest_path, data_loader, *, clean_only=True,
 def _psim_masks(paths, events_by_id, master_names, components):
     """Per-psim-file ``(keep_indices, zero_channels)`` from the parent event's QA map.
 
-    psim files are named ``<parent_event_id>__<k>.h5``; the parent's
+    psim files are named ``<parent_event_id>__<k>.h5``. The parent's
     ``components_used`` gives kept stations (-> master-order keep indices) and, for
     partially-kept stations, the dropped components (-> (master_station_idx,
     component_idx) zero-fill channels, exactly the QA zero-fill the real side gets).
@@ -126,7 +126,7 @@ def build_psim_loader(psim_folder, manifest_path, *, data_loader,
     training path, with three deliberate differences (see module docstring + the task's
     ``training_implementation.md``): per-parent-event fixed masks instead of random
     station/component dropout, conditioning-noise OFF, and no theta (the MMD only needs
-    contexts). ``num_workers=0`` — the suite is small and cached in RAM.
+    contexts). ``num_workers=0``: the suite is small and cached in RAM.
     """
     events = load_mmd_manifest(manifest_path, clean_only=clean_only)
     events_by_id = {e["event_id"]: e for e in events}
@@ -141,8 +141,8 @@ def build_psim_loader(psim_folder, manifest_path, *, data_loader,
         raise ValueError(f"psim suite under {psim_folder} has {len(keep_paths)} usable "
                          f"sims (need >=2 for the unbiased MMD)")
     if len(keep_paths) != len(paths):
-        # the dataset globs the folder itself — a mismatch means flagged parents' sims
-        # are present; hide them via a glob that can't match, i.e. fail loudly instead.
+        # the dataset globs the folder itself: a mismatch means flagged parents' sims
+        # are present. Hide them via a glob that can't match, that is, fail loudly instead.
         raise ValueError(
             f"{len(paths) - len(keep_paths)} psim sims under {psim_folder} belong to "
             "flagged/absent parent events — regenerate the suite from the same manifest "
@@ -166,7 +166,7 @@ def build_psim_loader(psim_folder, manifest_path, *, data_loader,
         fixed_item_masks=masks,
     )
     # Condition each psim sample on its PARENT's catalogue location, not the sim's own
-    # (scattered) stored source_location — see the module docstring.
+    # (scattered) stored source_location: see the module docstring.
     if conditioning_param_map:
         dataset.fixed_conditioning = [
             np.asarray(events_by_id[Path(p).stem.split("__")[0]]["conditioning_vec"],

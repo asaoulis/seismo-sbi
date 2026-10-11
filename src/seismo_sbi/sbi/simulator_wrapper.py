@@ -63,9 +63,9 @@ class GeneralSimulatorWrapper:
         ``[latitude, longitude, depth_km, time_s]``.
 
         No nuisance is drawn and no nuisance effect applied. ``deterministic`` uses the fiducial
-        Earth model; otherwise one ensemble member is drawn. ``stf_duration`` scales the source
+        Earth model. Otherwise one ensemble member is drawn. ``stf_duration`` scales the source
         time function, None for a Dirac. ``stations`` keeps only those stations'
-        traces, in receiver order; ``return_traces`` also returns the ``[(station, component)]``
+        traces, in receiver order. ``return_traces`` also returns the ``[(station, component)]``
         order of the traces.
         """
         simulator = copy(self.simulator)

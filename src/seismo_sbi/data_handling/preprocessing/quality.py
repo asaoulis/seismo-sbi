@@ -1,6 +1,6 @@
 """Quality checks for preprocessed waveform windows.
 
-These are pure predicates on obspy.Stream — no file I/O, no side effects.
+These are pure predicates on obspy.Stream: no file I/O, no side effects.
 """
 
 from datetime import timedelta
@@ -21,11 +21,11 @@ def check_window_quality(
     max_flat_fraction: float = 0.05,
     min_npts: Optional[int] = None,
 ) -> Tuple[bool, str]:
-    """Whether a preprocessed window meets the minimum quality requirements; ``(ok, reason)``.
+    """Whether a preprocessed window meets the minimum quality requirements. ``(ok, reason)``.
 
-    Per station and component: at least ``min_completeness`` of the expected samples are present;
-    at least ``min_npts`` samples when set (``compute_data_vector_length(duration, sr) + 1`` in the
-    catalogue pipeline); no NaN or Inf; not all zeros; RMS above ``min_rms``; and at most
+    Per station and component: at least ``min_completeness`` of the expected samples are present.
+    At least ``min_npts`` samples when set (``compute_data_vector_length(duration, sr) + 1`` in the
+    catalogue pipeline). No NaN or Inf. Not all zeros. RMS above ``min_rms``. And at most
     ``max_flat_fraction`` of consecutive identical samples (a dead or clipped channel, or a gap
     filled with a constant).
 
@@ -36,8 +36,8 @@ def check_window_quality(
     :param min_completeness: minimum fraction of the expected samples, 0-1.
     :param min_rms: minimum per-trace RMS.
     :param max_flat_fraction: maximum fraction of consecutive identical samples, 0-1 (default 0.05).
-    :param min_npts: minimum sample count per trace; None disables the check.
-    :returns: ``(ok, reason)``; ``reason`` is empty when ``ok``.
+    :param min_npts: minimum sample count per trace. None disables the check.
+    :returns: ``(ok, reason)``. ``reason`` is empty when ``ok``.
     """
     expected_samples = int(duration.total_seconds() * sampling_rate)
     if expected_samples == 0:

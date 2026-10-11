@@ -1,7 +1,7 @@
 """Quality guards that need no forward model, and the calibrated gate composition over them.
 
 Each guard catches a distinct failure mode of a recorded trace without reference to a synthetic.
-Verdicts are per component and a component that fails is zero-filled individually; a station is
+Verdicts are per component and a component that fails is zero-filled individually. A station is
 dropped only when no component survives. Event-level contamination is a flag, never a silent
 drop. Everything is array in, array out, with no pipeline and no file handles except the
 explicit ``read_noise_sigma`` helper.
@@ -55,7 +55,7 @@ def data_qa_thresholds(level: str = "minimal", **overrides) -> QAThresholds:
 def read_noise_sigma(event_h5, stations, components) -> Dict[Tuple[str, str], float]:
     """Pre-event noise std sigma per (station, component) from the h5 ``/misc`` group.
 
-    ``/misc/<sta>/<Z|1|2>`` is the pre-event autocorrelation; lag-0 = pre-event
+    ``/misc/<sta>/<Z|1|2>`` is the pre-event autocorrelation. Lag-0 = pre-event
     mean(x^2) = sigma^2. Returns sigma = sqrt(that). Missing/degenerate entries are
     omitted (the SNR gate then treats them as dead channels).
     """
@@ -201,7 +201,8 @@ def _with_verdict(old, verdict):
 
 def _apply_channel_health(cv, metrics, snr, thresholds, blocklist, obs, present, comps):
     """Override the verdicts ``cv`` in place with the sigma outliers, the blocklist and the channels
-    dead in the observation; returns the observation-dead ``{(station, component): 'drop-dead'}``."""
+    dead in the observation. Returns the observation-dead ``{(station, component):
+    'drop-dead'}``."""
     # sigma outliers need the other stations, so they are applied here, not in the per-trace gate
     for (sta, comp), verdict in sigma_outlier_verdicts(
             snr or [], thresholds, metrics=metrics).items():
@@ -256,7 +257,7 @@ def _health_drops_only(component_drops, obs_dead):
 
 def _fill_to_keep_floor(comp_map, dropped, snr, present, comps, blocklist, floor):
     """Restore stations into ``comp_map`` (and out of ``dropped``) in order of observed debiased
-    signal SNR until ``floor`` stations survive; a blocklisted channel is never restored."""
+    signal SNR until ``floor`` stations survive. A blocklisted channel is never restored."""
     if len(comp_map) < floor:
         snr_by_sta: Dict[str, list] = {}
         for s in (snr or []):

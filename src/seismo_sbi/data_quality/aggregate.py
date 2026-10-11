@@ -34,7 +34,7 @@ def station_reliability(artifacts: List[QAArtifacts]) -> Dict[str, StationReliab
     """Aggregate per-station statistics over a list of per-event artifacts.
 
     Uses each event's ``present`` verdict records (``verdict``, ``xcorr_Z``,
-    ``median_amp_ratio``) and ``time_shifts``. Stations are keyed by code; a station
+    ``median_amp_ratio``) and ``time_shifts``. Stations are keyed by code. A station
     counts as "present" in an event if it appears in that event's ``present`` map.
     """
     present_count: Dict[str, int] = {}

@@ -1,7 +1,7 @@
 """Event maps and 1-D velocity-model perturbation figures.
 
 :func:`add_event_to_map` places an event's beachball, labelled with its moment magnitude, on a
-cartopy map; :func:`plot_perturbations` draws perturbed layered models around the fiducial one.
+cartopy map. :func:`plot_perturbations` draws perturbed layered models around the fiducial one.
 """
 
 from cartopy import crs as ccrs

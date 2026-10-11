@@ -4,7 +4,7 @@ Reads the ensemble configuration, writes ``background_model.bm`` for the referen
 every perturbed member (or ingests a set of ``.bm`` files somebody else produced), renders the
 ``inparam_basic`` / ``inparam_advanced`` the solver reads from the templates the configuration
 names, and writes ``members.json`` with the submission arguments each member needs. Meshing and
-solving happen elsewhere; this only prepares the inputs.
+solving happen elsewhere. This only prepares the inputs.
 """
 
 import json
@@ -42,7 +42,7 @@ def _render_inparams(member_dir: Path, meshname: str, axisem_cfg: dict, ncpu: in
     (member_dir / "inparam_basic").write_text(basic)
 
     # The buffer must exceed the number of processors or the solver aborts, and a buffer above
-    # 256 on a mesh below 10 s stalls the dump processors for hours; 128 is the safe default.
+    # 256 on a mesh below 10 s stalls the dump processors for hours. 128 is the safe default.
     advanced = (templates_dir / "inparam_advanced").read_text()
     override = axisem_cfg.get("netcdf_dump_buffer")
     if override:
@@ -98,7 +98,7 @@ def _generate_bm_members(ensemble_cfg: dict, config_dir: Path, dry_run: bool):
 
 
 def build_ensemble(config_path, *, dry_run: bool = False, from_bm_dir=None, name=None) -> Path:
-    """Stage every member under the configured ``out_dir``; returns the ``members.json`` path.
+    """Stage every member under the configured ``out_dir``. Returns the ``members.json`` path.
 
     ``dry_run`` stages the reference plus one member only. ``from_bm_dir`` ingests background
     models written elsewhere instead of perturbing the reference. ``name`` overrides the

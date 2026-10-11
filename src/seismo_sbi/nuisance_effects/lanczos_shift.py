@@ -1,7 +1,7 @@
 """Sub-sample time shifts of seismograms by Lanczos interpolation.
 
 The kernel weights depend only on the shift, so ``_apply_lanczos_shift_batch`` shifts every
-row of an array at once; ``_apply_lanczos_shift`` is the one-trace form.
+row of an array at once. ``_apply_lanczos_shift`` is the one-trace form.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _apply_lanczos_shift_batch(
 ) -> np.ndarray:
     """Every row of ``(n_traces, n_samples)`` shifted by the same ``tau_samples``.
 
-    The kernel weights depend only on the shift, so it is built once for all the rows; each
+    The kernel weights depend only on the shift, so it is built once for all the rows. Each
     output sample is the same weighted sum as the per-trace form.
     """
     traces_f = np.asarray(traces, dtype=np.float64)
@@ -68,7 +68,7 @@ def _apply_lanczos_shift(
 ) -> np.ndarray:
     """``trace`` shifted by ``tau_samples``, positive delaying, by Lanczos interpolation.
 
-    ``order`` is the kernel half-width in samples, typically 3 to 8; a higher order leaks
+    ``order`` is the kernel half-width in samples, typically 3 to 8. A higher order leaks
     less spectrally and costs more. The weights are normalised to unit gain at any fractional
     shift, samples outside the trace contribute zero, and the length is unchanged.
     """

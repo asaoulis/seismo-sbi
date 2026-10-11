@@ -52,6 +52,6 @@ def moment_magnitude_from_scalar_moment(m0_nm):
 
 def magnitude_to_m0(mw):
     """Scalar moment ``M0 = 10**(1.5*Mw + 9.1)`` in N.m of a moment magnitude ``mw``, the inverse of
-    :func:`moment_magnitude_from_scalar_moment`; a scalar or an array.
+    :func:`moment_magnitude_from_scalar_moment`. A scalar or an array.
     """
     return 10.0 ** (1.5 * np.asarray(mw, dtype=float) + 9.1)

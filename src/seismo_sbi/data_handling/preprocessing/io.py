@@ -28,7 +28,7 @@ def find_mseed_files(
     :param t_end: window end.
     :param network: network code or glob (default ``'*'``).
     :param channel_glob: channel glob (default ``'BH?'``).
-    :returns: sorted paths; empty when nothing matches.
+    :returns: sorted paths. Empty when nothing matches.
     """
     t0 = UTCDateTime(t_start)
     t1 = UTCDateTime(t_end)

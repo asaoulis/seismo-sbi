@@ -4,7 +4,7 @@ A reference synthetic is compared against an observation, both numpy arrays, to 
 station whether to keep, time-shift or drop it. The alignment and amplitude metrics give the
 cross-correlation lag, variance reduction and peak amplitude ratio, :func:`snr_metrics` the
 pre-event-noise SNR, and ``correlation_misfit``, ``envelope_misfit`` and ``station_reduced_chi2``
-the posterior-predictive fidelity. Shifting uses ``shift_1d_with_padding``; a positive lag delays.
+the posterior-predictive fidelity. Shifting uses ``shift_1d_with_padding``. A positive lag delays.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from seismo_sbi.utils.seismograms import shift_1d_with_padding
 
 @dataclass(frozen=True)
 class TraceDescriptor:
-    """Metadata for one (station, component) trace; the QA library's notion of a
+    """Metadata for one (station, component) trace. The QA library's notion of a
     receiver, decoupled from the simulator's :class:`Receivers`."""
 
     station: str
@@ -55,7 +55,7 @@ class SNRMetrics:
     """Pre-event-noise signal-to-noise metrics for one (station, component) trace.
 
     Built from the pre-event noise std ``sigma`` (= sqrt of the h5 ``/misc`` lag-0
-    autocorrelation, i.e. the pre-event ``mean(x^2)``).  All SNRs are RMS-based, so a
+    autocorrelation, that is, the pre-event ``mean(x^2)``).  All SNRs are RMS-based, so a
     pure-noise trace has ``snr_obs ~ 1`` exactly (the observation *contains* the noise:
     ``E[obs^2] = signal^2 + sigma^2``).  The signal window is the SYNTHETIC's 5-95%
     cumulative-energy interval (noise-free, hence well defined), so far-station coda does
@@ -66,7 +66,7 @@ class SNRMetrics:
     component: str
     sigma: float            # pre-event noise std
     snr_obs: float          # RMS_W(obs) / sigma   (>= ~1 floor)
-    snr_syn: float          # RMS_W(syn) / sigma   (predicted detectability; noise-free)
+    snr_syn: float          # RMS_W(syn) / sigma   (predicted detectability, noise-free)
     snr_sig: float          # sqrt(max(0, snr_obs^2 - 1)): the noise-debiased observed signal SNR
     snr_obs_full: float     # whole-window RMS(obs) / sigma  (for the excess gate)
     snr_syn_full: float     # whole-window RMS(syn) / sigma
@@ -79,7 +79,7 @@ def _rms(x) -> float:
 
 def signal_window(syn1d, quantiles=(0.05, 0.95)):
     """``(lo, hi)`` sample indices bracketing the synthetic's ``quantiles`` cumulative
-    energy; the FULL window if the synthetic is degenerate (all-zero / no energy)."""
+    energy. The FULL window if the synthetic is degenerate (all-zero / no energy)."""
     e = np.cumsum(np.asarray(syn1d, float) ** 2)
     tot = float(e[-1]) if e.size else 0.0
     if tot <= 0:
@@ -153,7 +153,7 @@ def align_best_lag(obs: np.ndarray, syn: np.ndarray, max_lag: int) -> tuple:
 
 
 def variance_reduction(obs: np.ndarray, syn: np.ndarray) -> float:
-    """``1 - ||obs - syn||^2 / ||obs||^2``; NaN if the observed is all-zero."""
+    """``1 - ||obs - syn||^2 / ||obs||^2``. NaN if the observed is all-zero."""
     denom = np.sum(obs ** 2)
     return float(1.0 - np.sum((obs - syn) ** 2) / denom) if denom > 0 else float("nan")
 
@@ -210,7 +210,7 @@ def traces_from_receivers(receivers) -> List[TraceDescriptor]:
 def correlation_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
     """Mean over the station's components of ``1 - Pearson(obs, syn)`` at zero lag.
 
-    Per-trace correlation, then averaged;
+    Per-trace correlation, then averaged.
     :func:`~seismo_sbi.evaluation.ppc_metrics.correlation_misfit_per_sample` scores each
     posterior-predictive sample with it. Unlike ``max_xcorr`` this is *not* lag-optimised, so it
     penalises timing errors as well as shape errors.
@@ -250,7 +250,7 @@ def station_reduced_chi2(
     ``PosteriorPredictiveChecks`` scores each posterior-predictive sample with it. With a
     covariance exposing ``compute_loss(residual, reduce=True)`` the Mahalanobis form
     ``chi2 = -2 * compute_loss`` is used (the covariance must be sized to this
-    station's residual); otherwise it falls back to ``r·r``. ``dof`` defaults to the
+    station's residual). Otherwise it falls back to ``r·r``. ``dof`` defaults to the
     residual length.
     """
     r = np.asarray(obs_flat_sta).ravel() - np.asarray(syn_flat_sta).ravel()

@@ -3,7 +3,7 @@
 :class:`CompressionTrainer` builds the pair, trains it with Lightning, and writes a
 ``model_meta.json`` sidecar so a checkpoint can be rebuilt without re-supplying its
 architecture. The free functions below wire in the optional extras a configuration may ask
-for — the auxiliary MMD loss, a warm start from an earlier run, and the metric loggers.
+for: the auxiliary MMD loss, a warm start from an earlier run, and the metric loggers.
 """
 
 import json
@@ -31,7 +31,7 @@ def _build_seismogram_transformer(*, num_seismic_components, model_config,
                                   trace_length, **_unused):
     """Default embedding net (context extractor). Output width must equal latent_dim.
 
-    ``trace_length`` is the per-trace sample count of the data; it sizes the CNN's
+    ``trace_length`` is the per-trace sample count of the data. It sizes the CNN's
     conv stack so the model matches the data instead of assuming a fixed length.
     """
     return SeismogramTransformer(
@@ -39,7 +39,7 @@ def _build_seismogram_transformer(*, num_seismic_components, model_config,
         model_config,
         feature_length,
         num_outputs=latent_dim,          # not used for embedding, but required by ctor
-        noise_model=None,                # not used in NPE; pass None
+        noise_model=None,                # not used in NPE. Pass None
         seismogram_locations=station_locations,
         device=device,
         input_length=trace_length,
@@ -47,7 +47,7 @@ def _build_seismogram_transformer(*, num_seismic_components, model_config,
 
 
 #: Embedding-net builders, selectable by name from a configuration. Each returns an nn.Module
-#: emitting a context of width ``latent_dim``; take ``**_unused`` so the kwargs bundle can grow.
+#: emitting a context of width ``latent_dim``. Take ``**_unused`` so the kwargs bundle can grow.
 EMBEDDING_NET_REGISTRY = {
     "seismogram_transformer": _build_seismogram_transformer,
 }
@@ -71,11 +71,11 @@ class CompressionTrainer:
                  lr_min_factor=0.1):
         """Build the embedding net and the conditional normalising flow.
 
-        ``components`` and ``station_locations`` describe the recording geometry; ``trace_length`` is
-        the per-trace sample count of the data. ``model_config`` and ``flow_config`` override entries of
-        ``DEFAULT_MODEL_CONFIG`` and ``DEFAULT_FLOW_CONFIG``. ``lr_second_stage`` is the learning-rate
-        schedule after warm-up: ``"cosine"`` decays to ``lr * lr_min_factor``, ``"constant"`` holds
-        ``lr``, ``"cyclic"`` cycles.
+        ``components`` and ``station_locations`` describe the recording geometry. ``trace_length``
+        is the per-trace sample count of the data. ``model_config`` and ``flow_config`` override
+        entries of ``DEFAULT_MODEL_CONFIG`` and ``DEFAULT_FLOW_CONFIG``. ``lr_second_stage`` is the
+        learning-rate schedule after warm-up: ``"cosine"`` decays to ``lr * lr_min_factor``,
+        ``"constant"`` holds ``lr``, ``"cyclic"`` cycles.
         """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -95,7 +95,7 @@ class CompressionTrainer:
         self.lr_second_stage = lr_second_stage
         self.lr_min_factor = float(lr_min_factor)
         # The MERGED dict built above, a NEW object: entries the caller adds to its own dict
-        # afterwards never reach the sidecar — use :meth:`record_model_config` for those.
+        # afterwards never reach the sidecar: use :meth:`record_model_config` for those.
         self._model_config = model_config
         self._flow_config = flow_config
         self._feature_length = feature_length
@@ -120,7 +120,8 @@ class CompressionTrainer:
             device=self.device,
         )
 
-        # ``model_config['perf']`` also holds the optimizer and compile options; absent means all off.
+        # ``model_config['perf']`` also holds the optimizer and compile options. Absent means all
+        # off.
         _perf = model_config.get("perf", {}) or {}
         self.model = NPELightningModule(
             flow=self.flow,
@@ -153,7 +154,7 @@ class CompressionTrainer:
             trace_length=trace_length,
         )
         # The flow's hidden width follows the embedding channels unless flow_config overrides
-        # it; popped so it is not also passed below as a duplicate keyword.
+        # it. Popped so it is not also passed below as a duplicate keyword.
         flow_kwargs = dict(flow_config)
         flow_hidden_features = flow_kwargs.pop("hidden_features", None) or model_config["channels"]
         return build_nsf(
@@ -172,7 +173,7 @@ class CompressionTrainer:
         ``theta_scaler_provenance`` is recorded in the checkpoint's sidecar so the parameter
         scaling used at inference cannot silently differ from the one trained under.
         ``model_config_overrides`` replace entries of the embedding net's configuration, such as
-        ``layers``; they are recorded in the sidecar too.
+        ``layers``. They are recorded in the sidecar too.
         """
         return cls(
             components, station_locations,
@@ -193,7 +194,7 @@ class CompressionTrainer:
         :func:`~seismo_sbi.sbi.datasets.training_data.prepare_training_data`.
 
         The recording geometry, trace length, parameter scaling and the forward model's
-        source-time convention come from ``data``; ``model_config_overrides`` are as in
+        source-time convention come from ``data``. ``model_config_overrides`` are as in
         :meth:`from_configuration`.
         """
         return cls.from_configuration(training, data.components, data.station_locations,
@@ -205,7 +206,7 @@ class CompressionTrainer:
         """The trainer of a finished run with its best checkpoint loaded, ready for
         :meth:`build_posterior`.
 
-        ``run_directory`` holds ``model_meta.json`` and ``checkpoints/``; the sidecar gives the
+        ``run_directory`` holds ``model_meta.json`` and ``checkpoints/``. The sidecar gives the
         architecture, the station locations and the trace length, so nothing else is needed.
         Raises ``FileNotFoundError`` when the sidecar is missing.
         """
@@ -233,11 +234,11 @@ class CompressionTrainer:
     def train(self, run_name, epochs=10, output_path=Path("model_ckpts"), dataloader_args: dict = None,
               logger="wandb", enable_checkpointing=True, enable_progress_bar=True,
               extra_callbacks=None, devices=1, strategy=None):
-        """Train the flow; returns the trained model.
+        """Train the flow. Returns the trained model.
 
         ``logger=None`` disables logging, ``enable_checkpointing=False`` skips writing ``.ckpt`` files
         and ``enable_progress_bar=False`` silences the bar. ``extra_callbacks`` are appended to the
-        Trainer's. ``devices`` is the number of accelerators; above one, each rank trains on its own
+        Trainer's. ``devices`` is the number of accelerators. Above one, each rank trains on its own
         batch of ``train_batch_size`` samples, so size that for a single device, and ``strategy``
         overrides the distributed strategy.
         """
@@ -270,7 +271,7 @@ class CompressionTrainer:
         callbacks = []
         if enable_checkpointing:
             callbacks.append(create_best_checkpoint_callback(output_path))
-        # LearningRateMonitor requires a logger to write to; only add it when logging is on.
+        # LearningRateMonitor requires a logger to write to. Only add it when logging is on.
         if pl_logger is not False:
             callbacks.append(LearningRateMonitor(logging_interval='epoch'))
         if extra_callbacks:
@@ -299,7 +300,7 @@ class CompressionTrainer:
             self.write_model_meta(output_path)
         trainer.fit(self.model, train_dataloader, val_dataloader)
 
-        # Rank 0 only, so multi-GPU ranks do not race-write the same sidecar; on the
+        # Rank 0 only, so multi-GPU ranks do not race-write the same sidecar. On the
         # single-device path is_global_zero is always true.
         if enable_checkpointing and trainer.is_global_zero:
             self.write_model_meta(output_path)
@@ -309,8 +310,9 @@ class CompressionTrainer:
     def write_model_meta(self, output_path: Path) -> Path:
         """Write the ``model_meta.json`` sidecar describing this trainer's architecture.
 
-        :meth:`train` calls it before and after fitting; ``train_NPE.py --stage meta`` calls it for a
-        run that was killed before its sidecar was written, from the same configuration the run used.
+        :meth:`train` calls it before and after fitting. ``train_NPE.py --stage meta`` calls it for
+        a run that was killed before its sidecar was written, from the same configuration the run
+        used.
         """
         output_path = Path(output_path)
         meta = {
@@ -336,18 +338,18 @@ class CompressionTrainer:
         return meta_path
 
     def load_best(self, output_path: Path) -> Path:
-        """Load the best checkpoint under ``output_path`` into ``self.model``; returns its path.
+        """Load the best checkpoint under ``output_path`` into ``self.model``. Returns its path.
 
         The ``model_meta.json`` sidecar, when present, gives the ``architecture``, ``model_config`` and
-        ``flow_config`` the flow is rebuilt with before the weights are loaded; without it the flow of
-        this object is used.
+        ``flow_config`` the flow is rebuilt with before the weights are loaded. Without it the flow
+        of this object is used.
         """
         output_path = Path(output_path)
         ckpt_path = find_best_checkpoint_path(output_path)
         print(ckpt_path)
 
         # Rebuild from the sidecar so a checkpoint loads into a structurally matching flow
-        # whatever this trainer was constructed with; without one, keep the flow from __init__.
+        # whatever this trainer was constructed with. Without one, keep the flow from __init__.
         if (output_path / MODEL_META_FILENAME).exists():
             meta = read_model_meta(output_path)
             station_locations = (
@@ -410,7 +412,7 @@ class CompressionTrainer:
 
 def recorded_stf_alignment(meta: dict) -> str:
     """The source-time convention, ``"peak"`` or ``"onset"``, the run of a parsed ``model_meta.json``
-    was trained with; a record that predates the convention is ``"onset"``.
+    was trained with. A record that predates the convention is ``"onset"``.
 
     The sidecar records the forward model's convention when training starts, so a run trained on
     simulation files written before the ``"peak"`` convention existed is recorded as ``"peak"``.
@@ -445,14 +447,14 @@ def find_best_checkpoint_path(output_path: Path) -> Path:
     return best
 
 def load_warm_start_weights(model, source_path: Path) -> Path:
-    """Load the best checkpoint under ``<source_path>/checkpoints`` into ``model``'s weights;
-    returns its path.
+    """Load the best checkpoint under ``<source_path>/checkpoints`` into ``model``'s weights.
+    Returns its path.
 
     Only the weights are transferred: the optimiser state, the learning-rate schedule and the epoch
     counter start afresh, so the new run declares its own ``--epochs``. Every architecture block
     (``ml_architecture``, ``ml_conditioning``, ``ml_variable_stations``, ``ml_amplitude_embedding``,
     ``ml_positional_encoding``, ``ml_pooling``, ``ml_flow``, ``ml_encoder``) must match the source
-    run; a mismatch raises.
+    run. A mismatch raises.
     """
     ckpt_path = find_best_checkpoint_path(source_path)
     # weights_only=False: a Lightning .ckpt carries non-tensor entries (hyper_parameters,
@@ -494,7 +496,7 @@ def enable_mmd_loss(trainer, training, pipeline, data):
     real_context = build_real_context(
         mmd["real_events_manifest"], pipeline.data_manager.data_loader,
         clean_only=clean_only,
-        # The manifest holds absolute paths from the machine that wrote it; this relocates the
+        # The manifest holds absolute paths from the machine that wrote it. This relocates the
         # event files without rewriting it.
         events_h5_dir=mmd.get("events_h5_dir"))
     psim_loader = build_psim_loader(
@@ -519,7 +521,7 @@ def enable_mmd_loss(trainer, training, pipeline, data):
 def attach_loggers(logging, run_directory):
     """The Lightning logger specification for the configured metric sinks.
 
-    ``csv`` writes a ``metrics.csv`` beside the checkpoints, readable without network access;
+    ``csv`` writes a ``metrics.csv`` beside the checkpoints, readable without network access.
     ``wandb`` streams the run to Weights & Biases as well.
     """
     loggers = []

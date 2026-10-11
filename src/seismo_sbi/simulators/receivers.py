@@ -23,12 +23,12 @@ class Receiver(NamedTuple):
     longitude : float
     #: Network code.
     network : str = "XX"
-    #: Station code; the key of this station in every seismogram map.
+    #: Station code. The key of this station in every seismogram map.
     station_name : str = "XXXX"
     #: The components this station records, from ``Z``, ``E``, ``N``, in that order.
     components : Sequence[str] = ("Z", "E", "N")
     #: Static correction in samples at the pipeline sampling rate, applied to every component of
-    #: this station; positive delays the trace.
+    #: this station. Positive delays the trace.
     time_shift : int = 0
 
 
@@ -48,7 +48,7 @@ class Receivers:
     """An ordered set of :class:`Receiver`, the order every seismogram array follows.
 
     One ``Receivers`` object is shared by the simulator, the data loader and the theory-covariance
-    estimator; :meth:`set_time_shifts` changes it in place for all of them.
+    estimator. :meth:`set_time_shifts` changes it in place for all of them.
     """
 
     def __init__(self, path_to_stations =None, receiver_components_map = None, receiver_time_shifts_map = None, receivers=None):
@@ -62,8 +62,8 @@ class Receivers:
     def from_station_file(cls, path, components_path=None, time_shifts_path=None):
         """Read ``name network latitude longitude`` lines, with optional JSON maps.
 
-        ``components_path`` maps station name to its components (a station with none is dropped;
-        without the map every station records Z, E, N); ``time_shifts_path`` maps station name to a
+        ``components_path`` maps station name to its components (a station with none is dropped.
+        Without the map every station records Z, E, N). ``time_shifts_path`` maps station name to a
         shift in samples.
         """
         return cls(path, components_path, time_shifts_path)
@@ -78,12 +78,13 @@ class Receivers:
 
     @classmethod
     def from_inventory(cls, inventory, channels="?H?", components=None):
-        """One receiver per station of an obspy ``Inventory`` (e.g. read from StationXML), in its order.
+        """One receiver per station of an obspy ``Inventory`` (for example read from StationXML),
+        in its order.
 
         A station records the components named by the last letter of its channel codes that match
         the ``channels`` pattern (default: seismometer channels), with ``1`` read as ``E`` and ``2``
-        as ``N``, ordered Z, E, N; other orientation codes are ignored. A station listed without
-        channels records Z, E, N; one whose channels give no component is dropped. ``components``,
+        as ``N``, ordered Z, E, N. Other orientation codes are ignored. A station listed without
+        channels records Z, E, N. One whose channels give no component is dropped. ``components``,
         when given, is used for every station instead.
         """
         receivers = []
@@ -171,7 +172,7 @@ class Receivers:
     def to_inventory(self, channel_band="BH"):
         """An obspy ``Inventory`` with one station per receiver and one channel per component.
 
-        Stations are grouped by network in order of first appearance; elevation and channel depth
+        Stations are grouped by network in order of first appearance. Elevation and channel depth
         are 0 m, and a component ``Z`` becomes channel ``BHZ`` for the default ``channel_band``.
         Time shifts are not carried.
         """

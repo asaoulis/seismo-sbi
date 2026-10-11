@@ -29,7 +29,7 @@ def noise_windows_from_stream(stream: Stream, receivers: Receivers, window_lengt
     ``buffer_s`` clear of the ends of the stream and of each ``(start, end)`` in
     ``avoid_windows_utc``, such as ``(origin_time, origin_time + window_length_s)`` for every event
     in the span. A station without all three components in a window is absent from it and its
-    samples are zeros; a window holding no station, or a trace cut short by a data gap, is dropped.
+    samples are zeros. A window holding no station, or a trace cut short by a data gap, is dropped.
     """
     span_start = min(trace.stats.starttime for trace in stream)
     span_end = max(trace.stats.endtime for trace in stream)

@@ -4,7 +4,7 @@ Inter-station amplitude ratio is a first-class moment-tensor observable, so it i
 the waveform channel into a full-width token added to each station token before the
 cross-station attention. In ``array_relative`` mode the feature is ``log A_i`` minus the event's
 mean or median over valid stations, which cancels the shared ``log M0`` and leaves an O(1)
-radiation pattern; that reference is embedded separately as a global vector. ``absolute`` mode
+radiation pattern. That reference is embedded separately as a global vector. ``absolute`` mode
 feeds standardised ``log A_i``. Optional distance and signal-to-noise corrections debias it.
 """
 
@@ -58,7 +58,7 @@ class AmplitudeTokenEmbedding(nn.Module):
     """Embed per-station amplitude into ``d_model`` station tokens (+ optional global vector).
 
     ``forward(x, mask) -> (token_emb (B, N, d_model), global_emb (B, d_model) | None)``.
-    ``x`` is the unpacked ``(B, N, C, T)`` seismogram batch; ``mask`` is the ``(B, N)`` station
+    ``x`` is the unpacked ``(B, N, C, T)`` seismogram batch. ``mask`` is the ``(B, N)`` station
     validity (True = real) for variable-station configs, or ``None`` (fixed full array).
     """
 
@@ -108,8 +108,8 @@ class AmplitudeTokenEmbedding(nn.Module):
             self.snr_gate_bias = nn.Parameter(torch.full((1,), 3.0))  # ≈ pure-noise peak/floor
 
         if mode == "array_relative":
-            # The token feature is centred per event, so its standardisation is fixed; the reference is
-            # an absolute scalar with unknown offset, so it gets a running standardiser.
+            # The token feature is centred per event, so its standardisation is fixed. The reference
+            # is an absolute scalar with unknown offset, so it gets a running standardiser.
             self.token_embed = ScalarFourierEmbedding(
                 self.K, d_model, num_freqs=num_freqs, sigma=sigma,
                 learnable_freqs=learnable_freqs, standardize="fixed",
@@ -210,7 +210,7 @@ class AmplitudeTokenEmbedding(nn.Module):
             token_feat = c - ref                                 # (B, N, K)
             token_emb = self.token_embed(token_feat)             # (B, N, d_model)
             global_emb = self.ref_embed(ref.squeeze(1))          # (B, d_model)
-        else:  # absolute — running-standardise the (de-trended) log-amp, masking padded stations
+        else:  # absolute: running-standardise the (de-trended) log-amp, masking padded stations
             token_emb = self.token_embed(c, mask=mask)           # (B, N, d_model)
             global_emb = None
 

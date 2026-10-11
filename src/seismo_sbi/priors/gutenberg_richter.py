@@ -21,7 +21,7 @@ def estimate_mc_maxcurvature(magnitudes, *, delta_m: float = 0.1) -> float:
     Bins the magnitudes and returns the magnitude bin with the greatest
     (non-cumulative) event count - the point of maximum curvature of the
     frequency-magnitude distribution. A common practical correction is to add
-    ~0.2; we return the raw maximum-curvature value and leave any correction to
+    ~0.2. We return the raw maximum-curvature value and leave any correction to
     the caller.
     """
     magnitudes = np.asarray(magnitudes, dtype=float)

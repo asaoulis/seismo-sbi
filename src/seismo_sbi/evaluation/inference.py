@@ -1,6 +1,6 @@
 """Build the pipeline, posterior and observation an evaluation run needs.
 
-:func:`load_trained_posterior` gives the posterior, theta scaler and pipeline of a trained run;
+:func:`load_trained_posterior` gives the posterior, theta scaler and pipeline of a trained run.
 :func:`build_eval_pipeline` constructs a pipeline that also simulates the test jobs,
 :func:`build_ml_posterior` loads a trained model into a posterior, :func:`resolve_ckpt_dir`
 finds the checkpoint directory to load from, and :func:`load_real_observation` reads one named
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class TrainedPosterior(NamedTuple):
     """A trained NPE ready for inference.
 
-    ``posterior`` samples the scaled parameters, in [0, 1]; ``data_scaler.inverse_transform`` maps
+    ``posterior`` samples the scaled parameters, in [0, 1]. ``data_scaler.inverse_transform`` maps
     them to physical units. ``pipeline`` holds the receivers and the data loader an observation is
     read with, and ``config`` is the parsed configuration of the run.
     """
@@ -39,11 +39,11 @@ class TrainedPosterior(NamedTuple):
 
 
 def load_trained_posterior(config_path, run_directory, *, strict=True) -> TrainedPosterior:
-    """The posterior, theta scaler and pipeline of a trained run; no simulation is read.
+    """The posterior, theta scaler and pipeline of a trained run. No simulation is read.
 
     ``config_path`` is the configuration the run was trained with and ``run_directory`` the run,
     or a directory holding exactly one run (see :func:`resolve_ckpt_dir`). The flow is rebuilt from
-    the run's ``model_meta.json``; the scaler is built from the configuration with the M0
+    the run's ``model_meta.json``. The scaler is built from the configuration with the M0
     convention the sidecar records and checked against the sidecar's scaling record, raising on a
     mismatch unless ``strict`` is False. The pipeline's forward model places the source time on
     the moment-rate function as the run was trained (:func:`recorded_stf_alignment`).
@@ -191,7 +191,7 @@ def load_observation(event_path, receivers, components, time_shifts=None):
     """One event file as an ``(n_stations, n_components, n_samples)`` array, with the receiver
     time shifts ``time_shifts`` (``{station: samples}``) undone.
 
-    ``receivers`` keeps its own shifts; ``components`` is the component layout, such as ``"ZEN"``.
+    ``receivers`` keeps its own shifts. ``components`` is the component layout, such as ``"ZEN"``.
     """
     inverted_shifts = {k: -v for k, v in (time_shifts or {}).items()}
     shifted = SimulationDataLoader(components, receivers).load_simulation_data_array_with_shifts(

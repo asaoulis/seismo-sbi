@@ -1,7 +1,7 @@
 """Forward model backed by an ensemble of precomputed Green's-function databases.
 
 One member is drawn per simulation, so repeated simulations of the same source sample the
-theory error carried by the spread of the Earth models; ``use_fiducial=True`` selects the
+theory error carried by the spread of the Earth models. ``use_fiducial=True`` selects the
 reference member instead. A backend supplies ``members``, ``fiducial_member`` and, if it uses
 the member-dispatch pattern, ``_simulate_with_member``.
 """
@@ -39,7 +39,7 @@ class GFEnsembleSimulator(Simulator, ABC):
     def select_member(self, *, use_fiducial=False, seed=None, member=None):
         """One member drawn from the ensemble, with replacement.
 
-        ``member`` names the member to use instead of drawing one; ``use_fiducial`` selects the
+        ``member`` names the member to use instead of drawing one. ``use_fiducial`` selects the
         reference member. A seed is applied as ``np.random.seed(seed)`` then
         ``np.random.choice(members)``.
         """

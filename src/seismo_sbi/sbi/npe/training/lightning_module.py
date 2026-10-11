@@ -16,7 +16,8 @@ from seismo_sbi.sbi.npe.training.mmd import (
 
 
 def fused_adam_supported(params):
-    """True if every parameter is a real-valued tensor on a device fused AdamW accepts; the unfused optimiser gives the same update otherwise."""
+    """True if every parameter is a real-valued tensor on a device fused AdamW accepts.
+    The unfused optimiser gives the same update otherwise."""
     params = list(params)
     if not params:
         return False
@@ -26,14 +27,14 @@ def fused_adam_supported(params):
 
 class NPELightningModule(pl.LightningModule):
     """Trains a conditional normalising flow, whose embedding net encodes the data, by maximising
-    the log-probability of the true parameters; the MMD auxiliary loss is opt-in.
+    the log-probability of the true parameters. The MMD auxiliary loss is opt-in.
     """
     def __init__(self, flow, lr=1e-3, weight_decay=0.0, lr_second_stage="cosine",
                  lr_min_factor=0.1,
                  fused_adam=False, compile_forward=False, compile_flow=False, **kwargs):
         """``flow`` is an nflows ``Flow`` whose embedding net takes the data. ``lr_second_stage`` is
         the schedule after the linear warmup (``cosine``, ``constant`` or ``cyclic``) and
-        ``lr_min_factor`` the cosine floor as a fraction of ``lr``; ``fused_adam``,
+        ``lr_min_factor`` the cosine floor as a fraction of ``lr``. ``fused_adam``,
         ``compile_forward`` and ``compile_flow`` are speed options.
         """
         super().__init__()
@@ -54,7 +55,7 @@ class NPELightningModule(pl.LightningModule):
             self._log_prob_fn = torch.compile(self._log_prob)
         elif compile_flow and hasattr(torch, "compile"):
             self._flow_tail_fn = torch.compile(self._flow_log_prob_from_embedded)
-        # The MMD auxiliary loss is armed by enable_mmd; None means NLL only.
+        # The MMD auxiliary loss is armed by enable_mmd. None means NLL only.
         self._mmd_cfg = None
         self._mmd_psim_loader = None
         self._mmd_psim_iter = None
@@ -70,12 +71,12 @@ class NPELightningModule(pl.LightningModule):
     def enable_mmd(self, mmd_config: dict, real_context, psim_loader):
         """Arm the summary-space MMD auxiliary loss (two-sample, after Huang et al. 2023).
 
-        ``real_context`` is the ``(N_real, W)`` context tensor of the QA-cleaned real events;
+        ``real_context`` is the ``(N_real, W)`` context tensor of the QA-cleaned real events.
         ``psim_loader`` yields ``(theta, context)`` batches of the posterior-matched simulation suite
         with the training-time augmentation applied, one batch per MMD step. The loss becomes
         ``nll + lambda(t) * MMD^2_u(embed(real), embed(psim))`` with ``lambda`` ramped from 0 to
-        ``lambda_mmd`` after ``warmup_epochs`` over ``ramp_epochs``; checkpoint selection stays on the
-        NLL-only ``val_loss`` and the MMD is logged as ``train_mmd2`` / ``val_mmd2``.
+        ``lambda_mmd`` after ``warmup_epochs`` over ``ramp_epochs``. Checkpoint selection stays on
+        the NLL-only ``val_loss`` and the MMD is logged as ``train_mmd2`` / ``val_mmd2``.
         """
         cfg = dict(mmd_config or {})
         self._mmd_cfg = {
@@ -123,7 +124,7 @@ class NPELightningModule(pl.LightningModule):
         """One MMD^2_u evaluation between fresh real/psim summary sub-batches.
 
         Summaries are cast to float32 before the kernel (the embedding may run under
-        bf16 autocast via the perf toggles; the O(B^2) kernel is cheap in fp32 and the
+        bf16 autocast via the perf toggles. The O(B^2) kernel is cheap in fp32 and the
         estimator is noise-sensitive). Bandwidth = median heuristic on the pooled
         sub-batches, EMA-smoothed across steps, detached from the graph.
         """
@@ -164,7 +165,7 @@ class NPELightningModule(pl.LightningModule):
 
     def forward(self, x, theta):
         """Log-probability of ``theta`` given the data ``x``, shape ``(batch,)``."""
-        # The flow contains the embedding_net; pass x as context to be embedded internally.
+        # The flow contains the embedding_net. Pass x as context to be embedded internally.
         if self._log_prob_fn is not None:
             return self._log_prob_fn(theta, x)
         if self._flow_tail_fn is not None:
@@ -192,7 +193,8 @@ class NPELightningModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        """Negative mean log-probability of a validation batch; the MMD term is logged, not added."""
+        """Negative mean log-probability of a validation batch.
+        The MMD term is logged, not added."""
         theta, x = batch
         log_prob = self.forward(x, theta)
         val_loss = -log_prob.mean()
@@ -207,7 +209,7 @@ class NPELightningModule(pl.LightningModule):
 
     def configure_optimizers(self):
         """AdamW with a linear warmup over 5 % of the epochs, then the ``lr_second_stage`` schedule."""
-        # The fused optimizer's preconditions -- floating-point parameters on an accelerator --
+        # The fused optimizer's preconditions: floating-point parameters on an accelerator --
         # are checked here because torch only rejects them inside the first step().
         optimizer = None
         if self._fused_adam and fused_adam_supported(self.parameters()):
@@ -223,7 +225,7 @@ class NPELightningModule(pl.LightningModule):
         max_epochs = getattr(self.trainer, "max_epochs", None) or 500
 
         warmup_epochs = max(1, int(0.05 * max_epochs))
-        # Guard against tiny max_epochs (e.g. 1 in tests) where warmup consumes all epochs:
+        # Guard against tiny max_epochs (for example 1 in tests) where warmup consumes all epochs:
         # CosineAnnealingLR(T_max=0) divides by zero.
         cosine_epochs = max(1, max_epochs - warmup_epochs)  # remaining epochs
 

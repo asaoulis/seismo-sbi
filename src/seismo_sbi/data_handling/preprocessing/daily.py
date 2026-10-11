@@ -1,6 +1,6 @@
 """Process raw mseed data in daily chunks for efficient catalogue generation.
 
-Each station-day is processed once -- response removal, bandpass filter, resample -- and saved
+Each station-day is processed once, response removal, bandpass filter, resample, and saved
 as a processed daily mseed file, from which windows are then sliced with no further processing.
 The cost is therefore paid once per station-day rather than once per window, the taper needed
 before response removal touches only the ends of each day file so interior windows are clean,
@@ -47,10 +47,10 @@ def process_daily_files(
     :param processed_dir: output directory for the daily files.
     :param t_start: start of the range, ``datetime`` or ``UTCDateTime``.
     :param t_end: end of the range.
-    :param stationxml_dir: StationXML response files; None skips response removal.
+    :param stationxml_dir: StationXML response files. None skips response removal.
     :param prefilter_kwargs: passed to :func:`deconvolve_and_filter`.
     :param filter_kwargs: passed to :func:`deconvolve_and_filter`.
-    :param sampling_rate: target rate in Hz; None keeps the original.
+    :param sampling_rate: target rate in Hz. None keeps the original.
     :param channel_glob: channel glob (default ``'BH?'``).
     :param n_jobs: parallel workers.
     :param overwrite: reprocess even if the output exists.

@@ -4,7 +4,7 @@ The summary-space auxiliary loss of Huang et al. (2023), in a two-sample setting
 quality-controlled real events against a posterior-matched simulation suite. The estimator is
 the unbiased U-statistic of Gretton et al. (2012, Eq. 4) rather than the biased V-statistic,
 over a mixture of RBF kernels at several bandwidth scales around a median-heuristic base, which
-hedges kernel choice. The bandwidth is detached from the graph; any smoothing across steps is
+hedges kernel choice. The bandwidth is detached from the graph. Any smoothing across steps is
 the caller's. Pure torch and stateless.
 """
 from __future__ import annotations
@@ -22,8 +22,8 @@ def median_bandwidth(z: torch.Tensor, z2: torch.Tensor = None) -> float:
     beta = sqrt(med / 2) where ``med`` is the median of squared pairwise two-norm
     distances between distinct points of ``z`` (pooled with ``z2`` when given) —
     the convention of Huang et al. 2023, computed here on the pooled two-sample set.
-    Always detached (bandwidth selection must not backprop). Returns a python float;
-    falls back to 1.0 if the median is degenerate (all points identical).
+    Always detached (bandwidth selection must not backprop). Returns a python float.
+    Falls back to 1.0 if the median is degenerate (all points identical).
     """
     with torch.no_grad():
         pool = z if z2 is None else torch.cat([z.detach(), z2.detach()], dim=0)
@@ -60,7 +60,7 @@ def rbf_mixture_mmd2_unbiased(z1: torch.Tensor, z2: torch.Tensor,
 
     Needs >= 2 samples per side. Being unbiased it may go slightly NEGATIVE near zero —
     callers must not clamp before logging (a near-zero/negative value is the "aligned"
-    signal). Differentiable w.r.t. both inputs; ``bandwidths`` are plain floats
+    signal). Differentiable w.r.t. both inputs. ``bandwidths`` are plain floats
     (select via :func:`median_bandwidth`, outside the graph).
     """
     n, m = z1.shape[0], z2.shape[0]

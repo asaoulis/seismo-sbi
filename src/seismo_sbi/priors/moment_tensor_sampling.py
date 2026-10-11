@@ -26,7 +26,7 @@ def uniform_moment_tensor_on_sphere(m0: float, rng: np.random.Generator) -> np.n
     """
     g = _COMPONENT_STD * rng.standard_normal(6)
     moment = scalar_moment(g)
-    while moment == 0.0:  # astronomically unlikely; guard against divide-by-zero
+    while moment == 0.0:  # astronomically unlikely. Guard against divide-by-zero
         g = _COMPONENT_STD * rng.standard_normal(6)
         moment = scalar_moment(g)
     return m0 * g / moment

@@ -35,7 +35,7 @@ class FusedMHA(nn.Module):
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.dropout = float(dropout)
-        # Packed QKV projection — identical layout to nn.MultiheadAttention.
+        # Packed QKV projection: identical layout to nn.MultiheadAttention.
         self.in_proj_weight = nn.Parameter(torch.empty(3 * embed_dim, embed_dim))
         self.in_proj_bias = nn.Parameter(torch.empty(3 * embed_dim)) if bias else None
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)

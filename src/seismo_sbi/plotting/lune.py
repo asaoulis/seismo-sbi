@@ -2,7 +2,7 @@
 
 :func:`plot_lune_frame` draws the Tape and Tape lune in a Hammer projection, and the
 ``plot_*_on_lune`` helpers add scatter points and KDE contours of lune angles
-``(gamma_deg, delta_deg)`` to it; :mod:`seismo_sbi.moment_tensor.lune_angles` computes the angles.
+``(gamma_deg, delta_deg)`` to it. :mod:`seismo_sbi.moment_tensor.lune_angles` computes the angles.
 """
 
 from __future__ import annotations
@@ -145,8 +145,8 @@ def plot_scatter_on_lune(ax, bm: Basemap, gamma, delta, **scatter_kwargs):
 
 def plot_kde_contours_on_lune(ax, bm: Basemap, gamma, delta, colors='C0', grid_res=(200, 300),
                                levels=(0.6827, 0.9545), linestyles=('-', '--'), linewidths=(1.8, 1.5)):
-    """HPD contours of the lune angles ``gamma``, ``delta`` (degrees) from a KDE on a ``grid_res`` grid;
-    each of ``levels`` is drawn with the matching entry of ``linestyles`` and ``linewidths``
+    """HPD contours of the lune angles ``gamma``, ``delta`` (degrees) from a KDE on a ``grid_res`` grid.
+    Each of ``levels`` is drawn with the matching entry of ``linestyles`` and ``linewidths``
     (by default 68 % solid, 95 % dashed)."""
     gx = np.linspace(-30, 30, grid_res[0])
     gy = np.linspace(-90, 90, grid_res[1])

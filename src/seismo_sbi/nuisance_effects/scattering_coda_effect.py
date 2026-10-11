@@ -1,7 +1,7 @@
 """Scattered coda behind the direct arrivals, gated per station or ramped with distance.
 
 The coda filters (causal random tail, Stahler and Sigloch random phase, distance-scaled
-delayed replicas) and the distance ramps are module functions; ``ScatteringCodaEffect``
+delayed replicas) and the distance ramps are module functions. ``ScatteringCodaEffect``
 chooses and applies them.
 """
 from __future__ import annotations
@@ -58,7 +58,7 @@ def _apply_random_coda_filter(
     The kernel is a unit spike at lag zero followed by an exponentially decaying tail of
     independent taps drawn on ``[-1, 1]``, normalised so total energy is conserved on average.
     ``alpha`` in ``[0, 1]`` scales both the tail amplitude and its length, which is
-    ``round(alpha * max_coda_fraction * len(trace))``; zero is the identity. The spike pins
+    ``round(alpha * max_coda_fraction * len(trace))``. Zero is the identity. The spike pins
     the onset, so the filter adds no bulk delay, and linear convolution cannot wrap coda back
     to the start of the window as a circular all-pass filter would.
     """
@@ -109,7 +109,7 @@ def distance_tail_energy(
     """Coda energy relative to the direct arrival at distances ``dist_km``.
 
     Inverts a linear ramp in root-mean-square excess, in dex per 1000 km, into the tail
-    energy the kernel needs. This is the kernel-level target; the excess measured in a
+    energy the kernel needs. This is the kernel-level target. The excess measured in a
     group-velocity window also depends on the trace's own time structure, so the ramp must be
     calibrated against the same window diagnostic used on the data.
     """
@@ -159,7 +159,7 @@ class ScatteringCodaEffect(SeismogramEffect):
 
     By default a gated station draws its own strength from ``uniform(*alpha_range)``, shared
     across its components, or uses a fixed ``alpha``. ``mode='causal'`` convolves with the
-    spike-plus-decaying-tail kernel of :func:`_apply_random_coda_filter`; ``mode='stahler'``
+    spike-plus-decaying-tail kernel of :func:`_apply_random_coda_filter`. ``mode='stahler'``
     convolves with the unit-amplitude random-phase filter of
     :func:`_apply_stahler_phase_filter`. Both are causal and leave quiet stretches quiet.
 
