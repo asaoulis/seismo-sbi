@@ -73,7 +73,7 @@ parameters:
 
 simulations:
   # Scaled up from 2000 (notebook demo) to 10,000 for production fidelity.
-  # Empirically: 2000 sims -> ~30 min; 10000 sims -> ~2-4 hrs;
+  # Empirically: 2000 sims -> ~30 min. 10000 sims -> ~2-4 hrs;
   # full 50000 sims -> ~1-2 days. Adjust for your training-time budget.
   num_simulations: 10000
   sampling_method:

@@ -6,7 +6,7 @@ num_jobs: 30
 
 # Base config for generate_croatia_5pc_perturbations.py. The generator loops over the
 # 4 multi_models, overriding velocity_model + receiver subset + cps_GFs_path per model.
-# Stations here is the FULL 10-station geometry; receivers are filtered in Python per model
+# Stations here is the FULL 10-station geometry. Receivers are filtered in Python per model
 # (avoids the single-station genfromtxt issue for model3/CACV).
 
 seismic_context:
@@ -43,7 +43,7 @@ parameters:
       fiducial: [45.879, 16.028, 5, 0]
       bounds: [45.879, 16.028, 5, 0]
     velocity_model:
-      # overridden per model by the generator; must be a valid model file to parse
+      # overridden per model by the generator. Must be a valid model file to parse
       fiducial: '/home/alex/work/seismo-sbi/scripts/configs/croatia/multi_models_txt/model1.txt'
       bounds: ['/home/alex/work/seismo-sbi/scripts/configs/croatia/multi_models_txt/model1.txt', 5]
 

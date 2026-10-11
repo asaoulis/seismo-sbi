@@ -64,12 +64,12 @@ parameters:
   # Category 2 nuisance effects and wrapper.py for Category 1.
   #
   # nuisance_extended:
-  #   # Category 1 (simulator-level — forwarded to generic_point_source_simulation):
-  #   stf_duration:           # GCMT half-duration STF; value in seconds
+  #   # Category 1 (simulator-level, forwarded to generic_point_source_simulation):
+  #   stf_duration:           # GCMT half-duration STF. Value in seconds
   #     fiducial: 3.0
   #     bounds: [1.0, 6.0]
   #
-  #   # Category 2 (post-processing — applied via PostProcessingChain):
+  #   # Category 2 (post-processing, applied via PostProcessingChain):
   #   amplitude_error:        # station-level amplitude scale error
   #     fiducial: 1.0
   #     bounds: [0.8, 1.2]

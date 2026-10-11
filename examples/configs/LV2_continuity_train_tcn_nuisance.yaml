@@ -16,11 +16,11 @@
 #   ./data/pipeline_outputs/continuity_cnn_nuisance/cnn_nuisance/results/cnn_nuisance/checkpoints/best_model-*.ckpt
 #
 # NUISANCE NOTE: the nuisance VALUE for each post-proc effect is a per-station
-# *probability* in [0,1]; the effect magnitude lives in the extra effect-config
+# *probability* in [0,1]. The effect magnitude lives in the extra effect-config
 # keys (scale_range / gaussian_sigma / alpha,mode,coda_fraction). All four apply
 # to the CPS path via the inherited Simulator.run_simulation post-processing chain.
-# stf_duration (GCMT STF) is intentionally OMITTED — it is a no-op on the
-# cps_precomputed path (no STF convolution support; it is dropped in the CPS
+# stf_duration (GCMT STF) is intentionally OMITTED: it is a no-op on the
+# cps_precomputed path (no STF convolution support, and it is dropped in the CPS
 # simulator). Enable it only on an Instaseis-backed run.
 #
 # NEVER re-download or re-preprocess LV2 data.

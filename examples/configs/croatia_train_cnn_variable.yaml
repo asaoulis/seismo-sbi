@@ -30,15 +30,15 @@ num_jobs: 30
 ml_architecture: cnn
 
 # Variable-station training: each sample draws a random subset of the 10-station master
-# set; the model is built in variable-station mode (pad+mask, per-sample station coords).
+# set. The model is built in variable-station mode (pad+mask, per-sample station coords).
 ml_variable_stations:
   enabled: true
   keep_fraction: [0.5, 1.0]      # uniform range of stations kept per sample
   min_stations: 1
-  station_coords_mode: absolute  # de-risked default; 'relative' needs ml_conditioning
+  station_coords_mode: absolute  # de-risked default. 'relative' needs ml_conditioning
 
 # Optional source-location conditioning (FiLM / token-add). Left disabled for the first
-# variable-station run; enable once the absolute-coords baseline trains cleanly. If you set
+# variable-station run. Enable once the absolute-coords baseline trains cleanly. If you set
 # station_coords_mode: relative above, this block is REQUIRED.
 # ml_conditioning:
 #   param_map: {source_location: [latitude, longitude, depth]}

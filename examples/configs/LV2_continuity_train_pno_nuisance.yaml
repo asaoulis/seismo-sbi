@@ -2,12 +2,12 @@
 # ============================================================
 # PNO (Phase Neural Operator / FNO) NPE training WITH all CPS-applicable nuisance
 # parameters enabled. Identical nuisance setup to LV2_continuity_train_cnn_nuisance.yaml
-# so the two are directly comparable — the ONLY difference is the per-station encoder
+# so the two are directly comparable. The ONLY difference is the per-station encoder
 # (ml_architecture: pno vs the CNN default).
 #
-# Architecture: station_encoder = "pno" (set via the ml_architecture key below; read
+# Architecture: station_encoder = "pno" (set via the ml_architecture key below, read
 # by train_NPE.py and passed as model_config={"station_encoder": "pno"}).
-# NOTE: PNO is newer/less-tested than the CNN — this run may surface issues; that's
+# NOTE: PNO is newer/less-tested than the CNN, this run may surface issues. That's
 # part of what the continuity check is for.
 #
 # Run (cwd = examples/):

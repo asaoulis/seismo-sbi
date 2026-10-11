@@ -13,7 +13,7 @@
 #     `TorchSimulationDataset.__getitem__` applies them per-batch to the clean
 #     data BEFORE noise is added (val loader included).  The activation scalar
 #     for each effect is taken from its `fiducial` value (per-station probability
-#     for amplitude/dropout/coda; on/off switch for time_shift_error).
+#     for amplitude/dropout/coda. On/off switch for time_shift_error).
 #
 # Architecture: TCN (CompressionTrainer station_encoder="tcn").
 # Dataset size: jobs.simulations.random_events = 75000.  Epochs: --epochs 200.
@@ -26,15 +26,15 @@
 #
 # TIME-SHIFT CONTINUITY NOTE: time shifts used to be applied in train_NPE via
 # random_shift_distribution=(2,3) on the dataloader (array-wide N(0,2) + per-station
-# U(-3,3)).  That path is retired — all time-shift handling now lives in the nuisance
+# U(-3,3)).  That path is retired, all time-shift handling now lives in the nuisance
 # stage.  To preserve the SAME random distributions, the new TimeShiftErrorEffect keeps
 # the Gaussian at sigma=2 (gaussian_sigma=2, now the per-station component) and the
 # uniform at half-width=3 (uniform_offset=3, now the array-wide common component).  At
-# 1 Hz seconds≈samples so magnitudes carry over directly.  (Component SCOPE — which is
-# common vs per-station — is flipped vs the legacy code; the per-distribution magnitudes
+# 1 Hz seconds≈samples so magnitudes carry over directly.  (Component SCOPE, which is
+# common vs per-station, is flipped vs the legacy code. The per-distribution magnitudes
 # are preserved, which is the behaviour the continuity test cares about.)
 #
-# stf_duration (GCMT STF) is intentionally OMITTED — it is a no-op on the
+# stf_duration (GCMT STF) is intentionally OMITTED: it is a no-op on the
 # cps_precomputed path.  NEVER re-download or re-preprocess LV2 data.
 # ============================================================
 
@@ -87,7 +87,7 @@ parameters:
       bounds: ['../examples/configs/SoCal.plain.txt', 5]
 
     # ---- Category-2 nuisances, applied as TRAINING-TIME AUGMENTATION ----
-    # stage: training_augmentation  → NOT baked into sims; folded in per-batch by
+    # stage: training_augmentation  → NOT baked into sims. Folded in per-batch by
     # the dataloader.  The `fiducial` scalar is the activation value used by
     # build_augmentation_chain (per-station probability, or on/off for time-shift).
     amplitude_error:
@@ -119,7 +119,7 @@ simulations:
     source_location: "constant"
     velocity_model: "velocity model"
     # Augmentation-staged nuisances are no-ops at simulation time (excluded from the
-    # per-sim chain); held constant so the generated sims stay clean.
+    # per-sim chain). Held constant so the generated sims stay clean.
     amplitude_error: "constant"
     time_shift_error: "constant"
     scattering_coda: "constant"

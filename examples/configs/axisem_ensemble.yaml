@@ -13,7 +13,7 @@ ensemble:
   perturbation:
     vp_sigma: 0.10       # compressional speed, fractional std
     vs_sigma: 0.10       # shear speed, fractional std
-    width_sigma: 0.20    # layer width, fractional std; shifts discontinuity depths
+    width_sigma: 0.20    # layer width, fractional std. Shifts discontinuity depths
     rho_mode: brocher    # density follows the perturbed Vp via Brocher (2005)
     # Perturb only above this depth. Brocher is a crustal relation, and the deep reference
     # is better constrained than the crust.
@@ -22,7 +22,7 @@ ensemble:
 
 # Solver parameters, applied to every member.
 axisem:
-  # inparam_basic and inparam_advanced templates; the library's own are used when unset.
+  # inparam_basic and inparam_advanced templates. The library's own are used when unset.
   templates_dir: null
   dominant_period: 5.0       # s, the shortest period the mesh resolves
   seismogram_length: 300.0   # s
