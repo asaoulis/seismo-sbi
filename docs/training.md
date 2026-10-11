@@ -6,7 +6,7 @@ network compresses the seismograms of every station to a short summary. It is tr
 with a conditional normalising flow over the source parameters. The result is an amortised
 neural posterior estimator (NPE): one network trained once, on simulations drawn from the prior.
 It then returns the posterior of any new event recorded by the same station network in a
-fraction of a second, with no further simulation. This is what builds whole moment-tensor
+fraction of a second, with no further simulation. The amortised model builds whole moment-tensor
 catalogues.
 
 One YAML file drives training: the same blocks as an inversion (see

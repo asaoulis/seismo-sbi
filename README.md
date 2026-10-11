@@ -68,14 +68,15 @@ Work through them in this order:
 1. [`ridgecrest_obspy`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/ridgecrest_obspy.ipynb): the 2019
    Ridgecrest foreshock (Mw 6.4), from ObsPy objects to a moment tensor and back. FDSN gives the event, the
    stations and the waveforms. The `Stream` gives the observation and its noise covariance. Least squares gives
-   the Gaussian-likelihood posterior, the synthetics come back as a `Stream` and the posterior as QuakeML. Runs
+   the Gaussian-likelihood posterior. The synthetics come back as a `Stream` and the posterior as QuakeML. Runs
    offline from `examples/data/ridgecrest`. Needs an Instaseis database that resolves 20 s periods
    (`INSTASEIS_DB_20S`, such as `prem_a_20s`).
 2. [`npe_flagship`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/npe_flagship.ipynb): the same event
    with a neural posterior trained on 10,000 Instaseis simulations. The simulations carry the source depth and
    position, travel-time and amplitude errors, scattered coda and missing stations as nuisances. The neural
-   posterior is compared with the Gaussian-likelihood posterior at the catalogue centroid: coverage on held-out
-   simulations, posterior mass on the lune, the model on three stations, and a posterior predictive check.
+   posterior is compared with the Gaussian-likelihood posterior at the catalogue centroid. The comparison covers
+   coverage on held-out simulations, posterior mass on the lune, the model on three stations, and a posterior
+   predictive check.
    Needs `INSTASEIS_DB_20S` and a GPU for about 15 minutes. Its first cell installs the package on Google Colab.
 3. [`nuisances`](https://github.com/asaoulis/seismo-sbi/blob/main/examples/nuisances.ipynb): the built-in
    nuisance effects at 20-50 s on the Ridgecrest stations, the simulation stage against the training stage, a
@@ -177,9 +178,8 @@ configuration and calls one library entry point. Run any of them with `--help` t
 
 Preparing real data takes three steps: download the raw waveforms and instrument responses,
 build the event and noise HDF5 catalogues, and point the YAML configuration at the results. Every intermediate file is a standard ObsPy format (`.mseed` and StationXML). HDF5 is
-written only at the final step. To work from ObsPy objects in memory instead (a `Stream`, an
-`Inventory`, an `Origin`) and get the posterior back as a QuakeML `Event`, see
-[docs/obspy.md](docs/obspy.md).
+written only at the final step. The ObsPy route takes a `Stream`, an `Inventory` and an `Origin` in memory and returns the
+posterior as a QuakeML `Event`: see [docs/obspy.md](docs/obspy.md).
 
 ### 1. Download
 
