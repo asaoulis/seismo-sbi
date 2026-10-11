@@ -118,7 +118,6 @@ def compute_event_arrival_windows(
 
     model = TauPyModel(model=taup_model)
 
-    # Normalise receivers to list of (lat, lon)
     if hasattr(receivers, "receivers"):
         station_coords = [
             (r.latitude, r.longitude) for r in receivers.receivers

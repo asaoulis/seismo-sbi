@@ -54,7 +54,7 @@ def _azimuth_deg(ev_lat, ev_lon, sta_lat, sta_lon) -> float:
 def _norm_table(obs, overlay_cubes, mode):
     """``(N, C)`` divisor array for the requested normalisation.
 
-    Every mode normalises by the max of BOTH obs and the overlays, so an overlay that
+    Every mode normalises by the max of both obs and the overlays, so an overlay that
     overshoots is visibly clipped-looking rather than silently rescaling the observation.
     """
     stack = [np.abs(obs)] + [np.abs(c) for c in overlay_cubes]
@@ -115,7 +115,7 @@ def moveout_record_section(
     ax=None,
     seed=0,
 ):
-    """Record section where **every trace is individually legible**.
+    """Record section where every trace is individually legible.
 
     The failure mode this replaces: one global amplitude scale over 45 traces leaves the
     quiet stations as flat lines. Here each trace (or each station) carries its own scale,

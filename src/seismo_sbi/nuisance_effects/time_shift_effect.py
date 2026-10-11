@@ -43,7 +43,7 @@ class TimeShiftErrorEffect(SeismogramEffect):
     DEFAULT_STATION_MEAN_S: float = 0.0
     #: Default Lanczos kernel order.
     DEFAULT_LANCZOS_ORDER: int = 5
-    #: Default common-offset distribution ("uniform" for back-compat).
+    #: Default common-offset distribution.
     DEFAULT_COMMON_OFFSET_DIST: str = "uniform"
 
     def __init__(

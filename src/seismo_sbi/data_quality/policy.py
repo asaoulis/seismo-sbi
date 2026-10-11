@@ -233,7 +233,7 @@ def _snr_component_gate(snr: Optional[SNRMetrics], t: QAThresholds,
     The gates run only when ``enable_snr_gates`` is set. Each judges the misfit given the
     expected signal, never a low absolute SNR:
 
-    * dead: the signal should be clearly visible (``snr_syn >= snr_dead_min_syn``)
+    * dead: the signal is clearly visible (``snr_syn >= snr_dead_min_syn``)
       yet the noise-debiased observed signal is essentially absent
       (``snr_sig < snr_dead_ratio * snr_syn``). Catches a flatlined channel (obs/syn ~1e-3)
       while sparing the benign ~0.5 1-D amplitude misfit (RMS-ratio separation ~1e2-1e3),

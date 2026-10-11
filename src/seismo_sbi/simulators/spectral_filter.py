@@ -1,6 +1,6 @@
 """A Butterworth filter designed at one sampling rate, applied to a trace sampled at another.
 
-:func:`filter_and_shift` designs the filter obspy's ``Stream.filter`` would build at the observed
+:func:`filter_and_shift` designs the filter obspy's ``Stream.filter`` builds at the observed
 data's rate, evaluates its complex response at the trace's own FFT frequencies, and applies it
 together with a sub-sample time shift as one product in the frequency domain. The FFT is
 zero-padded past the filter's decay time, so neither the filter tail nor the shift wraps around.
@@ -55,7 +55,7 @@ def filter_tail_s(filter_items, filter_sampling_rate_hz):
 
 
 def filter_and_shift(data, dt_s, filter_kwargs, filter_sampling_rate_hz, shift_s=0.0, upsampling=1):
-    """``data`` filtered as obspy would at ``filter_sampling_rate_hz``, read ``shift_s`` later.
+    """``data`` filtered as obspy filters it at ``filter_sampling_rate_hz``, read ``shift_s`` later.
 
     ``data`` is ``(n_samples,)`` sampled every ``dt_s``. ``filter_kwargs`` are those of
     ``Stream.filter``. The result is ``(upsampling * n_samples,)``: sample ``m`` is the filtered

@@ -255,7 +255,7 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
 def run_metrics_payload(run_label, config_path, metrics: dict, **run_details) -> dict:
     """The ``evaluation_metrics.json`` record of one run: ``schema_version``, ``run_label``,
     ``config``, ``timestamp`` and ``metrics``, then any ``run_details`` (validation settings,
-    figure paths). ``run_label`` and ``config_path`` may be None."""
+    figure paths). ``run_label`` and ``config_path`` can be None."""
     return {
         "schema_version": METRICS_SCHEMA_VERSION,
         "run_label": run_label,
@@ -286,8 +286,8 @@ def scan_run_metrics(runs_root, exclude=None, max_runs: int = 12) -> Dict[str, d
 
     Globs ``<runs_root>/*/artifacts/evaluation_metrics.json``, drops unreadable /
     empty files and any label in ``exclude``, dedupes by ``run_label`` (newest
-    ``timestamp`` wins) and keeps the newest ``max_runs`` (safety cap so the
-    comparison can't blow up). Returns ``{run_label: payload}``.
+    ``timestamp`` wins) and keeps the newest ``max_runs`` (a safety cap so the
+    comparison cannot blow up). Returns ``{run_label: payload}``.
     """
     runs_root = Path(runs_root)
     exclude = set(exclude or [])

@@ -72,7 +72,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     Returns ``(config, sbi_pipeline, original_parameters)``.
 
     By default (``regenerate_dataset=False``) the simulation dataset on disk is reused:
-    ``simulate_test_jobs`` would redraw every ``random_events`` simulation and overwrite
+    ``simulate_test_jobs`` redraws every ``random_events`` simulation and overwrites
     the dataset the model trained on. The dataset is simulated only when none exists. The
     simulations and the training noise are those of training: every file of
     :func:`~seismo_sbi.sbi.datasets.training_data.training_simulation_paths`, and noise rescaled to
@@ -205,6 +205,6 @@ def recovered_mt_samples(inv_data) -> np.ndarray:
 
     ``inv_data.samples`` are already in physical units: the pipeline applies the
     ``FlexibleScaler`` inverse before saving (median about 1e16 N m, matching the MLE).
-    Applying ``data_scaler.inverse_transform`` again would scale them to about 1e33 (Mw 16,
+    Applying ``data_scaler.inverse_transform`` again scales them to about 1e33 (Mw 16,
     float overflow in the lune), so the first six columns are taken as they are."""
     return np.asarray(inv_data.samples)[:, :6]

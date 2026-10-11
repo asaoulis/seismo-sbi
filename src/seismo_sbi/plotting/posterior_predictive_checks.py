@@ -214,9 +214,9 @@ class PosteriorPredictiveChecks:
     ):
         """Select best-matching synthetics for each ensemble given precomputed synthetics.
 
-        This does **not** run any simulations or compute summary metrics, it just
-        applies the chosen selection metric on the raw synthetics and returns a
-        dictionary with the selected subsets.
+        This does not run any simulations or compute summary metrics. It applies the
+        chosen selection metric on the raw synthetics and returns a dictionary with the
+        selected subsets.
 
         Parameters
         ----------

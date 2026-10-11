@@ -2,7 +2,7 @@
 
 :class:`CompressionTrainer` builds the pair, trains it with Lightning, and writes a
 ``model_meta.json`` sidecar so a checkpoint can be rebuilt without re-supplying its
-architecture. The free functions below wire in the optional extras a configuration may ask
+architecture. The free functions below wire in the optional extras a configuration can ask
 for: the auxiliary MMD loss, a warm start from an earlier run, and the metric loggers.
 """
 
@@ -510,7 +510,7 @@ def enable_mmd_loss(trainer, training, pipeline, data):
         clean_only=clean_only)
     trainer.model.enable_mmd(mmd, real_context, psim_loader)
     # Through the recorder, not the caller's dict: __init__ merged model_config into a new
-    # object, so a checkpoint would otherwise be indistinguishable from a non-MMD one.
+    # object, so a checkpoint is otherwise indistinguishable from a non-MMD one.
     trainer.record_model_config(mmd={key: value for key, value in mmd.items()
                                      if key != "enabled"})
     print(f"MMD auxiliary loss enabled: N_real={real_context.shape[0]}, "

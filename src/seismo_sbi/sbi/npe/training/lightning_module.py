@@ -123,9 +123,9 @@ class NPELightningModule(pl.LightningModule):
     def _mmd_term(self):
         """One MMD^2_u evaluation between fresh real/psim summary sub-batches.
 
-        Summaries are cast to float32 before the kernel (the embedding may run under
-        bf16 autocast via the perf toggles. The O(B^2) kernel is cheap in fp32 and the
-        estimator is noise-sensitive). Bandwidth = median heuristic on the pooled
+        Summaries are cast to float32 before the kernel. The embedding can run under bf16
+        autocast via the perf toggles, the O(B^2) kernel is cheap in fp32 and the estimator
+        is noise-sensitive. Bandwidth = median heuristic on the pooled
         sub-batches, EMA-smoothed across steps, detached from the graph.
         """
         cfg = self._mmd_cfg

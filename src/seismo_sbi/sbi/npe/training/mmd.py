@@ -20,7 +20,7 @@ def median_bandwidth(z: torch.Tensor, z2: torch.Tensor = None) -> float:
     """Median-heuristic RBF bandwidth over the pooled samples.
 
     beta = sqrt(med / 2) where ``med`` is the median of squared pairwise two-norm
-    distances between distinct points of ``z`` (pooled with ``z2`` when given) —
+    distances between distinct points of ``z`` (pooled with ``z2`` when given),
     the convention of Huang et al. 2023, computed here on the pooled two-sample set.
     Always detached (bandwidth selection must not backprop). Returns a python float.
     Falls back to 1.0 if the median is degenerate (all points identical).
@@ -58,7 +58,7 @@ def rbf_mixture_mmd2_unbiased(z1: torch.Tensor, z2: torch.Tensor,
     MMD^2_u = 1/(n(n-1)) sum_{i != j} k(z1_i, z1_j) + 1/(m(m-1)) sum_{i != j} k(z2_i, z2_j)
               - 2/(nm) sum_{i,j} k(z1_i, z2_j)
 
-    Needs >= 2 samples per side. Being unbiased it may go slightly NEGATIVE near zero —
+    Needs >= 2 samples per side. Being unbiased, it can go slightly negative near zero, so
     callers must not clamp before logging (a near-zero/negative value is the "aligned"
     signal). Differentiable w.r.t. both inputs. ``bandwidths`` are plain floats
     (select via :func:`median_bandwidth`, outside the graph).

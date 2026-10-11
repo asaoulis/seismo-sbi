@@ -29,7 +29,7 @@ _QUERIER_CACHE = OrderedDict()
 _QUERIER_CACHE_MAXSIZE = max(1, int(os.environ.get("SEISMO_QUERIER_CACHE_MAXSIZE", "64")))
 
 #: True when the cap came from ``SEISMO_QUERIER_CACHE_MAXSIZE``, in which case it is
-#: authoritative and nothing may grow it.
+#: authoritative, and nothing else can grow it.
 _QUERIER_CACHE_MAXSIZE_IS_EXPLICIT = "SEISMO_QUERIER_CACHE_MAXSIZE" in os.environ
 
 

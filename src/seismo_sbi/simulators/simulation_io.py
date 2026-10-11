@@ -304,7 +304,7 @@ class SimulationDataLoader():
 
                 if trace_data is None:
                     if allow_missing:
-                        # A part-present station counts as absent. Otherwise it would reach
+                        # A part-present station counts as absent. Otherwise it reaches
                         # the model as part-zero data.
                         comp_data = None
                         break

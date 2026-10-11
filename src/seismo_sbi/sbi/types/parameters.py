@@ -119,7 +119,7 @@ class ModelParameters:
                                         if param_name in self._parameters_register["theta_fiducial"].keys()]
         else:
             flattened_parameters = [item for sublist in self._parameters_register[parameter_type].values() for item in sublist]
-        # np.concatenate converts namedtuple to np.array, so can't use it here
+        # np.concatenate converts namedtuple to np.array, so it cannot be used here
         if parameter_type != "information":
             try:
                 flattened_parameters = np.array(flattened_parameters)

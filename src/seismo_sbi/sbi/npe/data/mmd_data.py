@@ -29,7 +29,7 @@ def load_mmd_manifest(manifest_path, *, clean_only=True, events_h5_dir=None,
 
     ``clean_only`` keeps only events with ``mmd_clean`` (no neighbour-in-window /
     contamination flag): an interloper wavetrain is contamination, not model
-    misspecification, and would pollute the MMD target.
+    misspecification, and pollutes the MMD target.
 
     The manifest stores ABSOLUTE paths from the machine that built it. On another
     host (for example the cluster) pass ``events_h5_dir`` / ``solutions_root`` to rebuild
@@ -123,8 +123,8 @@ def build_psim_loader(psim_folder, manifest_path, *, data_loader,
     """DataLoader over the posterior-matched sim suite for the MMD's psim side.
 
     Reuses ``TorchSimulationDataset`` so noise + amplitude augmentation are EXACTLY the
-    training path, with three deliberate differences (see module docstring + the task's
-    ``training_implementation.md``): per-parent-event fixed masks instead of random
+    training path, with three deliberate differences (see the module
+    docstring): per-parent-event fixed masks instead of random
     station/component dropout, conditioning-noise OFF, and no theta (the MMD only needs
     contexts). ``num_workers=0``: the suite is small and cached in RAM.
     """

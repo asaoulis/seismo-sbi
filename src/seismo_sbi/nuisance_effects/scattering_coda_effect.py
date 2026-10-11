@@ -29,7 +29,7 @@ def _apply_stahler_phase_filter(
     sets the coda strength and zero is the identity. Being compact and linearly convolved, it
     leaves quiet stretches quiet and can place no energy before an arrival. The phase is
     pinned to zero at DC and Nyquist, where ``irfft`` discards the imaginary part and a
-    non-zero phase would break the unit amplitude.
+    non-zero phase breaks the unit amplitude.
     """
     n = len(trace)
     trace_f = trace.astype(np.float64)
@@ -60,7 +60,7 @@ def _apply_random_coda_filter(
     ``alpha`` in ``[0, 1]`` scales both the tail amplitude and its length, which is
     ``round(alpha * max_coda_fraction * len(trace))``. Zero is the identity. The spike pins
     the onset, so the filter adds no bulk delay, and linear convolution cannot wrap coda back
-    to the start of the window as a circular all-pass filter would.
+    to the start of the window, as a circular all-pass filter does.
     """
     n = len(trace)
     trace_f = trace.astype(np.float64)

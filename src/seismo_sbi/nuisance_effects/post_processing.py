@@ -44,7 +44,7 @@ class PostProcessingChain:
 
 @dataclass(frozen=True)
 class NuisanceEffect:
-    """How one nuisance key acts: the effect class built for it, the stages it may run at
+    """How one nuisance key acts: the effect class built for it, the stages it can run at
     (``"simulation"``, ``"training_augmentation"``, ``"training_augmentation_post_noise"``), and
     whether its constructor takes the ``sampling_rate`` in samples per second.
     """
@@ -103,7 +103,7 @@ def register_nuisance_effect(key: str, effect: type, *, stages=("simulation",),
 
 
 def effect_keys_at(stage: str) -> tuple:
-    """The nuisance keys whose effect may run at ``stage``."""
+    """The nuisance keys whose effect can run at ``stage``."""
     return tuple(key for key, entry in EFFECT_REGISTRY.items() if stage in entry.stages)
 
 
@@ -159,7 +159,7 @@ def apply_chain_to_array(
     if not chain.effects:
         return D
     D = np.asarray(D)
-    # A silent mismatch would scramble stations rather than raise.
+    # A silent mismatch scrambles stations rather than raising.
     n_stations = len(list(receivers.iterate()))
     if D.ndim != 3 or D.shape[0] != n_stations or D.shape[1] != len(components):
         raise ValueError(
@@ -204,7 +204,7 @@ def build_augmentation_chain(
     configs = with_sampling_rate(aug_keys, effect_configs, sampling_rate)
 
     chain = build_post_processing_chain(aug_keys, configs)
-    # The configured fiducial value, not a hardcoded 1.0, which would perturb every station.
+    # The configured fiducial value: a hardcoded 1.0 perturbs every station.
     nuisance_params = {key: _fiducial_scalar(nuisance[key]) for key in aug_keys}
     return chain, nuisance_params
 

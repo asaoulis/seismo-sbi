@@ -79,8 +79,8 @@ class CPSSimulator(Simulator):
                 "CPS synthetics start at the origin and apply no source time shift; "
                 f"got {source.source_location.time_shift} s")
         velocity_model = kwargs.pop('velocity_model', None)
-        # CPS Green's functions carry no source time function, and update_with_Gtensor would
-        # raise on the unexpected keyword.
+        # CPS Green's functions carry no source time function, and update_with_Gtensor raises
+        # on the unexpected keyword.
         kwargs.pop('stf_duration', None)
         self.sensitivity_kernels = self.compute_greens_functions(source, velocity_model, **kwargs)
 

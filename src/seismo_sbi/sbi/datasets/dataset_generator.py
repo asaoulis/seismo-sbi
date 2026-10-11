@@ -44,7 +44,7 @@ class DatasetGenerator:
         """Report the skipped simulations, and raise if too large a fraction failed.
 
         A few out-of-domain sources are expected. A large fraction means a systemic problem
-        that would otherwise produce a near-empty dataset in silence.
+        that otherwise produces a near-empty dataset without warning.
         """
         total = len(results)
         n_skipped = sum(1 for r in results if r is False)

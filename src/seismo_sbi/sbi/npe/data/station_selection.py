@@ -46,8 +46,8 @@ class StationSubsampler:
         available:
             Optional boolean mask over the master station axis. When given, the draw is
             restricted to stations flagged available: used with an incomplete real-noise
-            window so a station without noise is never kept (it would otherwise enter the
-            model as exactly-zero data). The keep FRACTION is still drawn from the
+            window so a station without noise is never kept, since it otherwise enters the
+            model as exactly-zero data. The keep FRACTION is still drawn from the
             configured distribution and applied to the available count, so the dropout
             distribution is unchanged in shape. Only its support shrinks.
         """

@@ -83,7 +83,7 @@ class MomentTensorScaler:
         Magnitude dynamic range in log10 decades: ``log10 M0_min = log10 M0_max -
         n_decades`` (used only when ``log10_m0_range`` is None). Must exceed the prior's
         span ``1.5 * (mw_max - mw_min)`` so that all sampled tensors map to ``u in [0, 1]``.
-        NB the window's upper edge comes from ``bounds`` (not ``mw_max``), so the true
+        Note that the window's upper edge comes from ``bounds`` (not ``mw_max``), so the true
         minimum is ``log10 M0_max(bounds) - log10 M0_min(prior)``, slightly larger than
         the prior span. Prefer ``log10_m0_range`` (``mt_log_decades: auto``) to avoid this.
     m0_convention:

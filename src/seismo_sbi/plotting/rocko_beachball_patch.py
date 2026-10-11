@@ -46,8 +46,8 @@ def plot_beachball_mpl(
     if eig[0] == 0. and eig[1] == 0. and eig[2] == 0:
         raise BeachballError('eigenvalues are zero')
 
-    # Build raw data **in unit coordinates** (DO NOT multiply by size or add position).
-    # Caller will perform placement/scaling using the returned `position` & `size`.
+    # Build raw data in unit coordinates. Do not multiply by size or add position: the
+    # caller places and scales using the returned `position` and `size`.
     data = []
     for (group, patches, patches_lower, patches_upper,
             lines, lines_lower, lines_upper) in eig2gx(eig, arcres):

@@ -60,7 +60,7 @@ def make_dropout_configs(station_names: Sequence[str], *, keep_fraction: float =
                          include_full: bool = True) -> List[StationConfig]:
     """Build an ordered list of station configs for a dropout ensemble.
 
-    The full master set first (if ``include_full``), then ``n_subsets`` **distinct**
+    The full master set first (if ``include_full``), then ``n_subsets`` distinct
     seeded random subsets, each keeping ``round(keep_fraction * N)`` stations (clamped to
     ``[min_stations, N - 1]`` so a subset always drops at least one station). Warns if too
     few distinct subsets are feasible for the requested ``n_subsets``.
@@ -199,7 +199,7 @@ def sample_station_dropout_ensemble(posterior, obs, coords, configs: Sequence[St
     event_name : optional prefix for the per-config ``InversionResult.event_name``.
     source_vec : array ``(n_cond,)``, optional. Raw source-conditioning vector (for example the
         event's ``[latitude, longitude, depth]`` in ``ml_conditioning.param_map`` order) required
-        by a **conditioned** model at inference. ``None`` (default) ⇒ unconditioned model. The
+        by a conditioned model at inference. ``None`` (default) ⇒ unconditioned model. The
         source vector is shared across all station configs of one event (same source, different
         stations).
 
@@ -334,8 +334,8 @@ def robust_posterior_sample_batched(posterior, ctx, num_samples, *, oversample=2
 
     Draws ``num_samples * oversample`` candidates for the whole batch in ONE flow call,
     keeps each row's first ``num_samples`` in-prior-box draws, and re-draws only for the
-    rows that came up short (up to ``max_rounds``).  Rows that still cannot be filled —
-    the pathological leakage case ``robust_posterior_sample`` exists to survive: are
+    rows that came up short (up to ``max_rounds``).  Rows that still cannot be filled,
+    the pathological leakage case ``robust_posterior_sample`` exists to survive, are
     topped up with samples *clipped* into the prior box, so the call always returns a
     full ``(B, num_samples, D)`` tensor and never hangs.
 

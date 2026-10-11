@@ -47,7 +47,7 @@ def find_mseed_files(
             if day_dir.is_dir():
                 for p in day_dir.glob(f"{network}.{station}.*.{channel_glob}.{year}.{jday:03d}.mseed"):
                     paths.append(p)
-        current += 86400  # advance by one day
+        current += 86400
 
     return sorted(set(paths))
 

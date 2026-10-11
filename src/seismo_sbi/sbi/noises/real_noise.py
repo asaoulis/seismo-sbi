@@ -46,7 +46,7 @@ class RealNoiseSampler(NoiseSampler):
         self.data_loader = SimulationDataLoader(self.components, simulation_parameters.receivers, data_length)
 
         # Flattened length of a complete noise window. A window sitting on a station data gap
-        # comes back short, which would not broadcast against the data vector, so it is skipped.
+        # comes back short, which does not broadcast against the data vector, so it is skipped.
         self._expected_length = (
             None if data_length is None
             else sum(len(rec.components) for rec in receivers.receivers) * data_length
@@ -128,7 +128,7 @@ class RealNoiseSampler(NoiseSampler):
         """Draw a random cached window that contains ALL of ``station_indices``.
 
         For the case where the station subset is fixed in advance (inference on a real
-        event, or a fixed evaluation config) and the window must be found to match it —
+        event, or a fixed evaluation config) and the window must be found to match it,
         the inverse of the ordinary draw. Uses the packed index, so it never rejection-
         samples. Raises if no window contains the subset.
         """
@@ -293,7 +293,7 @@ class RealNoiseSampler(NoiseSampler):
         return noise, None
 
     def _window_is_usable(self, window_path):
-        """Whether :meth:`_read_window` would use the window at ``window_path``, decided from its
+        """Whether :meth:`_read_window` uses the window at ``window_path``, decided from its
         trace lengths without reading the traces."""
         try:
             lengths = self.data_loader.trace_lengths(window_path)

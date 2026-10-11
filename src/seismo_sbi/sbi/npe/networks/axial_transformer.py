@@ -457,7 +457,7 @@ class SeismogramAxialTransformer(nn.Module):
             ``include_depth`` is set. Ignored on the legacy sinusoid path.
         station_mask : optional
             ``(B, N)`` station validity (True=real) passed to the RFF positional encoder
-            so padded stations don't corrupt its running stats.
+            so padded stations do not corrupt its running stats.
         """
         B, N, L, D = x.shape
         t_e = self.time_embed[:L, :]

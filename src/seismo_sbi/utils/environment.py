@@ -26,7 +26,7 @@ def cap_blas_threads(num_threads=1):
 
 
 def configure_numba_cache():
-    """Point numba's JIT cache at a writable per-user temp dir. HOME may be read-only on compute
+    """Point numba's JIT cache at a writable per-user temp dir. HOME can be read-only on compute
     nodes.
 
     Must run before numba is first imported, which happens inside instaseis.

@@ -119,7 +119,7 @@ def load_qa_artifacts(
 ) -> QAArtifacts:
     """Load whichever of the three artifacts exist into a :class:`QAArtifacts`.
 
-    Each path is given separately, since a study may keep the three files in different
+    Each path is given separately, since a study can keep the three files in different
     directories. A missing file leaves its field empty.
     """
     art = QAArtifacts(event=event)

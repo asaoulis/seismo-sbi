@@ -127,9 +127,9 @@ def neighbour_window_flag(origin_time, duration_s, catalogue_times, pre_s=120.0,
     relative = (catalogue_mags is not None and event_mag is not None
                 and delta_mag is not None)
     mags = list(catalogue_mags) if catalogue_mags is not None else None
-    best = float("inf")          # nearest qualifying neighbour
+    best = float("inf")
     best_mag = float("nan")
-    best_any = float("inf")      # nearest neighbour of any size
+    best_any = float("inf")
     for i, t in enumerate(catalogue_times):
         dt = (t - origin_time).total_seconds()
         if abs(dt) < 1e-6:
@@ -169,8 +169,8 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
     applies all gates as usual. Either way the flag is the result to report.
 
     Keep floor: if fewer than ``max(min_stations, ceil(min_fraction * len(present)))`` stations
-    survive, stations are restored in order of observed signal SNR, not all at once (which would
-    restore the noise-only traces the gates removed). Blocklisted channels are never restored.
+    survive, stations are restored in order of observed signal SNR, not all at once, since that
+    restores the noise-only traces the gates removed. Blocklisted channels are never restored.
 
     Returns ``(comp_map, dropped, component_drops, event_flags)`` where ``comp_map`` is
     ``{station: [kept components]}``, ``dropped`` is ``{station: verdict}`` for fully

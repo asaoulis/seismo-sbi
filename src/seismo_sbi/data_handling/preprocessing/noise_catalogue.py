@@ -61,7 +61,7 @@ def build_noise_catalogue(
 
     :param noise_start: start of the search period.
     :param noise_end: end of the search period.
-    :param interfering_events: ``obspy.Catalog`` of events to avoid (may be empty).
+    :param interfering_events: ``obspy.Catalog`` of events to avoid (can be empty).
     :param data_dir: root mseed directory.
     :param stationxml_dir: StationXML directory, or None.
     :param station_networks: ``{station: network}``.
@@ -110,7 +110,6 @@ def build_noise_catalogue(
         n_jobs=n_jobs,
     )
 
-    # Build event-free continuous regions
     continuous_regions = _compute_continuous_regions(
         interfering_events, noise_start, noise_end,
         station_networks, receivers, taup_model, n_jobs,

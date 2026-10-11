@@ -59,13 +59,11 @@ def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig
 
         # optimal 
 
-        # Set title and labels
         ax.set_title('Theory Errors Inversion Credibility Level Distribution')
         ax.set_ylabel("Normalised Frequency")
         ax.set_xlabel("Credibility Level")
         ax.legend()
 
-        # Adjust layout and show the plot
         fig.tight_layout()
         if savefig:
             plt.savefig(savefig, dpi=300, transparent=True)

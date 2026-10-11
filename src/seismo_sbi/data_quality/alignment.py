@@ -3,8 +3,8 @@
 Per station, the integer sample shift that maximises the aligned variance reduction jointly
 across the station's components. The search is bounded to ``|shift| <= max_shift`` to avoid
 cycle skips: at long periods a shift beyond about half the dominant period locks onto a
-spurious secondary peak, and a static Earth-model correction should be a few seconds rather
-than tens. Shifting uses :func:`shift_1d_with_padding`, where a positive shift delays.
+spurious secondary peak, and a static Earth-model correction is a few seconds, not
+tens. Shifting uses :func:`shift_1d_with_padding`, where a positive shift delays.
 """
 from __future__ import annotations
 

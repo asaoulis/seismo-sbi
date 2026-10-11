@@ -31,10 +31,10 @@ def relative_station_geometry(
     ----------
     source:
         ``(B, >=2)`` source coordinates.  Geographic: ``(lat, lon, [depth, ...])`` in
-        **degrees**.  Cartesian: ``(x, y, [z, ...])``.  Only the first two entries are
+        degrees.  Cartesian: ``(x, y, [z, ...])``.  Only the first two entries are
         used (depth does not affect epicentral geometry).
     station_coords:
-        ``(N, 2)`` station coordinates shared across the batch, **or** ``(B, N, 2)``
+        ``(N, 2)`` station coordinates shared across the batch, or ``(B, N, 2)``
         per-sample coordinates (used for variable-station configurations where each
         sample carries its own, possibly padded, station set).  ``(lat, lon)``
         (geographic) or ``(x, y)`` (cartesian).

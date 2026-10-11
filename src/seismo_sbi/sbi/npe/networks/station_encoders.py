@@ -330,7 +330,7 @@ class PhaseNeuralOperatorEncoder(nn.Module):
     5. Projection Conv1d: ``width → out_dim``.
     6. Permute to ``(B*N, L, D=out_dim)``.
 
-    Cross-station coupling is intentionally **not** reproduced here: the
+    Cross-station coupling is not reproduced here: the
     axial-transformer aggregator already plays that role.
 
     Config keys (``model_config["encoder_config"]``)

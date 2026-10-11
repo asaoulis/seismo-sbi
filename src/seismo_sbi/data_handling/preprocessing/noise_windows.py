@@ -53,9 +53,10 @@ def noise_windows_from_stream(stream: Stream, receivers: Receivers, window_lengt
 
 
 def quiet_window_mask(vertical_rms: np.ndarray, max_rms_ratio: float = 5.0) -> np.ndarray:
-    """Which windows of a recorded noise pool to keep: ``False`` where any station's vertical rms
-    exceeds ``max_rms_ratio`` times that station's median over the pool, as it does when an
-    earthquake falls inside a noise window.
+    """Mask of the windows to keep from a recorded noise pool.
+
+    The mask is ``False`` where any station's vertical rms exceeds ``max_rms_ratio`` times that
+    station's median over the pool, as it does when an earthquake falls inside a noise window.
 
     :param vertical_rms: ``(n_windows, n_stations)`` rms of each window's vertical trace.
     :returns: ``(n_windows,)`` boolean, ``True`` for a window kept.

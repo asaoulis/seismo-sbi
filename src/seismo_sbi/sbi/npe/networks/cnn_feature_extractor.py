@@ -33,8 +33,7 @@ class SeismicTraceCNN(nn.Module):
     ) -> None:
         super().__init__()
 
-        # Defaults that reproduce the previous hardcoded stack:
-        # [Conv(num_comp->64, k=3,s=2), x4], then [Conv(64->16,k=3,s=1), Conv(16->4,k=3,s=1)]
+        # Default stack: [Conv(num_comp->64, k=3,s=2), x4], then [Conv(64->16,k=3,s=1), Conv(16->4,k=3,s=1)]
         if conv_channels is None:
             conv_channels = [64, 64, 64, 128, 128, final_layer-1]
         if conv_kernels is None:
@@ -46,7 +45,7 @@ class SeismicTraceCNN(nn.Module):
             n = len(conv_channels)
             conv_strides = [int(downsample)] + [1] * (n - 1)
         if conv_strides is None:
-            # First 2 layers strided, rest stride=1 (legacy behavior)
+            # First 2 layers strided, rest stride=1
             n = len(conv_channels)
             n_strided = min(2, n)
             conv_strides = [2] * n_strided + [1] * (n - n_strided)

@@ -149,8 +149,8 @@ class AmplitudeTokenEmbedding(nn.Module):
 
         ``s_i = log(peak_i) - log(floor_i)`` with ``peak`` the max |x| and ``floor`` a LOW
         percentile of |x| over (components, time). A low quantile (not the median) is used so the
-        floor still lands in the quiet samples even when much of the trace is event signal —
-        a deliberately rough but robust noise-level estimate. A learnable sigmoid turns it into a
+        floor still lands in the quiet samples even when much of the trace is event signal,
+        a deliberately rough noise-level estimate. A learnable sigmoid turns it into a
         weight in (0, 1) that suppresses noise-dominated stations in the reference.
         """
         B, N, C, T = x.shape

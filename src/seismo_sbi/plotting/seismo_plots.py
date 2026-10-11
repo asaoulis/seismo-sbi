@@ -326,10 +326,10 @@ class MisfitsPlotting:
         - Adds provided metrics per ensemble as a small textbox.
 
         per_trace : bool
-            If False (default) every trace is normalised by the SINGLE global observation
+            If False (default) every trace is normalised by the single global observation
             peak (amplitudes are comparable across stations). If True each trace is scaled by
-            its OWN observation peak, so the waveform SHAPE fit is visible on quiet/distant
-            stations that a global scale would flatten.
+            its own observation peak, so the waveform shape fit is visible on quiet/distant
+            stations that a global scale flattens.
 
         Parameters
         ----------

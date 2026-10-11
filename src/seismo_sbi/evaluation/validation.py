@@ -159,7 +159,7 @@ def sample_validation_posteriors(sbi_pipeline, posterior, data_scaler, ds, val_i
         theta_s_np = np.asarray(theta_s, dtype=float)
 
         # The paths differ only in how the observation becomes the model input. The packed path skips
-        # transform(inverse_transform): the scale_shape clip is not invertible and would bias TARP.
+        # transform(inverse_transform): the scale_shape clip is not invertible and biases TARP.
         if use_packed:
             # Variable-station context over the full master set, conditioned on the sim's true source.
             sv = _sim_source_vec(ds.paths[idx]) if cond_param_map else None

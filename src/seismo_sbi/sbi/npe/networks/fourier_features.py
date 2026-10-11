@@ -22,7 +22,7 @@ class GaussianFourierFeatures(nn.Module):
 
     Maps ``x: (..., in_dim)`` to ``[sin(2\pi x B^T), cos(2\pi x B^T)]`` of shape
     ``(..., 2 * num_freqs)``, with the frequency matrix ``B \in R^{num_freqs x in_dim}``
-    drawn from ``N(0, sigma^2)``. By default ``B`` is a **seeded, fixed buffer**
+    drawn from ``N(0, sigma^2)``. By default ``B`` is a seeded, fixed buffer
     (reproducible, no spectral drift during training). Set ``learnable=True`` to make it a
     trainable ``nn.Parameter``.
 
@@ -66,7 +66,7 @@ class GaussianFourierFeatures(nn.Module):
 class RunningStandardizer(nn.Module):
     """Non-trainable running standardiser (BatchNorm-style, ``affine=False``, mask-aware).
 
-    Normalises the last-dim features to ~unit scale using **running** mean/variance buffers
+    Normalises the last-dim features to ~unit scale using running mean/variance buffers
     (so the forward pass, and its gradient, never couples samples within a batch, unlike
     standard BatchNorm). Running stats are updated from the *masked* batch in ``train()``
     mode only. The first update seeds them directly. Used to bring an **absolute** physical

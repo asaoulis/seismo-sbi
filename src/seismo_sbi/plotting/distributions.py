@@ -38,8 +38,8 @@ def warning_logging_disabled(highest_level=logging.WARNING):
     triggered during the body from being processed.
 
     :param highest_level: the maximum logging level in use.
-        This would only need to be changed if a custom level greater than WARNING
-        is defined.
+        Change this only when a custom level greater than WARNING is
+        defined.
     """
 
     previous_level = logging.root.manager.disable
