@@ -33,7 +33,9 @@ def plot_coverage(coverage_dict, colors, savefig=None, title='Inference calibrat
         ax.set_xlabel("Credibility Level")
         if savefig:
             plt.savefig(savefig, dpi=200, transparent=True)
-        plt.show()
+            plt.close(fig)
+        else:
+            plt.show()
 
 
 def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig=None):
@@ -67,6 +69,7 @@ def plot_credibility_levels_histograms_dictionary(coverage_dict, colors, savefig
         fig.tight_layout()
         if savefig:
             plt.savefig(savefig, dpi=300, transparent=True)
-
-        plt.show()
+            plt.close(fig)
+        else:
+            plt.show()
 

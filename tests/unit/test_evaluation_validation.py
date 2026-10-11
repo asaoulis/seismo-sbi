@@ -515,3 +515,69 @@ def test_write_validation_outputs_creates_out_dir(tmp_path):
     )
     assert out_dir.is_dir()
     assert (out_dir / "evaluation_metrics.json").exists()
+
+
+# --------------------------------------------------------------------------- #
+# 4.  Metrics raise, figures warn
+# --------------------------------------------------------------------------- #
+
+def _random_val_dict(n_val=6, n_dims=6, num_samples=50):
+    rng = np.random.default_rng(0)
+    theta = rng.uniform(size=(n_val, n_dims))
+    samples = rng.uniform(size=(num_samples, n_val, n_dims))
+    return {"theta_scaled": theta, "samples_scaled": samples, "theta_phys": theta,
+            "samples_phys": samples, "show": [], "n_val": n_val}
+
+
+def _quiet_figures(monkeypatch):
+    import seismo_sbi.plotting.coverage as coverage
+    from seismo_sbi.plotting import evaluation as ev
+    monkeypatch.setattr(coverage, "plot_coverage", lambda *a, **k: None)
+    monkeypatch.setattr(ev, "plot_recovery_scatter", lambda *a, **k: None)
+
+
+def test_validation_dataset_without_a_training_noise_sampler_raises(monkeypatch):
+    from seismo_sbi.evaluation.validation import validation_dataset
+    from seismo_sbi.utils.errors import PipelineStateError
+    import seismo_sbi.nuisance_effects.post_processing as pp_mod
+
+    monkeypatch.setattr(pp_mod, "build_augmentation_chain_from_parameters", lambda *a, **k: (None, None))
+    pipeline = _StubPipeline(["S1"])
+    pipeline.training_noise_sampler = None
+    with pytest.raises(PipelineStateError):
+        validation_dataset(pipeline, _IdentityScaler(), n_val=2, train_fraction=0.9)
+
+
+def test_a_failing_metric_stops_the_validation_outputs(monkeypatch, tmp_path):
+    from seismo_sbi.evaluation import posterior_metrics
+    from seismo_sbi.evaluation.validation import write_validation_outputs
+
+    _quiet_figures(monkeypatch)
+
+    def broken(*args, **kwargs):
+        raise ValueError("broken metric")
+
+    monkeypatch.setattr(posterior_metrics, "compute_evaluation_metrics", broken)
+    with pytest.raises(ValueError, match="broken metric"):
+        write_validation_outputs(_random_val_dict(), tmp_path, None, None, num_samples=50,
+                                 conditioned=False, n_show=0)
+
+
+def test_a_failing_figure_warns_and_is_left_out(monkeypatch, tmp_path, caplog):
+    from seismo_sbi.evaluation import posterior_metrics
+    from seismo_sbi.evaluation.validation import write_validation_outputs
+    from seismo_sbi.plotting import evaluation as ev
+
+    _quiet_figures(monkeypatch)
+
+    def broken(*args, **kwargs):
+        raise ValueError("no figure")
+
+    monkeypatch.setattr(ev, "plot_recovery_scatter", broken)
+    monkeypatch.setattr(posterior_metrics, "compute_evaluation_metrics", lambda *a, **k: {"coverage": {}})
+    with caplog.at_level("WARNING"):
+        result = write_validation_outputs(_random_val_dict(), tmp_path, None, None, num_samples=50,
+                                          conditioned=False, n_show=0)
+    assert "recovery scatter failed" in caplog.text
+    assert "recovery_scatter" not in result["figures"]
+    assert result["figures"]["tarp_coverage"].endswith("tarp_coverage.png")

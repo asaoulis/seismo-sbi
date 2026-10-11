@@ -5,8 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seismo_sbi.simulators.cps.CPS import perturb_model
-from seismo_sbi.simulators.cps.compatibility import load_velocity_model
+from seismo_sbi.simulators.cps.layered_models import load_velocity_model, perturb_model
 from seismo_sbi.simulators.cps.simulator import CPSVariableKernelSimulator
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 

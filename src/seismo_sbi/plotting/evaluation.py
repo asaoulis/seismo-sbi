@@ -268,8 +268,6 @@ def plot_ensemble_spread_summary(configs, ensemble_dict, figsave=None):
     ``ensemble_dict`` maps ``label -> InversionData``. Left panel: per-config 68%
     gamma/delta widths (bars); right panel: the same widths vs station count.
     """
-    import matplotlib
-    matplotlib.rcParams["text.usetex"] = False  # ChainConsumer may have left usetex on
     import matplotlib.pyplot as plt
 
     labels = [c.label for c in configs]
@@ -415,28 +413,25 @@ def plot_cross_run_comparison(this_label: str, all_metrics: Dict[str, dict],
     }
 
     figures: Dict[str, str] = {}
-    # Force usetex off: an upstream SBIPipelinePlotter may have enabled scienceplots'
-    # text.usetex globally, which then chokes on run labels / greek glyphs here.
-    with plt.rc_context({"text.usetex": False}):
-        for label, slug, path, lower_better in specs:
-            vals = {run: _dig(m, path) for run, m in metrics_by_run.items()}
-            vals = {run: v for run, v in vals.items() if v is not None}
-            if len(vals) < 1:
-                continue
-            runs = list(vals.keys())
-            colors = ["crimson" if r == this_label else "lightsteelblue" for r in runs]
-            fig, ax = plt.subplots(figsize=(max(6, 1.1 * len(runs)), 4.5))
-            ax.bar(range(len(runs)), [vals[r] for r in runs], color=colors)
-            ax.set_xticks(range(len(runs)))
-            ax.set_xticklabels(runs, rotation=30, ha="right", fontsize=8)
-            arrow = "lower is better" if lower_better else "higher is better"
-            ax.set_title(f"{label}   ({arrow})")
-            ax.grid(axis="y", alpha=0.3)
-            fig.tight_layout()
-            fpath = out_dir / f"cross_run_{slug}.png"
-            fig.savefig(fpath, dpi=150, bbox_inches="tight")
-            plt.close(fig)
-            figures[label] = str(fpath)
+    for label, slug, path, lower_better in specs:
+        vals = {run: _dig(m, path) for run, m in metrics_by_run.items()}
+        vals = {run: v for run, v in vals.items() if v is not None}
+        if len(vals) < 1:
+            continue
+        runs = list(vals.keys())
+        colors = ["crimson" if r == this_label else "lightsteelblue" for r in runs]
+        fig, ax = plt.subplots(figsize=(max(6, 1.1 * len(runs)), 4.5))
+        ax.bar(range(len(runs)), [vals[r] for r in runs], color=colors)
+        ax.set_xticks(range(len(runs)))
+        ax.set_xticklabels(runs, rotation=30, ha="right", fontsize=8)
+        arrow = "lower is better" if lower_better else "higher is better"
+        ax.set_title(f"{label}   ({arrow})")
+        ax.grid(axis="y", alpha=0.3)
+        fig.tight_layout()
+        fpath = out_dir / f"cross_run_{slug}.png"
+        fig.savefig(fpath, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        figures[label] = str(fpath)
     return figures
 
 
@@ -464,29 +459,27 @@ def plot_cross_run_tarp(this_label: str, all_metrics: Dict[str, dict], out_dir,
     out_dir = Path(out_dir) / "cross_run"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # usetex off (see plot_cross_run_comparison); mathtext for the +/- sigma band label.
-    with plt.rc_context({"text.usetex": False}):
-        fig, ax = plt.subplots(figsize=(6.5, 6.5))
-        ax.plot([0, 1], [0, 1], ls="--", color="k", label="Calibrated", zorder=20)
-        cmap = plt.get_cmap("tab10")
-        for i, (label, c) in enumerate(sorted(curves.items())):
-            alpha = np.asarray(c["alpha"])
-            mean = np.asarray(c["ecp_mean"])
-            std = np.asarray(c.get("ecp_std", np.zeros_like(mean)))
-            is_this = (label == this_label)
-            color = "crimson" if is_this else cmap(i % 10)
-            ax.plot(alpha, mean, color=color, lw=2.5 if is_this else 1.5,
-                    zorder=15 if is_this else 5, label=label)
-            ax.fill_between(alpha, mean - n_std * std, mean + n_std * std,
-                            color=color, alpha=0.18, zorder=2)
-        ax.set_xlabel("Credibility level")
-        ax.set_ylabel("Expected coverage")
-        ax.set_title(rf"TARP coverage - cross-run (band: $\pm{n_std:g}\sigma$)")
-        ax.legend(loc="upper left", fontsize=8)
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        fig.tight_layout()
-        fpath = out_dir / "cross_run_tarp_curves.png"
-        fig.savefig(fpath, dpi=150, bbox_inches="tight")
-        plt.close(fig)
+    fig, ax = plt.subplots(figsize=(6.5, 6.5))
+    ax.plot([0, 1], [0, 1], ls="--", color="k", label="Calibrated", zorder=20)
+    cmap = plt.get_cmap("tab10")
+    for i, (label, c) in enumerate(sorted(curves.items())):
+        alpha = np.asarray(c["alpha"])
+        mean = np.asarray(c["ecp_mean"])
+        std = np.asarray(c.get("ecp_std", np.zeros_like(mean)))
+        is_this = (label == this_label)
+        color = "crimson" if is_this else cmap(i % 10)
+        ax.plot(alpha, mean, color=color, lw=2.5 if is_this else 1.5,
+                zorder=15 if is_this else 5, label=label)
+        ax.fill_between(alpha, mean - n_std * std, mean + n_std * std,
+                        color=color, alpha=0.18, zorder=2)
+    ax.set_xlabel("Credibility level")
+    ax.set_ylabel("Expected coverage")
+    ax.set_title(rf"TARP coverage - cross-run (band: $\pm{n_std:g}\sigma$)")
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    fig.tight_layout()
+    fpath = out_dir / "cross_run_tarp_curves.png"
+    fig.savefig(fpath, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     return str(fpath)

@@ -1,12 +1,11 @@
 """Turn receivers and a point source into the records the CPS programs read.
 
 ``build_objstats`` measures each source-receiver distance and azimuth and packs them with the
-window parameters; ``load_velocity_model`` reads a layered model from a text file.
+window parameters.
 """
 
 from obspy.geodetics.base import gps2dist_azimuth
 from collections import namedtuple
-import numpy as np
 
 ReceiverStats = namedtuple('ReceiverStats', [
     'distance',         # float: epicentral distance in km
@@ -50,9 +49,3 @@ def build_objstats(receivers, source, window, vred=0.0, t0=0.0):
         objstats.append(stats)
 
     return objstats
-
-
-
-def load_velocity_model(filepath):
-    """A layered velocity model read from ``filepath``, shaped ``(6, n_layers)``."""
-    return np.loadtxt(filepath).T

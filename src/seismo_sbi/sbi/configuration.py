@@ -15,7 +15,7 @@ from seismo_sbi.sbi.types.parameter_labels import ParameterInformation, DegreeKM
 from seismo_sbi.simulators.receivers import Receivers
 from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES, ModelParameters, PipelineParameters, \
     SimulationParameters, DatasetGenerationParameters, TestJobs, IterativeLeastSquaresParameters
-from seismo_sbi.simulators.cps.compatibility import load_velocity_model
+from seismo_sbi.simulators.cps.layered_models import load_velocity_model
 from seismo_sbi.nuisance_effects.post_processing import CONDITIONING_AUGMENTABLE_KEYS, EFFECT_REGISTRY
 from seismo_sbi.priors.catalogue import load_catalogue
 from seismo_sbi.priors.samplers import (

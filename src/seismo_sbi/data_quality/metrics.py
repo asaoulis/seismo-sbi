@@ -211,7 +211,7 @@ def correlation_misfit(obs2d_sta: np.ndarray, syn2d_sta: np.ndarray) -> float:
     """Mean over the station's components of ``1 - Pearson(obs, syn)`` at zero lag.
 
     Per-trace correlation, then averaged;
-    :class:`~seismo_sbi.plotting.posterior_predictive_checks.PosteriorPredictiveChecks` scores each
+    :func:`~seismo_sbi.evaluation.ppc_metrics.correlation_misfit_per_sample` scores each
     posterior-predictive sample with it. Unlike ``max_xcorr`` this is *not* lag-optimised, so it
     penalises timing errors as well as shape errors.
     """

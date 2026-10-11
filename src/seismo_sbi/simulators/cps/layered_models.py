@@ -1,12 +1,61 @@
-"""Draw perturbed layered velocity models in the CPS format.
+"""Layered velocity models in the CPS format: read, write and perturb.
 
-The compressional and shear speeds get smooth correlated fractional perturbations with a
-correlation length in depth, the layer thicknesses get their own, and the density follows the
-perturbed compressional speed through the Brocher (2005) relation.
+A model is an array shaped ``(6, n_layers)`` with rows layer thickness in km, compressional and
+shear speed in km/s, density in g/cm^3, then qp and qs. ``perturb_model`` scales the thickness and
+both speeds of each layer by independent normal factors; ``perturb_cps_model`` draws smooth
+correlated perturbations with a correlation length in depth, the density following the
+compressional speed through the Brocher (2005) relation.
 """
+
+import logging
 
 import numpy as np
 from scipy.ndimage import gaussian_filter
+
+logger = logging.getLogger(__name__)
+
+
+def load_velocity_model(filepath):
+    """A layered velocity model read from ``filepath``, shaped ``(6, n_layers)``."""
+    return np.loadtxt(filepath).T
+
+
+def write_Model96(vel_model, fname):
+    '''Write the layered model ``vel_model`` to ``fname`` in the Model96 format CPS reads.'''
+    thick = vel_model[0, :]
+    vp = vel_model[1, :]
+    vs = vel_model[2, :]
+    rho = vel_model[3, :]
+    qka = vel_model[4, :]
+    qmu = vel_model[5, :]
+
+    fid = open(fname, 'w')
+    fid.write('MODEL.01\n' +
+            'Layered model written by seismo_sbi\n' +
+            'ISOTROPIC\n' +
+            'KGS\n' +
+            'FLAT EARTH\n' +
+            '1-D\n' +
+            'CONSTANT VELOCITY\n' +
+            'LINE08\n' +
+            'LINE09\n' +
+            'LINE10\n' +
+            'LINE11\n')
+    fid.write('H(KM)    VP(KM/S) VS(KM/S) RHO(GM/CC)  QP       QS    ETAP     ETAS   FREFP    FREFS\n')
+    for n in range(len(thick)):
+        line = '%-8.2f %-8.3f %-8.3f %-8.3f %-8.1f %-8.1f %-8.1f %-8.1f %-8.1f %-8.1f\n' % \
+            (thick[n], vp[n], vs[n], rho[n], qka[n], qmu[n], 0, 0, 1, 1)
+        fid.write(line)
+    fid.flush()
+    fid.close()
+
+
+def perturb_model(vmodel, kappa):
+    '''Perturb the velocity model by adding random noise to it.'''
+    perturb = vmodel.copy()
+    if kappa < 1.: logger.warning('Warning: kappa is too small to make any perturbation')
+    perturb[:3, :] *= np.random.normal(1, kappa/100, (3, vmodel.shape[1]))
+    return perturb
 
 
 def smooth_frac_field(npts, dz_km, corr_length_km, std_frac):

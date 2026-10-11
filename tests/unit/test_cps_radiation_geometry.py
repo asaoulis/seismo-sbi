@@ -34,7 +34,7 @@ class RandomGreenFunctionCPSSimulator(CPSSimulator):
                 header = {"station": "%03d" % (distance_index + 1), "delta": 1.0, "starttime": UTCDateTime(0)}
                 stream.append(Trace(waveform, header=header))
         stream.write(str(self.gf_storage_root / "GF.mseed"), format="MSEED")
-        return update_with_Gtensor(objstats, None, delta=None, verbose=False,
+        return update_with_Gtensor(objstats, None, delta=None,
                                    gf_directory=self.gf_storage_root)
 
 

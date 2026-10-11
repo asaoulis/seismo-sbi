@@ -6,7 +6,8 @@ import matplotlib
 import matplotlib.collections
 import numpy as np
 
-from seismo_sbi.plotting.distributions import LUNE_REFERENCE_STYLES, MomentTensorReparametrised
+from seismo_sbi.plotting.distributions import MomentTensorReparametrised
+from seismo_sbi.plotting.lune_figures import LUNE_REFERENCE_STYLES
 from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
 from seismo_sbi.plotting.seismo_plots import MisfitsPlotting
 from seismo_sbi.sbi.configuration import SBI_Configuration

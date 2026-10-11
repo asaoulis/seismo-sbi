@@ -16,7 +16,7 @@ from seismo_sbi.sbi.configuration import SBI_Configuration
 from seismo_sbi.utils.environment import log_progress_to_stdout
 from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
 from seismo_sbi.sbi import job_runners
-from seismo_sbi.simulators.cps.compatibility import load_velocity_model
+from seismo_sbi.simulators.cps.layered_models import load_velocity_model
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Script for running a complete SBI pipeline. Requires a pre-specified configuration file. ')
@@ -79,6 +79,9 @@ def main():
     generate_CPS_perturbations(config)
 
 def generate_CPS_perturbations(config):
+    output_path = Path(config.sim_parameters.cps_GFs_path)
+    shutil.rmtree(output_path, ignore_errors=True)
+    output_path.mkdir(parents=True)
     config_path = None
     Pipeline = PIPELINE_CLASSES[config.pipeline_type]
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)

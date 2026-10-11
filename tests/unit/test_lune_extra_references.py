@@ -1,8 +1,8 @@
 """
 Unit tests for the optional ``extra_references`` overlay on the lune plotters
-(seismo_sbi.plotting.distributions). These exercise the new plumbing — the
-``_scatter_extra_references`` helper and the ``_add_lune_legend`` extra-marker
-handles — WITHOUT a real ModelParameters / pyrocko / basemap render (that heavy
+(seismo_sbi.plotting.distributions and lune_figures). These exercise the plumbing: the
+``draw_extra_references`` helper and the ``add_lune_legend`` extra-marker
+handles, WITHOUT a real ModelParameters / pyrocko / basemap render (that heavy
 path is covered by the e2e smoke). The model-dependent method is stubbed
 to the identity, which is exactly its effect on the scale/basis-invariant lune
 position for already-canonical [Mrr,Mtt,Mpp,Mrt,Mrp,Mtp] inputs.
@@ -15,8 +15,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from seismo_sbi.plotting.distributions import (
-    PosteriorPlotter, _add_lune_legend, LUNE_REFERENCE_STYLES, LUNE_ENSEMBLE_COLORS)
+from seismo_sbi.plotting.distributions import PosteriorPlotter
+from seismo_sbi.plotting.lune_figures import (
+    LUNE_ENSEMBLE_COLORS, LUNE_REFERENCE_STYLES, add_lune_legend, draw_extra_references)
 
 
 def _fake_bm(gamma, delta):
@@ -32,8 +33,7 @@ def _plotter():
     return pp
 
 
-def test_scatter_extra_references_styles_and_skips_none():
-    pp = _plotter()
+def test_draw_extra_references_styles_and_skips_none():
     fig, ax = plt.subplots()
     # a clearly non-DC tensor + a near-isotropic one (distinct lune positions)
     refs = OrderedDict([
@@ -41,7 +41,7 @@ def test_scatter_extra_references_styles_and_skips_none():
         ("Fountoulakis", np.array([1.0, 1.0, 1.0, 0.0, 0.0, 0.0]) * 1e16),
         ("Missing", None),                       # must be skipped
     ])
-    specs = pp._scatter_extra_references(ax, _fake_bm, refs)
+    specs = draw_extra_references(ax, _fake_bm, refs)
 
     assert [s["label"] for s in specs] == ["Lentas", "Fountoulakis"]   # None dropped
     # styles cycle in order
@@ -52,10 +52,9 @@ def test_scatter_extra_references_styles_and_skips_none():
     plt.close(fig)
 
 
-def test_scatter_extra_references_empty_is_noop():
-    pp = _plotter()
+def test_draw_extra_references_empty_is_noop():
     fig, ax = plt.subplots()
-    assert pp._scatter_extra_references(ax, _fake_bm, {}) == []
+    assert draw_extra_references(ax, _fake_bm, {}) == []
     assert len(ax.collections) == 0
     plt.close(fig)
 
@@ -64,7 +63,7 @@ def test_add_lune_legend_appends_extra_markers():
     fig, ax = plt.subplots()
     extra = [{"label": "Lentas", "color": "gold", "marker": "*"},
              {"label": "Fountoulakis", "color": "dodgerblue", "marker": "s"}]
-    _add_lune_legend(ax, ["NPE ML", "Gaussian"], LUNE_ENSEMBLE_COLORS, extra_markers=extra)
+    add_lune_legend(ax, ["NPE ML", "Gaussian"], LUNE_ENSEMBLE_COLORS, extra_markers=extra)
     leg = ax.get_legend()
     assert leg is not None
     texts = [t.get_text() for t in leg.get_texts()]
@@ -73,13 +72,13 @@ def test_add_lune_legend_appends_extra_markers():
 
 
 def test_add_lune_legend_escapes_percent_under_usetex():
-    # ChainConsumer can leave text.usetex on; '%' is a LaTeX comment char and must be escaped.
+    # A user's own text.usetex (a LaTeX style, say) reads '%' as a comment, so it is escaped.
     prev = matplotlib.rcParams["text.usetex"]
     matplotlib.rcParams["text.usetex"] = True
     try:
         fig, ax = plt.subplots()
-        _add_lune_legend(ax, ["DC 100%"], LUNE_ENSEMBLE_COLORS,
-                         extra_markers=[{"label": "ISO 32%", "color": "gold", "marker": "*"}])
+        add_lune_legend(ax, ["DC 100%"], LUNE_ENSEMBLE_COLORS,
+                        extra_markers=[{"label": "ISO 32%", "color": "gold", "marker": "*"}])
         texts = [t.get_text() for t in ax.get_legend().get_texts()]
         assert texts == [r"DC 100\%", r"ISO 32\%"]
         plt.close(fig)
