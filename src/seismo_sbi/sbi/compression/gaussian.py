@@ -21,6 +21,9 @@ class ScoreCompressionData(NamedTuple):
 
 class Compressor(ABC):
 
+    #: True when the summary estimates the parameters themselves, so it is scaled like them.
+    summary_is_parameter_estimate = False
+
     @abstractclassmethod
     def compress_data_vector(self, D, *args, **kwargs):
         pass
@@ -34,6 +37,8 @@ class GaussianCompressor(Compressor):
     :class:`~seismo_sbi.sbi.inversion.gaussian_prior.GaussianPrior` ``prior`` adds its precision to
     ``F`` and its score to the score, so the estimate is the maximum of the posterior.
     """
+
+    summary_is_parameter_estimate = True
 
     def __init__(self, score_compression_data : ScoreCompressionData, covariance_matrix : EmpiricalCovariance,
                  prior: Optional[GaussianPrior] = None):

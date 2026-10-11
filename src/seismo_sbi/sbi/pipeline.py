@@ -34,7 +34,7 @@ from .inversion.sbi_inference import SBI_Inference
 from .inversion import likelihood as likelihood
 from .inversion.least_squares import IterativeLeastSquaresSolver
 
-from .scalers import FlexibleScaler
+from .scalers import FlexibleScaler, ZeroOneScaler
 from .datasets.dataset_compressor import DatasetCompressor
 
 from seismo_sbi.simulators.simulation_io import SimulationDataLoader
@@ -60,6 +60,24 @@ def likelihood_covariance(option, compressor_covariance, data_vector_length):
         return ScalarEmpiricalCovariance(float(option), data_vector_length)
     raise InvalidConfiguration(
         f"inference.likelihood.covariance must be 'empirical' or a noise standard deviation, not {option!r}.")
+
+
+def observed_summary_and_scaler(compressor, compression_data, data_vector, training_summaries, parameter_scaler):
+    """``(x_0, statistic_scaler)``: the observation's summary and the scaler of every summary.
+
+    A compressor whose summary estimates the parameters gives the fiducial source the MLE search
+    converged to, scaled like the parameters (``parameter_scaler``). Any other compresses the
+    observation ``data_vector`` and scales each summary component to [0, 1] over the
+    ``training_summaries`` ``(n_simulations, n_summary)``.
+    """
+    if compressor.summary_is_parameter_estimate:
+        return compression_data.theta_fiducial, parameter_scaler
+    if data_vector is None:
+        raise PipelineStateError("This compressor's summary is not a parameter estimate, so the observed "
+                                 "summary is the compressed observation: pass data_vector.")
+    lower, upper = training_summaries.min(axis=0), training_summaries.max(axis=0)
+    upper = np.where(upper > lower, upper, lower + 1.0)
+    return compressor.compress_data_vector(data_vector), ZeroOneScaler(np.vstack([lower, upper]))
 
 
 class SBIPipeline:
@@ -426,7 +444,8 @@ class SingleEventPipeline(SBIPipeline):
                     compression_data = self.find_mle_with_mcmc_and_set_compressor(likelihood_config, single_job, single_job.covariance, single_job.prior, mle_start=compression_data.theta_fiducial,
                                                                                 compressor_name=compressor_name)
 
-                inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, single_job.prior, compressor_name=compressor_name)
+                inversion_data, job_result, sbi_model = self.run_single_sbi_inversion(sbi_method, dataset_details, theta0, compression_data, single_job.prior, compressor_name=compressor_name,
+                                                                                         data_vector=single_job.data_vector)
                 
                 logger.info(f"Time taken for {single_job.job_name} with {compressor_name}: {time.time() - start_time}s")
                 if do_plots:
@@ -489,9 +508,11 @@ class SingleEventPipeline(SBIPipeline):
         logger.info(f"chi^2 at MCMC MLE: {chi2_mle:.5f}")
         return compression_data
 
-    def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, prior, compressor_name: str = None):
+    def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, prior, compressor_name: str = None,
+                                 data_vector=None):
         """Train an NPE on the compressed simulations and sample it at the data; returns
-        ``(inversion_data, job_result, sbi_model)``.
+        ``(inversion_data, job_result, sbi_model)``. ``data_vector`` is the observation, needed when
+        the compressor's summary is not a parameter estimate.
         """
         
         param_names = self.parameters.names
@@ -506,23 +527,24 @@ class SingleEventPipeline(SBIPipeline):
             dataset_details = self.use_fisher_to_constrain_bounds(compressor_name, dataset_details, compression_data)
 
         compressor = self.compressors[compressor_name]
-        x_0 = compression_data.theta_fiducial
-        
-        logger.info('MLE %s', x_0)
         logger.info('theta0 %s', theta0)
         logger.info('bounds %s', self.parameters.bounds)
         self.ground_truth_scaler = FlexibleScaler(self.parameters)
-        statistic_scaler = self.ground_truth_scaler
-        x_0_scaled = statistic_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
 
         self.generate_simulation_data(dataset_details)
         raw_compressed_dataset = self.data_manager.compress_dataset(
             compressor, param_names, self.simulations_output_path, self.training_noise_sampler,
             seed=self.seed
         )
+        x_0, statistic_scaler = observed_summary_and_scaler(compressor, compression_data, data_vector,
+                                                            raw_compressed_dataset[:, self.num_dim:],
+                                                            self.ground_truth_scaler)
+        logger.info('Observed summary %s', x_0)
+        x_0_scaled = statistic_scaler.transform(x_0.reshape(1,-1)).reshape(-1)
 
         train_data = torch.Tensor(self.scale_dataset(raw_compressed_dataset, self.ground_truth_scaler, statistic_scaler))
-        train_data, raw_compressed_dataset = self.clean_train_data(train_data, raw_compressed_dataset)
+        if compressor.summary_is_parameter_estimate:
+            train_data, raw_compressed_dataset = self.clean_train_data(train_data, raw_compressed_dataset)
         sbi_model = SBI_Inference(sbi_method, self.num_dim)
 
         sbi_model.build_amortised_estimator(train_data)

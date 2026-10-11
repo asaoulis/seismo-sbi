@@ -60,6 +60,7 @@ class MultiEventPipeline(SingleEventPipeline):
                         compression_data,
                         single_job.prior,
                         compressor_name=compressor_name,
+                        data_vector=single_job.data_vector,
                     )
                 else:
                     pass
@@ -162,6 +163,7 @@ class VaryDatasetSizeEventPipeline(MultiEventPipeline):
                                 compression_data,
                                 single_job.prior,
                                 compressor_name=compressor_name,
+                                data_vector=single_job.data_vector,
                             )
                             compressed_dataset = job_result.compressed_dataset
                         else:
