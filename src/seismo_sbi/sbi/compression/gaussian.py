@@ -60,6 +60,11 @@ class GaussianCompressor(Compressor):
         self.Fisher_mat = self._compute_Fisher_matrix()
         self.Fisher_mat_inverse = np.linalg.inv(self.Fisher_mat)
 
+    def set_extra_gradients(self, extra_gradients):
+        """Give the noise covariance the theory covariance ``extra_gradients`` (the ensemble's
+        ``ScoreCompressionData``) of a theory compressor."""
+        self.C.set_covariance(extra_gradients)
+
     def _compute_Fisher_matrix(self):
         # assume a special case of dC/dtheta = 0 throughout
 

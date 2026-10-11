@@ -120,5 +120,5 @@ class IterativeLeastSquaresSolver:
     def _set_compressor(compressor, score_compression_data, extra_gradients):
         """Point ``compressor`` at the score compression of one model; its prior is kept."""
         if extra_gradients is not None:
-            compressor.C.set_covariance(extra_gradients)
+            compressor.set_extra_gradients(extra_gradients)
         compressor.set_compression_variables(score_compression_data)
