@@ -187,8 +187,7 @@ def draw_lune_kde(ax, bm, ensembles_mt, true_tensor, plot_beachballs):
     for i, samples_MT in enumerate(ensembles_mt.values()):
         g, d = mts6_to_gamma_delta(samples_MT)
         lune_angles.append((g, d))
-        plot_kde_contours_on_lune(ax, bm, g, d, colors=colors[i % len(colors)],
-                                  linestyles=('-', '--'), linewidths=(1.8, 1.5))
+        plot_kde_contours_on_lune(ax, bm, g, d, colors=colors[i % len(colors)])
         percentile_mts = delta_percentile_tensors(samples_MT, d, qs[i % len(qs)])
 
         # truth drawn once (first ensemble, identical across ensembles); percentiles per ensemble

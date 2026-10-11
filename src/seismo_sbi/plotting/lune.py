@@ -144,7 +144,10 @@ def plot_scatter_on_lune(ax, bm: Basemap, gamma, delta, **scatter_kwargs):
 
 
 def plot_kde_contours_on_lune(ax, bm: Basemap, gamma, delta, colors='C0', grid_res=(200, 300),
-                               levels=(0.6827, 0.9545), linestyles=('--', '-'), linewidths=(1.5, 1.8)):
+                               levels=(0.6827, 0.9545), linestyles=('-', '--'), linewidths=(1.8, 1.5)):
+    """HPD contours of the lune angles ``gamma``, ``delta`` (degrees) from a KDE on a ``grid_res`` grid;
+    each of ``levels`` is drawn with the matching entry of ``linestyles`` and ``linewidths``
+    (by default 68 % solid, 95 % dashed)."""
     gx = np.linspace(-30, 30, grid_res[0])
     gy = np.linspace(-90, 90, grid_res[1])
     GX, GY = np.meshgrid(gx, gy)
