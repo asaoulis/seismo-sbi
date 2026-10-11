@@ -75,11 +75,10 @@ def build_kernel_pipeline(stations, components, num_sims, duration, sampling_rat
 def production_model_config(model_dim=256, station_encoder="tcn", downsample=None):
     """The model_config + flow_config that the brustle-lomax production YAML resolves to.
 
-    Mirrors ``scripts/train_NPE.py``'s config→model_config translation for
-    ``scripts/configs/santorini/first_ml_npe_brustle_lomax.yaml`` so the benches exercise
-    the REAL production architecture (tcn encoder + source-location conditioning +
-    variable stations + amplitude embedding + RFF posenc + PMA-tokens pooling + an
-    8-transform NSF flow). ``n_cond=3`` = (latitude, longitude, depth).
+    Mirrors the config to model_config translation of ``scripts/train_NPE.py`` for the
+    production architecture: tcn encoder, source-location conditioning, variable stations,
+    amplitude embedding, RFF positional encoding, PMA-tokens pooling and an 8-transform NSF
+    flow. ``n_cond=3`` is (latitude, longitude, depth).
 
     Returns ``(model_config, flow_config, n_cond)``.
     """
