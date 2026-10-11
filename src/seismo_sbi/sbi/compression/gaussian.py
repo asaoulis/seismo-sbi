@@ -2,6 +2,8 @@
 
 :class:`GaussianCompressor` turns a data vector into the score (or the quasi-maximum-likelihood
 estimate) from the fiducial data, its parameter gradients and a noise covariance.
+:class:`MultiPointGaussianCompressor` adds the estimates from fixed other sources, and
+:class:`SecondOrderCompressor` the data part of the log-likelihood Hessian.
 """
 
 import numpy as np
@@ -146,18 +148,31 @@ class GaussianCompressor(Compressor):
 
 
     
-class MultiPointGaussianCompressor(Compressor):
+class MultiPointGaussianCompressor(GaussianCompressor):
+    """Score compression at the run's fiducial source and at fixed other sources: the
+    quasi-maximum-likelihood estimate from each, ``n (1 + n_points)`` numbers for ``n`` parameters.
 
-    def __init__(self, score_compression_datas : List[ScoreCompressionData], covariance_matrix, is_diag = True):
+    The maximum-likelihood search moves the run's fiducial only; ``point_compression_datas`` are the
+    ``ScoreCompressionData`` at the fixed sources.
+    """
 
-        self._compressors  = []
-        for score_compression_data in score_compression_datas:
-            self._compressors.append(
-                GaussianCompressor(score_compression_data, covariance_matrix, is_diag)
-            )
-    
-    def compress_data_vector(self, D):
-        return np.hstack([compressor.compress_data_vector(D) for compressor in self._compressors])
+    summary_is_parameter_estimate = False
+
+    def __init__(self, score_compression_data, point_compression_datas : List[ScoreCompressionData],
+                 covariance_matrix, prior=None):
+        super().__init__(score_compression_data, covariance_matrix, prior=prior)
+        self.set_extra_gradients(point_compression_datas)
+
+    def set_extra_gradients(self, point_compression_datas):
+        """Build the score compression at each fixed source from its ``ScoreCompressionData``."""
+        self._compressors = [GaussianCompressor(point_compression_data, self.C, prior=self.prior)
+                             for point_compression_data in point_compression_datas]
+
+    def compress_data_vector(self, D, matmul_callable = None):
+        estimates = [super().compress_data_vector(D, matmul_callable=matmul_callable)]
+        estimates += [compressor.compress_data_vector(D, matmul_callable=matmul_callable)
+                      for compressor in self._compressors]
+        return np.hstack(estimates)
     
 
 class SecondOrderCompressor(GaussianCompressor):

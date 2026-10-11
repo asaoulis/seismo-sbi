@@ -1,0 +1,82 @@
+# Multi-point score compression of the LV2 event, its centroid inferred with the moment tensor: the
+# quasi-maximum-likelihood estimate from the run's fiducial source and from two fixed sources.
+run_name: LV2_multi_point
+output_directory: '../examples/data/pipeline_outputs'
+job_name: results
+generate_dataset: True
+num_jobs: 30
+
+seismic_context:
+  simulation_type: 'instaseis'
+  components: 'ZEN'
+  stations_path: './configs/stations.txt'
+  station_components_path: './configs/components.json'
+  seismogram_duration: 200
+  sampling_rate: 1
+  syngine_address: "/data/shared/ROSA_PREM_10s_disc" # if no local version, can use "syngine://prem_i_2s"
+  processing:
+    filter_sampling_rate: 20.0
+    filter:
+      type: 'bandpass'
+      freqmin: 0.02
+      freqmax: 0.05
+      corners: 4
+      zerophase: False
+    sampling_rate: 1
+
+parameters:
+  inference:
+    moment_tensor:
+      #         [Mrr, Mt, Mpp, Mrt, Mrp, Mtp]
+      fiducial: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+      stencil_deltas: [1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10, 1.e+10]
+      bounds: [[-4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16, -4.e+16],
+              [4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16, 4.e+16]]
+    source_location:
+      #         [lat, long, depth, time]
+      fiducial: [37.636, -118.936, 5, 0]
+      stencil_deltas: [0.001, 0.001, 0.1, 0.1]
+      bounds: [[37.536, -119.036, 1, -2], [37.736, -118.836, 10, 2]]
+  nuisance: {}
+
+simulations:
+  num_simulations: 2000
+  sampling_method:
+    moment_tensor: "uniform"
+    source_location: "uniform"
+  iterative_least_squares:
+    max_iterations: 8
+    damping_factor: 0.1
+    dynamic_damping: False
+
+compression:
+  multi_optimal_score:
+    noise_level: 1.e-8
+    fiducials:
+      - moment_tensor: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+        source_location: [37.586, -118.986, 3, 0]
+      - moment_tensor: [1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16, 1.e+16]
+        source_location: [37.686, -118.886, 8, 0]
+
+inference:
+  sbi:
+    method: 'posterior'
+    pipeline: 'single_event'
+    noise_model:
+      type: 'gaussian'
+      noise_level: 1.e-8
+
+  likelihood:
+    run: False
+
+jobs:
+  real_events:
+    LV2: ./data/preprocessed/LV2/events/LV2_noise_filt_20_50_1hz.h5
+  simulations:
+    random_events: 0
+    fixed_events: []
+    custom_events: {}
+  noise_models:
+    gaussian_noises: [1.e-8]
+  plots:
+    disable_plotting: True

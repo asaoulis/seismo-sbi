@@ -3,7 +3,8 @@
 :func:`compressor_options` turns one entry of the block into the compressor's name and its options:
 ``optimal_score`` takes a noise covariance model and the noise windows it is estimated from,
 ``theory_optimal_score`` a data covariance, a noise level and a diagonal regularisation of the theory
-covariance, and the multi-point and second-order compressors a white-noise level. A run builds at
+covariance, the second-order compressor a white-noise level, and the multi-point one a white-noise
+level and the fixed sources it also compresses from. A run builds at
 most one compressor from extra gradients (:func:`check_one_extra_gradient_compressor`).
 """
 from dataclasses import dataclass, fields
@@ -35,10 +36,18 @@ class TheoryOptimalScoreOptions:
 
 @dataclass(frozen=True)
 class MultiOptimalScoreOptions:
-    """``multi_optimal_score``: white noise of standard deviation ``noise_level`` (m)."""
+    """``multi_optimal_score``: white noise of standard deviation ``noise_level`` (m), and the fixed
+    sources ``fiducials`` the estimates are also made from, each ``{parameter: values}`` for every
+    inferred parameter, as ``inference.<parameter>.fiducial`` is written."""
 
     noise_level: float
+    fiducials: list
     compressor_type: ClassVar[str] = "multi_optimal_score"
+
+    def __post_init__(self):
+        if not self.fiducials or not all(isinstance(point, dict) for point in self.fiducials):
+            raise InvalidConfiguration("compression.multi_optimal_score.fiducials is a list of "
+                                       "{parameter: values} sources, one per extra fiducial.")
 
 
 @dataclass(frozen=True)

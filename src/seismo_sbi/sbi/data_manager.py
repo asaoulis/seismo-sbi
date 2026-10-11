@@ -4,6 +4,7 @@
 derivative stencils for the compression data, and compresses a simulated dataset.
 """
 
+from copy import deepcopy
 from pathlib import Path
 import tempfile
 
@@ -11,7 +12,7 @@ from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 from seismo_sbi.sbi.datasets.dataset_compressor import DatasetCompressor
 from seismo_sbi.sbi.configuration import  ModelParameters
 from seismo_sbi.sbi.types.results import  JobData
-from seismo_sbi.utils.errors import error_handling_wrapper
+from seismo_sbi.utils.errors import InvalidConfiguration, error_handling_wrapper
 
 
 #: Every simulation file under ``train/`` is named ``sim_<index>.h5``.
@@ -23,6 +24,8 @@ class DataManager:
         self.data_loader = data_loader
         self.dataset_compressor = dataset_compressor
         self.data_length = data_length
+        #: Compression data at the fixed sources of a multi-point compressor, by source and nuisance.
+        self.fixed_source_compression_data = {}
 
     def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler,
                          seed = None):
@@ -124,8 +127,25 @@ class DataManager:
             )
         if "second_order_score" in compression_method_details:
             extra_gradients = self.compute_hessian_from_stencil(model_parameters, score_compression_data)
+        if "multi_optimal_score" in compression_method_details:
+            fiducials = dict(compression_methods)["multi_optimal_score"].fiducials
+            extra_gradients = [self.compression_data_at_fixed_source(model_parameters, fiducial)
+                               for fiducial in fiducials]
 
         return score_compression_data, extra_gradients
+
+    def compression_data_at_fixed_source(self, model_parameters : ModelParameters, fiducial):
+        """The compression data at the source ``fiducial`` ``{parameter: values}``, which names every
+        inferred parameter; computed once per source and nuisance."""
+        missing = set(model_parameters.theta_fiducial) - set(fiducial)
+        if missing:
+            raise InvalidConfiguration(f"multi_optimal_score fiducial {fiducial} lacks {sorted(missing)}.")
+        source_parameters = deepcopy(model_parameters)
+        source_parameters.theta_fiducial = {name: list(fiducial[name]) for name in model_parameters.theta_fiducial}
+        key = repr((source_parameters.theta_fiducial, model_parameters.nuisance))
+        if key not in self.fixed_source_compression_data:
+            self.fixed_source_compression_data[key] = self.compute_compression_data_from_stencil(source_parameters)
+        return self.fixed_source_compression_data[key]
 
     @error_handling_wrapper(num_attempts=3)
     def compute_hessian_from_stencil(self, model_parameters : ModelParameters, score_compression_data):
