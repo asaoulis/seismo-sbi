@@ -189,52 +189,54 @@ class PosteriorPlotter:
         """Corner plot of each ``name: (theta0, samples, ...)`` ensemble in ``inversion_data``, the first
         one's ``theta0`` as the truth lines. ``extra_references`` ``{label: vector}``, in the samples'
         units, are drawn as markers in every two-parameter panel with the lune's reference styles and
-        listed in a legend. Returns the figure."""
-        plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
-        colors = LUNE_ENSEMBLE_COLORS
+        listed in a legend. ChainConsumer's LaTeX and serif-font settings apply to this figure only.
+        Returns the figure."""
+        with plt.rc_context():
+            plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
+            colors = LUNE_ENSEMBLE_COLORS
 
-        scaled_data_dict = {name: self._prepare_data_for_plotting(*data) 
-                                for name, data in inversion_data.items()}
+            scaled_data_dict = {name: self._prepare_data_for_plotting(*data) 
+                                    for name, data in inversion_data.items()}
 
-        parameters_label = [f"{parameters_info.name} [{parameters_info.unit}]" if parameters_info.unit != "" 
-                                    else parameters_info.name for parameters_info in self.parameters_info]
+            parameters_label = [f"{parameters_info.name} [{parameters_info.unit}]" if parameters_info.unit != "" 
+                                        else parameters_info.name for parameters_info in self.parameters_info]
                             
-        i = 0
-        c_plot = ChainConsumer()
-        shade_first = len(scaled_data_dict) < 3
-        for name, (samples, theta0) in scaled_data_dict.items():
-            if extents is not None:
-                for j in range(len(extents)):
-                    samples = samples[samples[:, j] > extents[j][0]]
-                    samples = samples[samples[:, j] < extents[j][1]]
+            i = 0
+            c_plot = ChainConsumer()
+            shade_first = len(scaled_data_dict) < 3
+            for name, (samples, theta0) in scaled_data_dict.items():
+                if extents is not None:
+                    for j in range(len(extents)):
+                        samples = samples[samples[:, j] > extents[j][0]]
+                        samples = samples[samples[:, j] < extents[j][1]]
 
-            if i == 0:
-                truth = theta0
-                shade = shade_first
+                if i == 0:
+                    truth = theta0
+                    shade = shade_first
+                else:
+                    shade = False
+                c_plot.add_chain(samples, parameters=parameters_label, color=colors[i % len(colors)], name=name, shade=shade, linewidth=2.5)
+                i+=1
+            c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=False, usetex=True, bar_shade=True)
+            c_plot.configure_truth(lw=2)
+            scale = 2.8*self.num_dim
+
+            references = self._chain_consumer_references(extra_references or {}, parameters_label)
+            plot_extents = extents
+            if references and extents is None:
+                plot_extents = self._extents_holding_references(scaled_data_dict, references, parameters_label)
+            fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=plot_extents,
+                                      references=[(location, style) for _, location, style in references])
+            fig.align_labels() 
+            if references:
+                self._add_chain_consumer_legend(fig, list(scaled_data_dict), references)
+
+            if figsave is None:
+                plt.show()
             else:
-                shade = False
-            c_plot.add_chain(samples, parameters=parameters_label, color=colors[i % len(colors)], name=name, shade=shade, linewidth=2.5)
-            i+=1
-        c_plot.configure(kde=[kde for _ in range(len(inversion_data))], shade_alpha=0.7, max_ticks=3, diagonal_tick_labels=False, inverse=inverse, tick_font_size=tick_font_size, label_font_size=40, summary=False, usetex=True, bar_shade=True)
-        c_plot.configure_truth(lw=2)
-        scale = 2.8*self.num_dim
-
-        references = self._chain_consumer_references(extra_references or {}, parameters_label)
-        plot_extents = extents
-        if references and extents is None:
-            plot_extents = self._extents_holding_references(scaled_data_dict, references, parameters_label)
-        fig = c_plot.plotter.plot(figsize=(scale,scale), truth=truth, legend=False, extents=plot_extents,
-                                  references=[(location, style) for _, location, style in references])
-        fig.align_labels() 
-        if references:
-            self._add_chain_consumer_legend(fig, list(scaled_data_dict), references)
-
-        if figsave is None:
-            plt.show()
-        else:
-            fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
-        plt.close()
-        return fig
+                fig.savefig(figsave, dpi=200, transparent=True, bbox_inches="tight")
+            plt.close()
+            return fig
 
     def _chain_consumer_references(self, extra_references, parameters_label):
         """``(label, {parameter label: value}, scatter style)`` for each reference vector, in plotting units."""
