@@ -16,6 +16,7 @@ from obspy.imaging.beachball import beach
 from pyrocko.plot import beachball as pyrocko_beachball
 
 import seismo_sbi.plotting.distributions as distributions
+import seismo_sbi.plotting.lune_figures as lune_figures
 import seismo_sbi.plotting.rocko_beachball_patch as rocko_beachball_patch
 import seismo_sbi.plotting.velocity_models as velocity_models
 from seismo_sbi.moment_tensor.comparison import from_pyrocko, pyrocko_mt
@@ -195,7 +196,7 @@ def capture_beachballs_on_axes(monkeypatch, module):
 @pytest.mark.parametrize("lune_plot", ["plot_lunes", "plot_lunes_kde"])
 def test_lune_beachballs_carry_the_axes_of_m6(monkeypatch, tmp_path, lune_plot, mechanism_deg):
     m6 = mechanism_m6(*mechanism_deg)
-    handed = capture_beachballs_on_axes(monkeypatch, distributions)
+    handed = capture_beachballs_on_axes(monkeypatch, lune_figures)
     getattr(posterior_plotter(), lune_plot)({"posterior": (m6, samples_around(m6))},
                                             figsave=tmp_path / "lune.png")
     assert len(handed) == 4
