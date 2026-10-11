@@ -298,7 +298,8 @@ class PosteriorPredictiveChecks:
                         raise ValueError(
                             f"Metric {mname} must return 1D array length n_synthetics"
                         )
-                except Exception:
+                except Exception as exc:
+                    warnings.warn(f"PPC metric {mname!r} failed for ensemble {name!r}; its values are NaN: {exc!r}")
                     vals = np.full((synthetics.shape[0],), np.nan, dtype=float)
                 metrics_out[mname] = {
                     "mean": float(np.nanmean(vals)),

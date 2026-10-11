@@ -173,3 +173,16 @@ def test_batch_scoring_matches_one_at_a_time(obs):
     batch = shifted_correlation_misfit(obs.ravel(), np.array(rows), meta)
     singles = [shifted_correlation_misfit(obs.ravel(), r[None, :], meta)[0] for r in rows]
     assert batch == pytest.approx(singles, abs=1e-12)
+
+
+def test_a_failing_metric_gives_nan_and_a_warning(obs):
+    p = PosteriorPredictiveChecks(simulator=lambda x: np.zeros(4), n_traces=N_TRACES)
+
+    def broken(obs, synthetics, meta):
+        raise ValueError("no layout")
+
+    p.add_metric("Broken", broken)
+    with pytest.warns(UserWarning, match="Broken"):
+        results = p.evaluate_metrics(obs.ravel(), {"NPE": obs.ravel()[None, :]})
+    assert np.isnan(results["NPE"]["Broken"]["raw"]).all()
+    assert results["NPE"]["MSE"]["raw"][0] == 0.0
