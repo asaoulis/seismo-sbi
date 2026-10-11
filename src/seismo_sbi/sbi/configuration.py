@@ -25,7 +25,7 @@ from seismo_sbi.priors.samplers import (
 from seismo_sbi.sbi.training_configuration import TrainingConfiguration
 from seismo_sbi.sbi.noises.noise_model import NoiseModelConfiguration
 from seismo_sbi.sbi.scalers import ScalerConfiguration
-from seismo_sbi.sbi.compression.compressor_options import compressor_options
+from seismo_sbi.sbi.compression.compressor_options import check_one_extra_gradient_compressor, compressor_options
 from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Catalogue-driven sampler factories selectable via a dict-form
@@ -380,6 +380,7 @@ class SBI_Configuration:
 
         self.compression_methods = [compressor_options(raw_type, raw_options)
                                     for raw_type, raw_options in compression_list]
+        check_one_extra_gradient_compressor(self.compression_methods)
 
     def parse_sbi_config(self, config):
         inference_config = config

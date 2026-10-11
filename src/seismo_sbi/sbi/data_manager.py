@@ -122,8 +122,17 @@ class DataManager:
                 model_parameters, use_fiducial=False, simulator=covariance_simulator.execute_sim_and_save_outputs,
                 skip_gradients=skip_cov_gradients
             )
+        if "second_order_score" in compression_method_details:
+            extra_gradients = self.compute_hessian_from_stencil(model_parameters, score_compression_data)
 
         return score_compression_data, extra_gradients
+
+    @error_handling_wrapper(num_attempts=3)
+    def compute_hessian_from_stencil(self, model_parameters : ModelParameters, score_compression_data):
+        """The Hessian ``(n, n, n_data)`` of the data at ``model_parameters.theta_fiducial``."""
+        with tempfile.TemporaryDirectory() as stencil_outputs_folder:
+            return self.dataset_compressor.run_hessian_stencil(model_parameters, score_compression_data,
+                                                               Path(stencil_outputs_folder))
 
     
     def compute_data_vector_length(self, test_jobs_paths, real_event_jobs_config):

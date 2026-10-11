@@ -161,37 +161,30 @@ class MultiPointGaussianCompressor(Compressor):
     
 
 class SecondOrderCompressor(GaussianCompressor):
+    """Second-order score compression: the score ``G C^-1 r`` and the data part of the Hessian of the
+    log-likelihood ``H C^-1 r``, ``n + n^2`` numbers for ``n`` parameters.
 
-    def __init__(self, score_compression_data, hessian, covariance_matrix, is_diag = True):
+    ``r = D - D_fiducial``; ``G`` ``(n, n_data)`` are the data's parameter gradients and ``hessian``
+    ``H`` ``(n, n, n_data)`` its second derivatives at the fiducial source. The maximum-likelihood
+    search uses the first-order compression it inherits.
+    """
 
-        self.num_params = score_compression_data.data_parameter_gradients.shape[0]
+    summary_is_parameter_estimate = False
 
-        self.theta_fiducial = np.copy(score_compression_data.theta_fiducial)
-        self.D_fiducial = np.copy(score_compression_data.data_fiducial)
-        self.dD_Dtheta_gradients = np.copy(score_compression_data.data_parameter_gradients)
+    def __init__(self, score_compression_data, hessian, covariance_matrix, prior=None):
+        super().__init__(score_compression_data, covariance_matrix, prior=prior)
+        self.hessian = hessian
 
-        self.C = covariance_matrix
-        self.is_diag = is_diag
-        if is_diag:
-            self.C_inverse = np.diag(1/np.diag(covariance_matrix))
+    def set_extra_gradients(self, hessian):
+        """Take the Hessian ``(n, n, n_data)`` of the data at the current fiducial source."""
+        self.hessian = hessian
+
+    def compress_data_vector(self, data_vector, matmul_callable=None):
+        residual = data_vector - self.D_fiducial
+        if matmul_callable is not None:
+            weighted_residual = matmul_callable(residual)
         else:
-            self.C_inverse = np.linalg.inv(covariance_matrix)
-
-        
-        self.efficient_dot_prod = self._select_efficient_dot_product_op(self.C)
-
-        self.hessian = hessian.transpose(2, 0, 1)
-
-        self.F = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, self.D_fiducial))
-        self.S = np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, self.D_fiducial))
-
-    def compress_data_vector(self, data_vector):
-
-        F_hat  = np.dot(self.dD_Dtheta_gradients, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        S_hat  = np.einsum("mkv,m->kv", self.hessian, self.efficient_dot_prod(self.C_inverse, data_vector))
-
-        delta_F = (F_hat - self.F)
-        delta_S = S_hat - self.S
-
-        return np.concatenate([delta_F, delta_S.flatten()])
+            weighted_residual = self.C.matmul_inverse_covariance(residual)
+        score = self.dD_Dtheta_gradients @ weighted_residual
+        hessian_term = self.hessian @ weighted_residual
+        return np.concatenate([score, hessian_term.flatten()])

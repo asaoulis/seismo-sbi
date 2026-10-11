@@ -4,6 +4,8 @@
 compressor, and runs the stencil simulations the score compression needs.
 """
 
+from functools import partial
+
 import numpy as np
 
 from ..compression.derivative_stencil import DerivativeStencil, HessianDerivativeStencil
@@ -46,9 +48,11 @@ class DatasetCompressor:
         return score_compression_data
 
     def run_hessian_stencil(self, parameters, score_compression_data : ScoreCompressionData, stencil_output_folder):
-
+        """The Hessian ``(n, n, n_data)`` of the data at the fiducial source: mixed derivatives from
+        a four-point stencil, the diagonal from ``score_compression_data.second_order_gradients``."""
         hessian_derivative_stencil = HessianDerivativeStencil(parameters, stencil_output_folder)
-        hessian_derivative_stencil.run_stencil_simulations(self.simulator, self.num_parallel_jobs)
+        hessian_derivative_stencil.run_stencil_simulations(partial(self.simulator, use_fiducial=True),
+                                                           self.num_parallel_jobs)
 
         nonetype_safe_loader = lambda x, dummy: self.data_loader.load_simulation_data_array(x) if x is not None else 0
         hessian_stencil_results = hessian_derivative_stencil.load_simulation_results(nonetype_safe_loader)

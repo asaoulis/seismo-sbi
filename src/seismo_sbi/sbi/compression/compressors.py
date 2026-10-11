@@ -5,8 +5,6 @@ the fiducial data and its gradients, and the covariance data of the noise, and r
 with its noise covariance as ``compressor.C``. A theory compressor's covariance holds its data covariance
 as ``compressor.C.data_covariance``.
 """
-import numpy as np
-
 from seismo_sbi.sbi.compression.gaussian import GaussianCompressor, MultiPointGaussianCompressor, SecondOrderCompressor
 from seismo_sbi.sbi.noises.covariance_estimator import build_cov_sigma2_dict
 from seismo_sbi.sbi.noises.covariances import build_covariance_matrix, build_theory_covariance
@@ -48,7 +46,7 @@ def build_compressor(options, score_compression_data, simulation_parameters, lay
                                              layout)
         return GaussianCompressor(score_compression_data, covariance, prior=prior)
 
-    cov_mat = np.diag(options.noise_level**2 * np.ones((layout.data_vector_length)))
+    covariance = build_covariance_matrix("noise_level", options.noise_level, layout)
     if ctype == "multi_optimal_score":
-        return MultiPointGaussianCompressor(score_compression_data, cov_mat)
-    return SecondOrderCompressor(score_compression_data, extra_gradients, cov_mat)
+        return MultiPointGaussianCompressor(score_compression_data, covariance)
+    return SecondOrderCompressor(score_compression_data, extra_gradients, covariance, prior=prior)
