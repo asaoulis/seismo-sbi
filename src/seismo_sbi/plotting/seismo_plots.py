@@ -15,6 +15,10 @@ from obspy.geodetics import locations2degrees
 from seismo_sbi.plotting.waveform_compare import moveout_record_section
 from seismo_sbi.simulators.simulation_io import SYNTHETICS_PRE_EVENT_PAD_S
 
+#: Vertical distance between neighbouring stacked traces, in units of the normalised amplitude.
+STACKED_TRACE_SPACING = 0.9
+
+
 def get_epicentral_distances_function(event_lat, event_long, station):
     lat, long = station
     return locations2degrees(event_lat, event_long, lat, long)
@@ -28,75 +32,38 @@ class MisfitsPlotting:
         self.sampling_rate = sampling_rate
         self.noise_levels = None
         if covariance_matrix is not None:
-
+            # a covariance without a dense per-sample matrix gives no noise-level line
             try:
                 covariances = covariance_matrix.covariance_matrix.reshape(-1, covariance_matrix.data_vector_length)[:, 0]
                 self.noise_levels = np.sqrt(covariances)
-            except:
+            except (AttributeError, TypeError, ValueError):
                 pass
 
     def raw_synthetic_misfits(self, data_vector, synthetics, figname = None):
-
-
-        all_components =  [component for receiver in self.receivers.iterate() for component in receiver.components]
-        time_series_length = int(data_vector.shape[0]//len(all_components))
-
-        if self.covariance_matrix is not None:
-            elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
-            elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
-            chi_squared = -2 * elementwise_misfits
-
-        data_vector = np.reshape(data_vector, (-1, time_series_length))
-        synthetics = np.reshape(synthetics, (-1, time_series_length))
-
-
-        fig, axes = plt.subplots(len(self.receivers.receivers), 3, figsize=(5*3, 2*len(self.receivers.receivers)), squeeze=False)
-
-        seismogram_index = 0
-        component_to_index = {'Z':0, 'E':1, 'N':2}
-        for rec_idx, receiver in enumerate(self.receivers.iterate()):
-            station_name = receiver.station_name
-            for component, comp_idx in component_to_index.items():
-                ax = axes[rec_idx][comp_idx]
-                if component not in receiver.components:
-                    ax.axis('off')
-                    continue
-                
-                data_seismogram = data_vector[seismogram_index]
-                synthetic_seismogram = synthetics[seismogram_index]
-                if self.covariance_matrix is not None:
-                    trace_misfits = chi_squared[seismogram_index]
-                    ax.text(0, np.max(data_seismogram), f'$\chi^2 = ${np.mean(trace_misfits):.2f}')
-                if self.noise_levels is not None:
-                    ax.hlines(self.noise_levels[seismogram_index], 0, time_series_length, color='red', linestyle='-',)
-                    
-                ax.plot(data_seismogram, color='black',  label='data')
-                ax.plot(synthetic_seismogram, color='#b87333',  label='mle')
-
-                ax.axis('off')
-                ax.set_title(f'{station_name} {component}')
-
-                seismogram_index += 1
-
-        if figname is not None:
-            fig.savefig(figname)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
+        """Observed (black) against synthetic (copper) traces over the whole window, one row per
+        station, with the noise level and each trace's chi-square when there is a covariance."""
+        self._misfit_grid(data_vector, synthetics, figname)
 
     def arrival_synthetic_misfits(self, data_vector, synthetics, event_location, figname = None):
-
+        """As :meth:`raw_synthetic_misfits`, each station cut to a window around its P arrival
+        from ``event_location`` = (lat, lon, depth_km)."""
         arrivals = self._get_arrivals_dict(event_location)
+        arrival_windows = {}
+        for station_name, arrival_time in arrivals.items():
+            start_idx = int(max(0, arrival_time*self.sampling_rate- 60*self.sampling_rate))
+            end_idx = start_idx + int(50*self.sampling_rate + (2*arrival_time*self.sampling_rate))
+            arrival_windows[station_name] = slice(start_idx, end_idx)
+        self._misfit_grid(data_vector, synthetics, figname, arrival_windows)
 
-        all_components =  [component for receiver in self.receivers.iterate() for component in receiver.components]
-        time_series_length = int(data_vector.shape[0]//len(all_components))
+    def _misfit_grid(self, data_vector, synthetics, figname, arrival_windows=None):
+        """One row per station and a column per Z, E, N component; ``arrival_windows`` maps a station
+        to the sample slice drawn, and without it the whole trace is drawn with its noise level."""
+        time_series_length = self._trace_length(data_vector)
 
         if self.covariance_matrix is not None:
             elementwise_misfits = self.covariance_matrix.compute_loss(data_vector - synthetics, reduce=False)
             elementwise_misfits = np.reshape(elementwise_misfits, (-1, time_series_length))
             chi_squared = -2 * elementwise_misfits
-
 
         data_vector = np.reshape(data_vector, (-1, time_series_length))
         synthetics = np.reshape(synthetics, (-1, time_series_length))
@@ -107,95 +74,59 @@ class MisfitsPlotting:
         component_to_index = {'Z':0, 'E':1, 'N':2}
         for rec_idx, receiver in enumerate(self.receivers.iterate()):
             station_name = receiver.station_name
-            arrival_time = arrivals[station_name]
-            start_idx = int(max(0, arrival_time*self.sampling_rate- 60*self.sampling_rate))
-            end_idx = start_idx + int(50*self.sampling_rate + (2*arrival_time*self.sampling_rate))
-            arrival_slice = slice(start_idx, end_idx)
+            window = slice(None) if arrival_windows is None else arrival_windows[station_name]
             for component, comp_idx in component_to_index.items():
                 ax = axes[rec_idx][comp_idx]
                 if component not in receiver.components:
                     ax.axis('off')
                     continue
-                data_seismogram = data_vector[seismogram_index][arrival_slice]
-                synthetic_seismogram = synthetics[seismogram_index][arrival_slice]
 
-                ax = axes[rec_idx][component_to_index[component]]
+                data_seismogram = data_vector[seismogram_index][window]
+                synthetic_seismogram = synthetics[seismogram_index][window]
+                if arrival_windows is None and self.noise_levels is not None:
+                    ax.hlines(self.noise_levels[seismogram_index], 0, time_series_length, color='red', linestyle='-',)
+
                 ax.plot(data_seismogram, color='black',  label='data')
                 ax.plot(synthetic_seismogram, color='#b87333',  label='mle')
-                if self.covariance_matrix is not None:
-                    trace_misfits = chi_squared[seismogram_index][arrival_slice]
-                    try:
-                        ax.text(0, np.max(data_seismogram), f'$\chi^2 = ${np.mean(trace_misfits):.2f}')
-                    except:
-                        pass
+                # an arrival window can start past the end of the trace
+                if self.covariance_matrix is not None and data_seismogram.size:
+                    trace_misfits = chi_squared[seismogram_index][window]
+                    ax.text(0, np.max(data_seismogram), f'$\chi^2 = ${np.mean(trace_misfits):.2f}')
 
                 ax.axis('off')
                 ax.set_title(f'{station_name} {component}')
 
                 seismogram_index += 1
 
-        if figname is not None:
-            fig.savefig(figname)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
-    
+        self._finish(fig, figname)
+
     def plot_ordered_stacked_traces(self, data_vector, synthetics, event_location, figname=None,
                                     components=('Z', 'E', 'N'), time_window_s=None):
         """Observed (black) against synthetic (copper) traces, one column per entry of ``components``
         (Z, E, N by default), stations ordered by P arrival from the top and scaled by the largest
         observed amplitude drawn, over ``time_window_s`` = (start, end) in seconds when given."""
-        # Order stations by arrival time
-        arrivals = self._get_arrivals_dict(event_location)
-        ordered_stations = sorted(arrivals.keys(), key=lambda k: arrivals[k])
+        trace_index_map = self._trace_index_map()
+        ordered_by_comp = self._pairs_by_arrival(event_location, trace_index_map, components)
+        time_series_length = self._trace_length(data_vector)
 
-        # Build mapping from (station, component) -> flattened index
-        all_components_list = [component for receiver in self.receivers.iterate() for component in receiver.components]
-        time_series_length = int(data_vector.shape[0] // len(all_components_list))
-        trace_index_map = {}
-        idx = 0
-        for receiver in self.receivers.iterate():
-            for comp in ['Z', 'E', 'N']:
-                if comp in receiver.components:
-                    trace_index_map[(receiver.station_name, comp)] = idx
-                    idx += 1
-
-        # Reshape vectors
         data_matrix = np.reshape(data_vector, (-1, time_series_length))
         synthetics_matrix = np.reshape(synthetics, (-1, time_series_length))
-
-        ordered_by_comp = {
-            comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
-            for comp in components
-        }
 
         drawn = [trace_index_map[pair] for comp in components for pair in ordered_by_comp[comp]]
         max_abs = np.max(np.abs(data_matrix[drawn])) if drawn else 1.0
         if max_abs == 0:
             max_abs = 1.0
 
-        # Time axis
         t = np.arange(time_series_length) / float(self.sampling_rate)
+        fig, axes = self._stacked_axes(len(components), 5.04 * len(components))
 
-        # Figure sizing: reduce by ~30% and reduce vertical spacing between stacked traces
-        spacing = 0.9  # tighter stacking between rows
-        height_base = 8.0
-        height = 0.7 * height_base
-        width = 5.04 * len(components)
-        fig, axes = plt.subplots(1, len(components), figsize=(width, height))
-        if not isinstance(axes, np.ndarray):
-            axes = np.array([axes])
-
-        # Plot per component
         for i, comp in enumerate(components):
             ax = axes[i]
             pairs = ordered_by_comp[comp]
-            n_traces = len(pairs)
-            if n_traces == 0:
+            if len(pairs) == 0:
                 ax.axis('off')
                 continue
-            offsets = np.arange(n_traces) * spacing
+            offsets = np.arange(len(pairs)) * STACKED_TRACE_SPACING
             for k, (st, c) in enumerate(pairs):
                 flat_idx = trace_index_map[(st, c)]
                 d = data_matrix[flat_idx] / max_abs
@@ -203,39 +134,21 @@ class MisfitsPlotting:
                 y0 = offsets[k]
                 ax.plot(t, y0 + d, color='black')
                 ax.plot(t, y0 + s, color='#b87333')
-            ax.set_yticks(offsets)
-            ax.set_yticklabels([st for (st, _) in pairs])
-            ax.set_xlabel('Time [s]')
+            self._style_stacked_axis(ax, offsets, pairs, comp, 'Time [s]')
             if time_window_s is not None:
                 ax.set_xlim(time_window_s)
-            # Add padding so largest trace does not clip; invert y so earliest arrivals at top
-            amp_pad = 1.1
-            ax.set_ylim([-amp_pad, (offsets[-1] + amp_pad) if n_traces > 0 else amp_pad])
-            ax.invert_yaxis()
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(False)
-            ax.set_title(f'{comp}')
 
-        # Keep y tick labels only on first column; keep x tick labels on 2nd and 3rd only
+        # y tick labels on the first column only; x tick labels on the others
         for i, ax in enumerate(axes):
             if i > 0:
                 ax.tick_params(labelleft=False)
             elif len(axes) > 1:
                 ax.tick_params(labelbottom=False)
-
-        # Remove y-axis label entirely
-        for ax in axes:
             ax.set_ylabel('')
 
         plt.tight_layout()
-        if figname is not None:
-            fig.savefig(figname, dpi=300, transparent=True)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
-    
+        self._finish(fig, figname, dpi=300, transparent=True)
+
     def _get_arrivals_dict(self, event_location):
         event_lat, event_lon, depth = event_location
         taup = tau.TauPyModel(model='prem')
@@ -251,6 +164,73 @@ class MisfitsPlotting:
             arrivals[station_details.station_name] = station_arrival[0].time + SYNTHETICS_PRE_EVENT_PAD_S
         
         return arrivals
+
+    # ---------------------------------------------------------------- shared steps
+    def _trace_length(self, vector):
+        """Samples per trace of a flat data vector over every receiver component."""
+        n_traces = len([component for receiver in self.receivers.iterate() for component in receiver.components])
+        return int(len(vector) // n_traces)
+
+    def _trace_index_map(self):
+        """``{(station, component): index}`` of each trace in the flat data vector, receiver by
+        receiver in each receiver's component order."""
+        trace_index_map = {}
+        idx = 0
+        for receiver in self.receivers.iterate():
+            for comp in receiver.components:
+                trace_index_map[(receiver.station_name, comp)] = idx
+                idx += 1
+        return trace_index_map
+
+    def _pairs_by_arrival(self, event_location, trace_index_map, components):
+        """``{component: [(station, component), ...]}`` with the stations in order of P arrival."""
+        arrivals = self._get_arrivals_dict(event_location)
+        ordered_stations = sorted(arrivals.keys(), key=lambda k: arrivals[k])
+        return {
+            comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
+            for comp in components
+        }
+
+    @staticmethod
+    def _ensemble_colors(ensembles, colors):
+        """``{ensemble name: colour}`` from a list (cycled in ensemble order) or a dict of colours."""
+        if colors is None:
+            palette = ['blue', 'red', 'plum']
+            return {name: palette[i % len(palette)] for i, name in enumerate(ensembles.keys())}
+        if isinstance(colors, dict):
+            return colors
+        return {name: colors[i % len(colors)] for i, name in enumerate(ensembles.keys())}
+
+    @staticmethod
+    def _stacked_axes(n_columns, width):
+        fig, axes = plt.subplots(1, n_columns, figsize=(width, 0.7 * 8.0))
+        if not isinstance(axes, np.ndarray):
+            axes = np.array([axes])
+        return fig, axes
+
+    @staticmethod
+    def _style_stacked_axis(ax, offsets, pairs, component, xlabel):
+        """Station names as y ticks, the earliest arrival at the top, no frame."""
+        ax.set_yticks(offsets)
+        ax.set_yticklabels([st for (st, _) in pairs])
+        ax.set_xlabel(xlabel)
+        amp_pad = 1.1
+        ax.set_ylim([-amp_pad, offsets[-1] + amp_pad])
+        ax.invert_yaxis()
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.grid(False)
+        ax.set_title(f'{component}')
+
+    @staticmethod
+    def _finish(fig, figname, **savefig_kwargs):
+        """Save to ``figname`` when given, otherwise show; then close."""
+        if figname is not None:
+            fig.savefig(figname, **savefig_kwargs)
+            fig.clear()
+        else:
+            plt.show()
+        plt.close()
 
     # ---------------------------------------------------------------- record section
     def _reshape_to_cube(self, flat):
@@ -323,6 +303,7 @@ class MisfitsPlotting:
             arrivals=arrivals, channel_mask=channel_mask, title=title,
             figname=figname, **{k: v for k, v in kwargs.items() if k != "seed"})
 
+
     def plot_posterior_predictive_stacked_traces(
         self,
         observation,
@@ -369,30 +350,17 @@ class MisfitsPlotting:
             If provided, saves figure to this path; otherwise shows interactively.
         """
         rng = np.random.default_rng(seed)
-        arrivals = self._get_arrivals_dict(event_location)
-        ordered_stations = sorted(arrivals.keys(), key=lambda k: arrivals[k])
+        components = ['Z', 'E', 'N']
+        trace_index_map = self._trace_index_map()
+        ordered_by_comp = self._pairs_by_arrival(event_location, trace_index_map, components)
+        time_series_length = self._trace_length(observation)
 
-        # Build flattened-trace index map following the data layout
-        # (receiver-major, then receiver.components order).
-        all_components_list = [component for receiver in self.receivers.iterate() for component in receiver.components]
-        time_series_length = int(len(observation) // len(all_components_list))
-
-        trace_index_list = []
-        idx = 0
-        for receiver in self.receivers.iterate():
-            for comp in receiver.components:
-                trace_index_list.append((receiver.station_name, comp, idx))
-                idx += 1
-        trace_index_map = {(st, comp): i for (st, comp, i) in trace_index_list}
-
-        # Reshape observation and ensembles
         obs_matrix = np.reshape(observation, (-1, time_series_length))
         ens_matrices = {
             name: np.reshape(arr, (arr.shape[0], -1, time_series_length))
             for name, arr in ensembles.items()
         }
 
-        # Normalisation: single global peak, or per-trace peak (see per_trace docstring).
         global_max = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
         if global_max == 0:
             global_max = 1.0
@@ -403,54 +371,25 @@ class MisfitsPlotting:
             m = float(np.max(np.abs(obs_matrix[flat_idx])))
             return m if m > 0 else 1.0
 
-        # Component-specific ordered lists
-        components = ['Z', 'E', 'N']
-        ordered_by_comp = {
-            comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
-            for comp in components
-        }
-
-        # Time axis
         t = np.arange(time_series_length) / float(self.sampling_rate)
+        color_map = self._ensemble_colors(ensembles, colors)
+        fig, axes = self._stacked_axes(3, 12.6 * 1.2)
 
-        # Colors per ensemble
-        if colors is None:
-            palette = ['blue', 'red', 'plum']
-            ens_names = list(ensembles.keys())
-            color_map = {name: palette[i % len(palette)] for i, name in enumerate(ens_names)}
-        elif isinstance(colors, dict):
-            color_map = colors
-        else:
-            ens_names = list(ensembles.keys())
-            color_map = {name: colors[i % len(colors)] for i, name in enumerate(ens_names)}
-
-        # Figure
-        spacing = 0.9
-        height = 0.7 * 8.0
-        width = 12.6 * 1.2
-        fig, axes = plt.subplots(1, 3, figsize=(width, height))
-        if not isinstance(axes, np.ndarray):
-            axes = np.array([axes])
-
-        # Plot per component
         for i, comp in enumerate(components):
             ax = axes[i]
             pairs = ordered_by_comp[comp]
-            n_traces = len(pairs)
-            if n_traces == 0:
+            if len(pairs) == 0:
                 ax.axis('off')
                 continue
 
-            offsets = np.arange(n_traces) * spacing
+            offsets = np.arange(len(pairs)) * STACKED_TRACE_SPACING
 
-            # Draw observation (black)
             for k, (st, c) in enumerate(pairs):
                 flat_idx = trace_index_map[(st, c)]
                 d = obs_matrix[flat_idx] / _norm(flat_idx)
                 y0 = offsets[k]
                 ax.plot(t, y0 + d, color='black', linewidth=1.2, zorder=3, label='Observation')
 
-            # Draw ensembles (thin colored)
             for name, sample_cube in ens_matrices.items():
                 color = color_map.get(name, 'gray')
                 N = sample_cube.shape[0]
@@ -458,42 +397,21 @@ class MisfitsPlotting:
                     continue
                 take = N if N <= max_samples else max_samples
                 sel = rng.choice(N, size=take, replace=False) if N > take else np.arange(N)
-                # For each trace, overlay selected samples
                 for k, (st, c) in enumerate(pairs):
                     flat_idx = trace_index_map[(st, c)]
                     y0 = offsets[k]
-                    # samples: [take, time]
                     samples = sample_cube[sel, flat_idx, :] / _norm(flat_idx)
-                    # plot lines (vectorized loop)
                     for row in samples:
                         ax.plot(t, y0 + row, color=color, alpha=alpha, linewidth=0.6, zorder=2)
 
-            ax.set_yticks(offsets)
-            ax.set_yticklabels([st for (st, _) in pairs])
-            ax.set_xlabel('Time [s]')
-            amp_pad = 1.1
-            ax.set_ylim([-amp_pad, (offsets[-1] + amp_pad) if n_traces > 0 else amp_pad])
-            ax.invert_yaxis()
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(False)
-            ax.set_title(f'{comp}')
+            self._style_stacked_axis(ax, offsets, pairs, comp, 'Time [s]')
 
-
-        # Ticks: keep y labels only on first, x labels on 2nd and 3rd
         for i, ax in enumerate(axes):
-            if i == 0:
-                pass
-            else:
+            if i > 0:
                 ax.tick_params(labelleft=False)
-
-        for ax in axes:
             ax.set_ylabel('')
-        # add a legend box with ensemble names and colors
         if len(ensembles) > 0:
-            legend_elements = []
-            legend_elements.insert(0, plt.Line2D([0], [0], color='black', lw=2, label='Observation'))
-
+            legend_elements = [plt.Line2D([0], [0], color='black', lw=2, label='Observation')]
             legend_elements += [
                 plt.Line2D([0], [0], color=color_map.get(name, 'gray'), lw=2, label=name)
                 for name in ensembles.keys()
@@ -505,12 +423,7 @@ class MisfitsPlotting:
                 framealpha=0.8,
             )
         plt.tight_layout()
-        if figname is not None:
-            fig.savefig(figname, dpi=300, transparent=True)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
+        self._finish(fig, figname, dpi=300, transparent=True)
 
     def plot_posterior_predictive_stacked_traces_zoomin(
         self,
@@ -533,84 +446,45 @@ class MisfitsPlotting:
         amplitude (seconds). Centering is done per-station, per-component.
         """
         rng = np.random.default_rng(seed)
-        arrivals = self._get_arrivals_dict(event_location)
-        ordered_stations = sorted(arrivals.keys(), key=lambda k: arrivals[k])
+        components = ['Z', 'E', 'N']
+        trace_index_map = self._trace_index_map()
+        ordered_by_comp = self._pairs_by_arrival(event_location, trace_index_map, components)
+        time_series_length = self._trace_length(observation)
 
-        # Build flattened-trace index map following the data layout
-        all_components_list = [component for receiver in self.receivers.iterate() for component in receiver.components]
-        time_series_length = int(len(observation) // len(all_components_list))
-
-        trace_index_list = []
-        idx = 0
-        for receiver in self.receivers.iterate():
-            for comp in receiver.components:
-                trace_index_list.append((receiver.station_name, comp, idx))
-                idx += 1
-        trace_index_map = {(st, comp): i for (st, comp, i) in trace_index_list}
-
-        # Reshape observation and ensembles
         obs_matrix = np.reshape(observation, (-1, time_series_length))
         ens_matrices = {
             name: np.reshape(arr, (arr.shape[0], -1, time_series_length))
             for name, arr in ensembles.items()
         }
 
-        # Global normalization based on observation
         max_abs = np.max(np.abs(obs_matrix)) if obs_matrix.size else 1.0
         if max_abs == 0:
             max_abs = 1.0
 
-        components = ['Z', 'E', 'N']
-        ordered_by_comp = {
-            comp: [(st, comp) for st in ordered_stations if (st, comp) in trace_index_map]
-            for comp in components
-        }
-
-        # Colors per ensemble
-        if colors is None:
-            palette = ['blue', 'red', 'plum']
-            ens_names = list(ensembles.keys())
-            color_map = {name: palette[i % len(palette)] for i, name in enumerate(ens_names)}
-        elif isinstance(colors, dict):
-            color_map = colors
-        else:
-            ens_names = list(ensembles.keys())
-            color_map = {name: colors[i % len(colors)] for i, name in enumerate(ens_names)}
-
-        # Window half-width in samples
+        color_map = self._ensemble_colors(ensembles, colors)
         half_M = M // 2
-
-        spacing = 0.9
-        height = 0.7 * 8.0
-        width = 12.6 * 1.2
-        fig, axes = plt.subplots(1, 3, figsize=(width, height))
-        if not isinstance(axes, np.ndarray):
-            axes = np.array([axes])
+        fig, axes = self._stacked_axes(3, 12.6 * 1.2)
 
         for i, comp in enumerate(components):
             ax = axes[i]
             pairs = ordered_by_comp[comp]
-            n_traces = len(pairs)
-            if n_traces == 0:
+            if len(pairs) == 0:
                 ax.axis('off')
                 continue
 
-            offsets = np.arange(n_traces) * spacing
+            offsets = np.arange(len(pairs)) * STACKED_TRACE_SPACING
 
-            # Plot observation and ensembles for each trace
             for k, (st, c) in enumerate(pairs):
                 flat_idx = trace_index_map[(st, c)]
                 obs_trace = obs_matrix[flat_idx]
-                # find index of max abs amplitude
                 peak_idx = int(np.argmax(np.abs(obs_trace)))
                 start = max(0, peak_idx - half_M)
                 end = min(time_series_length, start + M)
-                # adjust start if near end to keep window length M when possible
+                # keep the window M samples long near the end of the trace
                 if end - start < M:
                     start = max(0, end - M)
                 win_obs = obs_trace[start:end] / max_abs
 
-                # local time axis relative to peak (seconds)
                 local_len = end - start
                 t_local = (np.arange(local_len) - (peak_idx - start)) / float(self.sampling_rate)
 
@@ -618,7 +492,6 @@ class MisfitsPlotting:
                 ax.plot(t_local, y0 + win_obs, color='black', linewidth=1.2, zorder=3,
                         label='Observation' if (i == 0 and k == 0) else None)
 
-                # Ensembles
                 for name, sample_cube in ens_matrices.items():
                     color = color_map.get(name, 'gray')
                     N = sample_cube.shape[0]
@@ -631,18 +504,8 @@ class MisfitsPlotting:
                         ax.plot(t_local, y0 + row, color=color, alpha=alpha, linewidth=0.6, zorder=2,
                                 label=name if (i == 0 and k == 0) else None)
 
-            ax.set_yticks(offsets)
-            ax.set_yticklabels([st for (st, _) in pairs])
-            ax.set_xlabel('Time relative to peak [s]')
-            amp_pad = 1.1
-            ax.set_ylim([-amp_pad, (offsets[-1] + amp_pad) if n_traces > 0 else amp_pad])
-            ax.invert_yaxis()
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(False)
-            ax.set_title(f'{comp}')
+            self._style_stacked_axis(ax, offsets, pairs, comp, 'Time relative to peak [s]')
 
-        # Build combined legend from labels set above
         handles, labels = [], []
         for ax in axes:
             h, l = ax.get_legend_handles_labels()
@@ -654,17 +517,9 @@ class MisfitsPlotting:
             axes[-1].legend([h for h, _ in uniq], [l for _, l in uniq], loc='upper right', fontsize='small', framealpha=0.85)
 
         for i, ax in enumerate(axes):
-            if i == 0:
-                # keep both x and y labels
-                pass
-            else:
+            if i > 0:
                 ax.tick_params(labelleft=False)
             ax.set_ylabel('')
 
         plt.tight_layout()
-        if figname is not None:
-            fig.savefig(figname, dpi=300, transparent=True)
-            fig.clear()
-        else:
-            plt.show()
-        plt.close()
+        self._finish(fig, figname, dpi=300, transparent=True)
