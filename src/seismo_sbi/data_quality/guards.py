@@ -179,18 +179,39 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
     """
     comps = list(components)
     cv = component_verdicts(metrics, thresholds, snr_metrics=snr)
+    obs_dead = _apply_channel_health(cv, metrics, snr, thresholds, blocklist, obs, present, comps)
+    component_drops = _dropped_components(cv)
+    comp_map, dropped = _collapse_to_stations(cv, component_drops, present, comps)
+
+    event_flags = event_contamination(metrics, snr or [], cv, exclude=tuple(blocklist))
+    if event_flags.get("contaminated") and contaminated_action == "warn":
+        component_drops = _health_drops_only(component_drops, obs_dead)
+        comp_map, dropped = _collapse_to_stations(cv, component_drops, present, comps)
+
+    floor = max(min_stations, int(np.ceil(min_fraction * len(present))))
+    _fill_to_keep_floor(comp_map, dropped, snr, present, comps, blocklist, floor)
+
+    return comp_map, dropped, component_drops, event_flags
+
+
+def _with_verdict(old, verdict):
+    """``old`` with its verdict replaced."""
+    return ComponentVerdict(old.station, old.component, verdict, old.max_xcorr, old.amp_ratio_obs_syn)
+
+
+def _apply_channel_health(cv, metrics, snr, thresholds, blocklist, obs, present, comps):
+    """Override the verdicts ``cv`` in place with the sigma outliers, the blocklist and the channels
+    dead in the observation; returns the observation-dead ``{(station, component): 'drop-dead'}``."""
     # sigma outliers need the other stations, so they are applied here, not in the per-trace gate
     for (sta, comp), verdict in sigma_outlier_verdicts(
             snr or [], thresholds, metrics=metrics).items():
         old = cv.get(sta, {}).get(comp)
         if old is not None and old.is_kept:
-            cv[sta][comp] = ComponentVerdict(sta, comp, verdict,
-                                             old.max_xcorr, old.amp_ratio_obs_syn)
+            cv[sta][comp] = _with_verdict(old, verdict)
     for (sta, comp) in blocklist:
         old = cv.get(sta, {}).get(comp)
         if old is not None:
-            cv[sta][comp] = ComponentVerdict(sta, comp, "drop-blocklist",
-                                             old.max_xcorr, old.amp_ratio_obs_syn)
+            cv[sta][comp] = _with_verdict(old, "drop-blocklist")
 
     obs_dead = {}
     if obs is not None:
@@ -199,38 +220,43 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
         for (sta, comp) in obs_dead:
             old = cv.get(sta, {}).get(comp)
             if old is not None and old.is_kept:
-                cv[sta][comp] = ComponentVerdict(sta, comp, "drop-dead",
-                                                 old.max_xcorr, old.amp_ratio_obs_syn)
+                cv[sta][comp] = _with_verdict(old, "drop-dead")
+    return obs_dead
 
-    # per-component collapse: keep surviving channels; a station drops only when none survive
-    component_drops = {(s, c): v.verdict for s, d in cv.items()
-                       for c, v in d.items() if v.is_dropped}
 
-    def _collapse(drops):
-        comp_map: Dict[str, List[str]] = {}
-        dropped: Dict[str, str] = {}
-        for sta in present:
-            kept_c = [c for c in comps
-                      if cv.get(sta, {}).get(c) is not None and (sta, c) not in drops]
-            if kept_c:
-                comp_map[sta] = kept_c
-            else:
-                vs = [drops.get((sta, c)) for c in comps if (sta, c) in drops]
-                dropped[sta] = vs[0] if vs else "drop"
-        return comp_map, dropped
+def _dropped_components(cv):
+    """``{(station, component): verdict}`` of every dropped component."""
+    return {(s, c): v.verdict for s, d in cv.items()
+            for c, v in d.items() if v.is_dropped}
 
-    comp_map, dropped = _collapse(component_drops)
 
-    event_flags = event_contamination(metrics, snr or [], cv, exclude=tuple(blocklist))
-    if event_flags.get("contaminated") and contaminated_action == "warn":
-        keep_drops = {k: v for k, v in component_drops.items() if v == "drop-blocklist"}
-        for key in obs_dead:
-            keep_drops.setdefault(key, "drop-dead")
-        component_drops = keep_drops
-        comp_map, dropped = _collapse(component_drops)
+def _collapse_to_stations(cv, drops, present, comps):
+    """``(comp_map, dropped)``: the surviving components of each station, and the stations with
+    none left, each with the verdict of its first dropped component."""
+    comp_map: Dict[str, List[str]] = {}
+    dropped: Dict[str, str] = {}
+    for sta in present:
+        kept_c = [c for c in comps
+                  if cv.get(sta, {}).get(c) is not None and (sta, c) not in drops]
+        if kept_c:
+            comp_map[sta] = kept_c
+        else:
+            vs = [drops.get((sta, c)) for c in comps if (sta, c) in drops]
+            dropped[sta] = vs[0] if vs else "drop"
+    return comp_map, dropped
 
-    # keep floor: restore stations in order of observed debiased signal SNR
-    floor = max(min_stations, int(np.ceil(min_fraction * len(present))))
+
+def _health_drops_only(component_drops, obs_dead):
+    """The drops a contaminated window keeps: the blocklist and the observation-dead channels."""
+    keep_drops = {k: v for k, v in component_drops.items() if v == "drop-blocklist"}
+    for key in obs_dead:
+        keep_drops.setdefault(key, "drop-dead")
+    return keep_drops
+
+
+def _fill_to_keep_floor(comp_map, dropped, snr, present, comps, blocklist, floor):
+    """Restore stations into ``comp_map`` (and out of ``dropped``) in order of observed debiased
+    signal SNR until ``floor`` stations survive; a blocklisted channel is never restored."""
     if len(comp_map) < floor:
         snr_by_sta: Dict[str, list] = {}
         for s in (snr or []):
@@ -241,9 +267,7 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
             if len(comp_map) >= floor:
                 break
             if st not in comp_map:
-                restore = [c for c in comps if (st, c) not in block]   # never un-blocklist
+                restore = [c for c in comps if (st, c) not in block]
                 if restore:
                     comp_map[st] = restore
                     dropped.pop(st, None)
-
-    return comp_map, dropped, component_drops, event_flags
