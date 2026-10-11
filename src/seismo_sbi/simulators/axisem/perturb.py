@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from seismo_sbi.simulators.cps.smooth_perturbations import brocher_rho
+from seismo_sbi.simulators.cps.layered_models import brocher_rho
 from .model_io import BackgroundModel
 
 #: The largest shear-to-compressional speed ratio a solid can have, at Poisson's ratio zero.

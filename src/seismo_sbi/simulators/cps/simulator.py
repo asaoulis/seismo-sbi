@@ -27,8 +27,12 @@ from seismo_sbi.utils.errors import InvalidConfiguration
 
 #: Rate (Hz) at which every CPS backend computes and returns its Green's functions.
 CPS_SAMPLING_RATE_HZ = 1.0
-CPS_INPUT_COVERSION = 1.e-13
-CPS_OUTPUT_COVERSION = 1.e-2
+#: One N m as a fraction of the 1e20 dyne-cm moment of hpulse96's Green's functions (1 N m = 1e7 dyne-cm).
+NEWTON_METRE_TO_CPS_MOMENT = 1.e-13
+#: hpulse96 gives displacement in cm for a model in km and g/cm^3.
+CENTIMETRE_TO_METRE = 1.e-2
+
+
 def enu_to_ned(Mxx, Myy, Mzz, Mxy, Mxz, Myz):
     Mnn = Myy
     Mee = Mxx
@@ -87,7 +91,7 @@ class CPSSimulator(Simulator):
 
     def compute_greens_functions(self, source: GenericPointSource, velocity_model, **kwargs):
         objstats = build_objstats(self.receivers, source, self.seismogram_length)
-        greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1 / CPS_SAMPLING_RATE_HZ, force_calc=True, verbose=False, rootdir=self.gf_storage_root, **kwargs)
+        greens_functions = self.compute_or_load_greens_functions(objstats, velocity_model, delta=1 / CPS_SAMPLING_RATE_HZ, rootdir=self.gf_storage_root, **kwargs)
         greens_functions = greens_functions.transpose(2, 0, 1, 3)
 
         used_greens_functions = []
@@ -104,11 +108,11 @@ class CPSSimulator(Simulator):
         mt = mtm.MomentTensor(m_up_south_east=create_matrix(moment_tensor_components))
         moment_tensor_components = mt.m6_east_north_up()
         moment_tensor_components = np.array(enu_to_ned(*moment_tensor_components))
-        seismograms = moment_tensor_components @ self.sensitivity_kernels * CPS_INPUT_COVERSION * CPS_OUTPUT_COVERSION
+        seismograms = moment_tensor_components @ self.sensitivity_kernels * NEWTON_METRE_TO_CPS_MOMENT * CENTIMETRE_TO_METRE
         return seismograms
     
     @abstractmethod
-    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', **kwargs):
+    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, rootdir='.', **kwargs):
         """Green's functions for this simulator's receivers; implemented by each subclass."""
         raise NotImplementedError("This method should be implemented in subclasses.")
     
@@ -127,15 +131,13 @@ class CPSVariableKernelSimulator(CPSSimulator):
                     item.rmdir()
 
     
-    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', **kwargs):
+    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, rootdir='.', **kwargs):
         kwargs.pop('use_fiducial', False)
         kwargs.pop('seed', None)
         return update_with_Gtensor(
             objstats,
             velocity_model,
             delta=delta,
-            force_calc=force_calc,
-            verbose=verbose,
             rootdir=rootdir,
             filter_params=self.synthetics_processing['filter'],
             cps_path=self.cps_path,
@@ -147,8 +149,7 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
 
     def __init__(self, fiducial_model_path, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cps_data_path = self.gf_storage_root
-        cps_data_path = Path(self.cps_data_path)
+        cps_data_path = Path(self.gf_storage_root)
         self._fiducial_model_path = Path(fiducial_model_path)
         single_gf_path = Path(cps_data_path) / 'GF.mseed'
         if single_gf_path.exists():
@@ -166,27 +167,15 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
     def fiducial_member(self):
         return self._fiducial_model_path
 
-    @property
-    def cps_data_folders(self):
-        return self._cps_data_folders
-
-    @property
-    def fiducial_model_path(self):
-        return self._fiducial_model_path
-
-    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, force_calc=True, verbose=False, rootdir='.', **kwargs):
+    def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, rootdir='.', **kwargs):
         seed = kwargs.pop('seed', None)
         use_fiducial = kwargs.pop('use_fiducial', False)
         member = kwargs.pop('member', None)
         cps_data_folder = self.select_member(use_fiducial=use_fiducial, seed=seed, member=member)
-        if verbose:
-            print(f"Using CPS data folder: {cps_data_folder}")
         return update_with_Gtensor(
             objstats,
             velocity_model,
             delta=delta,
-            force_calc=False,
-            verbose=verbose,
             gf_directory=cps_data_folder,
             filter_params=self.synthetics_processing['filter'],
             cps_path=self.cps_path,
@@ -196,13 +185,13 @@ class CPSPrecomputedSimulator(GFEnsembleSimulator, CPSSimulator):
     def get_all_models_array(self):
         """Every velocity model under the Green's-function storage root, as one array."""
         all_models = []
-        for folder in self.cps_data_folders:
+        for folder in self.members:
             model_path = folder / 'vel.mod'
             if model_path.exists():
                 model = np.genfromtxt(model_path, skip_header=12)
                 all_models.append(model)
         
-        fiducial_model = np.genfromtxt(self.fiducial_model_path / 'vel.mod', skip_header=12)
+        fiducial_model = np.genfromtxt(self.fiducial_member / 'vel.mod', skip_header=12)
         return fiducial_model, np.array(all_models)
 
 
@@ -240,8 +229,6 @@ class MultiModelCPSSimulator(MultiModelSimulator, CPSSimulator):
         objstats,
         velocity_model,
         delta=1.0,
-        force_calc=True,
-        verbose=False,
         rootdir='.',
         **kwargs,
     ):

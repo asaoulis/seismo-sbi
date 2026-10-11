@@ -11,9 +11,7 @@ from itertools import chain
 
 import numpy as np
 
-from seismo_sbi.simulators.cps.CPS import perturb_model
-from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.simulators.cps.smooth_perturbations import perturb_cps_model
+from seismo_sbi.simulators.cps.layered_models import load_velocity_model, perturb_cps_model, perturb_model
 
 logger = logging.getLogger(__name__)
 

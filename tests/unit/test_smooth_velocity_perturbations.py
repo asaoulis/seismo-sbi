@@ -3,8 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from seismo_sbi.simulators.cps.compatibility import load_velocity_model
-from seismo_sbi.simulators.cps.smooth_perturbations import perturb_cps_model
+from seismo_sbi.simulators.cps.layered_models import load_velocity_model, perturb_cps_model
 
 PREM_LIKE_MODEL = Path(__file__).resolve().parents[1] / "fixtures" / "prem_like_cps_model.txt"
 

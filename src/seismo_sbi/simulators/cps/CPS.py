@@ -2,8 +2,9 @@
 
 Writes the velocity model and the distance file the CPS programs read, runs hprep96, hspec96
 and hpulse96 over a list of epicentral distances, and reads the elementary Green's functions
-back. ``update_with_Gtensor`` rotates them to a receiver's azimuth and into the moment-tensor
-frame, so a simulation is a contraction of the tensor with the six components.
+back. ``update_with_Gtensor`` reads or computes them, cuts and filters each receiver's window,
+and rotates them to the receiver's azimuth and into the moment-tensor frame, so a simulation is a
+contraction of the tensor with the six components.
 """
 import logging
 import subprocess
@@ -13,51 +14,18 @@ import hashlib
 import uuid
 import numpy as np
 
+from seismo_sbi.simulators.cps.layered_models import write_Model96
+
 logger = logging.getLogger(__name__)
 
-TEN = 10
-
-def write_Model96(vel_model, fname):
-    '''Write the layered model ``vel_model`` to ``fname`` in the Model96 format CPS reads.'''
-    thick = vel_model[0, :]
-    vp = vel_model[1, :]
-    vs = vel_model[2, :]
-    rho = vel_model[3, :]
-    qka = vel_model[4, :]
-    qmu = vel_model[5, :]
-
-    fid = open(fname, 'w')
-    fid.write('MODEL.01\n' +
-            'Layered model written by seismo_sbi\n' +
-            'ISOTROPIC\n' +
-            'KGS\n' +
-            'FLAT EARTH\n' +
-            '1-D\n' +
-            'CONSTANT VELOCITY\n' +
-            'LINE08\n' +
-            'LINE09\n' +
-            'LINE10\n' +
-            'LINE11\n')
-    fid.write('H(KM)    VP(KM/S) VS(KM/S) RHO(GM/CC)  QP       QS    ETAP     ETAS   FREFP    FREFS\n')
-    for n in range(len(thick)):
-        line = '%-8.2f %-8.3f %-8.3f %-8.3f %-8.1f %-8.1f %-8.1f %-8.1f %-8.1f %-8.1f\n' % \
-            (thick[n], vp[n], vs[n], rho[n], qka[n], qmu[n], 0, 0, 1, 1)
-        fid.write(line)
-    fid.flush()
-    fid.close()
+#: Elementary Green's functions per distance: ZDD, RDD, ZDS, RDS, TDS, ZSS, RSS, TSS, ZEX, REX.
+N_ELEMENTARY_GREENS_FUNCTIONS = 10
 
 
 def random_run_tag():
     """A random 32-character hex string that names one CPS working directory."""
     random_bytes = uuid.uuid4().bytes
     return hashlib.md5(random_bytes).hexdigest()
-
-def perturb_model(vmodel, kappa):
-    '''Perturb the velocity model by adding random noise to it.'''
-    perturb = vmodel.copy()
-    if kappa < 1.: logger.warning('Warning: kappa is too small to make any perturbation')
-    perturb[:3, :] *= np.random.normal(1, kappa/100, (3, vmodel.shape[1]))
-    return perturb
 
 def calc_CPS_GFs(dists_in_km, evdp_in_km, vmodel, output='DISP',
                  dt=1, npts=512, t0=0, vred=0, wdir='.', verbose=False, cps_path=None):
@@ -102,37 +70,52 @@ def calc_CPS_GFs(dists_in_km, evdp_in_km, vmodel, output='DISP',
     if verbose: logger.info('  - Calculated GF written to %s', wdir_path / 'GF.mseed')
 
 def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_params=None,
-                         force_calc=True, verbose=True, rootdir='.', gf_directory=None,
-                         cps_path=None):
+                         rootdir='.', gf_directory=None, cps_path=None):
     """Green's functions for every receiver in ``objstats``, rotated into the moment-tensor
-    frame, computing them with CPS first if they are not already stored.
+    frame, shaped ``(n_receivers, 3, 6, n_samples)`` with components Z, E, N. They are read from
+    ``gf_directory`` when given, otherwise computed with CPS under ``rootdir``.
     """
     dists = np.unique(np.round(sorted([s.distance for s in objstats]), 1))
-    evdp = evdp_in_km if evdp_in_km is not None else objstats[0].event_depth
+    gfstream = read_or_compute_greens_functions(objstats, vmodel, dists, evdp_in_km=evdp_in_km,
+                                                rootdir=rootdir, gf_directory=gf_directory,
+                                                cps_path=cps_path)
+    gfarr = window_greens_functions(gfstream, objstats, dists, filter_params, delta)
+    return rotate_to_moment_tensor_frame(gfarr, [s.azimuth for s in objstats],
+                                         [obj.back_azimuth for obj in objstats])
+
+
+def read_or_compute_greens_functions(objstats, vmodel, dists, evdp_in_km=None, rootdir='.',
+                                     gf_directory=None, cps_path=None):
+    """The elementary Green's functions at the distances ``dists`` in km, as a Stream: read from
+    ``gf_directory`` when given, otherwise computed for ``vmodel`` in a new randomly named
+    directory under ``rootdir``."""
     if gf_directory is None:
+        evdp = evdp_in_km if evdp_in_km is not None else objstats[0].event_depth
         hashcode = random_run_tag()
         wdir_path = Path(rootdir) / hashcode
         if not wdir_path.exists(): wdir_path.mkdir(parents=True)
-        if not (wdir_path / 'GF.mseed').exists() or force_calc:
-            calc_CPS_GFs(
-                dists,
-                evdp,
-                vmodel,
-                npts=2 * objstats[0].window,
-                wdir=str(wdir_path),
-                verbose=verbose,
-                output='DISP',
-                cps_path=cps_path,
-            )
-
-        if verbose: logger.info('  - Reading GF from %s', wdir_path / 'GF.mseed')
-        gfstream = read(wdir_path / 'GF.mseed', format='MSEED')
+        calc_CPS_GFs(
+            dists,
+            evdp,
+            vmodel,
+            npts=2 * objstats[0].window,
+            wdir=str(wdir_path),
+            verbose=False,
+            output='DISP',
+            cps_path=cps_path,
+        )
     else:
         wdir_path = Path(gf_directory)
         if not wdir_path.exists():
             raise FileNotFoundError(f"GF directory {gf_directory} does not exist.")
-        if verbose: logger.info('  - Reading GF from %s', wdir_path / 'GF.mseed')
-        gfstream = read(wdir_path / 'GF.mseed', format='MSEED')
+    logger.debug('  - Reading GF from %s', wdir_path / 'GF.mseed')
+    return read(wdir_path / 'GF.mseed', format='MSEED')
+
+
+def window_greens_functions(gfstream, objstats, dists, filter_params=None, delta=None):
+    """Each receiver's elementary Green's functions cut to its window, filtered with
+    ``filter_params`` (and its ``time_shift`` in s) when given and resampled to ``delta`` s,
+    shaped ``(n_receivers, 10, n_samples)``."""
     gfstream_processed = Stream()
     for s in objstats:
         gfid = '%03d' % (np.where(dists == np.round(s.distance, 1))[0][0] + 1)
@@ -177,15 +160,23 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
             gfstream_processed.extend(tr)
     try:
         ns = len(objstats)
-        nc = 3
-        ne = 6
         nt = int(s.window / gfstream_processed[0].stats.delta)
-        gfarr = np.array([tr.data[:nt] for tr in gfstream_processed]).reshape((ns, TEN, nt))
+        gfarr = np.array([tr.data[:nt] for tr in gfstream_processed]).reshape((ns, N_ELEMENTARY_GREENS_FUNCTIONS, nt))
     except Exception as ex:
         logger.warning('The length of GF function might need to be longer!')
         raise ex
+    return gfarr
+
+
+def rotate_to_moment_tensor_frame(gfarr, azimuths_deg, back_azimuths_deg):
+    """The elementary Green's functions ``gfarr`` ``(n_receivers, 10, n_samples)`` combined into the
+    response of each component Z, E, N to each moment-tensor component, shaped
+    ``(n_receivers, 3, 6, n_samples)``."""
+    ns, _, nt = gfarr.shape
+    nc = 3
+    ne = 6
     gf_tensor = np.zeros((ns, nc, ne, nt))
-    phi = np.deg2rad([s.azimuth for s in objstats]).reshape((ns, 1))
+    phi = np.deg2rad(azimuths_deg).reshape((ns, 1))
     # Rotation to the receiver azimuths, after Minson and Dreger (2008); vertical positive up.
     gf_tensor[:,0,0] =  np.cos(2*phi) * gfarr[:,5]/2 - gfarr[:,0]/6 + gfarr[:,8]/3
     gf_tensor[:,0,1] = -np.cos(2*phi) * gfarr[:,5]/2 - gfarr[:,0]/6 + gfarr[:,8]/3
@@ -205,7 +196,7 @@ def update_with_Gtensor(objstats, vmodel, delta=None, evdp_in_km=None, filter_pa
     gf_tensor[:,2,4] =  np.sin(phi)   * gfarr[:,4]
     gf_tensor[:,2,5] = -np.cos(phi)   * gfarr[:,4]
     # Radial and tangential into north and east, after the CPS manual page B-6.
-    baz = np.deg2rad([obj.back_azimuth for obj in objstats]).reshape((ns, 1, 1))
+    baz = np.deg2rad(back_azimuths_deg).reshape((ns, 1, 1))
     Ncomp = -gf_tensor[:,1] * np.cos(baz) + gf_tensor[:,2] * np.sin(baz)
     Ecomp = -gf_tensor[:,1] * np.sin(baz) - gf_tensor[:,2] * np.cos(baz)
     gf_tensor[:,2,:,:] = Ncomp
