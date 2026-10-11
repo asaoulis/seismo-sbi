@@ -79,6 +79,9 @@ def main():
     generate_CPS_perturbations(config)
 
 def generate_CPS_perturbations(config):
+    output_path = Path(config.sim_parameters.cps_GFs_path)
+    shutil.rmtree(output_path, ignore_errors=True)
+    output_path.mkdir(parents=True)
     config_path = None
     Pipeline = PIPELINE_CLASSES[config.pipeline_type]
     sbi_pipeline = Pipeline(config.pipeline_parameters, config_path)

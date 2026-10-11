@@ -117,20 +117,11 @@ class CPSSimulator(Simulator):
         raise NotImplementedError("This method should be implemented in subclasses.")
     
 class CPSVariableKernelSimulator(CPSSimulator):
+    """Runs CPS for the velocity model of each simulation. Each simulation writes its Green's
+    functions and model to a new randomly named directory under ``gf_storage_root``, which is how
+    an ensemble for :class:`CPSPrecomputedSimulator` is made. An existing ``gf_storage_root`` is
+    appended to, never cleared: clear it first to start a new ensemble."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if self.gf_storage_root is not None and Path(self.gf_storage_root).exists():
-            for item in Path(self.gf_storage_root).iterdir():
-                if item.is_file():
-                    item.unlink()
-                elif item.is_dir():
-                    for sub_item in item.iterdir():
-                        sub_item.unlink()
-                    item.rmdir()
-
-    
     def compute_or_load_greens_functions(self, objstats, velocity_model, delta=1.0, rootdir='.', **kwargs):
         kwargs.pop('use_fiducial', False)
         kwargs.pop('seed', None)
