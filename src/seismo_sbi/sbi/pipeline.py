@@ -566,6 +566,7 @@ class SingleEventPipeline(SBIPipeline):
             data_vector,
             compressor,
             single_step=single_least_squares_step,
+            compression_methods=[(compressor_name, self.compressor_options(compressor_name))],
         )
         self.parameters.theta_fiducial = self.parameters.vector_to_parameters(compression_data.theta_fiducial, 'theta_fiducial')
         self.set_compressor(compressor_name, compression_data, extra_gradients, covariance_data, prior)
