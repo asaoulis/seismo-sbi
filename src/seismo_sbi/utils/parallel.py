@@ -1,9 +1,9 @@
 """joblib helpers: a mapped loop and progress reporting.
 
-``parallel_execution`` maps a function over inputs, serially for one job, and ``run_tasks`` maps
-one over argument tuples on loky workers with a progress bar. ``tqdm_joblib`` patches joblib so a
-parallel loop advances a tqdm bar given to it, and restores it on exit. Inside a
-Jupyter kernel both pause garbage collection while workers start (``gc_paused_in_notebooks``).
+``run_tasks`` maps a function over argument tuples on loky workers with a progress bar, serially
+for one job. ``tqdm_joblib`` patches joblib so a parallel loop advances a tqdm bar given to it, and
+restores it on exit. Inside a Jupyter kernel it pauses garbage collection while workers start
+(``gc_paused_in_notebooks``).
 ``worker_seeds`` gives each task its own seed, since workers start with fresh random state.
 """
 
@@ -41,18 +41,10 @@ def tqdm_joblib(tqdm_object):
         tqdm_object.close()
 
 
-def parallel_execution(inputs, func, num_jobs = 20):
-    """``[func(x) for x in inputs]``, with ``num_jobs`` joblib workers unless it is 0, 1 or None."""
-    if num_jobs in [None, 0 , 1]:
-        return [func(block) for block in inputs]
-    with gc_paused_in_notebooks():
-        return joblib.Parallel(n_jobs=num_jobs)(joblib.delayed(func)(block) for block in inputs)
-
-
 def run_tasks(func, args_list, num_jobs, description):
-    """``[func(*args) for args in args_list]``, serially for ``num_jobs`` 0 or 1, else on ``num_jobs``
-    loky workers behind a ``description`` progress bar; the worker pool is killed afterwards."""
-    if num_jobs in [0, 1]:
+    """``[func(*args) for args in args_list]``, serially for ``num_jobs`` None, 0 or 1, else on
+    ``num_jobs`` loky workers behind a ``description`` progress bar; the worker pool is killed afterwards."""
+    if num_jobs in [None, 0, 1]:
         return [func(*args) for args in args_list]
     try:
         with tqdm_joblib(tqdm(desc=description, total=len(args_list))):
