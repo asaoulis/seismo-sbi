@@ -427,9 +427,10 @@ class SBI_Configuration:
     def _add_parameter_information(self, parameter_type, bounds):
 
         if parameter_type == "source_location":
+            centre_latitude_deg = (bounds[0][0] + bounds[1][0]) / 2
             self.model_parameters.information[parameter_type]= [
-                    ParameterInformation("$y$", "$km$", DegreeKMConverter(bounds[0][0], DegreeType.LATITUDE)),
-                    ParameterInformation("$x$", "$km$", DegreeKMConverter(bounds[0][1], DegreeType.LONGITUDE)),
+                    ParameterInformation("$y$", "$km$", DegreeKMConverter(bounds[0][0], DegreeType.LATITUDE, centre_latitude_deg)),
+                    ParameterInformation("$x$", "$km$", DegreeKMConverter(bounds[0][1], DegreeType.LONGITUDE, centre_latitude_deg)),
                     ParameterInformation("$z$", "$km$"),
                     ParameterInformation("$\Delta t$", "$s$")
                 ]
