@@ -12,7 +12,6 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple
-# removed top-level h5py import to avoid missing dependency error during static checks
 import numpy as np
 
 from seismo_sbi.sbi.configuration import SBI_Configuration

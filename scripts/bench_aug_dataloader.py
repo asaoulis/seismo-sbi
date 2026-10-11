@@ -2,7 +2,7 @@
 
 On a synthetic simulation set (no Instaseis or CPS), times the simulation load, ``__getitem__`` with
 and without the augmentation chain, each effect through ``apply_chain_to_array``, and DataLoader
-throughput over ``num_workers``; prints a fixed-seed checksum of one augmented sample. Not a
+throughput over ``num_workers``. Prints a fixed-seed checksum of one augmented sample. Not a
 test. Usage: ``python scripts/bench_aug_dataloader.py --stations 30 --num-sims 128``.
 """
 import argparse

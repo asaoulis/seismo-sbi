@@ -3,7 +3,7 @@
 Companion to ``scripts/bench_aug_dataloader.py``. That one drained the loader with
 NO model, so workers couldn't overlap anything; THIS one runs **real training**
 (embedding net + flow, forward+backward on the GPU via Lightning) so per-sample CPU
-augmentation can be hidden behind GPU compute — which is the whole point of workers.
+augmentation can be hidden behind GPU compute, which is the whole point of workers.
 
 Uses the fabricated-kernel pipeline (no Instaseis/CPS, no network), the same
 substrate as ``tests/end_to_end/test_train_npe_one_epoch.py``, but with a realistic

@@ -1,4 +1,4 @@
-"""Interleaved A/B passthrough benchmark — reliable relative speedups under clock drift.
+"""Interleaved A/B passthrough benchmark: reliable relative speedups under clock drift.
 
 The A6000 on this box thermally drifts (1800-2100 MHz), so absolute ms/step wanders run to
 run. This harness builds several model variants (by `perf` toggle) in ONE process, shares a
@@ -9,7 +9,7 @@ smaller stacked wins.
 
 Also (optionally) proves equivalence: loads the eager model's weights into each variant
 (`FusedMHA` mirrors `nn.MultiheadAttention`'s param names, so the state_dict transfers) and
-reports the max abs difference of the embedding output — a behaviour-preserving check for the
+reports the max abs difference of the embedding output: a behaviour-preserving check for the
 fused-attention path.
 
 Usage:
@@ -39,7 +39,7 @@ def parse_variant(spec):
     """'amp+sdpa+ds8' -> {'amp':True,'sdpa':True,'_ds':8}; 'eager' -> {}.
 
     Extended tokens: 'fused' (fused AdamW), 'decK' (model-entry input decimation
-    factor K), 'ntK' (flow num_transforms K) — popped by builders like '_ds'.
+    factor K), 'ntK' (flow num_transforms K): popped by builders like '_ds'.
     """
     perf = {}
     if spec in ("eager", "base", "baseline"):

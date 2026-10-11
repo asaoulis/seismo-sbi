@@ -2,12 +2,12 @@
 
 The flow:
 
-  1. find_mseed_files  — locate raw data on disk
+  1. find_mseed_files: locate raw data on disk
   2. load_waveforms    — read into a single obspy.Stream
   3. load_inventory    — read StationXML from a directory
   4. deconvolve_and_filter — remove response, bandpass, resample
   5. write_window      — write preprocessed daily mseed (optional, for audit)
-  6. export_to_sbi_h5  — the ONLY h5 write; RealNoiseSampler reads this
+  6. export_to_sbi_h5: the ONLY h5 write. RealNoiseSampler reads this
 
 Usage:
     python custom_preprocess.py \
@@ -75,7 +75,7 @@ def get_arguments():
     )
     parser.add_argument(
         "--channel_glob", type=str, default="BH?",
-        help="Glob pattern for channel selection (e.g. 'BH?' or 'HH?').",
+        help="Glob pattern for channel selection (for example 'BH?' or 'HH?').",
     )
     parser.add_argument(
         "--no_instrument_correction", action="store_true",
@@ -133,12 +133,12 @@ def main():
             network=network, channel_glob=args.channel_glob,
         )
         if not paths:
-            print(f"  No data for {network}.{station} — skipping")
+            print(f"  No data for {network}.{station}: skipping")
             continue
         try:
             st = load_waveforms(paths, starttime=t0_load, endtime=t1_load)
             if len(st) == 0:
-                print(f"  Empty stream for {network}.{station} — skipping")
+                print(f"  Empty stream for {network}.{station}: skipping")
                 continue
             combined_stream += st
             available_stations.append(station)
@@ -157,7 +157,7 @@ def main():
     if remove_response:
         if not stationxml_dir.is_dir():
             print(
-                f"WARNING: stationxml_dir {stationxml_dir} not found — "
+                f"WARNING: stationxml_dir {stationxml_dir} not found: "
                 "skipping response removal."
             )
             remove_response = False
@@ -166,7 +166,7 @@ def main():
                 inventory = load_inventory(stationxml_dir)
                 print(f"Loaded inventory from {stationxml_dir}")
             except FileNotFoundError as exc:
-                print(f"WARNING: {exc} — skipping response removal.")
+                print(f"WARNING: {exc}: skipping response removal.")
                 remove_response = False
 
     print("Processing waveforms...")

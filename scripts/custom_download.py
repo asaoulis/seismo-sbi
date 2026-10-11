@@ -14,25 +14,24 @@ def get_arguments():
         '-o', '--output_dir', type=Path, default=Path("/data/alex/long_valley/test"),
         help="Directory to save downloaded data. Defaults to ./data"
     )
-    # Added: configurable stations file path
     parser.add_argument(
         '--stations_file', type=Path,
         default=Path(__file__).resolve().parent / "configs" / "long_valley" / "stations.txt",
         help="Path to stations.txt with columns: STATION NETWORK LAT LON"
     )
-    # add providers list, default is all providers i.e. None
+    # add providers list. None means every provider
     parser.add_argument(
         '--providers', type=str, default=None,
-        help="Comma-separated list of providers to query (e.g., 'IRIS,NCEDC'). Defaults to all providers."
+        help="Comma-separated list of providers to query (for example 'IRIS,NCEDC'). Defaults to all providers."
     )
     # add datetime range for download
     parser.add_argument(
         '--starttime', type=str, default="1997-11-22T17:00:00",
-        help="Start time for data download in ISO format (e.g., '1997-11-22T11:30:00')."
+        help="Start time for data download in ISO format (for example '1997-11-22T11:30:00')."
     )
     parser.add_argument(
         '--endtime', type=str, default="1997-11-22T17:30:00",
-        help="End time for data download in ISO format (e.g., '1997-11-22T12:30:00')."
+        help="End time for data download in ISO format (for example '1997-11-22T12:30:00')."
     )
     return parser.parse_args()
 
@@ -93,7 +92,7 @@ def main():
     output_dir = args.output_dir
     check_output_directory(output_dir)
 
-    # Use all-Earth domain; station filtering is handled by Restrictions (network/station)
+    # Use all-Earth domain. Station filtering is handled by Restrictions (network/station)
     domain = GlobalDomain()
 
     # Use the stations file provided via CLI
@@ -107,7 +106,6 @@ def main():
         print(network, station, flush=True)
         try:
             restrictions = Restrictions(
-                # Full day of 22/11/1997
                 starttime=starttime,
                 endtime=endtime,
                 network=network,

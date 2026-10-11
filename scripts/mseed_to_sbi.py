@@ -1,7 +1,7 @@
-"""mseed_to_sbi.py — Convert preprocessed mseed + StationXML to seismo-sbi h5.
+"""mseed_to_sbi.py: Convert preprocessed mseed + StationXML to seismo-sbi h5.
 
 It consumes data that has already been downloaded and optionally processed
-(e.g. by custom_download.py), deconvolves the instrument response, applies
+(for example by custom_download.py), deconvolves the instrument response, applies
 the bandpass filter, and writes the final h5 file that RealNoiseSampler reads.
 
 Typical workflow:
@@ -50,7 +50,7 @@ def get_arguments():
     )
     parser.add_argument(
         "--event_starttime", type=str, required=True,
-        help="Event window start (ISO 8601, e.g. '1997-11-22T17:20:35').",
+        help="Event window start (ISO 8601, for example '1997-11-22T17:20:35').",
     )
     parser.add_argument(
         "--event_endtime", type=str, required=True,
@@ -78,7 +78,7 @@ def get_arguments():
     )
     parser.add_argument(
         "--channel_glob", type=str, default="BH?",
-        help="Channel glob pattern (e.g. 'BH?' or 'HH?').",
+        help="Channel glob pattern (for example 'BH?' or 'HH?').",
     )
     parser.add_argument(
         "--no_instrument_correction", action="store_true",
@@ -149,7 +149,7 @@ def main():
             print(f"  Skipping {network}.{station}: {exc}")
 
     if not available_stations:
-        print("No stations available — aborting.")
+        print("No stations available: aborting.")
         sys.exit(1)
 
     print(f"Loaded {len(available_stations)} stations: {available_stations}")
@@ -162,7 +162,7 @@ def main():
                 inventory = load_inventory(stationxml_dir)
                 print(f"Inventory loaded from {stationxml_dir}")
             except FileNotFoundError as exc:
-                print(f"WARNING: {exc} — skipping response removal.")
+                print(f"WARNING: {exc}: skipping response removal.")
                 remove_response = False
         else:
             print(f"WARNING: {stationxml_dir} not found — skipping response removal.")

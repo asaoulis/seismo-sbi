@@ -73,7 +73,6 @@ def main():
     output_dir = args.output_dir
     check_output_directory(output_dir)
 
-    # Time window: from 2026-01-14 00:00:00 to now (UTC)
     starttime = obspy.UTCDateTime(2026, 1, 14, 0, 0, 0)
     endtime = obspy.UTCDateTime()
 
@@ -85,7 +84,6 @@ def main():
     #     minlongitude=21.123,
     #     maxlongitude=49.3945,
     # )
-    # circular domain Event latitude [°]: 31.09 Event longitude [°]: 35.28
     # 5 degrees
     from obspy.clients.fdsn.mass_downloader import CircularDomain
     domain = CircularDomain(
@@ -94,7 +92,7 @@ def main():
         minradius=0.0,
         maxradius=5.0,
     )
-    # Automatically discover all available stations; all providers
+    # Automatically discover all available stations. All providers
     mdl = MassDownloader()  # no providers argument => all supported providers
 
     # Restrictions: no explicit network/station, automatic discovery in domain

@@ -2,7 +2,7 @@
 
 The ``PM`` network (IPMA/CIVISA) is served only by IPMA's FDSN node (``--provider``). Each window is
 response-removed to displacement, band-passed and resampled as the synthetics are, and written to
-``<output_dir>/events/`` and ``<output_dir>/noise/``; the noise windows that hold no earthquake are
+``<output_dir>/events/`` and ``<output_dir>/noise/``. The noise windows that hold no earthquake are
 copied to ``<output_dir>/noise_screened/``. BART (a Lennartz LE-3D/20s) records instrument noise at
 25-50 s, so ``azores_components.json`` gives it no components.
 """
@@ -40,7 +40,7 @@ def parse_args():
     p.add_argument("--event_time", type=str, default="2022-01-13T06:46:12",
                    help="Event origin time (ISO).")
     p.add_argument("--event_lead", type=float, default=60.0,
-                   help="Seconds the event window leads the origin (matches the synthetic time axis; "
+                   help="Seconds the event window leads the origin (matches the synthetic time axis. "
                         "the legacy pipeline used a 60 s pre-origin lead).")
     p.add_argument("--duration", type=float, default=900.0, help="Window length in seconds.")
     p.add_argument("--sampling_rate", type=float, default=1.0, help="Target sampling rate (Hz).")
@@ -118,7 +118,7 @@ def build_window_h5(processed, stations_components, w_start, args, out_path):
         if sta not in processed:
             return False, f"{sta}: no processed data"
         outputs[sta], misc[sta] = {}, {}
-        for chan_last, disk_comp in comps:  # e.g. ('Z','Z'), ('E','1'), ('N','2')
+        for chan_last, disk_comp in comps:  # for example ('Z','Z'), ('E','1'), ('N','2')
             tr = processed[sta].get(disk_comp)
             if tr is None:
                 return False, f"{sta}.{disk_comp}: missing trace"
@@ -133,12 +133,12 @@ def build_window_h5(processed, stations_components, w_start, args, out_path):
 
 
 def comps_for_station(sta):
-    """(channel_last_letter, disk_component) pairs; vertical+horizontals."""
+    """(channel_last_letter, disk_component) pairs. Vertical+horizontals."""
     return [("Z", "Z"), ("E", "1"), ("N", "2")]
 
 
 def download_and_process_day(day, stations, inv_map, args):
-    """Download + process all stations for one calendar day; return {station: {Z/1/2: Trace}}."""
+    """Download + process all stations for one calendar day. Return {station: {Z/1/2: Trace}}."""
     client = Client(base_url=args.provider, timeout=args.timeout)
     pad = args.cov_window + 600.0  # cover the pre-window + filter edge effects
     day_start = UTCDateTime(datetime.combine(day, datetime.min.time()))

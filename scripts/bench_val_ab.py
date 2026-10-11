@@ -1,7 +1,7 @@
-"""Multi-epoch val-loss A/B — the QUALITY guard for the perf optimisations.
+"""Multi-epoch val-loss A/B: the QUALITY guard for the perf optimisations.
 
-Speed benches prove the step is faster; this proves the optimisations don't degrade what the
-model learns. Builds ONE learnable kernel dataset (data = Σ θ_i · kernel_i + noise — a genuine
+Speed benches prove the step is faster. This proves the optimisations don't degrade what the
+model learns. Builds ONE learnable kernel dataset (data = Σ θ_i · kernel_i + noise: a genuine
 θ→x map the NPE flow must learn), then trains several variants (eager / amp+sdpa / amp+sdpa+ds8 …)
 through the FULL production path (variable stations + source conditioning + amplitude embedding +
 RFF posenc + PMA-tokens + 8-transform flow + training augmentation) for N epochs, with identical

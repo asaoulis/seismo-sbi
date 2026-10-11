@@ -3,7 +3,7 @@
 This is the top-level entry-point for large-scale data preparation.  Given a
 downloaded QuakeML file and a directory of mseed data it produces:
 
-  <output_dir>/events/<event_id>.h5  — one file per event in the catalogue
+  <output_dir>/events/<event_id>.h5: one file per event in the catalogue
   <output_dir>/noise/<label>.h5      — one file per clean noise window
   <output_dir>/errors.csv            — per-window failures for resumability
 
@@ -28,7 +28,7 @@ Usage
         --fdsn_client IRIS \
         ...
 
-All parallelism is via joblib; set --n_jobs 1 for serial execution.
+All parallelism is via joblib. Set --n_jobs 1 for serial execution.
 """
 
 from __future__ import annotations
@@ -82,9 +82,9 @@ def _parse_args():
                    help="Pre-event covariance window in seconds (default 200).")
 
     p.add_argument("--noise_start", type=str,
-                   help="Noise period start ISO date, e.g. 2024-01-01.")
+                   help="Noise period start ISO date, for example 2024-01-01.")
     p.add_argument("--noise_end", type=str,
-                   help="Noise period end ISO date, e.g. 2024-02-01.")
+                   help="Noise period end ISO date, for example 2024-02-01.")
     p.add_argument("--buffer_minutes", type=float, default=20.0,
                    help="Gap between noise windows and from event edges (minutes).")
     p.add_argument("--no_noise", action="store_true",
@@ -98,7 +98,7 @@ def _parse_args():
                    help="Shared daily-processed cache directory.  Point both the "
                         "event and noise builds at the SAME path so each "
                         "(station, calendar-day) is response-removed/filtered/"
-                        "resampled only once (the daily cache is resumable — "
+                        "resampled only once (the daily cache is resumable: "
                         "existing days are skipped).  Defaults to "
                         "<output_dir>/{events,noise}/_daily (i.e. NOT shared, so "
                         "overlapping days get processed twice).")
@@ -108,12 +108,12 @@ def _parse_args():
                    help="TauPy earth model for arrival windows (default 'prem').")
     p.add_argument("--use_taup", action="store_true", default=False,
                    help="Use TauPy to compute precise arrival windows for event "
-                        "avoidance in the noise catalogue (default: off — use "
+                        "avoidance in the noise catalogue (default off; use "
                         "onset time directly, suitable for local/regional events).")
     p.add_argument("--pre_event_window", type=float, default=60.0,
                    help="Start event windows this many seconds before the origin time. "
                         "DEFAULT 60 = the pre-origin pad every Instaseis synthetic carries "
-                        "(SYNTHETICS_PRE_EVENT_PAD_S); obs must match the sims or they are "
+                        "(SYNTHETICS_PRE_EVENT_PAD_S). Obs must match the sims or they are "
                         "misaligned by 60 s. Pass 0 only for a non-Instaseis convention.")
     p.add_argument("--rolling_window_gap", type=float, default=30.0,
                    help="Step in seconds between consecutive noise windows "

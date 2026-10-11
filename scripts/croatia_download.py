@@ -30,7 +30,6 @@ def get_arguments():
         help="Path to stations.txt with columns: STATION NETWORK LAT LON"
     )
 
-    # NEW OPTIONS
     parser.add_argument(
         '--fetch_stations_from_iris',
         action='store_true',
@@ -149,7 +148,6 @@ def fetch_and_write_stations_from_iris(
 
 STATION_LIST = ["CACV", "KRJB", "BLY", "A273A", "MOZS", "CEY", "A262A", "PLIT", "PERS", "MOSL", "KALN", "DUGI", "HVAR", "BRJN", "OZLJ", "MORI", "OZLJ", "MPLH"]
 # STATION_LIST = ["MORI", "HVAR"]
-# 2020-12-28
 # STATION_LIST = ["PERS", "KOGS", "BLY", "MOZS"]
 STATION_LIST = ["CACV", "KRJB", "BLY", "MOZS",  "PLIT", "PERS", "MOSL",  "OZLJ", "OZLJ","KOGS", "KALN", "VINV" , "PERS"]
 
@@ -180,7 +178,7 @@ def main():
 
     domain = GlobalDomain()
     # mdl = MassDownloader(providers=["IRIS", "ODC", "GFZ", "LMU", "EIDA"])
-    mdl = MassDownloader()  # INGV added 2024-06
+    mdl = MassDownloader()
     for network, station in station_pairs:
         print(network, station, flush=True)
         try:

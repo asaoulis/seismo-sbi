@@ -1,4 +1,4 @@
-"""e2e per-epoch walltime bench — REAL headless training with a controllable load-time
+"""e2e per-epoch walltime bench: REAL headless training with a controllable load-time
 augmentation chain, to measure when the dataloader stops being the limiter.
 
 Each run = `variant|aug|cache|workers` where
@@ -10,7 +10,7 @@ Each run = `variant|aug|cache|workers` where
   workers: dataloader worker count
 
 Timing: per-epoch TRAIN time only (on_train_epoch_start -> last on_train_batch_end), so the
-val loop, cache preload and Trainer setup are excluded; epoch 0 is warmup and dropped;
+val loop, cache preload and Trainer setup are excluded. Epoch 0 is warmup and dropped;
 median over the remaining epochs. A sampler thread polls nvidia-smi during timed epochs.
 
 Usage:
@@ -48,7 +48,7 @@ def aug_chain(mode, sampling_rate):
     """Load-time augmentation chain by mode. 'full' matches the production
     brustle-lomax chain (uniform_offset/gaussian_sigma = 3.0, the bench_val_ab protocol);
     'baked' keeps only the cheap amplitude error (time_shift + coda moved to
-    stage: simulation); 'none' disables augmentation entirely."""
+    stage: simulation). 'none' disables augmentation entirely."""
     if mode == "none":
         return None, None
     nuisance = {"amplitude_error": [1.0]}
@@ -88,7 +88,7 @@ class GpuUtilSampler(threading.Thread):
 
 
 class EpochTimer(pl.Callback):
-    """Times train batches per epoch; epoch 0 treated as warmup by the caller."""
+    """Times train batches per epoch. Epoch 0 treated as warmup by the caller."""
 
     def __init__(self, gpu_sampler=None):
         self.epoch_times = []

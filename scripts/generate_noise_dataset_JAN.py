@@ -18,11 +18,11 @@ def create_JAN_data_format(data_path, stationxml_dir, years):
     Parameters
     ----------
     data_path : str or Path
-        Base directory where JAN data & RESP live (e.g. "/data/alex/JAN").
+        Base directory where JAN data & RESP live (for example "/data/alex/JAN").
     stationxml_dir : str or Path
         Directory containing StationXML files produced by jan_download.py.
     years : list[int]
-        List of years available, e.g. [2026].
+        List of years available, for example [2026].
 
     Returns
     -------
@@ -62,7 +62,7 @@ def create_JAN_data_format(data_path, stationxml_dir, years):
                 loc = ''
 
             # Build a unique key name for this (net, sta, loc) combo
-            # e.g., "JAN_PM_ADH" or "JAN_PM_ADH_00"
+            # for example "JAN_PM_ADH" or "JAN_PM_ADH_00"
             suffix = f"_{loc}" if loc else ""
             call_key = f"JAN_{net_code}_{sta_code}{suffix}"
             if net_code == "KO":
@@ -70,7 +70,7 @@ def create_JAN_data_format(data_path, stationxml_dir, years):
             elif net_code == "IM":
                 sta_cha = ['HHZ', 'HH1', 'HH2']
             else:
-                # Fallback – adjust if you see other nets
+                # Fallback: adjust if you see other nets
                 sta_cha = ['BHZ', 'BHE', 'BHN']
 
             entry = {
@@ -124,7 +124,6 @@ date_format = '%Y-%m-%d'
 noise_start_time = '2026-01-15'
 noise_end_time = '2026-01-16'
 
-# # north islands 2022/01/13 06:46:12.23 Azores Islands Event 621827081
 event_window = [datetime(2026, 1, 15, 7, 0, 26), datetime(2026, 1, 15, 7, 6, 26)]
 event_window = [datetime(2026, 1, 15, 6, 59,56), datetime(2026, 1, 15, 7, 5, 56)]
 event_location = (5,  117)

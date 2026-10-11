@@ -58,7 +58,6 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--fixed-n", action="store_true",
                     help="keep all stations every sample (keep_fraction=1.0) for a static-shape run")
-    # --- opt toggles (wired into model_config['perf']; ignored by src until implemented) ---
     ap.add_argument("--amp", action="store_true", help="bf16 autocast on the embedding net")
     ap.add_argument("--compile", action="store_true", help="torch.compile the embedding net")
     ap.add_argument("--channels-last", action="store_true")
@@ -94,7 +93,6 @@ def main():
         perf["sdpa"] = True
 
     trainer, n_cond = build_trainer(args, trace_length, station_locations, perf)
-    # Optional flow numerics toggle (O7a): rebuild flow without conditioner BatchNorm.
     if args.no_batchnorm:
         from seismo_sbi.sbi.npe.maf import build_nsf
         trainer.flow = CompressionTrainer._assemble_flow(
