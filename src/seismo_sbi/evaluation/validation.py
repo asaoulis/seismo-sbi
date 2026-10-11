@@ -18,6 +18,7 @@ from seismo_sbi.evaluation import posterior_metrics
 from seismo_sbi.plotting import evaluation as ev
 from seismo_sbi.sbi.training_configuration import BatchConfig
 from seismo_sbi.sbi.types.results import InversionData
+from seismo_sbi.utils.errors import PipelineStateError
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +100,9 @@ def validation_dataset(sbi_pipeline, data_scaler, *, n_val: int, train_fraction:
         stage="training_augmentation_post_noise",
     )
 
-    noise_sampler = getattr(sbi_pipeline, "training_noise_sampler", None)
+    noise_sampler = sbi_pipeline.training_noise_sampler
     if noise_sampler is None:
-        raise RuntimeError(
+        raise PipelineStateError(
             "sbi_pipeline.training_noise_sampler is None; "
             "call build_eval_pipeline with the pipeline before run_validation."
         )
@@ -214,7 +215,8 @@ def write_validation_outputs(
     the metrics JSON, the record of
     :func:`~seismo_sbi.evaluation.posterior_metrics.run_metrics_payload` labelled ``run_label``
     and ``config_path``, with ``n_val``, ``num_samples``, ``conditioned`` and the figure paths.
-    ``parameters`` are the pipeline's parameters, for the panel labels.
+    ``parameters`` are the pipeline's parameters, for the panel labels. A failing TARP or metric
+    computation raises; a figure that fails is logged as a warning and left out of the figure paths.
 
     :returns: the dict written to ``evaluation_metrics.json``.
     """
@@ -228,24 +230,24 @@ def write_validation_outputs(
     shows = val.get("show", [])
     n_val = val.get("n_val", theta_scaled.shape[0])
 
-    figures: dict = {}
-    ecp, alpha = write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures)
-    write_recovery_scatter(theta_phys, samples_phys, out_dir, figures)
-    if shows:
-        write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figures)
+    ecp, alpha = posterior_metrics.tarp_coverage(samples_scaled, theta_scaled, num_bootstrap=100)
+    figure_paths = {
+        "tarp_coverage": write_tarp_figure(ecp, alpha, out_dir),
+        "recovery_scatter": write_recovery_scatter(theta_phys, samples_phys, out_dir),
+        "examples_dir": write_example_panels(shows, n_show, parameters, data_scaler, out_dir) if shows else None,
+    }
+    figures = {name: path for name, path in figure_paths.items() if path is not None}
     return write_metrics_json(val, ecp, alpha, out_dir, figures, n_val=n_val, num_samples=num_samples,
                               conditioned=conditioned, run_label=run_label, config_path=config_path)
 
 
-def write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures):
-    """TARP expected coverage ``(ecp, alpha)``, drawn to ``tarp_coverage.png`` and entered in
-    ``figures``; ``(None, None)`` when it cannot be computed.
+def write_tarp_figure(ecp, alpha, out_dir):
+    """The TARP expected coverage ``(ecp, alpha)`` drawn to ``tarp_coverage.png``; returns its path,
+    or None when the figure failed.
     """
     from seismo_sbi.plotting.coverage import plot_coverage
 
-    ecp = alpha = None
     try:
-        ecp, alpha = posterior_metrics.tarp_coverage(samples_scaled, theta_scaled, num_bootstrap=100)
         cov_path = out_dir / "tarp_coverage.png"
         plot_coverage(
             {"NPE ML": (ecp, alpha)},
@@ -253,28 +255,30 @@ def write_tarp_figure(theta_scaled, samples_scaled, out_dir, figures):
             savefig=str(cov_path),
             title="TARP expected coverage",
         )
-        figures["tarp_coverage"] = str(cov_path)
         logger.info(f"    wrote TARP coverage -> {cov_path}")
+        return str(cov_path)
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"    [warn] TARP coverage failed: {type(e).__name__}: {e}")
-    return ecp, alpha
+        logger.warning(f"    [warn] TARP coverage figure failed: {type(e).__name__}: {e}")
+        return None
 
 
-def write_recovery_scatter(theta_phys, samples_phys, out_dir, figures):
-    """True against recovered gamma, delta and Mw, drawn to ``recovery_scatter.svg`` and entered
-    in ``figures``.
+def write_recovery_scatter(theta_phys, samples_phys, out_dir):
+    """True against recovered gamma, delta and Mw, drawn to ``recovery_scatter.svg``; returns its
+    path, or None when the figure failed.
     """
     try:
         sc_path = out_dir / "recovery_scatter.svg"
         ev.plot_recovery_scatter(theta_phys, samples_phys, figsave=sc_path)
-        figures["recovery_scatter"] = str(sc_path)
         logger.info(f"    wrote recovery scatter -> {sc_path}")
+        return str(sc_path)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"    [warn] recovery scatter failed: {type(e).__name__}: {e}")
+        return None
 
 
-def write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figures):
-    """Posterior panels for the first ``n_show`` examples under ``out_dir/examples``."""
+def write_example_panels(shows, n_show, parameters, data_scaler, out_dir):
+    """Posterior panels for the first ``n_show`` examples under ``out_dir/examples``; returns that
+    directory, or None when the panels failed."""
     from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
 
     try:
@@ -294,9 +298,10 @@ def write_example_panels(shows, n_show, parameters, data_scaler, out_dir, figure
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"    [warn] val example {i} failed: {type(e).__name__}: {e}")
-        figures["examples_dir"] = str(out_dir / "examples")
+        return str(out_dir / "examples")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"    [warn] example panels failed: {type(e).__name__}: {e}")
+        return None
 
 
 def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples, conditioned,
@@ -304,12 +309,7 @@ def write_metrics_json(val, ecp, alpha, out_dir, figures, *, n_val, num_samples,
     """The evaluation metrics of ``val`` with the run's settings and ``figures``, written to
     ``evaluation_metrics.json`` as a :func:`~seismo_sbi.evaluation.posterior_metrics.run_metrics_payload`.
     """
-    metrics: dict = {}
-    try:
-        metrics = posterior_metrics.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"    [warn] metric computation failed: {type(e).__name__}: {e}")
-
+    metrics = posterior_metrics.compute_evaluation_metrics(val, ecp=ecp, alpha=alpha)
     result = posterior_metrics.run_metrics_payload(
         run_label, config_path, metrics,
         n_val=n_val, num_samples=num_samples, conditioned=conditioned, figures=figures)
