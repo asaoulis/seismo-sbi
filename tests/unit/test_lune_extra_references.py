@@ -71,6 +71,21 @@ def test_add_lune_legend_appends_extra_markers():
     plt.close(fig)
 
 
+def test_add_lune_legend_escapes_percent_under_usetex():
+    # A user's own text.usetex (a LaTeX style, say) reads '%' as a comment, so it is escaped.
+    prev = matplotlib.rcParams["text.usetex"]
+    matplotlib.rcParams["text.usetex"] = True
+    try:
+        fig, ax = plt.subplots()
+        add_lune_legend(ax, ["DC 100%"], LUNE_ENSEMBLE_COLORS,
+                        extra_markers=[{"label": "ISO 32%", "color": "gold", "marker": "*"}])
+        texts = [t.get_text() for t in ax.get_legend().get_texts()]
+        assert texts == [r"DC 100\%", r"ISO 32\%"]
+        plt.close(fig)
+    finally:
+        matplotlib.rcParams["text.usetex"] = prev
+
+
 def test_plot_lunes_kde_accepts_extra_references_arg():
     # Signature/acceptance guard: the param exists and defaults to None (no behaviour change).
     import inspect

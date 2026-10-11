@@ -123,6 +123,12 @@ def add_lune_legend(ax, labels, colors, title=None, loc='upper left', fontsize=1
     reference-MT scatter overlays; each is appended as a marker handle below the line handles."""
     from matplotlib.lines import Line2D
     extra_markers = list(extra_markers or [])
+    if plt.rcParams.get('text.usetex', False):
+        # '%' starts a LaTeX comment and would cut the label short.
+        esc = lambda t: t.replace('%', r'\%') if isinstance(t, str) else t
+        title = esc(title)
+        labels = [esc(lab) for lab in labels]
+        extra_markers = [{**em, "label": esc(em["label"])} for em in extra_markers]
     handles = [Line2D([0], [0], lw=2.2, color=colors[i % len(colors)], label=lab)
                for i, lab in enumerate(labels)]
     handles += [Line2D([0], [0], lw=0, marker=em["marker"], color=em["color"],
