@@ -343,7 +343,7 @@ class PosteriorPlotter:
         ensembles_mt = {}
         true_theta0 = None
         for i, (name, (theta0, samples, *_)) in enumerate(inversion_data.items()):
-            np.random.shuffle(samples)
+            samples = np.random.permutation(samples)
             samples = samples[:num_samples]
             samples_MT, theta0_mt = self.get_moment_tensors(samples, theta0)
             if i == 0:
@@ -412,7 +412,7 @@ class PosteriorPlotter:
         if data_scaler is None:
             data_scaler = self.data_scaler
 
-        np.random.shuffle(samples)
+        samples = np.random.permutation(samples)
         if plot_path is not None:
             filename = plot_path.stem
             figsave_1 = plot_path.with_name(f"{filename}_samples.png")
@@ -452,7 +452,7 @@ class PosteriorPlotter:
 
     def plot_beachball_projection_samples(self, plotting_units_samples, sample_color='cornflowerblue', alpha=0.1, figsave = None, dpi=200):
         samples = plotting_units_samples
-        np.random.shuffle(samples)
+        samples = np.random.permutation(samples)
         fig, ax = plt.subplots(figsize=(5, 5))
 
         # Plot each moment tensor in the ensemble
