@@ -288,8 +288,8 @@ def add_lune_inset(ax, bm, lune_angles, true_tensor):
     iax.set_xticklabels([f"{v:.0f}" for v in xtick_vals])
     iax.set_yticks(ytick_pos)
     iax.set_yticklabels([f"{v:.0f}" for v in ytick_vals])
-    iax.set_xlabel(r"$\\gamma$ (°)", fontsize=18)
-    iax.set_ylabel(r"$\\delta$ (°)", fontsize=18)
+    iax.set_xlabel(r"$\gamma$ (°)", fontsize=18)
+    iax.set_ylabel(r"$\delta$ (°)", fontsize=18)
     tx, ty = bm(tg, td)
     iax.scatter(tx, ty, color='black', alpha=1.0, marker='x', s=120)
     return iax
