@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..pipeline_variants import PIPELINE_CLASSES
+from ..event_pipelines import PIPELINE_CLASSES
 from ..npe.training.model_meta import MODEL_META_FILENAME, read_model_meta
 from ..scalers import FlexibleScaler, build_flexible_scaler, check_scaler_provenance, recorded_theta_scaler
 from seismo_sbi.nuisance_effects.post_processing import build_augmentation_chain_from_parameters

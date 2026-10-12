@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi.compression.gaussian import Compressor, GaussianCompressor
-from seismo_sbi.sbi.pipeline import observed_summary_and_scaler
+from seismo_sbi.sbi.event_pipelines import observed_summary_and_scaler
 from seismo_sbi.utils.errors import PipelineStateError
 
 FIDUCIAL = SimpleNamespace(theta_fiducial=np.array([1.0, 2.0]))

@@ -8,7 +8,7 @@ from seismo_sbi.sbi.noises.covariance_estimator import EmpiricalCovarianceEstima
 from seismo_sbi.sbi.noises.diagonal_covariances import ScalarEmpiricalCovariance
 from seismo_sbi.sbi.noises.theory_block_covariance import TheoryBlockDiagonalEmpiricalCovariance
 from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalCovariance
-from seismo_sbi.sbi.pipeline import likelihood_covariance
+from seismo_sbi.sbi.event_pipelines import likelihood_covariance
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.simulators.simulation_io import SimulationSaver, seismogram_map_to_array

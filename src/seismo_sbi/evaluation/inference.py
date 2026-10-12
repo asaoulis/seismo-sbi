@@ -50,7 +50,7 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     """
     from seismo_sbi.sbi.datasets.training_data import build_pipeline
     from seismo_sbi.sbi.npe.training.train import CompressionTrainer, recorded_stf_alignment
-    from seismo_sbi.sbi.pipeline import SingleEventPipeline
+    from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 
     run_directory = resolve_ckpt_dir(run_directory)
     posterior = CompressionTrainer.from_run_directory(run_directory).build_posterior()
@@ -78,7 +78,7 @@ def build_eval_pipeline(config_path, *, regenerate_dataset=False, skip_compressi
     :func:`~seismo_sbi.sbi.datasets.training_data.training_simulation_paths`, and noise rescaled to
     the first real event by :func:`~seismo_sbi.sbi.datasets.training_data.rescale_training_noise_to_event`.
     """
-    from seismo_sbi.sbi.pipeline import SingleEventPipeline
+    from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
     from seismo_sbi.sbi.datasets.training_data import (
         build_pipeline, event_noise_for_compressors, rescale_training_noise_to_event, training_simulation_paths)
 

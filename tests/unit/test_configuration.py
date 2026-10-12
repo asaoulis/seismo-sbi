@@ -111,7 +111,7 @@ def test_a_misspelled_pipeline_type_is_rejected_at_parse_time():
 
 
 def test_every_pipeline_type_names_a_pipeline_class():
-    from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
+    from seismo_sbi.sbi.event_pipelines import PIPELINE_CLASSES
     from seismo_sbi.sbi.types.parameters import PIPELINE_TYPES
 
     assert tuple(PIPELINE_CLASSES) == PIPELINE_TYPES
@@ -755,7 +755,7 @@ def test_a_config_without_the_synthetic_filter_rate_is_rejected(tmp_path):
 def test_the_pipeline_documentation_names_every_pipeline_type():
     from pathlib import Path
 
-    from seismo_sbi.sbi.pipeline_variants import PIPELINE_CLASSES
+    from seismo_sbi.sbi.event_pipelines import PIPELINE_CLASSES
 
     documentation = (Path(__file__).resolve().parents[2] / "docs" / "pipeline.md").read_text()
 

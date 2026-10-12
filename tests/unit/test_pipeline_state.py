@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from seismo_sbi.sbi import pipeline as pipeline_module
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 from seismo_sbi.sbi.types.parameters import ModelParameters, PipelineParameters, SimulationParameters
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 from seismo_sbi.utils.errors import InvalidConfiguration, PipelineStateError
@@ -47,7 +47,7 @@ def test_the_pipeline_keeps_the_configured_receiver_time_shifts(tmp_path, monkey
 
 
 def test_multi_event_real_jobs_are_read_at_the_configured_trace_length():
-    from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline
+    from seismo_sbi.sbi.event_pipelines import MultiEventPipeline
 
     lengths_seen = []
 
@@ -128,7 +128,7 @@ def test_training_sources_are_drawn_from_the_bounds_and_sampling_method_at_gener
 
 def test_every_multi_event_test_job_carries_the_covariance_its_noise_was_rescaled_to(tmp_path):
     from seismo_sbi.sbi.noises.real_noise import RealNoiseSampler
-    from seismo_sbi.sbi.pipeline_variants import MultiEventPipeline
+    from seismo_sbi.sbi.event_pipelines import MultiEventPipeline
 
     receivers = Receivers(receivers=[Receiver(0.0, 0.0, "XX", "AAA", ["Z"])])
     for window in range(4):

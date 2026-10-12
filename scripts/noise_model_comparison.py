@@ -16,7 +16,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 from seismo_sbi.sbi.noises.diagonal_covariances import DiagonalEmpiricalCovariance
 from seismo_sbi.sbi.noises.toeplitz_covariances import (
     BlockDiagonalFilteredCovariance,
