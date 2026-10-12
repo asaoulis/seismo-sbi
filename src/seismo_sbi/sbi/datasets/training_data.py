@@ -97,7 +97,7 @@ def training_scaler(parameters, ml_scaler, sampling_method, training, models_out
 
     A run that warm-starts from ``training.warm_start_run_name`` keeps the scalar-moment convention
     recorded in that run's ``model_meta.json`` under ``models_output_path`` (six-component when it
-    records none or has no sidecar), and raises if its scaling differs from a recorded one.
+    records none or has no sidecar). It raises if its scaling differs from a recorded one.
     A cold start gets the full-tensor scaler.
     """
     if not training.warm_start_run_name:
@@ -146,7 +146,7 @@ def prepare_training_data(pipeline, config, simulation_paths, training):
 def rescale_training_noise_to_event(pipeline, config):
     """Scale the training noise covariance to one real event's pre-event variance.
 
-    Skipped for white ``gaussian`` noise, whose level is fixed by ``noise_level``, and in
+    Skipped for white ``gaussian`` noise, whose level is fixed by ``noise_level``. Also skipped in
     generic-event mode (``real_noise`` with ``rescale: false``), where the sampler draws noise
     windows verbatim and the event file need not hold every station.
     """

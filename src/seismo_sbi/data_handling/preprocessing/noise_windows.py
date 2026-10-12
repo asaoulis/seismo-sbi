@@ -1,11 +1,11 @@
 """Recorded noise windows cut from a continuous processed ``Stream``, in memory.
 
-:func:`noise_windows_from_stream` lays each event-free window out as
-:func:`~seismo_sbi.data_handling.preprocessing.sbi_export.observation_from_stream` lays out an event:
-``(n_windows, n_traces * n_samples)`` rows in receiver order with a ``(n_windows, n_stations)``
-presence mask, the layout ``RealNoiseSampler.from_windows`` and
-``EmpiricalCovarianceEstimator.estimate_from_windows`` take. :func:`quiet_window_mask` screens a
-pool of windows for the earthquakes it holds.
+:func:`noise_windows_from_stream` writes each event-free window in the layout of
+:func:`~seismo_sbi.data_handling.preprocessing.sbi_export.observation_from_stream`: rows of
+``(n_windows, n_traces * n_samples)`` in receiver order, with a ``(n_windows, n_stations)``
+presence mask. ``RealNoiseSampler.from_windows`` and
+``EmpiricalCovarianceEstimator.estimate_from_windows`` take that layout. :func:`quiet_window_mask`
+screens a pool of windows for the earthquakes it holds.
 """
 from datetime import timedelta
 from typing import Optional, Sequence, Tuple

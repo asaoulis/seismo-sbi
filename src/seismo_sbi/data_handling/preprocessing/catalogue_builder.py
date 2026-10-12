@@ -2,10 +2,9 @@
 
 With ``use_daily_processing`` (the default) all raw data in the date range is response-removed,
 filtered and resampled in daily chunks, written under ``<output_dir>/_daily/``, and the event
-and noise windows are then sliced from those files with no further processing. Each station-day
-is processed once however many windows fall in it, the taper needed before response removal only
-touches the ends of each daily file, and existing daily files are skipped on a re-run. The noise
-catalogue (:mod:`~seismo_sbi.data_handling.preprocessing.noise_catalogue`) shares these steps.
+and noise windows are then sliced from those files with no further processing. The taper needed
+before response removal touches only the ends of each daily file, so every window is clean. The
+noise catalogue (:mod:`~seismo_sbi.data_handling.preprocessing.noise_catalogue`) shares these steps.
 """
 
 from __future__ import annotations

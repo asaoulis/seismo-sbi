@@ -1,8 +1,9 @@
 """Uniform random moment tensors at a fixed scalar moment.
 
 The diagonal components are drawn from N(0, 1) and the off-diagonal ones from N(0, 1/2), the
-rotation-invariant Gaussian on symmetric 3x3 tensors, then rescaled so the full-tensor scalar
-moment (:func:`~seismo_sbi.moment_tensor.conventions.scalar_moment`) equals the requested ``m0``.
+rotation-invariant Gaussian on symmetric 3x3 tensors. The draw is then rescaled so the full-tensor
+scalar moment (:func:`~seismo_sbi.moment_tensor.conventions.scalar_moment`) equals the requested
+``m0``.
 The result is uniform on the sphere of moment tensors of that moment (Tape and Tape, 2015).
 """
 from __future__ import annotations

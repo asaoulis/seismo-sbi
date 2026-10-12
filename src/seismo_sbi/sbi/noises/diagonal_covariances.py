@@ -31,7 +31,7 @@ class ScalarEmpiricalCovariance(EmpiricalCovariance):
 
     @staticmethod
     def create_loss_callable(C_inverse, data_vector_length):
-        """Loss closed over ``C_inverse``, so worker processes receive it with the function."""
+        """Loss over residuals with the fixed inverse covariance ``C_inverse``."""
         c_inv = C_inverse
         def _loss(residuals):
             return -0.5 * np.sum(residuals ** 2) * c_inv

@@ -1,9 +1,9 @@
 """Process-environment settings a compute job must apply before the science imports.
 
 Thread caps, the numba JIT cache directory, the Instaseis querier cache size and arviz's
-daily-warning stamp are all read by their libraries at import time or inherited by spawned
-workers, so they are set here before the science imports. Call them at the top of a launcher,
-with :func:`log_progress_to_stdout` for the library's progress messages.
+daily-warning stamp are read by their libraries at import time or inherited by spawned workers.
+They are therefore set here before the science imports. Call them at the top of a launcher, with
+:func:`log_progress_to_stdout` for the library's progress messages.
 """
 
 import datetime

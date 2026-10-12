@@ -31,7 +31,7 @@ class SimulationCache:
         self._cache_cond = None
 
     def preload(self, max_workers: int = 16, dtype=np.float32):
-        """Load every simulation's clean ``(theta, D[, conditioning])`` into contiguous buffers, reproducing ``_load_sim`` and ``_load_conditioning`` exactly."""
+        """Load every simulation's clean ``(theta, D[, conditioning])`` into memory."""
         n = len(self.paths)
         theta0, D0 = self._load_sim(self.paths[0])
         self._cache_D = np.empty((n,) + tuple(D0.shape), dtype=dtype)

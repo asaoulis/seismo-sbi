@@ -27,15 +27,16 @@ def data_qa_thresholds(level: str = "minimal", **overrides) -> QAThresholds:
     Every gate judges the misfit given the expected signal, so an expected-low-signal trace
     (nodal, distant or a small event) is always kept. Levels:
 
-    * ``"minimal"``: the gates that each catch a failure no other gate sees, checked by eye.
-      Dead (signal predicted at 5 sigma or more, observed below 10 % of it, or below 25 % with
-      xcorr below 0.1), sigma outlier (pre-event sigma above 50 times the network median: a
-      broken channel), excess (observed energy above 25 times the signal-plus-noise budget:
-      glitches and interloping events). The classical fit gates are switched off.
-    * ``"full"``: minimal plus the conditional fit gates. Where a signal is clearly expected
-      (snr_syn >= 5) and observed (snr_sig >= 2), a trace drops if its best-lag xcorr is below
-      0.2 or its amplitude ratio leaves [0.1, 5] (coherent gain errors). It drops about 1 %
-      more of a clean population and is the recommended preset.
+    * ``"minimal"``: the gates that each catch a failure no other gate sees. The dead gate drops a
+      trace whose signal is predicted at 5 sigma or more but observed below 10 % of that, or
+      below 25 % with xcorr below 0.1. The sigma-outlier gate drops a pre-event sigma above 50
+      times the network median (a broken channel). The excess gate drops observed energy above
+      25 times the signal-plus-noise budget (glitches and interloping events). The classical fit
+      gates are switched off.
+    * ``"full"``: minimal plus the conditional fit gates. These apply where a signal is clearly
+      expected (snr_syn >= 5) and observed (snr_sig >= 2). Such a trace drops if its best-lag
+      xcorr is below 0.2 or its amplitude ratio leaves [0.1, 5] (coherent gain errors). The preset
+      drops about 1 % more of a clean population and is the recommended one.
     """
     kw = dict(enable_snr_gates=True, snr_dead_ratio=0.1, snr_dead_min_syn=5.0,
               snr_dead_unrecog_ratio=0.25, xcorr_dead=0.1,
@@ -162,11 +163,11 @@ def compose_component_qa(metrics, snr, present: List[str], components: List[str]
     drops only when none of its components survives.
 
     Event-level contamination is computed as a flag. With ``contaminated_action="warn"`` (the
-    default, chosen by comparing posteriors both ways) a flagged window keeps every channel
-    except the health drops that do not use sigma (blocklist and dead observation): dropping
-    most of a contaminated window's traces makes the posterior worse, and the sigma-based gates
-    cannot be trusted there, since a neighbour's coda corrupts the pre-event sigma. ``"drop"``
-    applies all gates as usual. Either way the flag is the result to report.
+    default) a flagged window keeps every channel except the health drops that do not use sigma
+    (blocklist and dead observation). Dropping most of a contaminated window's traces makes the
+    posterior worse, and the sigma-based gates cannot be trusted there, since a neighbour's coda
+    corrupts the pre-event sigma. ``"drop"`` applies all gates as usual. Either way the flag is the
+    result to report.
 
     Keep floor: if fewer than ``max(min_stations, ceil(min_fraction * len(present)))`` stations
     survive, stations are restored in order of observed signal SNR, not all at once, since that

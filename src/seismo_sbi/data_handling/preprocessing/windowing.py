@@ -1,8 +1,8 @@
 """Window selection utilities: event windows, noise windows, continuous regions.
 
-All functions are pure (no file I/O, no global state). Ported from
-EventWindowSelector as standalone functions so they can be used without
-instantiating an FDSN client.
+Event windows around catalogue origin times, noise windows between events, and the event-free
+continuous regions they are cut from. Everything is computed from times and coordinates, and nothing
+here reads a file.
 """
 
 from datetime import timedelta, datetime

@@ -18,9 +18,11 @@ from seismo_sbi.utils.parallel import tqdm_joblib, worker_seeds
 from seismo_sbi.sbi.inversion.gaussian_prior import GaussianPrior
 
 class GaussianLikelihoodEvaluator:
-    """The log posterior of scaled source parameters: the Gaussian log-likelihood of the data, plus
-    a uniform prior over the unit box of the scaled parameters and, when given, the log density of a
-    :class:`~seismo_sbi.sbi.inversion.gaussian_prior.GaussianPrior` ``prior`` in physical units.
+    """The log posterior of scaled source parameters.
+
+    It is the Gaussian log-likelihood of the data plus a uniform prior over the unit box of the
+    scaled parameters. A :class:`~seismo_sbi.sbi.inversion.gaussian_prior.GaussianPrior` ``prior``,
+    when given, adds its log density in physical units.
     """
 
     def __init__(self, data, simulation_callable, scaler, loss_callable, ensemble = False,

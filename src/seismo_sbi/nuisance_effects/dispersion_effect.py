@@ -21,11 +21,11 @@ class DispersionSpreadEffect(SeismogramEffect):
     nuisance multiplier, a standard normal and a width that grows linearly with source-station
     distance from ``sigma_intercept_s`` at ``sigma_per_1000km_s`` per 1000 km.
 
-    The correlation of those normals is the physics: a crust that is too fast delays every
-    octave of the path the same way, so ``octave_correlation`` shares one draw across octaves
-    by default, and ``common_fraction`` puts that share of the variance into a single
-    array-wide draw, which is the coherent same-sign far-station delay independent per-station
-    sampling can never produce. A systematic bias belongs in the reference model, not here.
+    The correlation of those normals is the physics. A crust that is too fast delays every octave
+    of the path the same way, so ``octave_correlation`` shares one draw across octaves by default.
+    ``common_fraction`` puts that share of the variance into a single array-wide draw, the
+    coherent same-sign far-station delay that independent per-station sampling never produces. A
+    systematic bias belongs in the reference model, not here.
 
     Nuisance key ``dispersion_spread``: a strength multiplier. Needs the source location, so
     it is a simulation-stage effect. ``sampling_rate`` is injected by the caller.

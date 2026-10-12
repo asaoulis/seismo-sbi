@@ -1,10 +1,9 @@
-"""Process raw mseed data in daily chunks for efficient catalogue generation.
+"""Process raw mseed data in daily chunks.
 
-Each station-day is processed once, response removal, bandpass filter, resample, and saved
-as a processed daily mseed file, from which windows are then sliced with no further processing.
-The cost is therefore paid once per station-day rather than once per window, the taper needed
-before response removal touches only the ends of each day file so interior windows are clean,
-and existing daily files are skipped on a re-run.
+Each station-day is response-removed, bandpass filtered, resampled and saved as a processed
+daily mseed file. Windows are then sliced from that file with no further processing. The taper
+needed before response removal touches only the ends of each day file, so interior windows are
+clean. An existing daily file is not rebuilt.
 """
 
 from __future__ import annotations

@@ -31,11 +31,11 @@ class RealNoiseSampler(NoiseSampler):
         HDF5 noise window per file, or is None when the windows are given in memory
         (:meth:`from_windows`).
 
-        With ``allow_incomplete`` False a window missing any model station is skipped. With it True the
-        window is used for the stations it has: absent stations are zero-filled and each draw carries
-        the stations it holds in ``present`` for the caller to mask out, which is meaningful only with
-        variable-station training. Whole windows are always drawn intact, preserving the inter-station
-        noise coherence real at microseism periods.
+        With ``allow_incomplete`` False a window missing any model station is skipped. With it True
+        the window is used for the stations it has: absent stations are zero-filled. Each draw then
+        carries the stations it holds in ``present`` for the caller to mask out, which is meaningful
+        only with variable-station training. Whole windows are always drawn intact, preserving the
+        inter-station noise coherence real at microseism periods.
         """
         self.allow_incomplete = bool(allow_incomplete)
         receivers = simulation_parameters.receivers
@@ -101,7 +101,7 @@ class RealNoiseSampler(NoiseSampler):
         return sampler
 
     def _build_presence_index(self):
-        """Pack each cached window's station presence into one integer, so :meth:`sample_containing` can find the windows holding a station subset in one comparison."""
+        """Pack each window's station presence into one integer for :meth:`sample_containing`."""
         n = self._presence_cache.shape[1]
         if n > 64:
             # Fall back to the boolean matrix. The query below stays vectorised, just wider.
@@ -129,8 +129,7 @@ class RealNoiseSampler(NoiseSampler):
 
         For the case where the station subset is fixed in advance (inference on a real
         event, or a fixed evaluation config) and the window must be found to match it,
-        the inverse of the ordinary draw. Uses the packed index, so it never rejection-
-        samples. Raises if no window contains the subset.
+        the inverse of the ordinary draw. Raises if no window contains the subset.
         """
         matches = self._subset_matches(station_indices)
         if matches.size == 0:

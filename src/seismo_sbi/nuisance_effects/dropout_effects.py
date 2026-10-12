@@ -43,8 +43,8 @@ class ComponentDropoutEffect(SeismogramEffect):
     per station is always kept, a whole absent station being
     :class:`InstrumentDropoutEffect`'s business.
 
-    It must run after sensor noise is added, so a dropped channel is exactly zero as a
-    genuinely absent one is, which is why it is staged post-noise and never baked into a
+    It must run after sensor noise is added. A dropped channel is then exactly zero, as a
+    genuinely absent channel is, which is why it is staged after the noise and never baked into a
     simulation.
     """
 

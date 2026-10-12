@@ -382,13 +382,12 @@ def event_contamination(
 
     An overlapping earthquake inside the observation window corrupts many normally-good
     traces at once, including interlopers below the catalogue's magnitude threshold.
-    Statistic: among the traces
-    where signal is clearly expected (``snr_syn >= snr_expected_min``), excluding the
-    ``exclude``-d (station, component) pairs (persistent-bad blocklist), the event is
-    flagged when the dropped fraction >= ``frac_hard``, or >= ``frac_soft`` with the median
-    best-lag xcorr < ``med_xcorr_max`` (clean events sit at ~0.4-0.6, contaminated windows
-    at ~0.1-0.3). Needs at least ``min_expected`` such traces, else the statistic
-    is meaningless (flagged=False).
+    The statistic runs over the traces where signal is clearly expected
+    (``snr_syn >= snr_expected_min``), leaving out the ``exclude`` (station, component) pairs of the
+    persistent-bad blocklist. The event is flagged when the dropped fraction is at least
+    ``frac_hard``, or at least ``frac_soft`` with the median best-lag xcorr below ``med_xcorr_max``
+    (clean events sit at about 0.4-0.6, contaminated windows at about 0.1-0.3). Fewer than
+    ``min_expected`` such traces leave the event unflagged, since the statistic is then meaningless.
 
     Returns ``{"contaminated": 0/1, "n_expected": n, "frac_expected_dropped": f,
     "median_xcorr_expected": x}``.

@@ -31,12 +31,10 @@ def load_mmd_manifest(manifest_path, *, clean_only=True, events_h5_dir=None,
     contamination flag): an interloper wavetrain is contamination, not model
     misspecification, and pollutes the MMD target.
 
-    The manifest stores ABSOLUTE paths from the machine that built it. On another
+    The manifest stores absolute paths from the machine that built it. On another
     host (for example the cluster) pass ``events_h5_dir`` / ``solutions_root`` to rebuild
     the per-event ``h5`` / ``samples`` paths as ``<events_h5_dir>/<event_id>.h5`` and
-    ``<solutions_root>/<event_id>/samples.npy`` (these two keys are plain YAML leaves
-    in the ``ml_mmd`` config block, so the cluster orchestrator's path remap covers
-    them where it cannot rewrite paths embedded inside a JSON file).
+    ``<solutions_root>/<event_id>/samples.npy``.
     """
     doc = json.loads(Path(manifest_path).read_text())
     events = doc["events"] if isinstance(doc, dict) else doc

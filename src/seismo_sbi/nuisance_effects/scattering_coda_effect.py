@@ -129,8 +129,8 @@ def _apply_distance_coda_kernel(
     """``trace`` convolved with a delayed-replica coda kernel of energy ``tail_energy``.
 
     Built as :func:`_apply_random_coda_filter` but with the tail scaled to the given energy
-    and the kernel left un-normalised, so convolution both decorrelates the waveform and adds
-    incoherent energy behind every arrival, which are the two signatures a long path leaves.
+    and the kernel left un-normalised. Convolution then decorrelates the waveform and adds
+    incoherent energy behind every arrival, the two signatures a long path leaves.
     A non-positive ``tail_energy`` or ``alpha`` is the identity.
     """
     n = len(trace)
@@ -166,9 +166,9 @@ class ScatteringCodaEffect(SeismogramEffect):
     ``distance_mode`` replaces the gate and the uniform draw with ramps in source-station
     distance: the strength from :func:`distance_scaled_alpha`, jittered by ``alpha_jitter``,
     and, in causal mode, the tail energy from :func:`distance_tail_energy`. It models the way
-    one-dimensional Green's functions decohere with path length while the observed
-    surface-wave energy exceeds their prediction, neither of which the distance-blind gate can
-    express. The ramp defaults are inert, the calibrated slopes being configuration. The
+    one-dimensional Green's functions decohere with path length, and the observed surface-wave
+    energy that exceeds their prediction. The distance-blind gate can express neither. The ramp
+    defaults are inert, the calibrated slopes being configuration. The
     source location comes from the nuisance dict or the constructor, and distance mode raises
     without one.
     """

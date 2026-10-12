@@ -51,9 +51,9 @@ def posterior_event(posterior_samples, origin, point_estimate=None, method_id="s
     moment (:func:`~seismo_sbi.moment_tensor.conventions.scalar_moment`) and the isotropic,
     double-couple and CLVD fractions of Jost and Herrmann (1989). The ``FocalMechanism`` carries the
     nodal planes and principal axes, and the ``Magnitude`` carries Mw with its posterior standard
-    deviation. These describe the point estimate and the marginal spreads only: correlations between
-    components, the posterior mass on the lune and any second mode are not carried, nor are the
-    samples.
+    deviation. These describe the point estimate and the marginal spreads only. Correlations between
+    components, the posterior mass on the lune and any second mode are not carried. Neither are
+    the samples.
     """
     posterior_samples = np.asarray(posterior_samples, dtype=float)
     m6 = posterior_samples.mean(axis=0) if point_estimate is None else np.asarray(point_estimate, dtype=float)

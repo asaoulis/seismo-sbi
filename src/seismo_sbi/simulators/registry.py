@@ -76,8 +76,7 @@ def _build_instaseis_multi_models(simulation_parameters):
     """Turn the inline ``instaseis_multi_models`` YAML list into sub-model dicts.
 
     Each YAML entry has ``ensemble_dir`` + ``fiducial_dir`` (Instaseis DB ensemble paths) and
-    ``receivers`` (a list of station names). The database paths are kept inline as YAML string
-    leaves so a cluster orchestrator can rewrite them to its own archive.
+    ``receivers`` (a list of station names).
     """
     cfg_list = simulation_parameters.instaseis_multi_models
     if not cfg_list:

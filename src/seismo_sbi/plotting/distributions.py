@@ -1,7 +1,7 @@
 """Posterior figures: corner plots, lunes, beachballs and compression diagnostics.
 
 :class:`PosteriorPlotter` takes posterior samples in the scaled space and draws them in physical
-units: ChainConsumer corner plots, source-type lunes (scatter and KDE contours, drawn with
+units. It makes ChainConsumer corner plots, source-type lunes (scatter and KDE contours, drawn with
 :mod:`seismo_sbi.plotting.lune_figures`), sampled and projected beachballs, and the
 compression-error panels.
 :class:`MomentTensorReparametrised` re-expresses moment-tensor samples as Mw and lune angles.

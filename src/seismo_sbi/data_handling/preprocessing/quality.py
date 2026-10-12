@@ -23,11 +23,15 @@ def check_window_quality(
 ) -> Tuple[bool, str]:
     """Whether a preprocessed window meets the minimum quality requirements. ``(ok, reason)``.
 
-    Per station and component: at least ``min_completeness`` of the expected samples are present.
-    At least ``min_npts`` samples when set (``compute_data_vector_length(duration, sr) + 1`` in the
-    catalogue pipeline). No NaN or Inf. Not all zeros. RMS above ``min_rms``. And at most
-    ``max_flat_fraction`` of consecutive identical samples (a dead or clipped channel, or a gap
-    filled with a constant).
+    Per station and component, a trace passes when all of these hold:
+
+    * at least ``min_completeness`` of the expected samples are present
+    * at least ``min_npts`` samples when set (``compute_data_vector_length(duration, sr) + 1`` in
+      the catalogue pipeline)
+    * no NaN or Inf, and not all zeros
+    * RMS above ``min_rms``
+    * at most ``max_flat_fraction`` of consecutive identical samples (a dead or clipped channel,
+      or a gap filled with a constant)
 
     :param stream: preprocessed ``Stream`` at ``sampling_rate``.
     :param receivers: ordered station names to check.

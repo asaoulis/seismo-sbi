@@ -106,8 +106,11 @@ class MisfitsPlotting:
     def plot_ordered_stacked_traces(self, data_vector, synthetics, event_location, figname=None,
                                     components=('Z', 'E', 'N'), time_window_s=None):
         """Observed (black) against synthetic (copper) traces, one column per entry of ``components``
-        (Z, E, N by default), stations ordered by P arrival from the top and scaled by the largest
-        observed amplitude drawn, over ``time_window_s`` = (start, end) in seconds when given."""
+        (Z, E, N by default), stations ordered by P arrival from the top.
+
+        Every trace is scaled by the largest observed amplitude drawn. ``time_window_s`` = (start,
+        end) in seconds limits the window drawn.
+        """
         trace_index_map = self._trace_index_map()
         ordered_by_comp = self._pairs_by_arrival(event_location, trace_index_map, components)
         time_series_length = self._trace_length(data_vector)
