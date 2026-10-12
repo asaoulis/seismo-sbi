@@ -15,6 +15,11 @@ import numpy as np
 KM_PER_DEG: float = 111.195
 
 
+def km_per_degree_longitude(latitude_deg):
+    """Kilometres per degree of longitude at ``latitude_deg``, ``KM_PER_DEG * cos(latitude)``."""
+    return KM_PER_DEG * np.cos(np.radians(latitude_deg))
+
+
 def latlon_to_km_offsets(lat_deg, lon_deg, ref_lat_deg, ref_lon_deg):
     """Equirectangular (lat, lon) -> (east_km, north_km) offsets about a reference.
 

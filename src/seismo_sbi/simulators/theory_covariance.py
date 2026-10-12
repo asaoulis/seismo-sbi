@@ -10,7 +10,7 @@ import numpy as np
 from seismo_sbi.simulators.base import Simulator
 from seismo_sbi.simulators.gf_ensemble import GFEnsembleSimulator
 from seismo_sbi.simulators.simulation_io import seismogram_array_to_map
-from seismo_sbi.utils.parallel import parallel_execution, worker_seeds
+from seismo_sbi.utils.parallel import run_tasks, worker_seeds
 from seismo_sbi.utils.seismograms import apply_station_time_shifts
 
 
@@ -43,7 +43,8 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         member_seeds = worker_seeds(self.seed, self.num_realisations, "ensemble members")
         realisation_kwargs = lambda realisation: {**kwargs, "member": members[realisation]} if self.seed is None else {**kwargs, "member": members[realisation], "seed": member_seeds[realisation]}
         sim_func  = lambda realisation: self.data_flattening_callable({"outputs":apply_station_time_shifts(self.simulator.receivers, self.simulator.generic_point_source_simulation(source, **realisation_kwargs(realisation)))})
-        simulations = parallel_execution(range(self.num_realisations), sim_func, num_jobs=self.num_jobs)
+        simulations = run_tasks(sim_func, [(realisation,) for realisation in range(self.num_realisations)],
+                                self.num_jobs, "Theory-covariance realisations")
 
         
         simulations = np.array(simulations)

@@ -10,7 +10,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 from seismo_sbi.plotting.results_plotting import SBIPipelinePlotter
 
 
@@ -27,7 +27,7 @@ plt.rcParams.update({'legend.fontsize': 14})
 # %%
 
 
-from seismo_sbi.sbi.pipeline_variants import MLEEstimatePipeline
+from seismo_sbi.sbi.event_pipelines import MLEEstimatePipeline
 import numpy as np
 base_dir = Path('/data/alex/cps/cps_long_valley/LV2_perturbations')
 config_path = Path('./configs/long_valley/LV2/LV2_synthetic_inversion.yaml')

@@ -9,7 +9,7 @@ import numpy as np
 from scipy.linalg import cho_factor, cho_solve
 
 from seismo_sbi.sbi.noises.toeplitz_covariances import BlockDiagonalCovariance
-from seismo_sbi.utils.parallel import parallel_execution
+from seismo_sbi.utils.parallel import run_tasks
 
 
 class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
@@ -60,9 +60,8 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
             return cho_factor(C, check_finite=False)
 
         self.covariance_matrix_arrays = covs
-        cholesky_factors = parallel_execution(
-            covs, cholesky_block, self.num_jobs
-        )
+        cholesky_factors = run_tasks(cholesky_block, [(block,) for block in covs], self.num_jobs,
+                                     "Factorising covariance blocks")
         self.set_cholesky_factors(cholesky_factors)
 
     def create_covariance_matrix(self, station_component_covariances):

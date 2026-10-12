@@ -17,6 +17,7 @@ def modules_loaded_by(module: str) -> set:
     ("seismo_sbi.simulators.receivers", "cartopy"),
     ("seismo_sbi.sbi.configuration", "cartopy"),
     ("seismo_sbi.sbi.pipeline", "seismo_sbi.plotting.results_plotting"),
+    ("seismo_sbi.sbi.event_pipelines", "seismo_sbi.plotting.results_plotting"),
     ("seismo_sbi.plotting.lune", "mpl_toolkits.basemap"),
     ("seismo_sbi.simulators.receivers", "matplotlib"),
     ("seismo_sbi.simulators.cps.simulator", "torch"),

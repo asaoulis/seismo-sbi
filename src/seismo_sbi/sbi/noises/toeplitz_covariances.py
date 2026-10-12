@@ -13,7 +13,7 @@ from scipy.linalg import solve_toeplitz, toeplitz
 from seismo_sbi.sbi.noises.covariance_base import EmpiricalCovariance, station_component_value
 from seismo_sbi.sbi.noises.covariance_estimator import EmpiricalCovarianceEstimator
 from seismo_sbi.sbi.noises.noise_samplers import GaussianNoiseSampler
-from seismo_sbi.utils.parallel import parallel_execution
+from seismo_sbi.utils.parallel import run_tasks
 
 
 class BlockDiagonalCovariance(EmpiricalCovariance):
@@ -104,11 +104,13 @@ class BlockDiagonalCovariance(EmpiricalCovariance):
                 def compute_covariance(station_name_components):
                     station_name, component = station_name_components
                     return self.toeplitz_column(station_component_value(station_component_covariances, station_name, component))
-                covariance_blocks = parallel_execution(receiver_components_list, compute_covariance, self.num_jobs)
+                covariance_blocks = run_tasks(compute_covariance, [(trace,) for trace in receiver_components_list],
+                                              self.num_jobs, "Covariance blocks")
             else:
                 sigma_sqr = station_component_covariances**2
                 builder = lambda _: self.toeplitz_column(sigma_sqr)
-                covariance_blocks = parallel_execution(receiver_components_list, builder, self.num_jobs)
+                covariance_blocks = run_tasks(builder, [(trace,) for trace in receiver_components_list],
+                                              self.num_jobs, "Covariance blocks")
             return np.array(covariance_blocks)
 
         def create_sampler(self, scale=1e9):

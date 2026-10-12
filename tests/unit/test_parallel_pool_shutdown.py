@@ -38,3 +38,9 @@ def test_run_tasks_returns_the_results_in_order_serially_and_on_workers():
     assert run_tasks(_square, args_list, 1, "squares") == [value * value for value in range(7)]
     assert run_tasks(_square, args_list, 2, "squares") == [value * value for value in range(7)]
     assert reusable_executor._executor._flags.shutdown
+
+
+def test_run_tasks_runs_serially_when_no_job_count_is_given():
+    from seismo_sbi.utils.parallel import run_tasks
+
+    assert run_tasks(_square, [(value,) for value in range(4)], None, "squares") == [0, 1, 4, 9]

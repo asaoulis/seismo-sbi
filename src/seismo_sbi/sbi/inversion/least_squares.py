@@ -37,7 +37,8 @@ class IterativeLeastSquaresSolver:
         self.seed = None
 
     @error_handling_wrapper(num_attempts=3)
-    def solve_least_squares(self, observation, compressor, single_step = True, return_history = False):
+    def solve_least_squares(self, observation, compressor, single_step = True, return_history = False,
+                            compression_methods = None):
         """Levenberg-Marquardt iterations towards the maximum-likelihood source.
 
         Each iteration recomputes the score compression at the current model and takes a damped
@@ -46,9 +47,12 @@ class IterativeLeastSquaresSolver:
         (with ``dynamic_damping``; otherwise the damping is kept), and the iterations stop once
         an accepted step lowers chi^2 by less than ``chi2_tolerance`` of its value. With
         ``single_step`` two undamped Gauss-Newton steps are taken and nothing is rejected.
-        Returns the compression data (and extra gradients) at the final model.
+        The stencils are those of ``compression_methods``, the ``(name, options)`` pairs of the
+        compressor being solved (None: every configured compressor). Returns the compression data
+        (and extra gradients) at the final model.
         """
         configuration = self.least_squares_configuration
+        stencil_args = self.stencil_args if compression_methods is None else (compression_methods, *self.stencil_args[1:])
         iterations = configuration.max_iterations if not single_step else 2
         damping = configuration.damping_factor if not single_step else 0
 
@@ -63,7 +67,7 @@ class IterativeLeastSquaresSolver:
         accepted = None
 
         for it in iter_progress(range(iterations), "Performing iterative least squares for MLE fiducial", total=iterations):
-            score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
+            score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *stencil_args,
                                                                                                           seed=self.seed)
             self._set_compressor(compressor, score_compression_data, extra_gradients)
             misfit_new = compressor.compute_misfit(observation)
@@ -101,7 +105,7 @@ class IterativeLeastSquaresSolver:
         if configuration.use_best_model and best_params_vec is not None:
             new_parameters.theta_fiducial = new_parameters.vector_to_parameters(best_params_vec, 'theta_fiducial')
             print(f"Using best chi^2 model from iteration {best_iter}: chi^2={best_chi2:.5f}", flush=True)
-        final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *self.stencil_args,
+        final_score_compression_data, extra_gradients = self.data_manager.compute_required_compression_data(new_parameters, *stencil_args,
                                                                                                                 seed=self.seed)
         if not return_history:
             return final_score_compression_data, extra_gradients
@@ -120,5 +124,5 @@ class IterativeLeastSquaresSolver:
     def _set_compressor(compressor, score_compression_data, extra_gradients):
         """Point ``compressor`` at the score compression of one model; its prior is kept."""
         if extra_gradients is not None:
-            compressor.C.set_covariance(extra_gradients)
+            compressor.set_extra_gradients(extra_gradients)
         compressor.set_compression_variables(score_compression_data)

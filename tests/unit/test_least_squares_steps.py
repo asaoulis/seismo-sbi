@@ -62,3 +62,25 @@ def test_the_known_minimum_is_reached_from_a_poor_start():
 def test_a_fixed_damping_still_rejects_an_uphill_step():
     _, chi2_at_origins = solve([0.5, 2.0, 0.0, 0.0], damping=0.0001, dynamic_damping=False)
     assert all(later <= earlier for earlier, later in zip(chi2_at_origins, chi2_at_origins[1:]))
+
+
+def test_the_stencils_are_those_of_the_compressor_being_solved():
+    parameters = ModelParameters()
+    parameters.names = {"source_location": ["latitude", "longitude", "depth", "time_shift"]}
+    parameters.theta_fiducial = {"source_location": [2.0, 0.3, 0.05, -0.4]}
+    requested = []
+
+    def compression_data(params, compression_methods, *args, seed=None):
+        requested.append([name for name, _ in compression_methods])
+        theta = params.parameter_to_vector("theta_fiducial", True).astype(float)
+        return ScoreCompressionData(theta, model(theta), jacobian(theta), None), None
+
+    configured = [("optimal_score_noise_level", None), ("theory_optimal_score", None)]
+    data_manager = SimpleNamespace(data_loader=None, compute_required_compression_data=compression_data)
+    solver = IterativeLeastSquaresSolver(None, configured, parameters, data_manager, SimpleNamespace(simulator=None),
+                                         IterativeLeastSquaresParameters(3, 0.0))
+    compressor = GaussianCompressor(compression_data(parameters, configured)[0],
+                                    ScalarEmpiricalCovariance(1.0, TIMES_S.size))
+    requested.clear()
+    solver.solve_least_squares(model(TRUTH), compressor, single_step=True, compression_methods=configured[:1])
+    assert requested and all(names == ["optimal_score_noise_level"] for names in requested)

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 from seismo_sbi.sbi.types.parameters import ModelParameters
 
 

@@ -26,12 +26,12 @@ The outputs, under the configuration's `output_directory`:
 
 ## The steps of a run
 
-`SingleEventPipeline` (in `seismo_sbi.sbi.pipeline`) holds the state the steps share. In
+`SingleEventPipeline` (in `seismo_sbi.sbi.event_pipelines`) holds the state the steps share. In
 Python, a run reads:
 
 ```python
 from seismo_sbi.sbi.configuration import SBI_Configuration
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 from seismo_sbi.sbi import job_runners
 
 config = SBI_Configuration()
@@ -75,7 +75,7 @@ job_results, inversion_results = job_runners.run_all_inversions_before_plotting(
    inversion. If `inference.likelihood.run` is set, it then runs the Gaussian-likelihood
    inversion. It yields one result at a time.
 
-`MultiEventPipeline` and `VaryDatasetSizeEventPipeline` (in `seismo_sbi.sbi.pipeline_variants`)
+`MultiEventPipeline` and `VaryDatasetSizeEventPipeline` (in `seismo_sbi.sbi.event_pipelines`)
 run the same steps over several events, or over training sets of increasing size. Choose one with
 `inference.sbi.pipeline`: `single_event`, `multi_event`, `vary_dataset_size` or `mle_estimate`
 (only the maximum-likelihood search, `MLEEstimatePipeline`).

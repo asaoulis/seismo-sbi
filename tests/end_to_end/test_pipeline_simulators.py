@@ -21,7 +21,7 @@ import pytest
 from pathlib import Path
 
 from seismo_sbi.simulators.receivers import Receiver, Receivers
-from seismo_sbi.sbi.pipeline import SingleEventPipeline
+from seismo_sbi.sbi.event_pipelines import SingleEventPipeline
 from seismo_sbi.sbi.compression.compressor_options import OptimalScoreOptions
 from seismo_sbi.sbi.types.parameters import (
     DatasetGenerationParameters,

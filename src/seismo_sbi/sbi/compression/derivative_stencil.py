@@ -222,7 +222,7 @@ class HessianDerivativeStencil:
 
     def compute_gradients_from_stencil(self, stencil_results):
 
-        dD_dtheta_gradients = np.empty(
+        dD_dtheta_gradients = np.zeros(
             (self.num_params, self.num_params, stencil_results[1,0,0].shape[0]))
         delta_array = self.parameters.parameter_to_vector("stencil_deltas")
         for i in range(self.num_params):

@@ -3,7 +3,9 @@
 :func:`compressor_options` turns one entry of the block into the compressor's name and its options:
 ``optimal_score`` takes a noise covariance model and the noise windows it is estimated from,
 ``theory_optimal_score`` a data covariance, a noise level and a diagonal regularisation of the theory
-covariance, and the multi-point and second-order compressors a white-noise level.
+covariance, the second-order compressor a white-noise level, and the multi-point one a white-noise
+level and the fixed sources it also compresses from. A run builds at
+most one compressor from extra gradients (:func:`check_one_extra_gradient_compressor`).
 """
 from dataclasses import dataclass, fields
 from typing import ClassVar
@@ -34,10 +36,18 @@ class TheoryOptimalScoreOptions:
 
 @dataclass(frozen=True)
 class MultiOptimalScoreOptions:
-    """``multi_optimal_score``: white noise of standard deviation ``noise_level`` (m)."""
+    """``multi_optimal_score``: white noise of standard deviation ``noise_level`` (m), and the fixed
+    sources ``fiducials`` the estimates are also made from, each ``{parameter: values}`` for every
+    inferred parameter, as ``inference.<parameter>.fiducial`` is written."""
 
     noise_level: float
+    fiducials: list
     compressor_type: ClassVar[str] = "multi_optimal_score"
+
+    def __post_init__(self):
+        if not self.fiducials or not all(isinstance(point, dict) for point in self.fiducials):
+            raise InvalidConfiguration("compression.multi_optimal_score.fiducials is a list of "
+                                       "{parameter: values} sources, one per extra fiducial.")
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,8 @@ class SecondOrderScoreOptions:
 
 COMPRESSOR_OPTIONS = {options.compressor_type: options for options in (
     OptimalScoreOptions, TheoryOptimalScoreOptions, MultiOptimalScoreOptions, SecondOrderScoreOptions)}
+#: Compressors built from extra gradients (a theory covariance, a Hessian, other fiducials); a run has one.
+EXTRA_GRADIENT_COMPRESSORS = ("theory_optimal_score", "second_order_score", "multi_optimal_score")
 
 
 def compressor_options(compressor_type, block):
@@ -79,3 +91,12 @@ def compressor_options(compressor_type, block):
         return compressor_type, options_class(**block)
     except TypeError as error:
         raise InvalidConfiguration(f"compression.{compressor_type}: {error}") from error
+
+
+def check_one_extra_gradient_compressor(compression_methods):
+    """Raise ``InvalidConfiguration`` when more than one of ``compression_methods`` needs extra gradients."""
+    named = [options.compressor_type for _, options in compression_methods
+             if options.compressor_type in EXTRA_GRADIENT_COMPRESSORS]
+    if len(named) > 1:
+        raise InvalidConfiguration(f"compression names {named}; a run computes the extra gradients of one of "
+                                   f"{list(EXTRA_GRADIENT_COMPRESSORS)}.")
