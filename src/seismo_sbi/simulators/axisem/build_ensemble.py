@@ -1,10 +1,10 @@
 """Stage an AxiSEM ensemble: one directory per member, ready for the mesher and the solver.
 
-Reads the ensemble configuration, writes ``background_model.bm`` for the reference model and
-every perturbed member (or ingests a set of ``.bm`` files somebody else produced), renders the
+Reads the ensemble configuration and writes ``background_model.bm`` for the reference model and
+every perturbed member, or ingests a set of ``.bm`` files somebody else produced. It renders the
 ``inparam_basic`` / ``inparam_advanced`` the solver reads from the templates the configuration
 names, and writes ``members.json`` with the submission arguments each member needs. Meshing and
-solving happen elsewhere. This only prepares the inputs.
+solving happen elsewhere.
 """
 
 import json

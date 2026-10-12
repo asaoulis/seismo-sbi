@@ -28,11 +28,9 @@ _CONFIG_KEYS = {
 def _unmask_all_true_rows(mask: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
     """Set fully-padded (all-``True``) rows to all-``False`` so attention stays finite.
 
-    ``mask`` is a key-padding mask ``(..., S)`` with ``True`` = pad. A query whose entire key set is
-    masked makes ``nn.MultiheadAttention`` return ``NaN``. That only happens for a fully-padded
-    sample / station, which downstream code discards anyway, so blanking its mask row is safe and
-    purely keeps the forward finite. Returns ``None`` for ``None`` and leaves the mask untouched
-    (no copy) when no row is fully padded.
+    ``mask`` is a key-padding mask ``(..., S)`` with ``True`` = pad. A fully-padded row belongs to
+    a padded sample or station that downstream code discards, and blanking it keeps the attention
+    finite. Returns ``None`` for ``None``.
     """
     if mask is None:
         return None

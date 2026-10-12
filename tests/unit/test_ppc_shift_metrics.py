@@ -2,7 +2,7 @@
 """Shift-tolerant PPC metrics: ``Shifted corr misfit`` and ``Autocorr misfit``.
 
 A zero-lag correlation cannot tell "wrong mechanism" from "right mechanism, wrong
-arrival time" — and a 1-D velocity model plus a catalogue hypocentre guarantee the
+arrival time": and a 1-D velocity model plus a catalogue hypocentre guarantee the
 latter.  These two metrics judge waveform SHAPE with the arrival time free, so a
 solution is no longer penalised for travel-time error it did not cause.
 """
@@ -23,7 +23,7 @@ def _meta(**kw):
 
 
 def _wavelets(seed=0, n_traces=N_TRACES, tlen=TLEN):
-    """Band-limited pulses — a realistic stand-in for filtered displacement traces."""
+    """Band-limited pulses: a realistic stand-in for filtered displacement traces."""
     rng = np.random.default_rng(seed)
     t = np.arange(tlen)
     out = np.empty((n_traces, tlen))
@@ -35,7 +35,7 @@ def _wavelets(seed=0, n_traces=N_TRACES, tlen=TLEN):
 
 
 def _shift(mat, k):
-    """Linear (non-wrapping) shift by k samples — what a travel-time error does."""
+    """Linear (non-wrapping) shift by k samples: what a travel-time error does."""
     out = np.zeros_like(mat)
     if k >= 0:
         out[:, k:] = mat[:, : mat.shape[1] - k]
@@ -70,7 +70,7 @@ def test_a_pure_time_shift_is_forgiven(obs, shift):
 
 
 def test_shifted_corr_still_punishes_a_polarity_flip(obs):
-    """Shift tolerance must not become sign blindness — polarity IS the ISO physics.
+    """Shift tolerance must not become sign blindness: polarity IS the ISO physics.
 
     It survives only because the lag budget is smaller than half a dominant period: a
     half-period shift would realign an inverted wavelet. Measured here: flip scores 0.57
@@ -88,8 +88,8 @@ def test_autocorr_is_blind_to_polarity_by_construction(obs):
     """GUARD, not a bug: ACF(-x) == ACF(x), so this metric cannot see the ISO sign.
 
     It is registered for shape/duration/frequency content only. Any +ISO vs -ISO claim must
-    rest on the polarity analysis, the zero-lag correlation or `Shifted corr misfit` — never
-    on this metric alone. If this test ever fails the metric changed meaning; do not "fix"
+    rest on the polarity analysis, the zero-lag correlation or `Shifted corr misfit`: never
+    on this metric alone. If this test ever fails the metric changed meaning. Do not "fix"
     it by loosening the assertion.
     """
     got = autocorrelation_misfit(obs.ravel(), (-obs).ravel()[None, :], _meta())
@@ -109,7 +109,7 @@ def test_a_genuinely_different_waveform_is_punished(obs):
 def test_lag_optimisation_forgives_a_similar_wavelet_at_another_time(obs):
     """Documents the cost of the tolerance: a same-family pulse elsewhere scores well.
 
-    Measured 0.02 vs 0.45 zero-lag. That is the intended trade — but it is why the shifted
+    Measured 0.02 vs 0.45 zero-lag. That is the intended trade: but it is why the shifted
     metric is reported ALONGSIDE the zero-lag one rather than replacing it.
     """
     meta = _meta()
@@ -119,7 +119,7 @@ def test_lag_optimisation_forgives_a_similar_wavelet_at_another_time(obs):
 
 
 def test_the_lag_budget_is_bounded(obs):
-    """A shift beyond the budget must NOT be recovered — else P could align onto S."""
+    """A shift beyond the budget must NOT be recovered: else P could align onto S."""
     far = _shift(obs, 40).ravel()[None, :]
     near = _shift(obs, 3).ravel()[None, :]
     meta = _meta(max_shift_samples=4)
@@ -167,7 +167,7 @@ def test_unknown_trace_layout_falls_back_without_crashing(obs):
 
 
 def test_batch_scoring_matches_one_at_a_time(obs):
-    """Vectorised over the ensemble axis — each row must be scored independently."""
+    """Vectorised over the ensemble axis: each row must be scored independently."""
     meta = _meta()
     rows = [_shift(obs, k).ravel() for k in (0, 4, -9)]
     batch = shifted_correlation_misfit(obs.ravel(), np.array(rows), meta)

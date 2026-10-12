@@ -10,7 +10,7 @@ Simulator availability:
   - CPS: install the CPS suite so that hprep96/hspec96/hpulse96 are on PATH,
     or set CPS_PATH to the directory containing the binaries.
 
-Marked @pytest.mark.slow — the five-point derivative stencil runs
+Marked @pytest.mark.slow: the five-point derivative stencil runs
 (4 × n_params + 1) forward simulations (25 for the 6-component MT).
 """
 
@@ -120,7 +120,7 @@ def _build_mt_model_parameters(include_velocity_model=False):
     mp = ModelParameters()
     mp.names["moment_tensor"] = ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"]
     mp.theta_fiducial["moment_tensor"] = [1e14, 1e14, 1e14, 1e14, 1e14, 1e14]
-    # 1% relative step — large enough for stable finite differences but small
+    # 1% relative step: large enough for stable finite differences but small
     # enough that the linear approximation holds across the seismogram.
     mp.stencil_deltas["moment_tensor"] = [1e12] * 6
     mp.bounds["moment_tensor"] = [[-5e14] * 6, [5e14] * 6]
@@ -131,7 +131,7 @@ def _build_mt_model_parameters(include_velocity_model=False):
 
     if include_velocity_model:
         mp.nuisance["velocity_model"] = _SOCAL_VMODEL
-        # constant sampling reads the fiducial; bounds are unused for it.
+        # constant sampling reads the fiducial. Bounds are unused for it.
         mp.bounds["velocity_model"] = _SOCAL_VMODEL
 
     return mp
@@ -201,7 +201,7 @@ def _assert_fisher_properties(compressor):
         f"Fisher has non-positive eigenvalues: {eigvals}"
     )
 
-    # Fisher inverse must be finite — NaN would make the compressor useless
+    # Fisher inverse must be finite. NaN would make the compressor useless
     F_inv = compressor.Fisher_mat_inverse
     assert np.all(np.isfinite(F_inv)), (
         f"Fisher inverse contains non-finite values (NaN/Inf): {F_inv}"
@@ -363,7 +363,7 @@ def cps_compressor(tmp_path_factory):
     gf_path.mkdir()
     fiducial_path.mkdir()
 
-    # CPS runs exactly once here; all 25 stencil points load from disk.
+    # CPS runs exactly once here. All 25 stencil points load from disk.
     _precompute_cps_gfs(gf_path, fiducial_path, seismogram_duration=200)
 
     receivers = _build_receivers()
@@ -421,7 +421,7 @@ class TestInstaseisCompressionPipeline:
         """Fisher matrix must be symmetric and positive-definite.
 
         For a linear moment-tensor inversion D = G m, the Fisher matrix
-        F = G^T C^-1 G must be PD whenever G has full column rank (i.e. all
+        F = G^T C^-1 G must be PD whenever G has full column rank (that is, all
         six MT components are independently resolvable from the data).
         A non-PD Fisher matrix indicates either degenerate geometry or a
         failed stencil computation.
@@ -447,7 +447,7 @@ class TestCPSCompressionPipeline:
     """Full pipeline: CPS variable-kernel seismograms → compression → Fisher.
 
     Requires the Computer Programs in Seismology (CPS) suite to be installed.
-    The stencil runs 25 CPS Green's function computations; mark slow.
+    The stencil runs 25 CPS Green's function computations. Mark slow.
     """
 
     def test_compressor_built(self, cps_compressor):

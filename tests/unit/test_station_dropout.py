@@ -1,7 +1,7 @@
 """
-Unit tests for seismo_sbi.sbi.npe.posterior_sampling — station-config
+Unit tests for seismo_sbi.sbi.npe.posterior_sampling: station-config
 selection / fractional dropout and the shared packed-subset sample loop. Pure
-numpy + a stub posterior; no trained model or pyrocko needed.
+numpy + a stub posterior. No trained model or pyrocko needed.
 """
 import numpy as np
 import pytest
@@ -54,7 +54,7 @@ def test_include_full_false():
 
 
 def test_infeasible_n_subsets_warns(capsys):
-    # only 2 distinct size-1 subsets of {A, B}; requesting 5 must warn and cap.
+    # only 2 distinct size-1 subsets of {A, B}. Requesting 5 must warn and cap.
     cfgs = make_dropout_configs(["A", "B"], keep_fraction=0.5, n_subsets=5,
                                 min_stations=1, seed=0)
     assert "WARNING" in capsys.readouterr().out
@@ -85,7 +85,7 @@ def test_empty_names_raises():
 def test_config_from_kept_drives_sample_loop():
     """An all-versus-filtered station comparison: one full observation, two
     config_from_kept configs (all + a filtered subset ⊆ all), sampled together. The
-    filtered config must pack a NARROWER context (fewer station rows) — proving the
+    filtered config must pack a NARROWER context (fewer station rows): proving the
     subset rows/coords are indexed consistently."""
     torch = pytest.importorskip("torch")
     names = [f"S{i}" for i in range(6)]

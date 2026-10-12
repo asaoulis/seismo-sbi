@@ -3,7 +3,7 @@
 Contract with fetchers that write short per-event windows into a DAY-granular layout, tagging
 the filename's location field
 (``BO.ABU.w143900.BHZ.2025.002.mseed``) so same-day events cannot overwrite each other. That
-tag is only safe if THIS side -- ``find_mseed_files`` + ``load_waveforms`` -- still discovers
+tag is only safe if THIS side, ``find_mseed_files`` + ``load_waveforms``, still discovers
 the files and selects the window belonging to the event being built.
 
 Without these assertions a naming fix on the writer could look correct while the catalogue

@@ -3,9 +3,9 @@
 ``m6`` is ``[m_rr, m_tt, m_pp, m_rt, m_rp, m_tp]`` in N.m (up, south, east). ``create_matrix``
 builds the symmetric 3x3 tensor from six components in that index order, the matrix pyrocko's
 ``m_up_south_east`` takes. ``scalar_moment`` is the full-tensor moment of Silver and Jordan
-(1982), ``M0 = sqrt(0.5 * sum_ij M_ij^2)``, in which each off-diagonal component counts twice, and
+(1982), ``M0 = sqrt(0.5 * sum_ij M_ij^2)``, in which each off-diagonal component counts twice.
 ``moment_magnitude`` is the IASPEI (2013) ``Mw = (2/3) (log10 M0 - 9.1)`` with ``M0`` in N.m, and
-``magnitude_to_m0`` its inverse.
+``magnitude_to_m0`` is its inverse.
 """
 import numpy as np
 

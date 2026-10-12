@@ -1,4 +1,4 @@
-"""The theory covariance visits each ensemble member once; covariances accept arrays and numbers."""
+"""The theory covariance visits each ensemble member once. Covariances accept arrays and numbers."""
 from copy import deepcopy
 
 import numpy as np
@@ -21,7 +21,8 @@ PROCESSING = {"sampling_rate": 1.0, "filter": {"type": "bandpass", "freqmin": 0.
 
 
 class RecordingEnsemble(GFEnsembleSimulator):
-    """Four members whose seismograms are constant at the member's value; records every member used."""
+    """Four members whose seismograms are constant at the member's value, recording every member
+    used."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

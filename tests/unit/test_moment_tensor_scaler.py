@@ -136,7 +136,7 @@ def _gutenberg_richter_sampling(mw_min=3.5, mw_max=6.0, magnitude_conversion="id
 def test_auto_mt_log_decades_matches_prior_edges_in_scaled_space():
     """mt_log_decades: auto sets the log-M0 window to the GR prior's [mw_min, mw_max]
     so the sampled magnitude maps to u in [0,1] with the edges hit exactly (no clip,
-    no wasted range) — the whole point of the dynamic mode."""
+    no wasted range): the whole point of the dynamic mode."""
     p = _mt_and_location_params()
     scaler = build_flexible_scaler(p, AUTO, _gutenberg_richter_sampling(3.5, 6.0))
     mt = scaler.scalers[1]

@@ -13,7 +13,7 @@ TRUTH = np.array([2.0, 0.3, 0.05, -0.4])
 
 
 def model(theta):
-    """A decaying exponential on a linear trend; nonlinear in the decay rate."""
+    """A decaying exponential on a linear trend. Nonlinear in the decay rate."""
     a, b, c, d = theta
     return a * np.exp(-b * TIMES_S) + c * TIMES_S + d
 

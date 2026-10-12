@@ -1,9 +1,10 @@
 """Draw source and nuisance parameters from the configured prior.
 
-:class:`ParameterSampler` pairs each parameter of a :class:`~seismo_sbi.sbi.types.parameters.ModelParameters`
-with the sampler its ``sampling_method`` entry names (``SAMPLERS``) or with a catalogue prior built at
-parse time, and draws whole simulation inputs or one set of nuisance inputs. A sampler takes its
-bounds (the fiducial, for ``constant``) and a sample count and yields one draw per sample.
+:class:`ParameterSampler` pairs each parameter of a
+:class:`~seismo_sbi.sbi.types.parameters.ModelParameters` with its sampler. The sampler is the one
+its ``sampling_method`` entry names (``SAMPLERS``) or a catalogue prior built at parse time. The
+class draws whole simulation inputs or one set of nuisance inputs. A sampler takes its bounds (the
+fiducial, for ``constant``) and a sample count and yields one draw per sample.
 """
 
 import logging

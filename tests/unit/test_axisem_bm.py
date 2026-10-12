@@ -88,7 +88,7 @@ def test_perturb_is_seed_reproducible(fiducial):
 
 
 def test_max_depth_perturbs_only_crust(fiducial):
-    # Only nodes shallower than max_depth move; deeper nodes are identical.
+    # Only nodes shallower than max_depth move. Deeper nodes are identical.
     R = fiducial.radius.max()
     depth = (R - fiducial.radius) / 1000.0
     md = 50.0
@@ -105,7 +105,7 @@ def test_max_depth_perturbs_only_crust(fiducial):
 
 
 def test_perturbation_preserves_monotonicity(fiducial):
-    # The fiducial crust is non-decreasing in Vp/Vs with depth; the increment-
+    # The fiducial crust is non-decreasing in Vp/Vs with depth. The increment-
     # based perturbation must never introduce a reversal (backward bending),
     # across many seeds and strong perturbations.
     R = fiducial.radius.max()
@@ -125,7 +125,7 @@ def test_perturbation_preserves_monotonicity(fiducial):
 def test_velocity_perturbation_is_mean_preserving(fiducial):
     # The drift-corrected log-normal increments must keep the ensemble mean on
     # the fiducial (E[v']=v).  Without the -sigma^2/2 drift the shallow nodes are
-    # biased low by ~(exp(sigma^2/2)-1)*(v_anchor-v_i); here we check the bias is
+    # biased low by ~(exp(sigma^2/2)-1)*(v_anchor-v_i). Here we check the bias is
     # consistent with sampling noise, not a systematic offset.
     R = fiducial.radius.max()
     depth = (R - fiducial.radius) / 1000.0
@@ -152,7 +152,7 @@ def test_velocity_perturbation_is_mean_preserving(fiducial):
 
     # Fractional bias in the perturbed crust must be small.  An UNcorrected
     # log-normal would bias the surface Vp by ~exp(sigma^2/2)-1 ~= 0.5% (one-
-    # sided); with the drift correction the residual is sampling noise
+    # sided). With the drift correction the residual is sampling noise
     # (std/sqrt(n) per node ~ sigma/sqrt(n) ~ 0.18%).  Use a tolerance that the
     # corrected version passes but the uncorrected (one-sided -0.5%+) would fail.
     for mean_v, fid_v in ((mean_vp, fid_vp), (mean_vs, fid_vs)):

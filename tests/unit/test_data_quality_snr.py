@@ -106,7 +106,7 @@ def test_gate_excess():
 
 def test_gate_dead_unrecognisable_branch():
     """G1u: marginal observed energy AND no waveform match at any lag -> dead.
-    (Glitch peaks defeat a peak-amplitude guard; energy + coherence do not.)"""
+    (Glitch peaks defeat a peak-amplitude guard, energy and coherence do not.)"""
     t = QAThresholds(enable_snr_gates=True, snr_dead_unrecog_ratio=0.25)
     tm_bad = TraceMetrics("AAA", "Z", 100.0, 45.0, 0.0, 0.0, 0.05, 0, 1.4, 1.0, 1.0)
     # snr_sig/snr_syn = 0.15: above the plain dead ratio (0.1), below unrecog (0.25)
@@ -195,7 +195,7 @@ def test_sigma_outlier_flags_broken_channel_and_default_off():
 
 
 def test_sigma_outlier_escape_hatch_spares_matching_waveform():
-    """A pre-window spike can inflate sigma on a good trace; a visible waveform match
+    """A pre-window spike can inflate sigma on a good trace. A visible waveform match
     (xcorr >= 0.4, sane amplitude) escapes the drop."""
     snrs = [_snr_sigma(s, "Z", 1e-8) for s in ("AAA", "BBB", "CCC", "DDD")]
     snrs.append(_snr_sigma("OKW", "Z", 1e-5))

@@ -2,7 +2,7 @@
 """The per-worker open-Instaseis-DB cache cap is a MEMORY BUDGET and must be honoured.
 
 Each entry in ``ensemble._QUERIER_CACHE`` is an open Instaseis DB handle costing ~55 MB
-resident (measured; independent of instaseis ``buffer_size_in_mb``, so it is DB metadata rather
+resident (measured. Independent of instaseis ``buffer_size_in_mb``, so it is DB metadata rather
 than the Green's-function buffer). The cache is per worker PROCESS, so dataset generation costs
 ``n_workers * min(cap, n_members) * 55 MB``.
 
@@ -11,7 +11,7 @@ ensemble size UNCONDITIONALLY, silently overriding an explicit ``SEISMO_QUERIER_
 With a 62-member Mode-A/B ensemble at 60 joblib workers that is ~206 GB, which OOM-killed a 500k
 dataset generation at 47% (the loky worker died on SIGKILL with no Python traceback).
 
-Honouring the cap costs only cache misses — one ``instaseis.open_db`` each — and can never change
+Honouring the cap costs only cache misses, one ``instaseis.open_db`` each, and can never change
 a simulated waveform, so it is always safe to impose.
 """
 import importlib
@@ -45,7 +45,7 @@ def test_an_explicit_cap_survives_a_larger_ensemble(monkeypatch):
 
 
 def test_the_default_still_auto_grows_to_the_ensemble(monkeypatch):
-    """Behaviour with the env UNSET is unchanged — no regression for existing callers."""
+    """Behaviour with the env UNSET is unchanged: no regression for existing callers."""
     ens = _reload_ensemble(monkeypatch, cap=None)
     assert ens._QUERIER_CACHE_MAXSIZE == 64          # documented default
     assert ens._QUERIER_CACHE_MAXSIZE_IS_EXPLICIT is False

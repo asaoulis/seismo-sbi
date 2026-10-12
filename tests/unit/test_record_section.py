@@ -1,6 +1,6 @@
 """Tests for the moveout record-section renderer and its MisfitsPlotting adapter.
 
-The point of the renderer is that EVERY trace is legible — the old figures normalised 45
+The point of the renderer is that EVERY trace is legible: the old figures normalised 45
 traces by one global peak and 13 of 15 stations came out flat. The normalisation maths is
 therefore the thing worth pinning down, alongside the layout/ordering plumbing.
 """
@@ -33,7 +33,7 @@ def _close_figs():
 def _obs(seed=0):
     rng = np.random.default_rng(seed)
     cube = rng.normal(size=(N, C, T))
-    # station 0 is 1000x louder — the case that flattened everything under global norm
+    # station 0 is 1000x louder: the case that flattened everything under global norm
     cube[0] *= 1000.0
     return cube
 
@@ -166,7 +166,7 @@ def test_band_plus_best_adds_a_dashed_line_for_member_zero():
 
 
 def test_adapter_subsampling_keeps_the_best_member_first():
-    """Random subsampling must not shuffle member 0 away — 'band+best' depends on it."""
+    """Random subsampling must not shuffle member 0 away. 'band+best' depends on it."""
     mp = MisfitsPlotting(_receivers(), 1.0, None)
     rng = np.random.default_rng(3)
     obs = rng.normal(size=N * C * T)

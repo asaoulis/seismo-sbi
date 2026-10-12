@@ -2,11 +2,11 @@
 
 Tests are organised in four sections:
 
-1. **Scalar moment helpers** — ``scalar_moment`` and ``_gcmt_half_duration``.
-2. **Triangular STF shape** — ``_build_triangular_stf`` geometry and
+1. **Scalar moment helpers**, ``scalar_moment`` and ``_gcmt_half_duration``.
+2. **Triangular STF shape**, ``_build_triangular_stf`` geometry and
    ``build_stf_sliprate`` with a GCMT half-duration.
-3. **Dirac delta** — ``build_stf_sliprate(None, dt)`` backward-compat path.
-4. **Dispatch** — ``Simulator.run_simulation()`` pops ``stf_duration`` and
+3. **Dirac delta**, ``build_stf_sliprate(None, dt)`` backward-compat path.
+4. **Dispatch**, ``Simulator.run_simulation()`` pops ``stf_duration`` and
    forwards it to ``generic_point_source_simulation()`` as a kwarg.
 
 No Instaseis database is required for any test here.
@@ -302,7 +302,7 @@ class TestBuildStfSliprateWithGcmt:
 
     def test_min_length_enforced(self):
         """Very short events should still be padded to _MIN_STF_SAMPLES."""
-        # M0 for Mw ≈ 2 → very short T_half (≈0.1 s); with dt=0.5 → few samples
+        # M0 for Mw ≈ 2 → very short T_half (≈0.1 s). With dt=0.5 → few samples
         s = build_stf_sliprate(1.0, dt=0.5, gcmt_half_duration=0.05)
         assert len(s) >= _MIN_STF_SAMPLES
 
@@ -326,7 +326,7 @@ class TestBuildStfSliprateWithGcmt:
 
     def test_subsample_half_duration_falls_back_to_dirac(self):
         """A half-duration at/below ~dt/2 is unresolvable and would discretise to a
-        zero-area triangle (NaN under Instaseis set_sliprate(normalize=True)); it must fall
+        zero-area triangle (NaN under Instaseis set_sliprate(normalize=True)). It must fall
         back to a Dirac impulse instead."""
         for dt in (0.5, 1.0, 1.202625, 2.346442):
             s = build_stf_sliprate(1.0, dt=dt, gcmt_half_duration=0.1 * dt)
@@ -349,7 +349,7 @@ class TestSliprateCarriesUnitMoment:
     Every sliprate this module returns must satisfy ``sum * dt == 1``, on BOTH the Dirac and
     triangular branches and at every (dt, Mw, scale) the production prior can reach. The DC
     component of the discrete FFT convolution is exactly ``sum * dt``, so it *is* the
-    long-period amplitude gain — any departure from 1 scales M0 directly and shifts Mw by
+    long-period amplitude gain: any departure from 1 scales M0 directly and shifts Mw by
     ``-(2/3)*log10(area)``.
 
     A unit-height Dirac spike normalised with ``np.trapz`` (which half-weights the endpoints)
@@ -377,7 +377,7 @@ class TestSliprateCarriesUnitMoment:
     def test_unit_height_spike_would_be_twice_too_loud(self):
         """Pin the actual mechanism, so the bug cannot silently return.
 
-        This is what the old code did; it must remain visibly wrong by exactly 2x.
+        This is what the old code did. It must remain visibly wrong by exactly 2x.
         """
         dt = 1.202625
         old = np.zeros(_MIN_STF_SAMPLES)
@@ -402,7 +402,7 @@ class TestBuildStfSliprateDirac:
         unit-HEIGHT spike and delegating normalisation to Instaseis's
         ``set_sliprate(..., normalize=True)`` is what caused the factor-2 amplitude bug:
         ``np.trapz`` half-weights endpoints, so a boundary spike integrates to dt/2 and comes
-        back at 2/dt — twice the intended moment, i.e. dMw = -0.2007 on every synthetic.
+        back at 2/dt: twice the intended moment, that is, dMw = -0.2007 on every synthetic.
         """
         for dt in (0.5, 1.202625, 2.346442):
             s = build_stf_sliprate(None, dt=dt)
@@ -429,7 +429,7 @@ class TestBuildStfSliprateDirac:
 
 
 # ===========================================================================
-# Section 4: Dispatch — stf_duration flows through run_simulation()
+# Section 4: Dispatch: stf_duration flows through run_simulation()
 # ===========================================================================
 
 
@@ -448,7 +448,7 @@ class TestStfDurationDispatch:
         assert float(np.squeeze(received)) == pytest.approx(2.0)
 
     def test_stf_duration_forwarded_from_array(self, mock_sim):
-        """The nuisance sampler yields a 1-element array; the content must arrive."""
+        """The nuisance sampler yields a 1-element array. The content must arrive."""
         params = {
             "source_location": _SOURCE_LOC,
             "moment_tensor": [1e14] * 6,

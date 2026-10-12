@@ -170,11 +170,11 @@ def compute_evaluation_metrics(val: dict, ecp=None, alpha=None,
     Post-process a validation-inference result (the dict returned by
     :func:`~seismo_sbi.evaluation.validation.run_validation`) into per-run performance metrics.
 
-    Computes per-parameter spread / bias / error in **moment-tensor space** and, when
-    the inference is the 6-component moment tensor, in the **derived space**
-    (γ, δ, Mw, strike, dip, rake). The ``sqrt(det C)`` figure-of-merit for the
-    {δ, γ}, {strike, dip, rake} and full-MT subsets. Empirical credible-interval
-    coverage. And (if a TARP curve is supplied) its calibration error.
+    Computes per-parameter spread, bias and error in moment-tensor space. When the inference is
+    the 6-component moment tensor, it computes them in the derived space too (γ, δ, Mw, strike,
+    dip, rake). It adds the ``sqrt(det C)`` figure of merit for the {δ, γ}, {strike, dip, rake}
+    and full-MT subsets, the empirical credible-interval coverage, and the calibration error of a
+    TARP curve when one is supplied.
 
     Parameters
     ----------

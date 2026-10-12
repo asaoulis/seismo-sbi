@@ -1,7 +1,7 @@
 """End-to-end smoke test for the ML neural-compression training flow.
 
-Drives the full ``train_NPE`` path — dataset generation -> data loading with
-synthetic noise -> embedding net + normalising flow -> one training epoch — on a
+Drives the full ``train_NPE`` path, dataset generation -> data loading with
+synthetic noise -> embedding net + normalising flow -> one training epoch, on a
 TINY synthetic dataset, headless (no W&B logging, no checkpoint files), on CPU.
 
 Crucially it needs **no Instaseis/CPS database**: by fabricating a
@@ -12,10 +12,10 @@ every non-``moment_tensor`` parameter uses ``constant`` sampling.
 
 This is the **gate for new ML compression architectures**: register a new builder
 in ``EMBEDDING_NET_REGISTRY`` (see ``sbi/npe/train.py``) and add it to
-``ARCHITECTURES`` below; the test will train it for one epoch and assert the
+``ARCHITECTURES`` below. The test will train it for one epoch and assert the
 embedding-net -> flow path produces a finite log-probability.
 
-Marked ``slow`` (heavier than unit tests; constructs a real transformer + flow),
+Marked ``slow`` (heavier than unit tests, since it constructs a real transformer and flow),
 but runs in well under a minute on CPU.
 """
 
@@ -47,14 +47,14 @@ pytestmark = pytest.mark.slow
 ARCHITECTURES = ["seismogram_transformer"]
 
 # Station encoders exercised by the encoder-gate parametrized test (Phase 2).
-# Each entry is (encoder_name, encoder_config) — tiny configs to keep CPU-fast.
+# Each entry is (encoder_name, encoder_config): tiny configs to keep CPU-fast.
 STATION_ENCODERS = [
     ("cnn", {}),
     ("pno", {"width": 8, "modes": 4, "n_blocks": 2, "downsample": 4}),
     ("tcn", {"channels": 8, "n_blocks": 2, "kernel_size": 3, "downsample": 4}),
 ]
 
-_DURATION = 200          # seconds; long enough that the CNN feature extractor does not
+_DURATION = 200          # seconds. Long enough that the CNN feature extractor does not
 _SAMPLING_RATE = 1.0     # collapse the trace under its stride-2 down-sampling.
 _NUM_SIMS = 24
 _MODEL_DIM = 16          # tiny channels/latent dim to keep the test fast.
@@ -63,10 +63,10 @@ _MODEL_DIM = 16          # tiny channels/latent dim to keep the test fast.
 def _build_kernel_pipeline(tmp_path, receivers=None, components="Z", sampling_method=None):
     """A SingleEventPipeline backed by the fabricated-kernel simulator (no Instaseis/CPS).
 
-    ``receivers`` / ``components`` default to the shared single-Z setup; pass a
+    ``receivers`` / ``components`` default to the shared single-Z setup. Pass a
     multi-component receivers + components string to exercise per-channel behaviour
-    (e.g. component dropout). ``sampling_method`` overrides the per-parameter sampler
-    selection (e.g. to route ``moment_tensor`` through a catalogue-prior closure);
+    (for example component dropout). ``sampling_method`` overrides the per-parameter sampler
+    selection (for example to route ``moment_tensor`` through a catalogue-prior closure);
     it must keep every non-``moment_tensor`` parameter ``constant`` so the kernel
     simulator is still selected.
     """
@@ -126,7 +126,7 @@ def kernel_pipeline(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def multicomp_kernel_pipeline(tmp_path_factory):
-    """Two stations, two components (Z,N) — lets component dropout actually zero channels."""
+    """Two stations, two components (Z,N): lets component dropout actually zero channels."""
     from seismo_sbi.simulators.receivers import Receiver, Receivers
     receivers = Receivers(receivers=[
         Receiver(35.945, -120.541, "BK", "PKD", ["Z", "N"]),
@@ -226,7 +226,7 @@ def test_flow_config_and_constant_lr_one_epoch_and_round_trip(kernel_pipeline, t
 
     Exercises a deeper flow (num_transforms=8) with the constant-after-warmup LR schedule for
     one headless epoch (checkpointing on), confirms a finite log-prob, and reloads from the
-    model_meta.json sidecar — asserting the rebuilt flow keeps the 8 coupling transforms.
+    model_meta.json sidecar: asserting the rebuilt flow keeps the 8 coupling transforms.
     """
     import torch
     from pyknos.nflows import transforms
@@ -254,7 +254,7 @@ def test_flow_config_and_constant_lr_one_epoch_and_round_trip(kernel_pipeline, t
         log_prob = model(x.to(model.device), theta.to(model.device))
     assert torch.isfinite(log_prob).all()
 
-    # Reload into a fresh DEFAULT trainer (num_transforms=5) — must rebuild to 8 from sidecar.
+    # Reload into a fresh DEFAULT trainer (num_transforms=5): must rebuild to 8 from sidecar.
     components = pipeline.data_manager.data_loader.components
     station_locations = pipeline.simulation_parameters.receivers.get_station_locations_array()
     trace_length = compute_data_vector_length(_DURATION, _SAMPLING_RATE) + 1
@@ -327,8 +327,8 @@ def test_conditioned_one_epoch(kernel_pipeline, tmp_path, inject):
     """Source-location-conditioned training runs one epoch and yields a finite log-prob.
 
     Source location is fed as RAW (lat, lon, depth) conditioning via the dataloader's
-    conditioning_param_map; the embedding net unpacks it from the packed context. This is
-    the Phase 3 gate; the unconditioned gates above guard backward compatibility.
+    conditioning_param_map. The embedding net unpacks it from the packed context. This is
+    the Phase 3 gate. The unconditioned gates above guard backward compatibility.
     """
     import torch
 
@@ -598,7 +598,7 @@ def test_load_best_rebuilds_nondefault_architecture(kernel_pipeline, tmp_path):
     trainer.train(run_name, epochs=1, output_path=tmp_path, dataloader_args=dataloader_args,
                   logger=None, enable_checkpointing=True, enable_progress_bar=False)
 
-    # Fresh trainer built with the DEFAULT (cnn) config — structurally different from PNO.
+    # Fresh trainer built with the DEFAULT (cnn) config: structurally different from PNO.
     reloader = CompressionTrainer(
         components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,
         architecture="seismogram_transformer", trace_length=trace_length,
@@ -673,7 +673,7 @@ def test_load_best_restores_amplitude_embedding(kernel_pipeline, tmp_path):
 def test_positional_encoding_one_epoch(kernel_pipeline, tmp_path):
     """One headless epoch with the §3.2 RFF station positional encoding (source-relative
     geometry + depth, injected every layer) under source-location conditioning yields a finite
-    log-prob — the full encoder → RFF-posenc-conditioned transformer → flow path end-to-end."""
+    log-prob: the full encoder → RFF-posenc-conditioned transformer → flow path end-to-end."""
     import torch
     from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
 
@@ -778,7 +778,7 @@ def test_load_best_restores_positional_encoding(kernel_pipeline, tmp_path):
 
 def test_pma_pooling_one_epoch(kernel_pipeline, tmp_path):
     """One headless epoch with the §3.4 Set-Transformer PMA pooling head (stations mode, k=4
-    seeds, SAB among seeds, learned linear combine) yields a finite log-prob — the full
+    seeds, SAB among seeds, learned linear combine) yields a finite log-prob: the full
     encoder → axial transformer → PMA head → flow path end-to-end. Also asserts the head owns
     the seeds (in-block query tokens disabled)."""
     import torch
@@ -831,7 +831,7 @@ def test_pma_pooling_one_epoch(kernel_pipeline, tmp_path):
 
 def test_load_best_restores_pma_pooling(kernel_pipeline, tmp_path):
     """The pma_pooling config must round-trip through model_meta.json: train with it, reload
-    into a default-constructed trainer (which has no head — legacy query-mean), and confirm the
+    into a default-constructed trainer (which has no head: legacy query-mean), and confirm the
     head is restored and runs."""
     import torch
     from seismo_sbi.sbi.npe.data.dataloading import make_torch_dataloaders
@@ -997,7 +997,7 @@ def test_station_encoder_one_epoch(kernel_pipeline, tmp_path, encoder_name, enco
 
 
 # ---------------------------------------------------------------------------
-# Misspecification-robust MMD auxiliary loss (ml_mmd; sbi/npe/mmd.py)
+# Misspecification-robust MMD auxiliary loss (ml_mmd, sbi/npe/mmd.py)
 # ---------------------------------------------------------------------------
 
 def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
@@ -1008,7 +1008,7 @@ def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
     completes, the combined loss is finite, and the ``train_mmd2`` / ``val_mmd2``
     diagnostics were logged. Also asserts the DEFAULT-OFF equivalence contract: a
     module that never called ``enable_mmd`` carries no MMD state at all (its
-    ``training_step`` short-circuits on ``_mmd_cfg is None`` — the legacy loss path).
+    ``training_step`` short-circuits on ``_mmd_cfg is None``: the legacy loss path).
     """
     import torch
     from torch.utils.data import DataLoader, TensorDataset
@@ -1043,7 +1043,7 @@ def test_mmd_one_epoch_trains_and_logs(kernel_pipeline, tmp_path):
     assert "val_mmd2" in metrics and torch.isfinite(metrics["val_mmd2"])
     assert "loss" in metrics and torch.isfinite(metrics["loss"])
     # val_loss stays NLL-only (checkpoint selection contract): it must not have the
-    # (weighted) MMD folded in — verify by recomputing NLL on a val batch.
+    # (weighted) MMD folded in: verify by recomputing NLL on a val batch.
     assert "val_loss" in metrics and torch.isfinite(metrics["val_loss"])
 
     # ---- default-off equivalence: an un-armed module has NO MMD state ----
@@ -1117,7 +1117,7 @@ def test_mmd_lambda_schedule():
     from seismo_sbi.sbi.npe.training.lightning_module import NPELightningModule
 
     class _Stub(NPELightningModule):
-        def __init__(self):  # bypass flow construction; only the schedule is tested
+        def __init__(self):  # bypass flow construction. Only the schedule is tested
             import pytorch_lightning as pl
             pl.LightningModule.__init__(self)
             self._mmd_cfg = {"lambda_mmd": 0.1, "warmup_epochs": 2, "ramp_epochs": 4,
@@ -1161,7 +1161,7 @@ def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline
     optimizer and a fresh LR budget. Asserts the four things that make it a real continuation
     rather than a run that merely looks like one:
       1. every parameter matches the source checkpoint bit-for-bit after loading;
-      2. the model is still TRAINABLE — `load_best` freezes + evals, which would leave the
+      2. the model is still TRAINABLE. `load_best` freezes + evals, which would leave the
          optimizer with nothing to update and silently train nothing;
       3. an architecture mismatch RAISES (strict=True) instead of half-loading;
       4. a missing source run RAISES instead of quietly starting from scratch.
@@ -1183,7 +1183,7 @@ def test_warm_start_loads_weights_and_leaves_the_model_trainable(kernel_pipeline
     )
     source_state = {k: v.detach().clone() for k, v in trainer.model.state_dict().items()}
 
-    # A fresh trainer of the SAME shape — different random init, and a different lr to prove the
+    # A fresh trainer of the SAME shape: different random init, and a different lr to prove the
     # warm start carries weights WITHOUT dragging the source run's optimizer settings along.
     fresh = CompressionTrainer(
         components, station_locations, channels=_MODEL_DIM, latent_dim=_MODEL_DIM,

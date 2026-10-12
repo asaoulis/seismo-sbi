@@ -3,7 +3,7 @@
 Dependency-free: the wrapped "simulator" is a plain callable, no Instaseis/CPS.
 
 A small fraction of sampled sources can fall outside a forward model's valid
-domain (e.g. instaseis 'Element not found'); the generator must SKIP those after
+domain (for example instaseis 'Element not found'). The generator must SKIP those after
 retries (rather than abort the whole run) yet still ABORT if the failure fraction
 is high (a systemic problem such as a wrong DB path).
 """
@@ -27,7 +27,7 @@ class TestErrorWrapper:
 
     def test_skip_after_retries_returns_false_not_raises(self):
         runner = DatasetGenerator(_always_fail, num_parallel_jobs=1)
-        # Must NOT raise — a doomed sample is skipped, not fatal.
+        # Must NOT raise: a doomed sample is skipped, not fatal.
         assert runner.simulator("job") is False
 
     def test_retries_then_succeeds_returns_true(self):

@@ -10,9 +10,9 @@ Design contract
 - `PostProcessingChain([])` is the identity: seismograms pass through unchanged.
 - Each `SeismogramEffect` subclass extracts only its own key from `nuisance_params`
   and is a no-op when that key is absent.
-- Effects compose sequentially; later effects see the output of earlier ones.
+- Effects compose sequentially. Later effects see the output of earlier ones.
 - `build_post_processing_chain(nuisance_keys)` returns a chain containing only
-  effects registered in `EFFECT_REGISTRY` for the given keys; unknown keys are
+  effects registered in `EFFECT_REGISTRY` for the given keys. Unknown keys are
   silently skipped.
 """
 
@@ -22,7 +22,7 @@ import pytest
 from seismo_sbi.simulators.receivers import Receiver, Receivers
 
 # ---------------------------------------------------------------------------
-# The module under test — will raise ImportError until implemented.
+# The module under test: will raise ImportError until implemented.
 # Tests are collected but skipped gracefully via the importorskip mechanism.
 # ---------------------------------------------------------------------------
 
@@ -91,7 +91,7 @@ class TestPostProcessingChain:
         assert np.array_equal(out["STA1"]["Z"], seismo["STA1"]["Z"])
 
     def test_empty_chain_returns_new_object_or_same(self, one_station):
-        """The chain may return the same dict or a copy — but must not error."""
+        """The chain may return the same dict or a copy: but must not error."""
         chain = PostProcessingChain()
         seismo = _make_seismo_map(one_station)
         out = chain(seismo, one_station, {})
@@ -310,7 +310,7 @@ class TestBuildPostProcessingChain:
         assert any(isinstance(e, InstrumentDropoutEffect) for e in chain.effects)
 
     def test_unknown_keys_silently_ignored(self):
-        """Non-effect nuisance keys (e.g. source_location) must not raise."""
+        """Non-effect nuisance keys (for example source_location) must not raise."""
         chain = build_post_processing_chain(["source_location", "velocity_model"])
         assert len(chain.effects) == 0
 
@@ -356,7 +356,7 @@ class TestBuildPostProcessingChain:
 
 
 # ===========================================================================
-# TimeShiftErrorEffect — common-offset distribution
+# TimeShiftErrorEffect: common-offset distribution
 # ===========================================================================
 
 
@@ -508,7 +508,7 @@ class TestApplyLanczosShift:
         sr = 100.0  # samples per second
         duration = 5.0
         t = np.arange(0, duration, 1 / sr)
-        freq = 1.0  # Hz — well within Lanczos bandwidth
+        freq = 1.0  # Hz: well within Lanczos bandwidth
         trace = np.sin(2 * np.pi * freq * t)
 
         tau_s = 0.13  # fractional-sample shift: 13 samples (not integer)
@@ -567,7 +567,7 @@ class TestTimeShiftErrorEffect:
     """Tests for the common-offset + per-station-Gaussian time shift effect.
 
     ``time_shift_error`` is an **on/off switch** (NOT a probability): ``0.0`` (or
-    absent) ⇒ identity; any non-zero value ⇒ active.  When active, every station
+    absent) ⇒ identity. Any non-zero value ⇒ active.  When active, every station
     receives a shared ``uniform(-uniform_offset, +uniform_offset)`` common offset
     plus an independent ``N(0, gaussian_sigma)`` draw.  Lanczos interpolation is
     used for sub-sample accuracy.
@@ -783,7 +783,7 @@ class TestApplyRandomCodaFilter:
         trace = (1 - x ** 2) * np.exp(-(x ** 2) / 2)
         np.random.seed(1)
         out = _apply_random_coda_filter(trace, alpha=0.6)
-        # Nothing should appear in the first half — coda only trails (and is
+        # Nothing should appear in the first half: coda only trails (and is
         # truncated at the window edge), it cannot wrap to the start.
         assert np.allclose(out[:256], 0.0, atol=1e-10), (
             "Coda must not wrap around to the start of the window"
@@ -1033,7 +1033,7 @@ class TestScatteringCodaEffect:
             ScatteringCodaEffect(alpha=0.5, alpha_range=(0.0, 1.0))
 
     def test_per_station_alpha_sampled_in_range(self, two_stations):
-        """Each station draws its own alpha; a narrow non-zero range perturbs both."""
+        """Each station draws its own alpha. A narrow non-zero range perturbs both."""
         # Range well above 0 so both stations are reliably perturbed (alpha>0).
         effect = ScatteringCodaEffect(alpha_range=(0.7, 0.9), mode="causal")
         trace = np.sin(np.linspace(0, 4 * np.pi, TRACE_LEN))
@@ -1087,7 +1087,7 @@ class TestScatteringCodaEffect:
 
 
 # ===========================================================================
-# apply_chain_to_array — map<->array adapter (training-time augmentation bridge)
+# apply_chain_to_array: map<->array adapter (training-time augmentation bridge)
 # ===========================================================================
 
 apply_chain_to_array = post_processing.apply_chain_to_array
@@ -1139,7 +1139,7 @@ class TestApplyChainToArray:
     COMPONENTS = "ZNE"
 
     def _multi_comp_receivers(self):
-        # STA1 has all three components; STA2 only Z (rows N,E zero-filled in D).
+        # STA1 has all three components. STA2 only Z (rows N,E zero-filled in D).
         recs = [
             Receiver(0.0, 0.0, "XX", "STA1", ["Z", "N", "E"]),
             Receiver(1.0, 1.0, "XX", "STA2", ["Z"]),
@@ -1223,7 +1223,7 @@ class TestApplyChainToArray:
 
 
 # ===========================================================================
-# ComponentDropoutEffect — per-channel zeroing of PRESENT components
+# ComponentDropoutEffect: per-channel zeroing of PRESENT components
 # ===========================================================================
 
 from seismo_sbi.nuisance_effects.dropout_effects import ComponentDropoutEffect  # noqa: E402
@@ -1233,7 +1233,7 @@ def _multi_comp_map_and_receivers():
     """A seismograms_map (global-component keyed, absent components zero-filled, mirroring
     the array adapter) plus Receivers whose per-station `.components` mark the PRESENT set.
 
-    STA1: present Z, N, E (3 present);  STA2: present Z, N (E zero-filled);  STA3: present Z only.
+    STA1: present Z, N, E (3 present).  STA2: present Z, N (E zero-filled).  STA3: present Z only.
     """
     components = "ZNE"
     recs = Receivers(receivers=[
@@ -1340,13 +1340,13 @@ class TestComponentDropoutEffect:
         # STA1 keeps exactly one present (Z/N/E) row non-zero.
         kept = [j for j in range(3) if not np.allclose(out[0, j], 0.0)]
         assert len(kept) == 1
-        # STA3 (index 2) single present Z stays; its absent N/E rows stay zero.
+        # STA3 (index 2) single present Z stays. Its absent N/E rows stay zero.
         assert np.allclose(out[2, 0], 5.0)
         assert np.allclose(out[2, 1], 0.0) and np.allclose(out[2, 2], 0.0)
 
 
 # ===========================================================================
-# Stage routing — pre-noise vs post-noise augmentation chains
+# Stage routing: pre-noise vs post-noise augmentation chains
 # ===========================================================================
 
 class TestPostNoiseStageRouting:

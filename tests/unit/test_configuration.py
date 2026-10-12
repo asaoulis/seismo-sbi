@@ -172,7 +172,7 @@ def test_parse_invalid_nuisance_type_raises():
 
 
 def test_parse_source_location_nuisance():
-    """source_location is the canonical constant nuisance — must parse cleanly."""
+    """source_location is the canonical constant nuisance: must parse cleanly."""
     cfg = SBI_Configuration()
     cfg.parse_parameters({
         "inference": {
@@ -547,7 +547,7 @@ def test_parse_component_dropout_post_noise_stage():
 
 @pytest.mark.parametrize("bad_stage", ["simulation", "training_augmentation"])
 def test_parse_component_dropout_requires_post_noise_stage(bad_stage):
-    """component_dropout must run post-noise; default/pre-noise stages must raise."""
+    """component_dropout must run post-noise. Default/pre-noise stages must raise."""
     cfg = SBI_Configuration()
     block = {"fiducial": [0.2], "bounds": [0.0, 1.0]}
     if bad_stage != "simulation":  # 'simulation' is the implicit default → omit stage to test it

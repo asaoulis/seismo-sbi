@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------
-# relative_station_geometry — geographic
+# relative_station_geometry: geographic
 # ---------------------------------------------------------------------------
 
 def test_geographic_azimuth_due_north_and_east():
@@ -53,7 +53,7 @@ def test_geographic_zero_distance_when_colocated():
 
 
 # ---------------------------------------------------------------------------
-# relative_station_geometry — cartesian
+# relative_station_geometry: cartesian
 # ---------------------------------------------------------------------------
 
 def test_cartesian_distance_and_azimuth():
@@ -68,7 +68,7 @@ def test_cartesian_distance_and_azimuth():
 
 
 def test_geometry_batch_shape_and_depth_ignored():
-    # Two sources with differing depth (3rd coord) — must not change epicentral geometry.
+    # Two sources with differing depth (3rd coord): must not change epicentral geometry.
     source = torch.tensor([[0.0, 0.0, 10.0], [0.0, 0.0, 99.0]])
     stations = torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 2.0]])
     geom = relative_station_geometry(source, stations, "geographic")
@@ -123,7 +123,7 @@ def test_film_modulates_after_perturbation():
     with torch.no_grad():
         film.to_film.weight.normal_()
         film.to_film.bias.normal_()
-    x = torch.randn(2, 3, 16)             # (B, N, d_model) — middle dim broadcast
+    x = torch.randn(2, 3, 16)             # (B, N, d_model): middle dim broadcast
     cond = torch.randn(2, 8)
     out = film(x, cond)
     assert out.shape == x.shape

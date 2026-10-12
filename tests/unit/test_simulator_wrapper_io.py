@@ -2,7 +2,7 @@
 
 input_output_simulation() is a pure data-routing function: it samples nuisance
 parameters, merges them with the theta vector, runs the simulator, and returns a
-flat array.  We test this logic directly — without constructing a real
+flat array.  We test this logic directly: without constructing a real
 GeneralSimulatorWrapper (which would require a live Instaseis / CPS installation)
 — by calling the method as an unbound function with mock collaborators.
 """
@@ -105,7 +105,7 @@ def _call_io_sim(parameters, data_loader, nuisance_values, simulator, theta, **k
     """Invoke input_output_simulation as an unbound call (self is unused), each nuisance held at its value."""
     parameter_sampler = ParameterSampler(parameters, {key: constant_sampler for key in nuisance_values}, nuisance_values)
     return GeneralSimulatorWrapper.input_output_simulation(
-        None,  # self — not referenced in the method body
+        None,  # self: not referenced in the method body
         parameters,
         data_loader,
         parameter_sampler,
@@ -159,10 +159,10 @@ class TestInputOutputSimulation:
         mp = ModelParameters()
         mp.names["moment_tensor"] = ["m_rr", "m_tt", "m_pp", "m_rt", "m_rp", "m_tp"]
         mp.theta_fiducial["moment_tensor"] = [1e14] * 6
-        # No nuisance — simulate passing source_location directly via kwargs
+        # No nuisance: simulate passing source_location directly via kwargs
         no_nuisance_values = {}
         theta = np.array([1e14] * 6)
-        # source_location must be provided somehow — here as a kwarg
+        # source_location must be provided somehow: here as a kwarg
         result = _call_io_sim(
             mp, data_loader, no_nuisance_values, mock_sim, theta,
             source_location=np.array(_SOURCE_LOC),

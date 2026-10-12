@@ -1,7 +1,7 @@
 """Nuisance values reach the simulator in their own slot of the sample vector.
 
-A `constant` nuisance must contribute exactly ``len(fiducial)`` slots — the number
-``vector_to_simulation_inputs`` consumes — so that no parameter declared after it is read one
+A `constant` nuisance must contribute exactly ``len(fiducial)`` slots, the number
+``vector_to_simulation_inputs`` consumes, so that no parameter declared after it is read one
 slot late. Pins the generation chain and the forward path against each other, dependency-free:
 the simulator is a stub, no Instaseis or CPS.
 """
@@ -71,7 +71,8 @@ def test_each_nuisance_receives_its_own_configured_value():
 def test_sampled_nuisance_after_a_constant_spans_its_bounds():
     durations = np.array([inputs["stf_duration"][0] for inputs in _generated_inputs()])
     assert np.all((durations >= _STF_BOUNDS[0]) & (durations <= _STF_BOUNDS[1]))
-    # The bug pinned this to the preceding constant's upper bound, i.e. one value for every draw.
+    # The bug pinned this to the preceding constant's upper bound, that is, one value for every
+    # draw.
     assert durations.std() > 0.0
 
 
@@ -97,7 +98,7 @@ def _forward_path_inputs(params, sampling_method):
 
 def test_generation_and_forward_paths_agree_on_the_nuisance_map():
     # Every nuisance constant, so the map is fully determined and the two paths must match
-    # value for value; a slot shift would move a value into the neighbouring nuisance.
+    # value for value. A slot shift would move a value into the neighbouring nuisance.
     constants_only = {**_SAMPLING_METHOD, "stf_duration": "constant"}
     params = _parameters()
     generated = _generated_inputs(num_samples=1, sampling_method=constants_only)[0]

@@ -67,7 +67,7 @@ def test_negative_guard_still_rejects_depth_above_the_free_surface():
 def test_simulation_parameters_carries_the_offset():
     """The YAML `seismic_context.source_depth_offset_km` must reach SimulationParameters.
 
-    It is a NamedTuple, so an unwired field raises rather than being ignored -- but a MISSING
+    It is a NamedTuple, so an unwired field raises rather than being ignored: but a MISSING
     default would break every existing config, so pin both.
     """
     from seismo_sbi.sbi.types.parameters import SimulationParameters
@@ -82,7 +82,7 @@ def test_simulator_wrapper_forwards_the_offset(monkeypatch):
     """select_and_initialise_simulator must pass the offset to the Instaseis ensemble simulator.
 
     Without this the config key parses, reaches SimulationParameters, and is then silently
-    dropped at simulator construction -- every source 1 km too shallow, with no error.
+    dropped at simulator construction: every source 1 km too shallow, with no error.
     """
     import seismo_sbi.sbi.simulator_wrapper as sw
     import seismo_sbi.simulators.registry as registry

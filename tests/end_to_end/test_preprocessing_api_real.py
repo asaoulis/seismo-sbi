@@ -3,7 +3,7 @@
 Response removal via load_inventory + deconvolve_and_filter, then export_to_sbi_h5.
 
 Opt-in for network access: set SEISMO_SBI_RUN_NETWORK=1 (inherited from
-conftest; tests will still run from cache if data is present).
+conftest. Tests will still run from cache if data is present).
 """
 
 from datetime import timedelta
@@ -26,7 +26,7 @@ from tests.end_to_end.conftest import RIDGECREST_EVENT, IRIS_TEST_STATIONS
 pytestmark = pytest.mark.slow
 
 # ---------------------------------------------------------------------------
-# Event window — same as legacy test so assertions are directly comparable
+# Event window: same as legacy test so assertions are directly comparable
 # ---------------------------------------------------------------------------
 
 EVENT_ORIGIN = RIDGECREST_EVENT["origin_time"]
@@ -245,7 +245,7 @@ class TestDeconvolveRealData:
     def test_response_removal_changes_amplitude(self, preprocessing_real_output, cached_iris_wide_download):
         """Displacement output (response removed) should differ from raw counts.
 
-        IRIS broadband channels have sensitivities ~1500 counts/(nm/s); after
+        IRIS broadband channels have sensitivities ~1500 counts/(nm/s). After
         response removal the amplitude will be orders of magnitude different.
         """
         for (network, station), paths in list(
@@ -434,8 +434,8 @@ class TestSbiIngestionWithNewApiH5:
         from seismo_sbi.simulators.simulation_io import SimulationDataLoader
 
         available = preprocessing_real_output["available_stations"]
-        # Use ANMO network for IU stations, BFO for II — just pass a dummy network
-        # for testing; SimulationDataLoader only uses station name for h5 lookup
+        # Use ANMO network for IU stations, BFO for II: just pass a dummy network
+        # for testing. SimulationDataLoader only uses station name for h5 lookup
         receivers = Receivers(receivers=[
             Receiver(0.0, 0.0, "IU", sta, ["Z", "E", "N"])
             for sta in available

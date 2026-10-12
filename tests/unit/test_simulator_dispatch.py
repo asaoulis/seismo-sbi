@@ -22,7 +22,7 @@ TRACE_LEN = 40
 # ---------------------------------------------------------------------------
 
 class MockSimulator(Simulator):
-    """Concrete Simulator returning canned seismograms; records the last call."""
+    """Concrete Simulator returning canned seismograms. Records the last call."""
 
     def __init__(self, receivers, trace_len=TRACE_LEN):
         super().__init__(
@@ -137,7 +137,7 @@ class TestApplyStationTimeShifts:
         assert np.all(shifted["STA1"]["Z"][5:] == 1.0)
 
     def test_zero_shift_station_unchanged_multi_station(self, two_station_receivers):
-        """STA1 has shift=0; its trace must not change."""
+        """STA1 has shift=0. Its trace must not change."""
         seismo_map = {
             "STA1": {"Z": np.arange(TRACE_LEN, dtype=float)},
             "STA2": {"Z": np.arange(TRACE_LEN, dtype=float)},
@@ -146,7 +146,7 @@ class TestApplyStationTimeShifts:
         assert np.array_equal(shifted["STA1"]["Z"], seismo_map["STA1"]["Z"])
 
     def test_nonzero_shift_station_changed_multi_station(self, two_station_receivers):
-        """STA2 has shift=5; its trace must differ from the original."""
+        """STA2 has shift=5. Its trace must differ from the original."""
         seismo_map = {
             "STA1": {"Z": np.ones(TRACE_LEN)},
             "STA2": {"Z": np.ones(TRACE_LEN)},
@@ -156,7 +156,7 @@ class TestApplyStationTimeShifts:
 
 
 # ===========================================================================
-# Simulator.run_simulation() — parameter dispatch
+# Simulator.run_simulation(): parameter dispatch
 # ===========================================================================
 
 class TestRunSimulationDispatch:
@@ -202,7 +202,7 @@ class TestRunSimulationDispatch:
 
     def test_velocity_model_passed_as_kwarg(self, mock_sim):
         """velocity_model in source_parameters must be forwarded as a kwarg."""
-        vmodel = object()  # sentinel — identity check
+        vmodel = object()  # sentinel: identity check
         params = dict(_MT_PARAMS)
         params["velocity_model"] = vmodel
         mock_sim.run_simulation(params)

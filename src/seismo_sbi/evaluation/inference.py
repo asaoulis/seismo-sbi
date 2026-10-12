@@ -44,9 +44,9 @@ def load_trained_posterior(config_path, run_directory, *, strict=True) -> Traine
     ``config_path`` is the configuration the run was trained with and ``run_directory`` the run,
     or a directory holding exactly one run (see :func:`resolve_ckpt_dir`). The flow is rebuilt from
     the run's ``model_meta.json``. The scaler is built from the configuration with the M0
-    convention the sidecar records and checked against the sidecar's scaling record, raising on a
-    mismatch unless ``strict`` is False. The pipeline's forward model places the source time on
-    the moment-rate function as the run was trained (:func:`recorded_stf_alignment`).
+    convention the sidecar records. It is checked against the sidecar's scaling record, and a
+    mismatch raises unless ``strict`` is False. The pipeline's forward model places the source
+    time on the moment-rate function as the run was trained (:func:`recorded_stf_alignment`).
     """
     from seismo_sbi.sbi.datasets.training_data import build_pipeline
     from seismo_sbi.sbi.npe.training.train import CompressionTrainer, recorded_stf_alignment

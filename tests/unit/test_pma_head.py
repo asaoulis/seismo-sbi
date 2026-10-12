@@ -1,12 +1,12 @@
 """Unit tests for the Set-Transformer PMA pooling head (review §3.4).
 
 The load-bearing properties of a *set* pooling head: correct shapes for both modes
-(``pool_over∈{tokens,stations}``) and any ``k``; **permutation-invariance** over the pooled set
-(the defining property — permuting input tokens/stations must not change the output);
+(``pool_over∈{tokens,stations}``) and any ``k``. **permutation-invariance** over the pooled set
+(the defining property: permuting input tokens/stations must not change the output);
 **masking-invariance** (appending a padded token/station, or a fully-padded sample, leaves the real
-output bit-identical and finite); a **well-scaled** head (no dead seeds / explosion, gradient flows
-to every seed); the ``linear`` combine is **initialised to the mean** yet is a *real learnable*
-combination; and config validation. Dependency-free / CPU.
+output bit-identical and finite). A **well-scaled** head (no dead seeds / explosion, gradient flows
+to every seed). The ``linear`` combine is **initialised to the mean** yet is a *real learnable*
+combination. And config validation. Dependency-free / CPU.
 """
 
 import pytest
@@ -56,7 +56,7 @@ def test_num_heads_override():
 
 
 # ---------------------------------------------------------------------------
-# Permutation-invariance — the defining set-pool property
+# Permutation-invariance: the defining set-pool property
 # ---------------------------------------------------------------------------
 
 def test_tokens_mode_permutation_invariant_over_stations():

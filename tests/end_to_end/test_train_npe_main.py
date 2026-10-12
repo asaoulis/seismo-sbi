@@ -1,7 +1,7 @@
 """End-to-end run of the training launcher: a configuration file in, a trained checkpoint out.
 
-Exercises the launcher itself — flag parsing, the typed training configuration, trainer
-construction, the metric loggers and one training epoch — on the fabricated-kernel pipeline of
+Exercises the launcher itself, flag parsing, the typed training configuration, trainer
+construction, the metric loggers and one training epoch, on the fabricated-kernel pipeline of
 ``test_train_npe_one_epoch``, so it needs no waveform database. The two pipeline steps that
 require real simulations and noise on disk are supplied by the fixture instead.
 """
@@ -41,7 +41,7 @@ def _load_launcher():
 
 
 def _write_configuration(tmp_path):
-    """A complete, parseable configuration file; only its ``ml_*`` blocks reach the trainer."""
+    """A complete, parseable configuration file. Only its ``ml_*`` blocks reach the trainer."""
     (tmp_path / "stations.txt").write_text("PKD BK 35.945 -120.541\nORV BK 39.554 -121.500\n")
     (tmp_path / "components.json").write_text('{"PKD": ["Z"], "ORV": ["Z"]}')
     config_path = tmp_path / "npe_launcher.yaml"

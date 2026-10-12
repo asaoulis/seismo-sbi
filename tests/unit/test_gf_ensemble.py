@@ -238,7 +238,7 @@ class TestEnsembleTheoryCovarianceEstimationSimulator:
 
 
 # ---------------------------------------------------------------------------
-# CPSPrecomputedSimulator regression — verify select_member is used and
+# CPSPrecomputedSimulator regression: verify select_member is used and
 # produces bit-identical results to the legacy np.random pattern.
 # No CPS binaries required (update_with_Gtensor is monkeypatched).
 # ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ class _FakeQuerierEnsemble(InstaseisEnsembleSimulator):
 
     def __init__(self, receivers, members, *, fiducial=-1,
                  resample_member_per_station=False, trace_len=TRACE_LEN):
-        # Bypass InstaseisEnsembleSimulator.__init__ (no DB); init only the Simulator base.
+        # Bypass InstaseisEnsembleSimulator.__init__ (no DB). Init only the Simulator base.
         Simulator.__init__(
             self,
             components=["Z"],
@@ -420,7 +420,7 @@ class TestPerStationResampling:
         assert calls["n"] == 1
 
     def test_per_station_draws_independent_members(self, receivers5):
-        """Flag ON, unseeded: stations get >1 distinct member (probabilistic; retried)."""
+        """Flag ON, unseeded: stations get >1 distinct member (probabilistic, retried)."""
         sim = _FakeQuerierEnsemble(receivers5, members=range(4),
                                    resample_member_per_station=True)
         saw_variation = any(

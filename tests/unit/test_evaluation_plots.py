@@ -1,5 +1,5 @@
 """
-Unit tests for seismo_sbi.plotting.evaluation — the dependency-light data-assembly
+Unit tests for seismo_sbi.plotting.evaluation: the dependency-light data-assembly
 helpers and the TARP coverage wrapper. The heavy lune/chainconsumer rendering is
 exercised in the e2e smoke (it needs basemap + a real ModelParameters), not here.
 """
@@ -101,7 +101,7 @@ def _synthetic_val(n_sims=400, n_samples=300, n_dims=3, scale=0.2, seed=0):
     """
     Well-calibrated Gaussian posteriors (no pyrocko needed). The posterior centre is
     offset from the truth by the posterior width (centre = truth + N(0, scale)), so the
-    truth is distributed like a posterior draw — giving nominal credible-interval
+    truth is distributed like a posterior draw: giving nominal credible-interval
     coverage and ~zero mean bias.
     """
     rng = np.random.default_rng(seed)
@@ -206,7 +206,7 @@ def _write_metrics(path, label, ts, fom=1.0):
 
 
 def test_scan_run_metrics_dedup_and_cap(tmp_path):
-    # two runs, one with an older + newer copy (newer should win); + an unreadable file
+    # two runs, one with an older + newer copy (newer should win). + an unreadable file
     _write_metrics(tmp_path / "runA" / "artifacts" / pm.METRICS_FILENAME, "runA", 100, fom=5)
     _write_metrics(tmp_path / "runA_v2" / "artifacts" / pm.METRICS_FILENAME, "runA", 200, fom=9)
     _write_metrics(tmp_path / "runB" / "artifacts" / pm.METRICS_FILENAME, "runB", 150, fom=3)

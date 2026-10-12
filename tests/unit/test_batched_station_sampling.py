@@ -7,7 +7,7 @@ stations x ~650 events) are GPU-throughput-bound rather than launch-bound.  Its 
 correctness claim is that a batched item is the SAME item: the padding + mask convention
 must be identical to the training collate (``variable_station_collate``) and to the
 single-item packer (``pack_subset_observation``).  These tests pin exactly that, plus the
-prior-box rejection contract, with a stub estimator — no trained model needed.
+prior-box rejection contract, with a stub estimator: no trained model needed.
 """
 import numpy as np
 import pytest
@@ -88,7 +88,7 @@ def test_bad_coords_shape_raises():
 class _StubEstimator:
     """Flow stub: every draw for a row equals that row's FIRST context value, so the
     caller can verify per-row alignment.  Keying the behaviour off the context value
-    (not the row index) is deliberate — the re-draw rounds pass a re-indexed sub-batch,
+    (not the row index) is deliberate: the re-draw rounds pass a re-indexed sub-batch,
     and an index-keyed stub would silently test the wrong row."""
 
     def __init__(self, dim=6):
@@ -172,7 +172,7 @@ def test_flow_sample_chunked_falls_back_for_non_nflows_estimator():
 
 def test_flow_sample_chunked_matches_unchunked_on_a_real_flow():
     """On a real (tiny) nflows conditional flow, chunking the sample dimension must return
-    the same shape, the same per-row distribution, and — the claim that matters — must
+    the same shape, the same per-row distribution, and, the claim that matters, must
     concatenate along SAMPLES with rows still aligned to their context.  (nflows' own
     ``batch_size`` argument concatenates along dim 0, which is the CONTEXT axis when a
     context is given, silently scrambling exactly this.)
@@ -227,7 +227,7 @@ def test_flow_chunk_lets_a_batch_exceed_the_unchunked_call():
 
 def test_sample_subsets_batched_auto_chunks_large_batches(monkeypatch):
     """With ``flow_chunk=None`` the sampler must derive a chunk that keeps
-    ``batch x chunk`` under ``TRSM_SAFE_ROWS`` — the whole point of auto-chunking is that a
+    ``batch x chunk`` under ``TRSM_SAFE_ROWS``: the whole point of auto-chunking is that a
     caller can raise ``max_batch`` without hitting the cuBLAS batched-solve cliff.
     (A stub estimator has no nflows internals, so the chunk is observed at the call
     boundary rather than through the stub.)"""

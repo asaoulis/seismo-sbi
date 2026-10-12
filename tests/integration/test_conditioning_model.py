@@ -155,7 +155,7 @@ def test_compression_trainer_log_prob_on_packed_context():
     source = torch.randn(B, _NCOND) * 5.0
     ctx = pack_context(seis, source).to(trainer.device)
     theta = torch.randn(B, 6).to(trainer.device)
-    trainer.model.to(trainer.device)   # Lightning moves the module in real training; do it here.
+    trainer.model.to(trainer.device)   # Lightning moves the module in real training. Do it here.
     trainer.model.eval()
     with torch.no_grad():
         log_prob = trainer.model(ctx, theta)
@@ -319,7 +319,7 @@ def test_amplitude_snr_weighting_finite():
 
 
 # ---------------------------------------------------------------------------
-# RFF station positional encoding (opt-in; review §3.2)
+# RFF station positional encoding (opt-in)
 # ---------------------------------------------------------------------------
 
 def _build_pe_model(positional_encoding=None, conditioning=None, **cfg_extra):
@@ -411,9 +411,9 @@ def test_fourier_posenc_sensitive_to_source_location():
 
 
 def test_fourier_posenc_depth_reaches_model():
-    """Changing ONLY source depth changes the embedding iff include_depth — proving the depth
+    """Changing ONLY source depth changes the embedding iff include_depth: proving the depth
     path. inject=['relative_posemb'] uses only lat/lon, so depth reaches the output SOLELY via
-    the positional encoder; include_depth=False is the control where depth must be ignored."""
+    the positional encoder. Include_depth=False is the control where depth must be ignored."""
     cond = {"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",
             "inject": ["relative_posemb"]}
     seis = torch.randn(2, _N, _C, _T)
@@ -463,7 +463,7 @@ def test_invalid_posenc_mode_raises():
 
 
 # ---------------------------------------------------------------------------
-# Set-Transformer PMA pooling head (opt-in; review §3.4)
+# Set-Transformer PMA pooling head (opt-in)
 # ---------------------------------------------------------------------------
 
 def _build_pma_model(pma_pooling=None, conditioning=None, positional_encoding=None,
@@ -532,7 +532,7 @@ def test_pma_model_sensitive_to_cross_station_ratios(pool_over):
 
 def test_pma_orthogonal_to_posenc_and_amplitude():
     """PMA head composes with the §3.2 RFF positional encoder and the §3.1 amplitude embedding
-    (and source conditioning) — all enabled together build and run finite."""
+    (and source conditioning): all enabled together build and run finite."""
     model = _build_pma_model(
         {"pool_over": "stations", "num_seeds": 4, "seed_self_attention": True},
         conditioning={"n_cond": _NCOND, "d_cond": _DCOND, "coord_mode": "geographic",

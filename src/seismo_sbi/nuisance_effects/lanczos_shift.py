@@ -1,7 +1,7 @@
 """Sub-sample time shifts of seismograms by Lanczos interpolation.
 
-The kernel weights depend only on the shift, so ``_apply_lanczos_shift_batch`` shifts every
-row of an array at once. ``_apply_lanczos_shift`` is the one-trace form.
+``_apply_lanczos_shift`` shifts one trace and ``_apply_lanczos_shift_batch`` every row of an
+array by the same shift.
 """
 from __future__ import annotations
 

@@ -155,9 +155,8 @@ class PosteriorPredictiveChecks:
         """Apply the per-ensemble nuisance augmentation chain to a list of flat synthetics.
 
         Returns the (possibly augmented) list of 1-D vectors. A no-op when no chain is
-        configured for ``ensemble_name`` (or no receivers). If a chain raises on a given
-        vector the original (un-augmented) vector is kept, but the failure is surfaced via
-        a warning rather than silently swallowed.
+        configured for ``ensemble_name`` (or no receivers). If a chain raises on a vector, the
+        original vector is kept and the failure is reported as a warning.
         """
         chain = self.augmentation_chains.get(ensemble_name) if ensemble_name is not None else None
         if self.receivers is None or chain is None or not chain.effects:

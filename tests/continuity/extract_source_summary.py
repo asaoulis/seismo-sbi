@@ -3,7 +3,7 @@
 ``summarise_pkl`` reads an ``inversion_results.pkl`` (``(job_data, job_results, results)``, as
 event_inversion.py and run_ml_inversion.py write it) and adds, per ``<event>__<method>``, the
 median, 68 and 95 per cent intervals and standard deviation of each quantity. Run as a script
-it writes them to a JSON file; ``--add_tolerances`` embeds the loose drift tolerances a golden
+it writes them to a JSON file. ``--add_tolerances`` embeds the loose drift tolerances a golden
 baseline carries.
 """
 import argparse

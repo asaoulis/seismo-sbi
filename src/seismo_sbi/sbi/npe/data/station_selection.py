@@ -17,9 +17,7 @@ class StationSubsampler:
 
     Each draw samples a *keep fraction* from a configurable distribution and keeps that
     fraction of the master station set (with a ``min_stations`` floor), returning the
-    sorted kept indices so the canonical station ordering is preserved.  Uses the global
-    numpy RNG, which the DataLoader's ``_seed_worker`` re-seeds per worker for
-    reproducible, per-worker-distinct augmentation.
+    sorted kept indices so the canonical station ordering is preserved.
 
     Parameters
     ----------

@@ -69,7 +69,7 @@ class TestMLERecovery:
         assert median_error < 0.5, f"Median MLE error too large: {median_error:.4f}"
 
     def test_fisher_bounds_posterior_width(self):
-        """Fisher inverse sets the expected posterior covariance; MLE spread should match."""
+        """Fisher inverse sets the expected posterior covariance. MLE spread should match."""
         rng = np.random.default_rng(13)
         n_data, n_params = 100, 2
         sigma = 1.0

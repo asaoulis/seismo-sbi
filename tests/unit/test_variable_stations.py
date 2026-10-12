@@ -1,7 +1,7 @@
 """Unit tests for variable-station configuration support in the ML compressor.
 
 Covers the pure-tensor plumbing (context pack/unpack, the subsampler, the ragged
-collate, per-sample relative geometry) and — most importantly — the **masking
+collate, per-sample relative geometry) and, most importantly, the **masking
 correctness** property: appending purely-padded stations to a sample must leave the
 real-station embedding *bit-identical*. That proves the key_padding_mask genuinely
 isolates padded stations rather than merely keeping the output finite.
@@ -116,7 +116,7 @@ def test_variable_station_collate_pads_and_masks():
     max_N = max(sizes)
     assert seis.shape == (3, max_N, C, T)
     assert sv is None
-    # Mask marks exactly the real stations per sample; padded coords/seis are zero.
+    # Mask marks exactly the real stations per sample. Padded coords/seis are zero.
     for i, n in enumerate(sizes):
         assert mask[i, :n].all() and not mask[i, n:].any()
         torch.testing.assert_close(seis[i, n:], torch.zeros(max_N - n, C, T))

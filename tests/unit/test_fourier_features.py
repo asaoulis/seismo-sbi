@@ -1,8 +1,8 @@
 """Unit tests for the reusable Random Fourier Feature primitives.
 
 These lock in the properties the amplitude embedding (and later geometry encoding) relies
-on: correct shapes, reproducibility, mask-aware running standardisation, and — most
-importantly — that :class:`ScalarFourierEmbedding` is **well-scaled** (no dead/constant
+on: correct shapes, reproducibility, mask-aware running standardisation, and, most
+importantly, that :class:`ScalarFourierEmbedding` is **well-scaled** (no dead/constant
 features, no exploding outputs, gradient flows w.r.t. the input). Dependency-free / CPU.
 """
 
@@ -110,7 +110,7 @@ def test_running_standardizer_eval_does_not_update():
 
 
 # ---------------------------------------------------------------------------
-# ScalarFourierEmbedding — shape, robustness, and the dead-weight / scale guard
+# ScalarFourierEmbedding: shape, robustness, and the dead-weight / scale guard
 # ---------------------------------------------------------------------------
 
 def test_scalar_embedding_shape_and_finite():
@@ -122,7 +122,7 @@ def test_scalar_embedding_shape_and_finite():
 
 
 def test_scalar_embedding_finite_on_extreme_input():
-    """A large-magnitude raw scalar (e.g. log-amplitude ~ -30) must stay finite. The
+    """A large-magnitude raw scalar (for example log-amplitude ~ -30) must stay finite. The
     'running' standardiser brings it to O(1) before the RFF."""
     emb = ScalarFourierEmbedding(in_dim=1, out_dim=16, standardize="running")
     emb.train()
@@ -133,8 +133,8 @@ def test_scalar_embedding_finite_on_extreme_input():
 
 def test_scalar_embedding_no_dead_features_and_bounded():
     """The core RFF-scaling guard. Over a standardised input sweep the embedding must:
-    (1) RESPOND — RFF features and the output vary (not collapsed to a constant ⇒ no dead
-        weights); (2) stay BOUNDED at init (no exploding scale); (3) pass gradient to the
+    (1) RESPOND. RFF features and the output vary (not collapsed to a constant ⇒ no dead
+        weights). (2) stay BOUNDED at init (no exploding scale). (3) pass gradient to the
         input everywhere (aggregate sensitivity > 0)."""
     emb = ScalarFourierEmbedding(in_dim=1, out_dim=32, num_freqs=16, sigma=1.0,
                                  standardize="none")
@@ -149,7 +149,7 @@ def test_scalar_embedding_no_dead_features_and_bounded():
     out = emb(grid)                                        # (128, 32)
     assert out.std().item() > 1e-3
 
-    # (2) Bounded at init — no exploding activations.
+    # (2) Bounded at init: no exploding activations.
     assert torch.isfinite(out).all()
     assert out.abs().max().item() < 1e3
 
@@ -165,7 +165,7 @@ def test_scalar_embedding_no_dead_features_and_bounded():
 def test_scalar_embedding_fixed_standardize_centers():
     emb = ScalarFourierEmbedding(in_dim=1, out_dim=8, standardize="fixed",
                                  center=-12.0, scale=2.0)
-    # standardised value of center maps to 0; finite output, gradients flow.
+    # standardised value of center maps to 0. Finite output, gradients flow.
     x = torch.tensor([[-12.0], [-10.0], [-14.0]])
     out = emb(x)
     assert out.shape == (3, 8)

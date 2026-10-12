@@ -20,7 +20,7 @@ from tests.end_to_end.test_preprocessing_api_synthetic import (
     SR_TARGET,
     EVENT_START,
     EVENT_END,
-    DATA_VECTOR_LEN,  # 61 — inclusive slice at 1 Hz for 60-second window
+    DATA_VECTOR_LEN,  # 61: inclusive slice at 1 Hz for 60-second window
 )
 
 pytestmark = pytest.mark.slow
@@ -127,7 +127,7 @@ class TestRealNoiseSamplerWithSyntheticH5:
     """RealNoiseSampler can consume a catalogue directory of synthetic h5 files.
 
     The directory of the exported event h5 contains one h5.
-    We verify the sampler loads it correctly — this mirrors how training noise
+    We verify the sampler loads it correctly: this mirrors how training noise
     is consumed by the SBI pipeline.
     """
 
@@ -287,7 +287,7 @@ class TestDataManagerRealEventIngestion:
         )
 
         real_event_jobs = {"test_event": str(event_h5)}
-        test_noises = {}  # no noise models needed — real events don't add noise
+        test_noises = {}  # no noise models needed: real events don't add noise
 
         jobs = manager._create_job_data_from_real_events(real_event_jobs, test_noises)
         # With no test_noises, no job data is created (the loop over test_noises is empty)

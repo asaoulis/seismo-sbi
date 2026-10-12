@@ -2,10 +2,10 @@
 
 The summary-space auxiliary loss of Huang et al. (2023), in a two-sample setting: many
 quality-controlled real events against a posterior-matched simulation suite. The estimator is
-the unbiased U-statistic of Gretton et al. (2012, Eq. 4) rather than the biased V-statistic,
-over a mixture of RBF kernels at several bandwidth scales around a median-heuristic base, which
-hedges kernel choice. The bandwidth is detached from the graph. Any smoothing across steps is
-the caller's. Pure torch and stateless.
+the unbiased U-statistic of Gretton et al. (2012, Eq. 4) rather than the biased V-statistic. The
+kernel is a mixture of RBF kernels at several bandwidth scales around a median-heuristic base,
+which hedges kernel choice. The bandwidth is detached from the graph. Any smoothing across steps
+is the caller's.
 """
 from __future__ import annotations
 

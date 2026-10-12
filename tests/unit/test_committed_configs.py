@@ -3,7 +3,7 @@ and names the rate its synthetics are filtered at, above the Nyquist rate of its
 
 Configurations under ``scripts/configs/`` are run from ``scripts/`` and those under
 ``examples/configs/`` from ``examples/``, so relative paths are resolved from there. The set is
-what git tracks, so local-only files beside them are not checked; nor are the directories of the
+what git tracks, so local-only files beside them are not checked. Nor are the directories of the
 studies that moved to mt-sbi.
 """
 import subprocess

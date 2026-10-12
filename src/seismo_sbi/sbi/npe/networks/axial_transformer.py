@@ -31,12 +31,9 @@ def _time_key_padding_mask(key_padding_mask: Optional[torch.Tensor], rows: int, 
     """Build the per-station time-attention key-padding mask, guarding fully-masked rows.
 
     Reshapes the ``(B, N, L)`` station mask to the time-attention ``(rows=B*N, L)`` layout and
-    unmasks any fully-padded station. ``nn.MultiheadAttention`` returns ``NaN`` for a query
-    whose entire key set is masked (all-True), which is exactly a fully-padded station's time
-    row. Such stations are discarded by the masked pooling / station-level mask downstream, so
-    unmasking their rows (set all-False) is safe and purely keeps attention finite. Returns
-    ``None`` for a ``None`` input (fixed-N path) and leaves the mask unchanged when no row is
-    fully masked (no copy on the fixed-N path).
+    unmasks any fully-padded station, whose all-masked row makes the attention ``NaN``. Such
+    stations are discarded by the station-level mask downstream. Returns ``None`` for a ``None``
+    input.
     """
     if key_padding_mask is None:
         return None
@@ -59,8 +56,7 @@ class AxialOrFullBlock(nn.Module):
         mode: "axial" (station × time attention) or "full" (station-level only)
         input_dim: only needed if mode="full" (will project L*D → d_model)
         temporal_pool_tokens: if >0, use PMA-style temporal summarization per station before station-wise attention
-        use_sdpa: route every attention through the fused scaled_dot_product_attention drop-in
-            (numerically equivalent, opt-in perf path). Absent ⇒ stock nn.MultiheadAttention.
+        use_sdpa: route every attention through ``scaled_dot_product_attention`` (default False)
         """
         super().__init__()
         self.mode = mode

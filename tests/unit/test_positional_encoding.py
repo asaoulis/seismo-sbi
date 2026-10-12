@@ -1,7 +1,7 @@
 """Unit tests for the RFF station positional encoding (review §3.2).
 
 The load-bearing properties: correct shapes, **azimuth periodicity** (11° ≈ 350°, continuity
-across the ±180°/0–360° branch cut — the one subtle correctness requirement), depth/distance
+across the ±180°/0–360° branch cut: the one subtle correctness requirement), depth/distance
 dependence with correct broadcasting, a well-scaled RFF (no dead/exploding features, gradient
 flows), masking-invariance, and config validation. Dependency-free / CPU.
 """
@@ -67,13 +67,13 @@ def test_include_depth_without_depth_raises():
 
 
 # ---------------------------------------------------------------------------
-# Azimuth periodicity / symmetry — the subtle correctness requirement
+# Azimuth periodicity / symmetry: the subtle correctness requirement
 # ---------------------------------------------------------------------------
 
 def test_azimuth_exact_periodicity_no_branch_cut():
     """The rock-solid symmetry guarantee: encoding azimuth as (cos, sin) makes the map
     EXACTLY 360°-periodic, so ``emb(θ) == emb(θ + 360°)`` and there is no branch-cut
-    discontinuity — independent of the weights or the standardisation mode."""
+    discontinuity: independent of the weights or the standardisation mode."""
     for standardize in ("none", "running"):
         torch.manual_seed(0)
         pe = FourierStationPositionalEncoding(d_model=48, coords_kind="relative",
@@ -95,7 +95,7 @@ def test_azimuth_exact_periodicity_no_branch_cut():
 
 
 def test_azimuth_closeness_ordering_and_continuity():
-    """11° is physically ~21° from 350° but ~169° from 180°; with a smooth (low-σ) RFF the
+    """11° is physically ~21° from 350° but ~169° from 180°. With a smooth (low-σ) RFF the
     embedding distance respects that ordering, and a small step across the 0/360 wrap is far
     smaller than a large angular separation (no discontinuity). Seeded for determinism."""
     torch.manual_seed(0)
@@ -150,7 +150,7 @@ def test_depth_dependence_and_broadcast():
 # ---------------------------------------------------------------------------
 
 def test_determinism_given_seed():
-    """``seed`` controls the (reproducible) Gaussian frequency bank ``B`` — same seed ⇒ same
+    """``seed`` controls the (reproducible) Gaussian frequency bank ``B``: same seed ⇒ same
     bank, different seed ⇒ different bank. (The MLP head uses the global RNG, by design.)"""
     a = FourierStationPositionalEncoding(d_model=16, coords_kind="relative", seed=42)
     b = FourierStationPositionalEncoding(d_model=16, coords_kind="relative", seed=42)

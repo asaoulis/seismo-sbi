@@ -19,7 +19,7 @@ class ArraySimulationDataset(TorchSimulationDataset):
     ``theta`` is ``(n_simulations, n_parameters)``, unscaled, in the units ``data_scaler``
     expects, and is held as float64 as the simulation files hold it. ``x`` is the clean data,
     ``(n_simulations, n_stations, n_components, trace_length)``: stations in the order of
-    ``receivers``, components in the order of ``components`` (a string such as ``"ZEN"``), and
+    ``receivers``, components in the order of ``components`` (a string such as ``"ZEN"``). It holds
     zeros where a station does not record a component, which is the array
     :meth:`SimulationDataLoader.load_simulation_data_array` returns with ``stacked=True`` and
     ``fill_unused=True``. Its dtype is kept: float32 reproduces the preloaded file path, float64

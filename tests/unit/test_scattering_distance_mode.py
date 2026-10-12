@@ -80,7 +80,7 @@ def test_distance_kernel_identity_cases_and_energy():
 @pytest.mark.parametrize("mode", ["causal", "stahler"])
 def test_legacy_path_rng_order_unchanged(mode):
     """Default (distance_mode=False) must reproduce the legacy per-station draw order:
-    gate draw, then one alpha draw, then the filter's own draws — station by station."""
+    gate draw, then one alpha draw, then the filter's own draws: station by station."""
     recs = _recs(); m = _white_map(recs)
     eff = ScatteringCodaEffect(alpha_range=(0.2, 0.6), mode=mode)
     np.random.seed(123)
@@ -187,7 +187,7 @@ def test_distance_mode_no_bulk_shift_and_causal():
             assert np.all(y[:300] == 0.0), f"{st}: energy before onset"
     # Where the direct arrival dominates (NEAR: tail energy ~0.14) there is no bulk shift.
     # At FAR the tail carries ~1x the direct energy by design, so the correlation peak may
-    # sit on a replica — that is the growing far-station lag seen in the data, not a shift
+    # sit on a replica: that is the growing far-station lag seen in the data, not a shift
     # of the (pinned) onset, which the causality assertion above covers.
     assert abs(np.mean(lags["NEAR"])) < 3.0, f"NEAR: mean bulk shift {np.mean(lags['NEAR']):.1f}"
 

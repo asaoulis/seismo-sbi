@@ -22,24 +22,24 @@ We therefore test:
 1. **Equivalence of the full-set identity path** (D2 concern): when
    ``config_from_kept(master, master)`` is fed to
    ``sample_station_dropout_ensemble``, the context handed to the posterior is
-   equivalent to the raw observation — proving the full-set case reduces to
+   equivalent to the raw observation, proving the full-set case reduces to
    the same input as the direct ``dataset[idx]`` path.  Uses a deterministic
    stub posterior that records context widths and returns fixed samples.
 
-2. **D2 branch selection** — ``source_vec`` is ``None`` when
-   ``cond_param_map`` is ``None``, and non-None when it is set — tested via
+2. **D2 branch selection**, ``source_vec`` is ``None`` when
+   ``cond_param_map`` is ``None``, and non-None when it is set, tested via
    the shared ``sample_station_dropout_ensemble`` stub (the same call that
    ``run_validation`` makes).
 
-3. **Output dict keys** of ``run_validation`` — verified against
+3. **Output dict keys** of ``run_validation``, verified against
    ``write_validation_outputs`` expectations without needing a real pipeline,
    by constructing the dict manually and confirming ``write_validation_outputs``
    accepts it.
 
-4. **``write_validation_outputs`` side-effects** — given a valid ``val`` dict
+4. **``write_validation_outputs`` side-effects**: given a valid ``val`` dict
    (constructed with a tiny numpy array), confirm the function writes
    ``evaluation_metrics.json`` without crashing (plotting may be skipped if
-   deps unavailable; the JSON write is always executed).
+   deps unavailable. The JSON write is always executed).
 
 Full ``run_validation`` end-to-end equivalence is left to the catalogue evaluation smoke
 run (``mt-sbi-evaluate --smoke --validation``).
@@ -237,7 +237,7 @@ def test_run_validation_theta_scaled_shape():
 
 
 # ---------------------------------------------------------------------------
-# 3b.  run_validation branch selection (packed vs direct) — end-to-end with stubs
+# 3b.  run_validation branch selection (packed vs direct): end-to-end with stubs
 # ---------------------------------------------------------------------------
 #
 # These exercise the run_validation BODY for BOTH branches by monkeypatching the
@@ -312,7 +312,7 @@ def _patch_run_validation_deps(monkeypatch, stub_ds, recorder):
 
     The packed branch now packs the observation via ``pack_subset_observation`` (the
     inference mirror of the training collate) and samples the posterior directly, so we
-    record each ``pack_subset_observation`` call (and its ``source_vec``) — an empty
+    record each ``pack_subset_observation`` call (and its ``source_vec``): an empty
     ``recorder["calls"]`` means the DIRECT (fixed-station) branch was taken.
     """
     import seismo_sbi.sbi.npe.data.dataloading as dl_mod

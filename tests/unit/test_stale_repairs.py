@@ -10,7 +10,7 @@ from seismo_sbi.plotting.coverage import plot_credibility_levels_histograms_dict
 
 
 def test_the_credibility_histogram_figure_draws():
-    # importing sbi.analysis (as the pipeline does) drops scienceplots' styles; register again
+    # importing sbi.analysis (as the pipeline does) drops scienceplots' styles. Register again
     importlib.reload(importlib.import_module("scienceplots"))
     alphas = np.linspace(0.0, 1.0, 11)
     coverage = (np.tile(alphas, (5, 1)) + 0.01 * np.arange(5)[:, None], alphas)

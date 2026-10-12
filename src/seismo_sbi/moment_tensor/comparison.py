@@ -77,12 +77,10 @@ def kagan_batch(m6_a, m6_b):
     ``m6_a``/``m6_b`` are ``(n, 6)`` or a single ``(6,)``/``(1, 6)`` tensor,
     which broadcasts against the other.  Returns a ``(n,)`` array.
 
-    Numerically identical to :func:`kagan` (max ``|Δ|`` ~1e-12 deg over random and
-    real posterior tensors, locked by ``tests/unit/test_moment_tensor_comparison.py``)
-    but ~4e4x faster, which is what makes posterior-wide orientation statistics
-    affordable.  The rotation between the two eigen-frames is converted to a
-    quaternion and the *largest* component taken, which is exactly pyrocko's
-    minimum-over-the-four-symmetry-operations answer without branching.
+    Numerically identical to :func:`kagan` (max ``|Δ|`` ~1e-12 deg over random and real
+    posterior tensors). The rotation between the two eigen-frames is converted to a quaternion
+    and the largest component taken, which is pyrocko's minimum over the four symmetry
+    operations.
     """
     A = _eigen_frames(m6_a)
     B = _eigen_frames(m6_b)

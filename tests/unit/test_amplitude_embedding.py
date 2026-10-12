@@ -1,7 +1,7 @@
 """Unit tests for AmplitudeTokenEmbedding.
 
 These prove the physics contract: (1) the array-relative token feature is invariant to the
-overall event scale (M0) while the global vector tracks it; (2) the amplitude reference is
+overall event scale (M0) while the global vector tracks it. (2) the amplitude reference is
 computed per-event (no batch coupling) and over valid stations only (masking-invariance);
 (3) shapes for per-station / per-component granularity and finiteness on extreme inputs.
 Dependency-free / CPU.
@@ -53,7 +53,7 @@ def test_array_relative_reference_is_per_event_no_batch_coupling():
     with torch.no_grad():
         tok1, glob1 = emb(x)
         tok2, glob2 = emb(x2)
-    # Event 1..B-1 unchanged (token + global); only event 0's global moves.
+    # Event 1..B-1 unchanged (token + global). Only event 0's global moves.
     assert torch.allclose(tok1[1:], tok2[1:], atol=1e-6)
     assert torch.allclose(glob1[1:], glob2[1:], atol=1e-6)
     assert not torch.allclose(glob1[0], glob2[0], atol=1e-3)

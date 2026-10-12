@@ -103,10 +103,9 @@ def snr_metrics(obs2d, syn2d, traces, sigma_map, *, quantiles=(0.05, 0.95),
 
     ``align`` (default True) cross-correlates obs vs syn (±``max_lag`` samples) and shifts the
     synthetic onto the observation before windowing. A 1-D fiducial model mis-times arrivals by
-    several seconds against the real Earth, so an unaligned synthetic signal window misses the
-    observed signal and understates ``snr_sig``, and healthy but time-shifted stations look
-    dead. Alignment removes that confound (the signal-window SNR is a fit-quality-free amplitude
-    measure once aligned).
+    several seconds against the real Earth. An unaligned synthetic signal window therefore misses
+    the observed signal, understates ``snr_sig`` and makes healthy but time-shifted stations look
+    dead. Once aligned, the signal-window SNR is an amplitude measure free of fit quality.
     """
     obs2d = np.asarray(obs2d, float)
     syn2d = np.asarray(syn2d, float)

@@ -83,9 +83,9 @@ def perturb_background_model(
     speeds, ``width_sigma`` that of the layer widths, which moves the discontinuity depths.
     Zero disables it. ``rho_mode`` keeps the density or re-derives it from the perturbed
     compressional speed with Brocher (2005). ``max_depth_km`` perturbs only nodes shallower
-    than that depth, which is how the uncertain crust is perturbed while a well-constrained
-    deep reference is held fixed, and is also what keeps Brocher inside the crust where it is
-    valid. ``None`` perturbs the whole model.
+    than that depth. The uncertain crust is then perturbed while a well-constrained deep
+    reference is held fixed, and Brocher stays inside the crust where it is valid. ``None``
+    perturbs the whole model.
     """
     rng = np.random.default_rng(seed)
     out = model.copy()

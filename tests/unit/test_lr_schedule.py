@@ -30,7 +30,7 @@ def _tiny_module(stage, lr=1e-4, lr_min_factor=0.1):
 
 def _lr_curve(stage, max_epochs=40, lr=1e-4, lr_min_factor=0.1):
     mod = _tiny_module(stage, lr=lr, lr_min_factor=lr_min_factor)
-    # configure_optimizers reads only trainer.max_epochs (epoch schedule); mock it.
+    # configure_optimizers reads only trainer.max_epochs (epoch schedule). Mock it.
     mod.trainer = types.SimpleNamespace(
         max_epochs=max_epochs,
         estimated_stepping_batches=max_epochs * 10,
@@ -65,7 +65,7 @@ def test_cosine_schedule_decays_below_constant():
     base_lr = 1e-4
     const = _lr_curve("constant", lr=base_lr)
     cos = _lr_curve("cosine", lr=base_lr)
-    # Cosine anneals toward eta_min = lr*0.1; its final LR is well below the flat one.
+    # Cosine anneals toward eta_min = lr*0.1. Its final LR is well below the flat one.
     assert cos[-1] < const[-1]
     assert cos[-1] == pytest.approx(base_lr * 0.1, rel=0.2)
     # The constant final LR is the base lr, NOT decayed.
@@ -140,7 +140,7 @@ def test_cosine_eta_min_is_exactly_lr_times_factor():
         mod.trainer = types.SimpleNamespace(
             max_epochs=100, estimated_stepping_batches=1000, num_training_batches=10)
         (_opt,), (sch_cfg,) = mod.configure_optimizers()
-        # SequentialLR holds [warmup, cosine]; the cosine stage is the second.
+        # SequentialLR holds [warmup, cosine]. The cosine stage is the second.
         cosine = sch_cfg["scheduler"]._schedulers[1]
         assert cosine.eta_min == pytest.approx(base_lr * factor, rel=1e-12)
 
