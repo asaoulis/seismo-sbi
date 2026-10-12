@@ -103,7 +103,8 @@ class TestRealNoiseSampler:
             )
 
     def test_draw_with_covariance_reads_disk_after_preloading(self):
-        """The cache only serves the training draw; a draw with its covariance still reads the window."""
+        """The cache only serves the training draw. A draw with its covariance still reads the
+        window."""
         self.sampler.preload_cache(max_workers=4)
         noise, _, misc = self.sampler.draw_with_covariance()
         assert noise.shape == (self.expected_len,)
@@ -147,7 +148,7 @@ class TestRealNoiseSamplerShortWindowSkip:
     SimulationDataLoader anchors the length to the first receiver and truncates, silently
     returning a sub-length vector that will not broadcast against the full-length data
     vector D and crashes the compression. When data_length is known the sampler
-    must SKIP such windows — the variable-length analogue of the missing-station KeyError
+    must SKIP such windows: the variable-length analogue of the missing-station KeyError
     skip."""
 
     @staticmethod

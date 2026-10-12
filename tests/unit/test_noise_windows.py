@@ -1,4 +1,4 @@
-"""Noise windows cut from a continuous Stream feed the noise sampler and the covariance estimator; a
+"""Noise windows cut from a continuous Stream feed the noise sampler and the covariance estimator. A
 noise pool is screened for windows holding earthquakes."""
 import numpy as np
 from obspy import Stream, Trace, UTCDateTime
@@ -14,7 +14,7 @@ EVENT = (START + 5000, START + 5200)
 
 
 def continuous_stream():
-    """Two stations of unit noise at 1 Hz; a large event at ``EVENT``; BBB starts an hour late."""
+    """Two stations of unit noise at 1 Hz. A large event at ``EVENT``. BBB starts an hour late."""
     rng = np.random.default_rng(5)
     stream = Stream()
     for station, offset_s in (("AAA", 0), ("BBB", 3600)):

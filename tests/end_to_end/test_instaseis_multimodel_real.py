@@ -1,6 +1,6 @@
 """InstaseisMultiModelSimulator against a real Instaseis database.
 
-Two regions with disjoint station sets are each backed by an ensemble; every station's merged
+Two regions with disjoint station sets are each backed by an ensemble. Every station's merged
 seismogram must equal a single-ensemble simulation of that station. Both ensembles link to the
 database at ``INSTASEIS_DB`` (one member and the fiducial), and ``use_fiducial=True`` keeps the
 draw deterministic. Skipped when the database is absent.

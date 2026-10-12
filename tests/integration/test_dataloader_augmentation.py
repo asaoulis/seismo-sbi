@@ -116,7 +116,7 @@ def test_scattering_coda_augmentation_adds_energy_in_the_coda():
 
 
 def test_instrument_dropout_augmentation_zeroes_whole_stations():
-    """Probability 1 zeroes every station's traces; probability 0 is the identity."""
+    """Probability 1 zeroes every station's traces. Probability 0 is the identity."""
     D_clean = _clean_D()
 
     ds = _make_dataset(PostProcessingChain([InstrumentDropoutEffect()]),
@@ -146,7 +146,7 @@ def test_augmentation_is_reproducible_under_fixed_seed():
 
 
 # ---------------------------------------------------------------------------
-# T2: end-to-end factory wiring — make_torch_dataloader threads the chain through
+# T2: end-to-end factory wiring: make_torch_dataloader threads the chain through
 # to a REAL TorchSimulationDataset reading h5 from disk (not a stub).
 # ---------------------------------------------------------------------------
 
@@ -227,12 +227,12 @@ def test_seed_worker_reproducible_and_distinct():
 
 
 # ---------------------------------------------------------------------------
-# Post-noise component dropout — MUST be applied AFTER noise so a dropped
+# Post-noise component dropout. MUST be applied AFTER noise so a dropped
 # channel is EXACTLY zero (matching a genuinely-absent component), unlike the
 # pre-noise augmentation chain.  These are the critical ordering tests.
 # ---------------------------------------------------------------------------
 
-# STA1 present Z,N,E (3); STA2 present Z,N (E absent → zero-filled).  Global comps ZNE.
+# STA1 present Z,N,E (3). STA2 present Z,N (E absent → zero-filled).  Global comps ZNE.
 _GLOBAL_COMPS = ["Z", "N", "E"]
 _NOISE_LEVEL = 0.5
 _N_PRESENT = 5  # STA1:3 + STA2:2
@@ -267,7 +267,7 @@ def _make_post_noise_dataset(post_chain, post_params, D_clean, station_subsample
 
 
 def test_component_dropout_zeros_channel_exactly_after_noise():
-    """The crux: with NON-ZERO noise, a dropped present channel is EXACTLY zero in x — proving
+    """The crux: with NON-ZERO noise, a dropped present channel is EXACTLY zero in x: proving
     it was zeroed AFTER noise (a pre-noise zeroing would leave 0 + noise)."""
     D = _multicomp_clean_D()
     chain = PostProcessingChain([ComponentDropoutEffect()])
@@ -277,7 +277,7 @@ def test_component_dropout_zeros_channel_exactly_after_noise():
     _, x = ds[0]
     x = x.numpy()
 
-    # STA1 (3 present): p=1 keeps exactly ONE present channel; the other two are EXACTLY 0.
+    # STA1 (3 present): p=1 keeps exactly ONE present channel. The other two are EXACTLY 0.
     sta1_present = x[0, :3]  # Z, N, E all present
     nonzero = [j for j in range(3) if not np.allclose(sta1_present[j], 0.0)]
     zeroed = [j for j in range(3) if np.all(sta1_present[j] == 0.0)]
@@ -296,7 +296,7 @@ def test_without_post_chain_channels_are_noisy_not_zero():
     ds = _make_post_noise_dataset(None, None, D)
     _, x = ds[0]
     x = x.numpy()
-    # All present channels are non-zero (clean ramp + 0.5 noise); none accidentally zero.
+    # All present channels are non-zero (clean ramp + 0.5 noise). None accidentally zero.
     for (i, j) in [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)]:
         assert np.allclose(x[i, j], D[i, j] + _NOISE_LEVEL)
         assert not np.allclose(x[i, j], 0.0)

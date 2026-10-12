@@ -122,8 +122,10 @@ def test_subsampler_rejects_an_empty_availability_mask():
 
 
 def test_the_noise_model_passes_allow_incomplete_to_the_sampler(monkeypatch):
-    """``allow_incomplete: true`` in a configuration reaches :class:`RealNoiseSampler`; without it the
-    sampler would skip incomplete windows and quietly draw from a smaller pool."""
+    """``allow_incomplete: true`` in a configuration reaches :class:`RealNoiseSampler`.
+
+    Without it the sampler would skip incomplete windows and quietly draw from a smaller pool.
+    """
     import seismo_sbi.sbi.noises.noise_model as noise_model_mod
 
     seen = {}

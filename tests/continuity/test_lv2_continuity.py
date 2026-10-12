@@ -3,7 +3,7 @@
 Runs the Gaussian-likelihood MCMC and SBI score compression (event_inversion.py) and the ML-NPE
 leg (run_ml_inversion.py) on the real LV2 event from ``examples/``, summarises gamma, delta and
 Mw per method and compares them with ``baseline_LV2.json``. Inputs are the local LV2 data, the
-LV2 checkpoint, ``INSTASEIS_DB`` and ``CPS_PATH``; outputs, stencils included, are cached under
+LV2 checkpoint, ``INSTASEIS_DB`` and ``CPS_PATH``. Outputs, stencils included, are cached under
 ``LV2_CONTINUITY_OUTPUT``. Run with ``pytest tests/continuity -m slow``.
 """
 import json

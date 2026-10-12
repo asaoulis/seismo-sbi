@@ -5,14 +5,14 @@ Tests run against two real local Instaseis databases:
   - prem_i_10s          (different period parameterisation of PREM)
 
 They share the same Earth model family but differ in dt/discretization,
-so after filtering and resampling they produce distinct waveforms — giving
+so after filtering and resampling they produce distinct waveforms, giving
 a realistic heterogeneous ensemble to exercise the theory-error path.
 
 Skipped if INSTASEIS_DB (primary DB) is not available at the usual location.
-The secondary DB is expected at /data/shared/prem_i_10s; the test is skipped
+The secondary DB is expected at /data/shared/prem_i_10s. The test is skipped
 if it is also absent.
 
-Marked @pytest.mark.slow — opens two Instaseis DBs and runs a stencil.
+Marked @pytest.mark.slow, opens two Instaseis DBs and runs a stencil.
 """
 
 import os
@@ -326,7 +326,7 @@ class TestInstaseisEnsembleTheoryCovariance:
     def _run_cov_sim(self, cov_sim):
         """Run the covariance simulation without use_fiducial (that makes all draws fiducial).
 
-        The ensemble draws are unseeded — with 2 members and 2 draws (with replacement),
+        The ensemble draws are unseeded: with 2 members and 2 draws (with replacement),
         there is a ~50% chance both draws pick the same member (zero covariance).
         We seed numpy before the call to get a deterministic, non-degenerate draw.
         """

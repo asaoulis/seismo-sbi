@@ -6,7 +6,7 @@ from seismo_sbi.moment_tensor.comparison import pyrocko_mt
 from seismo_sbi.moment_tensor.conventions import scalar_moment
 from seismo_sbi.moment_tensor.lune_angles import mts6_to_gamma_delta
 
-#: ``m6`` of each standard source and its (gamma, delta) in degrees; None where gamma is undefined.
+#: ``m6`` of each standard source and its (gamma, delta) in degrees. None where gamma is undefined.
 STANDARD_SOURCES = {
     "double couple": ([0, 1, -1, 0, 0, 0], (0.0, 0.0)),
     "explosion": ([1, 1, 1, 0, 0, 0], (None, 90.0)),

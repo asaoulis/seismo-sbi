@@ -1,6 +1,6 @@
 """Recorded outputs of every covariance class on one fixed synthetic input.
 
-Each test builds one covariance on two stations (Z, E, N; the E/N data keyed 1/2), measures its
+Each test builds one covariance on two stations (Z, E, N, the E/N data keyed 1/2), measures its
 loss, per-element loss, C⁻¹r, loss and matmul closures, sampler draws and the ``GaussianCompressor``
 Fisher matrix, and compares them with ``tests/fixtures/covariance_characterisation.npz`` to 1e-9,
 or 1e-12 of an array's largest entry: the fixture holds one numpy/scipy build's roundoff.
@@ -42,7 +42,7 @@ def make_receivers():
 
 
 def autocovariances(length):
-    """Decaying-cosine autocovariance per station and component (keys Z, 1, 2); PSD as Toeplitz."""
+    """Decaying-cosine autocovariance per station and component (keys Z, 1, 2). PSD as Toeplitz."""
     lags = np.arange(length)
     return {station: {component: (1.0 + 0.3 * k + 0.1 * j) * np.exp(-lags / 8.0) * np.cos(lags / 5.0)
                       for j, component in enumerate(["Z", "1", "2"])}

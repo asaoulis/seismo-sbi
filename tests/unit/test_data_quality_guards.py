@@ -1,4 +1,4 @@
-"""Unit tests for seismo_sbi.data_quality.guards — the promoted (2026-07 calibrated)
+"""Unit tests for seismo_sbi.data_quality.guards: the promoted (2026-07 calibrated)
 QA presets, model-free guards, and the shared per-component gate composition."""
 import datetime as dt
 

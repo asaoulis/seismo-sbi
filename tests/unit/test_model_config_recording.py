@@ -48,7 +48,7 @@ def test_the_sidecar_serialises_the_recorded_model_config():
     """meta['model_config'] is self._model_config, so recorded entries land in the JSON.
 
     The dict lives in ``write_model_meta`` (which ``train`` delegates to, and which the
-    wall-kill recovery path calls directly) — both are asserted so the guarantee cannot be
+    wall-kill recovery path calls directly): both are asserted so the guarantee cannot be
     lost by the sidecar being built somewhere that only one entry point reaches.
     """
     src = inspect.getsource(CompressionTrainer.write_model_meta)

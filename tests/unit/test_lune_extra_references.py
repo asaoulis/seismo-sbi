@@ -27,7 +27,7 @@ def _fake_bm(gamma, delta):
 
 def _plotter():
     pp = PosteriorPlotter(data_scaler=None, parameters_info=[], parameters=None)
-    # Stub the model-dependent method (identity; canonical MT in, MT out).
+    # Stub the model-dependent method (identity, canonical MT in, MT out).
     pp.get_moment_tensors = lambda samples, theta0: (np.empty((0, 6)),
                                                      np.asarray(theta0, dtype=float))
     return pp
@@ -98,11 +98,11 @@ def test_plot_lunes_kde_accepts_extra_references_arg():
 
 
 # --------------------------------------------------------------------------- #
-# Primary-reference (gold 'truth' diamond) legend entry — the Zahradník marker.
+# Primary-reference (gold 'truth' diamond) legend entry: the Zahradník marker.
 # --------------------------------------------------------------------------- #
 def test_primary_reference_legend_labels_existing_truth():
     # When the ensembles carried a theta0 truth (already drawn), we only emit its legend
-    # spec — no extra scatter (truth_drawn already True).
+    # spec: no extra scatter (truth_drawn already True).
     pp = _plotter()
     fig, ax = plt.subplots()
     truth = np.array([-2.0, 1.0, 1.0, 0.5, -0.3, 0.2]) * 1e16

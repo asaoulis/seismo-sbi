@@ -26,7 +26,7 @@ RIDGECREST_EVENT = {
 # Stations with reliable BH? availability on IRIS
 IRIS_TEST_STATIONS = [
     ("IU", "ANMO"),  # Albuquerque NM, ~800 km
-    ("II", "BFO"),   # Black Forest Germany — long-period, always up
+    ("II", "BFO"),   # Black Forest Germany: long-period, always up
     ("IU", "COLA"),  # College AK
 ]
 

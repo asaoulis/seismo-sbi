@@ -77,7 +77,7 @@ def test_load_obspy_quakeml_depth_in_km(tmp_path):
 
 
 def test_csv_format_selects_the_layout_instead_of_sniffing(tmp_path):
-    """A named layout is read as named; an unknown name raises rather than guessing."""
+    """A named layout is read as named. An unknown name raises rather than guessing."""
     path = tmp_path / "events.csv"
     path.write_text(
         "date-time,latitude,longitude,depth,Mamp,errH,errZ\n"

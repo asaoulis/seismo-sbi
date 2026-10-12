@@ -1,6 +1,6 @@
 """The moment-tensor comparison primitives (``seismo_sbi.moment_tensor.comparison``) and
 ``recovered_mt_samples``: the Kagan angle is reflexive, symmetric, non-trivial for clearly different
-mechanisms and ``nan`` for a zero tensor; the pyrocko tensor round-trips; the NED matrix is the
+mechanisms and ``nan`` for a zero tensor. The pyrocko tensor round-trips. The NED matrix is the
 up-south-east matrix rotated.
 """
 import numpy as np
@@ -39,7 +39,7 @@ def test_kagan_different_mechanisms_is_substantial():
 
 
 def test_kagan_degenerate_returns_float():
-    # A zero tensor is degenerate; kagan must not raise (try/except guard) — it
+    # A zero tensor is degenerate. Kagan must not raise (try/except guard): it
     # returns a float (pyrocko may itself yield a number, or the guard yields nan).
     val = kagan(np.zeros(6), DC_A)
     assert isinstance(val, float)
@@ -48,14 +48,14 @@ def test_kagan_degenerate_returns_float():
 def test_pyrocko_mt_convention_signs():
     # m6 = [Mrr,Mtt,Mpp,Mrt,Mrp,Mtp] is standard GCMT up-south-east and maps 1:1 to
     # pyrocko's m_up_south_east with NO sign flip (the old spurious Mrp/Mtp negation
-    # mirrored the mechanism — see moment_tensor.py history note).
+    # mirrored the mechanism: see moment_tensor.py history note).
     m6 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     M = pyrocko_mt(m6).m_up_south_east()
     assert M[0, 0] == pytest.approx(1.0)   # Mrr
     assert M[1, 1] == pytest.approx(2.0)   # Mtt
     assert M[2, 2] == pytest.approx(3.0)   # Mpp
     assert M[0, 1] == pytest.approx(4.0)   # Mrt
-    assert M[0, 2] == pytest.approx(5.0)   # Mrp (no flip — GCMT USE direct)
+    assert M[0, 2] == pytest.approx(5.0)   # Mrp (no flip, GCMT USE direct)
     assert M[1, 2] == pytest.approx(6.0)   # Mtp
 
 
@@ -135,7 +135,7 @@ def test_mt_axes_matches_mt_features_axes():
     """P/T/N axes must agree with the per-tensor pyrocko readout.
 
     Axes are sign-ambiguous, so the comparison is on the axis DIRECTION up to
-    sign; azimuth itself is only compared where the axis is not near-horizontal
+    sign. Azimuth itself is only compared where the axis is not near-horizontal
     (a horizontal axis is azimuth-ambiguous by exactly 180°, and either
     convention is correct).
     """

@@ -2,8 +2,8 @@
 """Theta-scaler provenance: a checkpoint must carry the scaling it was trained under.
 
 The failure this guards is silent. The inverse transform is rebuilt at inference from
-whatever YAML is passed; edit `ml_scaler`/`bounds` after training and every recovered
-moment is wrong by a constant factor, with no exception anywhere — it surfaces only as a
+whatever YAML is passed. Edit `ml_scaler`/`bounds` after training and every recovered
+moment is wrong by a constant factor, with no exception anywhere: it surfaces only as a
 systematic magnitude offset in the finished catalogue.
 """
 from pathlib import Path
@@ -85,7 +85,7 @@ def test_strict_mode_raises_instead_of_warning():
 
 
 def test_a_legacy_checkpoint_without_provenance_warns_but_passes(capsys):
-    """Checkpoints predating the record must keep loading — just not silently."""
+    """Checkpoints predating the record must keep loading: just not silently."""
     h = _flexible(MomentTensorScaler(bounds=BOUNDS, n_decades=4.0))
     assert check_scaler_provenance({}, h) is True
     assert "no theta_scaler provenance" in capsys.readouterr().out
@@ -121,7 +121,7 @@ def test_auto_clips_below_the_prior_floor_where_the_fixed_window_did_not():
     """The coupling flagged in the config: `auto` removes the sub-prior headroom.
 
     ~30% of delivered events have a median Mw below the 3.5 floor, so this is not
-    hypothetical — switching to `auto` without widening `mw_min` clamps them.
+    hypothetical: switching to `auto` without widening `mw_min` clamps them.
     """
     auto = MomentTensorScaler(log10_m0_range=(1.5 * 3.5 + 9.1, 1.5 * 5.5 + 9.1))
     fixed = MomentTensorScaler(bounds=BOUNDS, n_decades=4.0)
@@ -149,8 +149,8 @@ def test_round_trip_is_exact_for_both_windows():
 # Regression: provenance against a FlexibleScaler built from its parameters.
 #
 # Every test above hands `scaler_provenance` an object with the MomentTensorScaler as a
-# direct attribute. A real FlexibleScaler does not look like that — it keeps its per-block
-# sub-scalers in the LIST `self.scalers` — so the stub tests all passed while the function
+# direct attribute. A real FlexibleScaler does not look like that, it keeps its per-block
+# sub-scalers in the LIST `self.scalers`, so the stub tests all passed while the function
 # returned "linear" for every genuine scale_shape scaler in production. That is precisely
 # the silent mis-recording this module exists to prevent, so it is pinned here.
 # ---------------------------------------------------------------------------
@@ -200,7 +200,7 @@ def test_a_real_flexible_scaler_round_trips_through_check():
 
 
 def test_a_real_scale_shape_scaler_is_caught_against_a_linear_checkpoint(capsys):
-    """Without the list scan this silently PASSED — both sides read 'linear'."""
+    """Without the list scan this silently PASSED: both sides read 'linear'."""
     linear = FlexibleScaler(_mt_and_location_params())
     scale_shape = FlexibleScaler(_mt_and_location_params(),
                                   moment_tensor_scaling="scale_shape", mt_log_decades=4.0)
@@ -236,7 +236,7 @@ def test_auto_window_from_a_mw_3p2_gutenberg_richter_prior():
 
 
 def test_the_old_and_new_prior_floors_produce_different_provenance():
-    """mw_min 3.5 -> 3.2 must be visible in the recorded provenance, i.e. it is a
+    """mw_min 3.5 -> 3.2 must be visible in the recorded provenance, that is, it is a
     retrain-requiring change and check_scaler_provenance will say so."""
     def _prov(mw_min):
         return build_flexible_scaler(_mt_and_location_params(), AUTO, _gutenberg_richter_sampling(mw_min, 5.5))

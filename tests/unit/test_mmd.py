@@ -47,8 +47,8 @@ def test_mmd_symmetry():
 
 def test_mmd_unbiasedness_identical_points_excluded():
     # With the SAME sample on both sides the unbiased estimator is exactly
-    # (mean off-diag k11) + (mean off-diag k22) - 2 mean(k12); the diagonal of k12 is 1
-    # but the within terms exclude the diagonal, so the result is negative — a direct
+    # (mean off-diag k11) + (mean off-diag k22) - 2 mean(k12). The diagonal of k12 is 1
+    # but the within terms exclude the diagonal, so the result is negative: a direct
     # check that the diagonal (i==j) self-similarity terms are excluded within-sample.
     g = torch.Generator().manual_seed(3)
     z = torch.randn(32, 4, generator=g)
@@ -112,7 +112,7 @@ def test_stale_bandwidth_lets_a_shrinking_embedding_fake_alignment():
     The trainer smooths beta with an EMA (~1/(1-ema) steps of lag). If the embedding
     contracts faster than that, the kernel is evaluated at a beta belonging to the old,
     larger geometry: every d^2/beta^2 -> 0, every kernel -> 1, and MMD^2_u -> 0 with no
-    alignment at all. Hence mmd_beta/mmd_z_scale are logged next to train_mmd2 — a
+    alignment at all. Hence mmd_beta/mmd_z_scale are logged next to train_mmd2: a
     near-zero MMD is only meaningful if the scale held.
     """
     g = torch.Generator().manual_seed(12)

@@ -3,11 +3,11 @@
 These exercise the pieces that let a model trained with ``variable_stations=True`` be
 applied to an arbitrary subset of its master station set:
 
-* ``pack_subset_observation`` — packs one (subset) sample into the 2-D context the model
+* ``pack_subset_observation``, packs one (subset) sample into the 2-D context the model
   expects, round-tripping through ``unpack_variable_context``.
-* ``SeismogramTransformer.forward`` on a packed subset context (N' < N_master) — finite,
+* ``SeismogramTransformer.forward`` on a packed subset context (N' < N_master), finite,
   correctly-shaped output.
-* ``SimulationDataLoader.load_event_subset`` — name-keyed subset slicing of an event H5.
+* ``SimulationDataLoader.load_event_subset``: name-keyed subset slicing of an event H5.
 """
 import numpy as np
 import h5py
@@ -152,7 +152,7 @@ def test_load_event_subset_with_components_matches_subset_order(tmp_path):
     Regression for the 2026-07 N/E swap: the old implementation rebuilt receivers with
     the caller's component-list order, so a components_map built with ['Z','N','E'] (a
     backend's component order) silently swapped every horizontal pair relative to the
-    training data (master order Z,E,N) — wrecking every components_map inference.
+    training data (master order Z,E,N): wrecking every components_map inference.
     """
     from seismo_sbi.simulators.simulation_io import SimulationDataLoader
     from seismo_sbi.simulators.receivers import Receiver, Receivers
@@ -239,7 +239,7 @@ def test_dropout_ensemble_threads_source_vec():
 
     assert set(ensemble.keys()) == {"all", "subset"}
     assert len(posterior.contexts) == 2
-    # The second config keeps 2 stations; its context must carry the SAME source vector.
+    # The second config keeps 2 stations. Its context must carry the SAME source vector.
     seis, _coords, _mask, source_vec = unpack_variable_context(
         posterior.contexts[1], n_components=C, trace_length=T, n_cond=n_cond)
     assert seis.shape[1] == 2

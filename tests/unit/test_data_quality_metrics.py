@@ -24,7 +24,7 @@ def test_align_best_lag_recovers_known_shift(k):
 
 
 def test_align_best_lag_sign_matches_shift_primitive():
-    """+lag must mean 'delay syn', i.e. shift_1d_with_padding(syn, +lag) ~ obs."""
+    """+lag must mean 'delay syn', that is, shift_1d_with_padding(syn, +lag) ~ obs."""
     syn = _wave(seed=1)
     obs = shift_1d_with_padding(syn, 4)
     _, lag = M.align_best_lag(obs, syn, max_lag=20)

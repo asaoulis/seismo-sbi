@@ -3,12 +3,12 @@
 Contract (mirrors the module's other effects):
 - key absent or 0.0 ⇒ strict identity (same arrays pass through);
 - no input mutation;
-- AzimuthalAnisotropyEffect: coherent cos 2φ delay pattern — fast-azimuth
+- AzimuthalAnisotropyEffect: coherent cos 2φ delay pattern, fast-azimuth
   stations advanced, slow-azimuth stations delayed, magnitude ∝ distance and
-  ∝ the nuisance multiplier; loud error when active without a source location;
-- ShearSplittingEffect: Silver & Chan operator — identity for δt=0; a pulse
-  polarised along the fast axis is unchanged; along the slow axis it is
-  delayed by δt; Z untouched; energy preserved by the rotations.
+  ∝ the nuisance multiplier. Loud error when active without a source location;
+- ShearSplittingEffect: Silver & Chan operator, identity for δt=0. A pulse
+  polarised along the fast axis is unchanged. Along the slow axis it is
+  delayed by δt. Z untouched. Energy preserved by the rotations.
 """
 import numpy as np
 import pytest
@@ -46,7 +46,7 @@ def _peak(trace):
     return float(i)
 
 
-# source at origin-ish; stations ~60 km north (az 0) and ~60 km east (az 90)
+# source at origin-ish. Stations ~60 km north (az 0) and ~60 km east (az 90)
 SRC = (36.0, 25.0)
 RECS = _receivers_at((36.54, 25.0, "NORTH"), (36.0, 25.67, "EAST"))
 

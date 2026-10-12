@@ -2,10 +2,10 @@
 
 Runs the complete pipeline (stencil → compression → inference) for both:
 
-  1. NPE/SBI  – simulate 400 training examples with the linearised kernel
+  1. NPE/SBI, simulate 400 training examples with the linearised kernel
                 simulator, train a masked autoregressive flow via
                 pipeline.run_single_sbi_inversion, sample the posterior.
-  2. Gaussian likelihood MCMC – use pipeline.run_single_gaussian_likelihood_inversion
+  2. Gaussian likelihood MCMC, use pipeline.run_single_gaussian_likelihood_inversion
                 (ensemble=False: 20 independent GaussianMove chains via
                 joblib/loky, which uses cloudpickle and avoids Pool OOM).
 
@@ -63,7 +63,7 @@ pytestmark = pytest.mark.slow
 SNR_TARGET = 10.0    # σ chosen so RMS(D_fid) / σ = SNR_TARGET
 N_TRAIN = 800         # NPE training simulations
 N_MCMC_SAMPLES = 8000 # total samples (= N_WALKERS × steps per walker)
-N_MCMC_BURN_IN = 500  # burn-in per chain; starting at MLE needs very few
+N_MCMC_BURN_IN = 500  # burn-in per chain. Starting at MLE needs very few
 N_WALKERS = 20        # independent chains == num_jobs
 RNG_SEED = 42
 
@@ -100,7 +100,7 @@ def _get_sigma(D_fid):
 # ---------------------------------------------------------------------------
 
 def _analytical_posterior(compressor, D_obs):
-    """Return (θ_MLE, F⁻¹) — the exact Gaussian posterior under the kernel model."""
+    """Return (θ_MLE, F⁻¹): the exact Gaussian posterior under the kernel model."""
     return compressor.compress_data_vector(D_obs), compressor.Fisher_mat_inverse
 
 
@@ -147,7 +147,7 @@ def _run_gaussian_likelihood_inversion(
     Metropolis-Hastings chains via joblib/loky (cloudpickle serialisation —
     no Pool OOM, no pickle issues with CPS internals).
 
-    Chains start at θ_MLE; GaussianMove step size is derived from F⁻¹ so
+    Chains start at θ_MLE. GaussianMove step size is derived from F⁻¹ so
     they explore the posterior efficiently without constraining the prior.
     """
     pipeline = deepcopy(pipeline)
@@ -301,7 +301,7 @@ def _build_inference_setup(tmp, sim_params, model_params, dataset_params, data_v
     # Adaptive σ: 10:1 SNR on the fiducial seismogram
     sigma = _get_sigma(cd_raw.data_fiducial)
 
-    # Pass 2: rebuild compressor with correct σ — no stencil re-run
+    # Pass 2: rebuild compressor with correct σ: no stencil re-run
     compression_data = cd_raw
     compressor = pipeline.set_compressor("optimal_score_noise_level", cd_raw, covariance_data=sigma)
 
@@ -396,7 +396,7 @@ class TestInstaseisInference:
 
         pipeline.run_single_gaussian_likelihood_inversion runs 20 independent
         GaussianMove chains (ensemble=False) on the kernel log-likelihood.
-        Chains start at θ_MLE; step size is derived from F⁻¹.
+        Chains start at θ_MLE. Step size is derived from F⁻¹.
         The posterior is analytically Gaussian: mean = MLE, cov = F⁻¹.
         """
         s = instaseis_inference
@@ -440,7 +440,7 @@ class TestCPSInference:
     def test_gaussian_likelihood_mcmc_matches_analytical(self, cps_inference):
         """Gaussian likelihood MCMC recovers the analytical posterior (CPS kernels).
 
-        Same structure as the Instaseis test; sensitivity kernels come from
+        Same structure as the Instaseis test. Sensitivity kernels come from
         the CPS finite-difference stencil.
         """
         s = cps_inference

@@ -1,7 +1,7 @@
 """Compare a fresh source summary with the golden baseline and flag drifts.
 
 ``compare`` prints, per method in the baseline, the drift of each median against its tolerance
-and the ratio of posterior widths, and returns ``(all_pass, n_methods_compared)``; zero methods
+and the ratio of posterior widths, and returns ``(all_pass, n_methods_compared)``. Zero methods
 compared means the check did not run. As a script it exits 1 on that, and on a flagged drift
 only with ``--strict``.
 """
@@ -46,7 +46,7 @@ def compare(summary: dict, baseline: dict):
 
     A return of ``n_methods_compared == 0`` means the comparison was a no-op
     (no baseline method keys overlapped the fresh summary) and the "all_pass"
-    value is therefore meaningless — callers must treat this as an error, not
+    value is therefore meaningless: callers must treat this as an error, not
     a silent pass.
     """
     col_w = 30

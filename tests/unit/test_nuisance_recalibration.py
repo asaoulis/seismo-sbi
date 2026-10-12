@@ -1,6 +1,6 @@
 """Tests for the recalibrated nuisance effects:
 
-* AmplitudeErrorEffect: log-normal / per-component / always-on modes; legacy path unchanged.
+* AmplitudeErrorEffect: log-normal / per-component / always-on modes. Legacy path unchanged.
 * TimeShiftErrorEffect: distance-scaled per-station sigma.
 * DispersionSpreadEffect: phase-only per-octave delay operator.
 * InstaseisEnsembleSimulator: Poisson-boundary azimuthal-sector member sampling.
@@ -218,7 +218,8 @@ class TestDispersionSpread:
         assert 18.5 < sg["S1"][0] < 19.5 and 2.9 < sg["S1"][3] < 3.1
 
     def test_coherent_vs_independent_octaves(self):
-        """rho=1: all octave delays of a station share one sign; rho=0: they do not (statistically)."""
+        """``rho=1``: all octave delays of a station share one sign. ``rho=0``: they do not
+        (statistically)."""
         recs = _receivers([(0, 9.0)])
         eff1 = self._eff(octave_correlation=1.0)
         eff0 = self._eff(octave_correlation=0.0)

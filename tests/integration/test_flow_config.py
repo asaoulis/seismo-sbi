@@ -112,7 +112,7 @@ def test_flow_config_round_trips_through_model_meta(tmp_path):
                   channels=_DM, latent_dim=_DM, num_dims=6,
                   architecture="seismogram_transformer", trace_length=_T)
     assert _count_coupling_transforms(reloader.flow) == 5  # before reload
-    # load_best needs a checkpoint; emulate just the flow-rebuild half it performs.
+    # load_best needs a checkpoint. Emulate just the flow-rebuild half it performs.
     with open(out / "model_meta.json") as f:
         loaded = json.load(f)
     reloader._flow_config = loaded["flow_config"]

@@ -8,7 +8,7 @@ Covers:
   * station -> region routing over the union receivers,
   * a station absent from every region raises KeyError,
   * use_fiducial=True routes each region to ITS OWN fiducial (per-mode fiducial),
-  * INDEPENDENT-per-region member draws (seed -> seed+i; unseeded -> no seed key),
+  * INDEPENDENT-per-region member draws (seed -> seed+i, unseeded -> no seed key),
   * the refactor: MultiModelCPSSimulator stays a CPSSimulator AND a
     MultiModelSimulator and merges identically through the shared base.
 """
@@ -205,7 +205,7 @@ class TestFiducialAndSeed:
 
     def test_unseeded_call_injects_no_seed(self, multimodel):
         """Production path: seed=None must NOT be forwarded (byte-identical to the
-        historical single-class behaviour; sub-sims never see a `seed` key)."""
+        historical single-class behaviour. Sub-sims never see a `seed` key)."""
         sim, sim_a, sim_b = multimodel
         sim.generic_point_source_simulation(_dummy_source())
         assert sim_a.last_seed == "ABSENT"

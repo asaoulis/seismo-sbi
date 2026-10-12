@@ -97,7 +97,7 @@ def test_encoder_handles_zero_input(enc_name, enc_cfg, T):
 
 
 def test_input_decimator_shapes_and_band_limited_exactness():
-    """InputDecimator: output length = ceil(T/factor); on a band-limited signal the
+    """InputDecimator: output length = ceil(T/factor). On a band-limited signal the
     anti-aliased decimation matches ideal striding in the interior (no information loss)."""
     from seismo_sbi.sbi.npe.networks.station_encoders import InputDecimator
 
@@ -105,7 +105,7 @@ def test_input_decimator_shapes_and_band_limited_exactness():
     dec = InputDecimator(factor, C, antialias=True)
     assert dec.output_length(T) == (T - 1) // factor + 1 == 200
 
-    # Band-limited mix (0.03-0.08 Hz at 1 Hz sampling) — well below the post-decimation
+    # Band-limited mix (0.03-0.08 Hz at 1 Hz sampling): well below the post-decimation
     # Nyquist (0.5/3 ≈ 0.167 Hz), so striding is information-preserving.
     t = torch.arange(T, dtype=torch.float64)
     sig = sum(torch.sin(2 * math.pi * f * t + p) for f, p in [(0.03, 0.3), (0.05, 1.1), (0.08, 2.0)])
@@ -114,13 +114,13 @@ def test_input_decimator_shapes_and_band_limited_exactness():
     y = dec(x)
     assert y.shape == (2, 4, C, 200)
     ref = x[..., ::factor]
-    interior = slice(5, -5)   # edges taper from the FIR; compare the interior
+    interior = slice(5, -5)   # edges taper from the FIR. Compare the interior
     rel = (y[..., interior] - ref[..., interior]).abs().max() / ref.abs().max()
     assert rel < 1e-2, f"band-limited anti-aliased decimation drifted from ideal stride: {rel:.2e}"
 
 
 def test_input_decimator_flat_layouts_agree_and_finite():
-    """4-D (B,N,C,T) and flat (B*N,C,T) inputs decimate identically; output is finite."""
+    """4-D (B,N,C,T) and flat (B*N,C,T) inputs decimate identically. Output is finite."""
     from seismo_sbi.sbi.npe.networks.station_encoders import InputDecimator
 
     B, N, C, T = 2, 3, 3, 201
@@ -209,7 +209,7 @@ def test_input_decimation_train_inference_symmetric():
 def test_encoder_amp_safe_bf16_autocast(enc_name):
     """Every encoder must produce a finite output under a bf16 autocast (the production AMP
     path). Regression: the pno SpectralConv1d FFT has no bf16 kernel and used to raise
-    'Unsupported dtype BFloat16'; it now runs its FFT in fp32 inside the autocast region."""
+    'Unsupported dtype BFloat16'. It now runs its FFT in fp32 inside the autocast region."""
     T = 201
     enc = build_station_encoder(enc_name, num_seismic_components=_C, input_length=T,
                                 d_model=_D_MODEL, downsample=2)
@@ -222,9 +222,9 @@ def test_encoder_amp_safe_bf16_autocast(enc_name):
 @pytest.mark.parametrize("enc_name", ["cnn", "tcn", "pno"])
 def test_encoder_uniform_downsample(enc_name):
     """All three encoders accept a uniform `downsample` (cnn gained it) and produce a token
-    count of ceil(T/downsample) for cnn (same-padded) / T//downsample for tcn/pno — short-input
+    count of ceil(T/downsample) for cnn (same-padded) / T//downsample for tcn/pno: short-input
     safe (the model-entry Nyquist decimation feeds them a reduced T)."""
-    T = 67   # e.g. 201 after input_decimate=3
+    T = 67   # for example 201 after input_decimate=3
     enc = build_station_encoder(enc_name, num_seismic_components=_C, input_length=T,
                                 d_model=_D_MODEL, downsample=2)
     x = torch.randn(_BN, _C, T)
@@ -266,7 +266,7 @@ def test_transformer_handles_long_token_sequence():
 
 
 def test_tcn_even_kernel_size_rejected():
-    """DilatedTCNEncoder only preserves length for odd kernels; an even kernel must raise
+    """DilatedTCNEncoder only preserves length for odd kernels. An even kernel must raise
     a clear error at construction rather than failing the residual add at forward time."""
     with pytest.raises(ValueError, match="odd"):
         build_station_encoder(
@@ -276,7 +276,7 @@ def test_tcn_even_kernel_size_rejected():
 
 
 # ---------------------------------------------------------------------------
-# Shared amplitude primitives — numerics / behavioural contract
+# Shared amplitude primitives: numerics / behavioural contract
 # ---------------------------------------------------------------------------
 
 def test_normalize_trace_unit_peak_and_max_val():
@@ -329,7 +329,7 @@ def test_cnn_amplitude_channel_equals_log_max():
 
 def test_cnn_conv_body_scale_invariant_amp_channel_tracks_scale():
     """Scaling the input by c>0 leaves the conv body unchanged (max-abs normalisation) and
-    shifts only the log-amplitude channel by log(c) — the contract the new amplitude path
+    shifts only the log-amplitude channel by log(c): the contract the new amplitude path
     relies on (scale lives in the amplitude feature, shape in the body)."""
     from seismo_sbi.sbi.npe.networks.cnn_feature_extractor import SeismicTraceCNN
     cnn = SeismicTraceCNN(_C, input_length=201, final_layer=_D_MODEL).eval()

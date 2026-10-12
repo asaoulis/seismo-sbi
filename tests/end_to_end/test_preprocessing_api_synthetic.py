@@ -48,7 +48,7 @@ COV_WINDOW = timedelta(minutes=3)
 
 DATA_VECTOR_LEN = compute_data_vector_length(
     (EVENT_END - EVENT_START).total_seconds(), SR_TARGET
-) + 1   # 61 samples — inclusive slice at 1 Hz
+) + 1   # 61 samples: inclusive slice at 1 Hz
 
 FILTER_KWARGS = dict(freqmin=0.02, freqmax=0.1, corners=4, zerophase=False)
 
@@ -92,7 +92,7 @@ def _make_stream(
 
 
 def _make_distinct_amplitude_stream() -> Stream:
-    """BHZ amplitude 1, BHE amplitude 2, BHN amplitude 3 — for E→1/N→2 fidelity check."""
+    """BHZ amplitude 1, BHE amplitude 2, BHN amplitude 3: for E→1/N→2 fidelity check."""
     amps = {"BHZ": 1.0, "BHE": 2.0, "BHN": 3.0}
     npts = int((DATA_END - T0).total_seconds() * SR_DATA)
     t = np.arange(npts) / SR_DATA
@@ -113,7 +113,7 @@ def _make_distinct_amplitude_stream() -> Stream:
 
 
 def _write_stream_to_disk(st: Stream, data_dir: Path) -> list:
-    """Write each trace as a separate mseed file; return list of paths."""
+    """Write each trace as a separate mseed file. Return list of paths."""
     paths = []
     for tr in st:
         year = tr.stats.starttime.year
@@ -136,7 +136,7 @@ def _write_stream_to_disk(st: Stream, data_dir: Path) -> list:
 
 @pytest.fixture(scope="module")
 def processed_context(tmp_path_factory):
-    """Build a processed stream and export to h5 once; share across tests."""
+    """Build a processed stream and export to h5 once. Share across tests."""
     tmp = tmp_path_factory.mktemp("new_api_synth")
     data_dir = tmp / "raw"
     data_dir.mkdir()
@@ -598,7 +598,7 @@ class TestExportToSbiH5Schema:
                 assert sta in f["outputs"], f"{sta} missing from /outputs"
 
     def test_component_keys_are_z_1_2(self, processed_context):
-        """Outputs must contain Z, 1, 2 — never E or N."""
+        """Outputs must contain Z, 1, 2: never E or N."""
         with h5py.File(processed_context["h5"], "r") as f:
             for sta in STATIONS:
                 keys = set(f["outputs"][sta].keys())
@@ -668,10 +668,10 @@ class TestExportChannelConversionFidelity:
                 )
 
     def test_e_maps_to_1_not_2(self, distinct_h5):
-        """BHE (amplitude 2) should map to key '1'; BHN (amplitude 3) to '2'.
+        """BHE (amplitude 2) should map to key '1'. BHN (amplitude 3) to '2'.
 
         If the mapping is reversed, component '1' variance would be ~4.5 and
-        '2' would be ~2.0 — the ordering check above catches both halves.
+        '2' would be ~2.0: the ordering check above catches both halves.
         """
         tol = 0.45
         expected_1 = (2.0 ** 2) / 2   # BHE A²/2

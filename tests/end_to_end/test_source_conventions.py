@@ -3,7 +3,7 @@
 Each of the six elementary tensors is simulated at four stations 400 km from the source, band
 passed to 33-100 s. Herrmann's expansion of the vertical surface-wave displacement gives
 ``Z(m_rp) / Z(m_rt) = -tan(az)`` and ``Z(m_tp) / (Z(m_tt) - Z(m_pp)) = -tan(2 az)`` whatever the
-Earth model; an east-west mirror reverses both. The two backends must agree on the sign of every
+Earth model. An east-west mirror reverses both. The two backends must agree on the sign of every
 elementary seismogram once the Instaseis pre-origin pad is allowed for. Needs ``INSTASEIS_DB`` and
 ``CPS_PATH``.
 """

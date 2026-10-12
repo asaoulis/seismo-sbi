@@ -24,7 +24,7 @@ INSTASEIS_DB = Path(os.environ.get("INSTASEIS_DB", "/data/shared/ROSA_PREM_10s_d
 INSTASEIS_DB_20S = Path(os.environ.get("INSTASEIS_DB_20S", "/data/shared/prem_a_20s"))
 #: Relative tolerance on every printed number.
 RTOL = 1e-6
-#: Notebook to the local inputs it needs; a missing one skips the notebook.
+#: Notebook to the local inputs it needs. A missing one skips the notebook.
 NOTEBOOKS = {
     "ridgecrest_obspy": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
     "nuisances": [INSTASEIS_DB_20S, REPO / "examples" / "data" / "ridgecrest"],
@@ -34,12 +34,12 @@ NOTEBOOKS = {
     "azores_inversion": [INSTASEIS_DB, REPO / "examples" / "data" / "azores"],
     "theory_errors_LV2": [REPO / "examples" / "data", REPO / "examples" / "ml-checkpoints"],
 }
-#: Notebook to about three times its usual running time in seconds; a cell still running after
+#: Notebook to about three times its usual running time in seconds. A cell still running after
 #: that long fails the notebook, so a hung worker pool fails fast.
 TIMEOUT_S = {"ridgecrest_obspy": 120, "nuisances": 1800, "npe_flagship": 2400, "custom_forward_model": 120, "02_noise_covariances_and_likelihood": 600,
              "azores_inversion": 2400, "theory_errors_LV2": 5400}
 #: Code cells whose printed numbers change run to run (a subprocess's partly captured output,
-#: unseeded noise draws, network training, MCMC convergence warnings, git output); only whether
+#: unseeded noise draws, network training, MCMC convergence warnings, git output). Only whether
 #: they raise is compared.
 STOCHASTIC_CELLS = {"nuisances": {6, 7, 8}, "npe_flagship": {6, 7, 9, 10, 11, 12, 13, 14}, "theory_errors_LV2": {0, 2, 3, 8, 9, 11, 12, 14, 18}, "azores_inversion": {1, 9, 12, 15}}
 MASKS = [re.compile(r"[^\n\r]*(it/s|s/it|\?it)[^\n\r]*"), re.compile(r"/tmp/\S+"), re.compile(r"\d{4}-\d\d-\d\d[ T][\d:.,]+"),

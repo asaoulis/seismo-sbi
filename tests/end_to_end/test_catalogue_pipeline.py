@@ -1,4 +1,4 @@
-"""Phase 5 — Catalogue pipeline tests.
+"""Phase 5. Catalogue pipeline tests.
 
 Covers:
 - compute_event_arrival_windows  (TauPy, parallelised)
@@ -105,7 +105,7 @@ def _make_stream(
 
 
 def _write_stream_mseed(st: Stream, data_dir: Path) -> list:
-    """Write each trace in the custom_download.py layout; return paths."""
+    """Write each trace in the custom_download.py layout. Return paths."""
     paths = []
     for tr in st:
         year = tr.stats.starttime.year
@@ -202,7 +202,7 @@ class TestComputeEventArrivalWindows:
         assert len(result) == 1
         start, end = result[0]
         origin_t = UTCDateTime(EVENT_ORIGIN_TIME)
-        # First arrivals at 10 degrees take ~130–140 s; end must be after start
+        # First arrivals at 10 degrees take ~130–140 s. End must be after start
         assert end > start
         # Window should start after origin time (arrivals can't be before)
         assert start >= ev.origins[0].time
@@ -389,7 +389,7 @@ class TestCheckWindowQuality:
 
     def test_custom_completeness_threshold(self):
         st = self._good_stream()
-        # 80% completeness — passes with 0.7 threshold, fails with 0.9
+        # 80% completeness: passes with 0.7 threshold, fails with 0.9
         for tr in st.select(station="STA1"):
             tr.data = tr.data[:int(len(tr.data) * 0.8)]
         ok_low, _ = check_window_quality(
@@ -505,7 +505,7 @@ class TestCheckWindowQuality:
         """NaN injection is caught before the flat-fraction check runs."""
         st = self._good_stream()
         for tr in st.select(station="STA1"):
-            tr.data[:] = np.nan  # all NaN — would also be 0% flat fraction
+            tr.data[:] = np.nan  # all NaN: would also be 0% flat fraction
             break
         ok, reason = check_window_quality(st, STATIONS[:2], SR_TARGET, DURATION)
         assert ok is False
@@ -588,7 +588,7 @@ class TestNoiseCatalogueQualityGate:
       end-to-end without mocking.
     - NaN and flat-period corruption cannot survive an mseed integer round-trip,
       so those tests patch ``prepare_stream`` to inject the corruption *after*
-      loading and processing, simulating what would happen with e.g. a bad
+      loading and processing, simulating what would happen with for example a bad
       response removal.  This still exercises the quality-gate wiring.
     """
 
@@ -690,7 +690,7 @@ class TestNoiseCatalogueQualityGate:
             result = original_prepare(stream, *args, **kwargs)
             for tr in result.select(station="STA1", channel="BHZ"):
                 n = len(tr.data)
-                # 30% consecutive identical samples — well above 5% threshold
+                # 30% consecutive identical samples: well above 5% threshold
                 tr.data[n // 4 : n // 4 + n // 3] = -99.0
             return result
 
@@ -758,7 +758,7 @@ class TestNoiseCatalogueQualityGate:
 # ============================================================================
 
 class TestProcessDailyFiles:
-    """Unit tests for process_daily_files() — the daily-chunk preprocessing step."""
+    """Unit tests for process_daily_files(): the daily-chunk preprocessing step."""
 
     def test_creates_processed_files(self, synthetic_data, tmp_path):
         from seismo_sbi.data_handling.preprocessing.daily import process_daily_files
@@ -1055,7 +1055,7 @@ class TestBuildEventCatalogueSynthetic:
         out_dir, written = self._run(synthetic_data, events, tmp_path)
         mtime_before = written[0].stat().st_mtime
 
-        # Second run — same output dir
+        # Second run: same output dir
         out_dir2, written2 = self._run(synthetic_data, events, tmp_path)
         mtime_after = written2[0].stat().st_mtime
         assert mtime_before == mtime_after  # file not touched
@@ -1149,7 +1149,7 @@ class TestBuildEventCatalogueSynthetic:
         daily_files = list((out_dir / "_daily").rglob("*.mseed"))
         mtimes = {p: p.stat().st_mtime for p in daily_files}
 
-        # Second run — remove only the h5 to force re-slicing
+        # Second run: remove only the h5 to force re-slicing
         for h5 in out_dir.glob("*.h5"):
             h5.unlink()
 
@@ -1221,7 +1221,7 @@ class TestBuildNoiseCatalogueSynthetic:
         """More interfering events → fewer or equal noise windows."""
         _, no_events = self._run(synthetic_data, Catalog(), tmp_path / "no_ev")
 
-        # Create events spread across the noise period — avoidance should
+        # Create events spread across the noise period: avoidance should
         # reduce available windows.
         catalog = _make_catalog(n=4)
         _, with_events = self._run(
@@ -1257,7 +1257,7 @@ class TestBuildNoiseCatalogueSynthetic:
         out_dir, written = self._run(synthetic_data, Catalog(), tmp_path)
         with h5py.File(written[0], "r") as f:
             # misc group should be present (covariance_window = DURATION)
-            assert "misc" in f or True  # no-op if misc absent — just verify no crash
+            assert "misc" in f or True  # no-op if misc absent: just verify no crash
 
     def test_noise_h5_has_finite_nonzero_data(self, synthetic_data, tmp_path):
         out_dir, written = self._run(synthetic_data, Catalog(), tmp_path)
@@ -1321,7 +1321,7 @@ class TestBuildNoiseCatalogueSynthetic:
         daily_files_after_events = {p.name for p in shared_daily.rglob("*.mseed")}
         mtimes = {p: p.stat().st_mtime for p in shared_daily.rglob("*.mseed")}
 
-        # Build noise catalogue using the same processed_dir — daily files reused
+        # Build noise catalogue using the same processed_dir: daily files reused
         build_noise_catalogue(
             noise_start=DATA_T0 + timedelta(minutes=5),
             noise_end=DATA_T1 - timedelta(minutes=5),
@@ -1337,7 +1337,7 @@ class TestBuildNoiseCatalogueSynthetic:
             processed_dir=shared_daily,
             n_jobs=4,
         )
-        # No new files added; no existing files modified
+        # No new files added. No existing files modified
         daily_files_after_noise = {p.name for p in shared_daily.rglob("*.mseed")}
         assert daily_files_after_events == daily_files_after_noise
         for p in shared_daily.rglob("*.mseed"):
@@ -1686,7 +1686,7 @@ class TestCombinedCataloguePipeline:
     def test_no_h5_filename_collisions_between_event_and_noise(
         self, synthetic_data, tmp_path
     ):
-        """Event and noise output directories are separate; no cross-contamination."""
+        """Event and noise output directories are separate. No cross-contamination."""
         from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
         from seismo_sbi.data_handling.preprocessing.noise_catalogue import build_noise_catalogue
 
@@ -1981,7 +1981,7 @@ class TestBuildNoiseCatalogueReal:
 
 
 # ============================================================================
-# SBI pipeline ingestion tests — RealNoiseSampler + SimulationDataLoader
+# SBI pipeline ingestion tests. RealNoiseSampler + SimulationDataLoader
 # ============================================================================
 
 def _build_catalogue_receivers(stations, network="XX"):
@@ -2012,7 +2012,7 @@ class TestRealNoiseSamplerWithCatalogueNoise:
 
     @pytest.fixture(scope="class")
     def noise_dir(self, tmp_path_factory, synthetic_data):
-        """Build a small noise catalogue; return the output directory."""
+        """Build a small noise catalogue. Return the output directory."""
         from seismo_sbi.data_handling.preprocessing.noise_catalogue import build_noise_catalogue
 
         tmp = tmp_path_factory.mktemp("noise_sampler")
@@ -2091,7 +2091,7 @@ class TestSimulationDataLoaderWithCatalogueEvent:
 
     @pytest.fixture(scope="class")
     def event_h5_path(self, tmp_path_factory, synthetic_data):
-        """Build one event h5; return the path."""
+        """Build one event h5. Return the path."""
         from seismo_sbi.data_handling.preprocessing.catalogue_builder import build_event_catalogue
 
         tmp = tmp_path_factory.mktemp("event_loader")

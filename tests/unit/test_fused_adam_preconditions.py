@@ -1,7 +1,7 @@
 """Fused-AdamW precondition guard.
 
-torch validates the `fused=True` preconditions LAZILY — inside the first
-`optimizer.step()`, not in the constructor — so a try/except around `AdamW(...,
+torch validates the `fused=True` preconditions LAZILY, inside the first
+`optimizer.step()`, not in the constructor, so a try/except around `AdamW(...,
 fused=True)` catches nothing. Job 1342786 (`--arch pno`, ml_perf.fused_adam: true) died
 this way after ~70 minutes of sim-cache preload:
 
@@ -60,7 +60,7 @@ def test_empty_params_are_not_fused():
 
 
 def test_accepts_a_generator_not_just_a_list():
-    """self.parameters() is a generator — a naive impl would consume it twice and lie."""
+    """self.parameters() is a generator: a naive impl would consume it twice and lie."""
     gen = (_FakeParam(is_cuda=True) for _ in range(3))
     assert fused_adam_supported(gen) is True
     gen2 = (_FakeParam(is_cuda=True, complex_=(i == 2)) for i in range(3))
@@ -73,12 +73,12 @@ def test_real_torch_complex_parameter_is_detected():
     cplx = torch.nn.Parameter(torch.randn(4, dtype=torch.complex64))
     assert real.is_complex() is False
     assert cplx.is_complex() is True
-    # On CPU both are blocked by the device guard; the dtype guard is what matters on GPU.
+    # On CPU both are blocked by the device guard. The dtype guard is what matters on GPU.
     assert fused_adam_supported([real, cplx]) is False
 
 
 def test_unfused_adamw_actually_steps_with_complex_params():
-    """The fallback path must genuinely work — this is what the crashed job needed."""
+    """The fallback path must genuinely work: this is what the crashed job needed."""
     cplx = torch.nn.Parameter(torch.randn(4, dtype=torch.complex64))
     opt = torch.optim.AdamW([cplx], lr=1e-3)          # unfused, as the guard forces
     (cplx.abs() ** 2).sum().backward()

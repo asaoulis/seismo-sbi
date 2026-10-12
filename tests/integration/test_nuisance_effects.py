@@ -1,7 +1,7 @@
 """Integration tests: nuisance parameter effects through the full simulation path.
 
 These tests verify that nuisance parameters wired into Simulator.run_simulation()
-actually change the outputs produced — covering the complete path from parameter
+actually change the outputs produced, covering the complete path from parameter
 dict → run_simulation() → PostProcessingChain → flat 1-D array returned by
 input_output_simulation().
 
@@ -11,13 +11,13 @@ Fast (no forward model required):
     - MockSimulator: checks that run_simulation() routes post-proc params to the
       chain and that outputs are modified compared to a no-nuisance baseline.
     - FixedLocationKernelSimulator: uses synthetic sensitivity kernels (like the
-      compression pipeline tests) so no Instaseis DB is needed; confirms that
+      compression pipeline tests) so no Instaseis DB is needed. Confirms that
       amplitude_error and instrument_dropout change the output of a real Simulator
       subclass end-to-end.
     - input_output_simulation unbound call: confirms the whole wrapper path
       (sample nuisance → merge → simulate → flatten) is correct.
 
-Slow (require CPS or Instaseis — marked with @pytest.mark.slow):
+Slow (require CPS or Instaseis, marked with @pytest.mark.slow):
     - CPS precomputed simulator with amplitude_error: verifies that a real
       forward-model call produces outputs that differ with/without the nuisance.
 """
@@ -312,7 +312,7 @@ class TestRunSimulationWithNuisance:
 
 
 # ===========================================================================
-# Category 2: FixedLocationKernelSimulator — real Simulator subclass, fast
+# Category 2: FixedLocationKernelSimulator: real Simulator subclass, fast
 # ===========================================================================
 
 
@@ -412,7 +412,7 @@ class TestNuisanceStageRouting:
 class TestKernelSimulatorWithNuisanceChain:
     """Post-processing chain wired into FixedLocationKernelSimulator.
 
-    Uses synthetic random kernels — no Instaseis DB or CPS required.
+    Uses synthetic random kernels: no Instaseis DB or CPS required.
     """
 
     def test_amplitude_error_modifies_flat_output(self, one_station):
@@ -602,12 +602,12 @@ class TestInputOutputSimulationWithNuisance:
         })
         theta = np.array([1e14] * 6)
         result = _call_io_sim(mp, loader, nuisance_values, sim, theta)
-        # All traces were 1.0 * 3.0 = 3.0; dropout was 0 so nothing zeroed
+        # All traces were 1.0 * 3.0 = 3.0. Dropout was 0 so nothing zeroed
         assert np.allclose(result, 3.0)
 
 
 # ===========================================================================
-# Slow tests — require real CPS simulators
+# Slow tests: require real CPS simulators
 # ===========================================================================
 
 
@@ -711,7 +711,7 @@ class TestTimeShiftEffectIntegration:
         params = dict(_MT_PARAMS)
         params["time_shift_error"] = 0.0
         _, seis = sim.run_simulation(params)
-        # MockSimulator returns constant 1.0 traces; with prob=0, unchanged
+        # MockSimulator returns constant 1.0 traces. With prob=0, unchanged
         assert np.allclose(seis["STA1"]["Z"], 1.0)
 
     def test_full_probability_changes_non_constant_trace(self, two_stations):
@@ -816,7 +816,7 @@ class TestTimeShiftEffectIntegration:
         }
         theta = np.array([1e14] * 6)
 
-        # Collect multiple outputs — with prob=1 they should change across seeds
+        # Collect multiple outputs: with prob=1 they should change across seeds
         np.random.seed(99)
         result_a = _call_io_sim(mp, loader, nuisance_values, sim, theta)
         np.random.seed(100)
@@ -847,7 +847,7 @@ class TestScatteringCodaEffectIntegration:
     """End-to-end: scattering_coda nuisance through MockSimulator.run_simulation()."""
 
     def test_zero_probability_no_change(self, one_station):
-        """scattering_coda=0.0 → identity; sinusoidal trace unchanged."""
+        """scattering_coda=0.0 → identity. Sinusoidal trace unchanged."""
         sim = MockSimulator(
             one_station, amplitude=1.0,
             post_processing_effects=[ScatteringCodaEffect(alpha=0.9)]
