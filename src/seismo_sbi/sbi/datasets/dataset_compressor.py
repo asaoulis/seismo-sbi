@@ -71,7 +71,7 @@ class DatasetCompressor:
         return hessian_gradients
     
     def compress_dataset(self, simulation_data_paths, param_names, seed=None):
-        """One row ``[theta, compressed(D + noise)]`` per simulation; a ``seed`` gives each
+        """One row ``[theta, compressed(D + noise)]`` per simulation. A ``seed`` gives each
         simulation its own reproducible noise draw, in any worker.
         """
         sim_seeds = worker_seeds(seed, len(simulation_data_paths), "training noise")

@@ -24,8 +24,8 @@ class OptimalScoreOptions:
 
 @dataclass(frozen=True)
 class TheoryOptimalScoreOptions:
-    """``theory_optimal_score``: the ``data_covariance`` model at ``noise_level`` (m; None takes each event's
-    pre-event variances) plus the theory covariance, its diagonal regularised by
+    """``theory_optimal_score``: the ``data_covariance`` model at ``noise_level`` (m, where None
+    takes each event's pre-event variances) plus the theory covariance, its diagonal regularised by
     ``diag_regularisation_magnitude`` times its largest variance."""
 
     data_covariance: str = None
@@ -60,15 +60,16 @@ class SecondOrderScoreOptions:
 
 COMPRESSOR_OPTIONS = {options.compressor_type: options for options in (
     OptimalScoreOptions, TheoryOptimalScoreOptions, MultiOptimalScoreOptions, SecondOrderScoreOptions)}
-#: Compressors built from extra gradients (a theory covariance, a Hessian, other fiducials); a run has one.
+#: Compressors built from extra gradients (a theory covariance, a Hessian, other fiducials). A run
+#: has one.
 EXTRA_GRADIENT_COMPRESSORS = ("theory_optimal_score", "second_order_score", "multi_optimal_score")
 
 
 def compressor_options(compressor_type, block):
     """``(name, options)`` of one ``compression`` entry of ``compressor_type``.
 
-    An ``optimal_score`` block is ``{covariance: path}`` and is named ``optimal_score_<covariance>``;
-    any other block holds its options as keys and is named by its type.
+    An ``optimal_score`` block is ``{covariance: path}`` and is named ``optimal_score_<covariance>``.
+    Any other block holds its options as keys and is named by its type.
     """
     if compressor_type not in COMPRESSOR_OPTIONS:
         raise InvalidConfiguration(f"Invalid compression type {compressor_type}. Only "

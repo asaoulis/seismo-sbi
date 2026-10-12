@@ -19,7 +19,7 @@ class TheoryBlockDiagonalEmpiricalCovariance(BlockDiagonalCovariance):
     ``station_component_covariances`` carries the flattened theory blocks as ``data_fiducial``,
     shape (n_traces * L * L,), and their parameter derivatives as ``data_parameter_gradients``,
     shape (n_params, n_traces * L * L). With ``covariance_gradients=True`` the derivatives enter
-    the Fisher matrix and the score; by default the covariance is treated as parameter-free.
+    the Fisher matrix and the score. By default the covariance is treated as parameter-free.
     """
     inverse_metadata = None
     def __init__(

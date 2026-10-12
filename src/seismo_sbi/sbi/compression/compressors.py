@@ -18,9 +18,9 @@ def build_compressor(options, score_compression_data, simulation_parameters, lay
 
     ``covariance_data`` is the job's noise ``{station: {component: autocovariance}}``, or None to estimate
     an ``optimal_score`` covariance from the mean recorded autocovariance of the noise windows of
-    ``options.path``; ``extra_gradients`` is the
+    ``options.path``. ``extra_gradients`` is the
     theory covariance of a ``theory_optimal_score`` compressor, the Hessian of a second-order one, or the
-    ``ScoreCompressionData`` at each fixed source of a multi-point one;
+    ``ScoreCompressionData`` at each fixed source of a multi-point one.
     ``layout`` is the data vector's :class:`~seismo_sbi.sbi.noises.covariances.CovarianceLayout`.
     """
     ctype = options.compressor_type

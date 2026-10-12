@@ -1,6 +1,6 @@
 """Block-diagonal covariances with one stationary (Toeplitz) block per trace.
 
-``BlockDiagonalCovariance`` solves the Toeplitz systems; its subclasses build each block's first
+``BlockDiagonalCovariance`` solves the Toeplitz systems. Its subclasses build each block's first
 column from a measured autocovariance (empirical), a band-limited white-noise model (filtered)
 or the Kolb damped-cosine model.
 """

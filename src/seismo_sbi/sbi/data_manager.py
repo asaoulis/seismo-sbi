@@ -29,7 +29,7 @@ class DataManager:
 
     def compress_dataset(self, compressor, param_names, simulations_output_path, synthetic_noise_model_sampler,
                          seed = None):
-        """Compress every simulation under ``simulations_output_path/train``, in file-name order;
+        """Compress every simulation under ``simulations_output_path/train``, in file-name order.
         ``seed`` fixes each simulation's noise draw.
         """
         sims_paths = sorted((Path(simulations_output_path) / 'train').glob(f"{SIMULATION_FILE_PREFIX}*"))
@@ -65,7 +65,7 @@ class DataManager:
         return synthetic_jobs
 
     def _create_job_data_from_real_events(self, real_event_jobs, test_noises, data_length=None):
-        """``JobData`` for each real event under each test-noise name; ``data_length`` truncates
+        """``JobData`` for each real event under each test-noise name. ``data_length`` truncates
         every trace to that many samples, None keeps the recorded length."""
         real_jobs = []
         for real_event_name, real_event_data in real_event_jobs.items():
@@ -136,7 +136,7 @@ class DataManager:
 
     def compression_data_at_fixed_source(self, model_parameters : ModelParameters, fiducial):
         """The compression data at the source ``fiducial`` ``{parameter: values}``, which names every
-        inferred parameter; computed once per source and nuisance."""
+        inferred parameter. Computed once per source and nuisance."""
         missing = set(model_parameters.theta_fiducial) - set(fiducial)
         if missing:
             raise InvalidConfiguration(f"multi_optimal_score fiducial {fiducial} lacks {sorted(missing)}.")

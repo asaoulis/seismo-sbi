@@ -33,7 +33,7 @@ class IterativeLeastSquaresSolver:
         self.least_squares_configuration = least_squares_configuration
 
         self.num_parallel_jobs = num_parallel_jobs
-        #: Seeds the theory-covariance realisations of each iteration; None leaves them unseeded.
+        #: Seeds the theory-covariance realisations of each iteration. None leaves them unseeded.
         self.seed = None
 
     @error_handling_wrapper(num_attempts=3)
@@ -44,7 +44,7 @@ class IterativeLeastSquaresSolver:
         Each iteration recomputes the score compression at the current model and takes a damped
         Gauss-Newton step. A step that raises chi^2 is rejected: the model returns to the last
         accepted point and the damping grows tenfold. An accepted step divides the damping by ten
-        (with ``dynamic_damping``; otherwise the damping is kept), and the iterations stop once
+        (with ``dynamic_damping``, otherwise the damping is kept), and the iterations stop once
         an accepted step lowers chi^2 by less than ``chi2_tolerance`` of its value. With
         ``single_step`` two undamped Gauss-Newton steps are taken and nothing is rejected.
         The stencils are those of ``compression_methods``, the ``(name, options)`` pairs of the
@@ -122,7 +122,7 @@ class IterativeLeastSquaresSolver:
 
     @staticmethod
     def _set_compressor(compressor, score_compression_data, extra_gradients):
-        """Point ``compressor`` at the score compression of one model; its prior is kept."""
+        """Point ``compressor`` at the score compression of one model. Its prior is kept."""
         if extra_gradients is not None:
             compressor.set_extra_gradients(extra_gradients)
         compressor.set_compression_variables(score_compression_data)

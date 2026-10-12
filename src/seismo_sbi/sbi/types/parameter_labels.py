@@ -1,6 +1,6 @@
 """Display names, units and unit conversions for posterior parameters.
 
-:class:`ParameterInformation` pairs a parameter with its label, unit and a scaling transform;
+:class:`ParameterInformation` pairs a parameter with its label, unit and a scaling transform.
 :class:`DegreeKMConverter` turns latitude and longitude offsets into kilometres.
 """
 
@@ -17,7 +17,7 @@ class DegreeType(Enum):
 
 
 class DegreeKMConverter():
-    """Kilometres from ``minimum_deg_value`` along ``degree_type``; a degree of longitude is
+    """Kilometres from ``minimum_deg_value`` along ``degree_type``. A degree of longitude is
     ``KM_PER_DEG * cos(reference_latitude_deg)`` long."""
 
     def __init__(self, minimum_deg_value, degree_type : DegreeType, reference_latitude_deg):

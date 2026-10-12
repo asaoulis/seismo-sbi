@@ -146,7 +146,7 @@ class SingleEventPipeline(SBIPipeline):
     def find_mle_with_mcmc_and_set_compressor(self, likelihood_config, single_job, covariance, prior, mle_start = None,
                                               compressor_name="theory_optimal_score"):
         """Refine the MLE with a Gaussian-likelihood chain of the compressor ``compressor_name`` and re-centre
-        the compressor on it; returns the compression data there."""
+        the compressor on it. Returns the compression data there."""
         use_best = likelihood_config.mle_use_best
         logger.info('Finding MLE with MCMC, use_best: %s', use_best)
         MLE_likelihood_config = replace(likelihood_config, walker_burn_in=30 if use_best else 300,
@@ -187,7 +187,7 @@ class SingleEventPipeline(SBIPipeline):
 
     def run_single_sbi_inversion(self, sbi_method, dataset_details, theta0, compression_data, prior, compressor_name: str = None,
                                  data_vector=None):
-        """Train an NPE on the compressed simulations and sample it at the data; returns
+        """Train an NPE on the compressed simulations and sample it at the data. Returns
         ``(inversion_data, job_result, sbi_model)``. ``data_vector`` is the observation, needed when
         the compressor's summary is not a parameter estimate.
         """
@@ -247,7 +247,7 @@ class SingleEventPipeline(SBIPipeline):
         return train_data, raw_compressed_dataset
 
     def find_mle_and_set_compressor(self, data_vector, covariance_data, prior, dataset_details, extra_gradients=None, compressor_name: str = None):
-        """Find the MLE by iterative least squares and re-centre the compressor on it; returns the
+        """Find the MLE by iterative least squares and re-centre the compressor on it. Returns the
         compression data at the MLE.
         """
         logger.info("Starting MLE")
@@ -310,7 +310,7 @@ class SingleEventPipeline(SBIPipeline):
     def run_single_gaussian_likelihood_inversion(self, single_job, likelihood_config, compressor_name, parameters, prior=None, mle_start = None, seed = None,
                                                  return_log_prob=False):
         """Sample the Gaussian-likelihood posterior of one job with emcee, as ``likelihood_config``
-        (:class:`~seismo_sbi.sbi.configuration.LikelihoodConfiguration`) sets; yields
+        (:class:`~seismo_sbi.sbi.configuration.LikelihoodConfiguration`) sets. Yields
         ``(None, inversion_result)``, with the log-probabilities when ``return_log_prob`` is set.
         """
 

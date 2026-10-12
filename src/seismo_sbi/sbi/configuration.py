@@ -93,7 +93,7 @@ class PlotsConfiguration:
 class SBI_Configuration:
     """Every option of a pipeline YAML file, parsed once into typed records.
 
-    Build it with :meth:`from_file`; the parsed blocks are attributes (``pipeline_parameters``,
+    Build it with :meth:`from_file`. The parsed blocks are attributes (``pipeline_parameters``,
     ``model_parameters``, ``sim_parameters``, ``dataset_parameters``, ``compression_methods``,
     ``sbi_method``, ``test_job_simulations``, ``training`` and the like).
     """
@@ -101,16 +101,16 @@ class SBI_Configuration:
     parameter_types = [
         # Core source parameters
         "source_location", "earthquake_magnitude", "moment_tensor", "velocity_model",
-        # Simulator-level nuisance (Category 1 — modify forward model inputs)
+        # Simulator-level nuisance (Category 1: modify forward model inputs)
         "stf_duration",
-        # Post-processing nuisance (Category 2 — modify synthetic seismograms)
+        # Post-processing nuisance (Category 2: modify synthetic seismograms)
         "amplitude_error", "instrument_dropout", "scattering_coda", "time_shift_error",
         # Per-octave dispersion-spread phase delays (DispersionSpreadEffect)
         "dispersion_spread",
-        # Post-noise augmentation (applied after sensor noise; see ComponentDropoutEffect)
+        # Post-noise augmentation (applied after sensor noise. See ComponentDropoutEffect)
         "component_dropout",
         # Conditioning augmentation (perturbs the source-location CONDITIONING vector in the ML
-        # dataloader, NOT the waveform; see CONDITIONING_AUGMENTABLE_KEYS).
+        # dataloader, NOT the waveform. See CONDITIONING_AUGMENTABLE_KEYS).
         "source_location_error",
     ]
 
@@ -130,7 +130,7 @@ class SBI_Configuration:
         "source_location_error": ["source_location_error"],
     }
 
-    #: YAML keys consumed by the parameter machinery — any other keys in a
+    #: YAML keys consumed by the parameter machinery: any other keys in a
     #: nuisance config block are treated as effect-level constructor kwargs
     #: and stored in ``ModelParameters.nuisance_effect_config``.
     _STANDARD_NUISANCE_KEYS = frozenset({"fiducial", "bounds", "stage"})
@@ -148,7 +148,7 @@ class SBI_Configuration:
         self.model_parameters = ModelParameters()
         self.sim_parameters = None
         # compression_methods is a list of (full_key, options) where full_key is
-        # the final compressor name used everywhere, e.g. 'optimal_score_filtered_block'
+        # the final compressor name used everywhere, for example 'optimal_score_filtered_block'
         self.compression_methods = []
 
         self.dataset_parameters = None
@@ -182,7 +182,7 @@ class SBI_Configuration:
         """Parse ``config_file`` into a configuration object.
 
         ``output_directory`` replaces the configured ``output_directory`` and ``database_path`` the
-        Instaseis database path (``seismic_context.syngine_address``); None keeps the file's value.
+        Instaseis database path (``seismic_context.syngine_address``). None keeps the file's value.
         """
         configuration = cls()
         configuration.parse_config_file(config_file)
@@ -217,7 +217,7 @@ class SBI_Configuration:
     
     def parse_main_options(self, config):
         # Filter to PipelineParameters' known fields so that top-level scalar keys belonging
-        # to another part of the configuration (e.g. `ml_architecture`) do not break it.
+        # to another part of the configuration (for example `ml_architecture`) do not break it.
         known = {k: v for k, v in config.items() if k in PipelineParameters._fields}
         self.pipeline_parameters = PipelineParameters(**known)
 

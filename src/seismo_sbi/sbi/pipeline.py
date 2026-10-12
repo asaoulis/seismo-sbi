@@ -42,7 +42,7 @@ class SBIPipeline:
     """The simulate-compress-invert method for one run, configured from an ``SBI_Configuration``.
 
     Holds the parameters, simulator wrapper, data manager, compressors, covariances and noise
-    samplers that the steps share; outputs go under ``<output_directory>/<run_name>/<job_name>``
+    samplers that the steps share. Outputs go under ``<output_directory>/<run_name>/<job_name>``
     and simulations under ``<output_directory>/sims/<run_name>/<job_name>``.
     """
 
@@ -81,7 +81,8 @@ class SBIPipeline:
         self.trace_length = None
         self.compressors = {}
         self.compression_methods = None
-        #: Seeds the SBI leg (covariance realisations, MLE chains, training set, NPE training); None leaves it unseeded.
+        #: Seeds the SBI leg (covariance realisations, MLE chains, training set, NPE training).
+        #: None leaves it unseeded.
         self.seed = None
         self.score_compression_data = None
         self.extra_gradients = None
@@ -142,7 +143,7 @@ class SBIPipeline:
     def load_compressors(self, compression_methods : dict, score_compression_data, prior=None, covariance_data=None, extra_gradients = None):
 
         """Build every compressor of ``compression_methods``, a list of ``(name, options)`` pairs where
-        ``name`` is the final compressor name (e.g. ``'optimal_score_filtered_block'``).
+        ``name`` is the final compressor name (for example ``'optimal_score_filtered_block'``).
         """
         for full_key, options in compression_methods:
             self.compressors[full_key] = build_compressor(
@@ -167,7 +168,8 @@ class SBIPipeline:
 
     def set_compressor(self, compressor_name, compression_data, extra_gradients=None, covariance_data=None, prior=None):
         """Build the configured compressor ``compressor_name`` around ``compression_data``, store it in
-        ``compressors`` and return it; ``covariance_data`` is the job's noise, None for the configured one."""
+        ``compressors`` and return it. ``covariance_data`` is the job's noise, None for the
+        configured one."""
         compressor = build_compressor(self.compressor_options(compressor_name), compression_data,
                                       self.simulation_parameters, self.covariance_layout(),
                                       covariance_data=covariance_data, extra_gradients=extra_gradients, prior=prior)
@@ -217,7 +219,8 @@ class SBIPipeline:
             self.training_noise_sampler.rescale_to(covariance_data)
 
     def compute_required_compression_data(self, compression_methods, model_parameters : ModelParameters, rerun_if_stencil_exists = True):
-        """Run the derivative stencils the compression methods need; returns the compression data."""
+        """Run the derivative stencils the compression methods need. Returns the compression
+        data."""
         return self.data_manager.compute_required_compression_data(model_parameters, compression_methods, self.simulator_wrapper, self.simulation_parameters, seed=self.seed)
     
     def use_kernel_simulator_if_possible(self, score_compression_data, sampling_methods : dict):
@@ -243,7 +246,7 @@ class SBIPipeline:
         dataset_generator.run_and_save_simulations(parameter_sampler.draw_simulation_inputs(num_simulations), output_paths)
 
     def simulate_test_jobs(self, dataset_parameters : DatasetGenerationParameters, test_jobs : TestJobs):
-        """Simulate the random, fixed-mechanism and custom test events; returns their HDF5 paths."""
+        """Simulate the random, fixed-mechanism and custom test events. Returns their HDF5 paths."""
         parameter_sampler = ParameterSampler.from_configuration(self.parameters, dataset_parameters.sampling_method)
         dataset_generator = DatasetGenerator(self.simulator_wrapper.simulation_save_callable, self.num_parallel_jobs)
 

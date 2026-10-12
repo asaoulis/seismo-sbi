@@ -34,7 +34,7 @@ class GaussianCompressor(Compressor):
     """Score compression under a Gaussian likelihood.
 
     Built from the fiducial data, its parameter gradients (``ScoreCompressionData``) and a noise
-    covariance; compresses a data vector to the quasi-maximum-likelihood estimate
+    covariance. Compresses a data vector to the quasi-maximum-likelihood estimate
     ``theta_fiducial + F^-1 score``, with :meth:`compute_score` giving the score itself. A
     :class:`~seismo_sbi.sbi.inversion.gaussian_prior.GaussianPrior` ``prior`` adds its precision to
     ``F`` and its score to the score, so the estimate is the maximum of the posterior.
@@ -152,7 +152,7 @@ class MultiPointGaussianCompressor(GaussianCompressor):
     """Score compression at the run's fiducial source and at fixed other sources: the
     quasi-maximum-likelihood estimate from each, ``n (1 + n_points)`` numbers for ``n`` parameters.
 
-    The maximum-likelihood search moves the run's fiducial only; ``point_compression_datas`` are the
+    The maximum-likelihood search moves the run's fiducial only. ``point_compression_datas`` are the
     ``ScoreCompressionData`` at the fixed sources.
     """
 
@@ -179,7 +179,7 @@ class SecondOrderCompressor(GaussianCompressor):
     """Second-order score compression: the score ``G C^-1 r`` and the data part of the Hessian of the
     log-likelihood ``H C^-1 r``, ``n + n^2`` numbers for ``n`` parameters.
 
-    ``r = D - D_fiducial``; ``G`` ``(n, n_data)`` are the data's parameter gradients and ``hessian``
+    ``r = D - D_fiducial``. ``G`` ``(n, n_data)`` are the data's parameter gradients and ``hessian``
     ``H`` ``(n, n, n_data)`` its second derivatives at the fiducial source. The maximum-likelihood
     search uses the first-order compression it inherits.
     """

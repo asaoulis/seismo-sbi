@@ -43,7 +43,8 @@ def tqdm_joblib(tqdm_object):
 
 def run_tasks(func, args_list, num_jobs, description):
     """``[func(*args) for args in args_list]``, serially for ``num_jobs`` None, 0 or 1, else on
-    ``num_jobs`` loky workers behind a ``description`` progress bar; the worker pool is killed afterwards."""
+    ``num_jobs`` loky workers behind a ``description`` progress bar. The worker pool is killed
+    afterwards."""
     if num_jobs in [None, 0, 1]:
         return [func(*args) for args in args_list]
     try:
@@ -54,14 +55,17 @@ def run_tasks(func, args_list, num_jobs, description):
         logger.warning(f"{description} failed.")
         raise
     finally:
-        # reuse=True kills the pool Parallel used; with default arguments loky would first
+        # reuse=True kills the pool Parallel used. With default arguments loky would first
         # restart that pool gracefully, which can hang on a worker that never exits.
         get_reusable_executor(reuse=True).shutdown(wait=True, kill_workers=True)
 
 
 @contextlib.contextmanager
 def gc_paused_in_notebooks():
-    """Inside a Jupyter kernel, pause garbage collection while worker processes are forked; outside a kernel nothing changes."""
+    """Inside a Jupyter kernel, pause garbage collection while worker processes are forked.
+
+    Outside a kernel nothing changes.
+    """
     if "ipykernel" not in sys.modules or not gc.isenabled():
         yield
         return

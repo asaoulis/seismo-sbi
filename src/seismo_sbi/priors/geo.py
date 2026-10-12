@@ -3,7 +3,7 @@
 These equirectangular approximations hold over the small extent of a single seismic
 sequence (tens of km). They are used by the
 catalogue source-location prior to apply a Gaussian perturbation specified in
-kilometres.  A reference point fixes the local tangent plane; the longitude scale
+kilometres.  A reference point fixes the local tangent plane. The longitude scale
 uses ``cos(ref_lat)`` so the forward and inverse transforms round-trip exactly for
 that reference latitude.
 """

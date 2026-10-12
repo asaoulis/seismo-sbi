@@ -18,7 +18,7 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
     """Per-trace theory-error covariance estimated from an ensemble simulator.
 
     One realisation per ensemble member, each member visited exactly once in ``members`` order,
-    demeaned against the reference member or the ensemble mean; the result is a
+    demeaned against the reference member or the ensemble mean. The result is a
     ``(n_samples, n_samples)`` covariance per trace, returned in the shape of a simulation map.
     """
 
@@ -29,7 +29,7 @@ class EnsembleTheoryCovarianceEstimationSimulator(Simulator):
         self.data_flattening_callable = data_flattening
         self.num_traces = len([comp for rec in self.receivers.iterate() for comp in rec.components])
         self.covariance_mean = covariance_mean
-        #: Seeds each realisation's other random draws when set; None leaves them unseeded.
+        #: Seeds each realisation's other random draws when set. None leaves them unseeded.
         self.seed = None
         self.num_jobs = internal_jobs
         self.receivers.set_time_shifts({rec.station_name: 0 for rec in self.simulator.receivers.iterate()})
