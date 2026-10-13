@@ -5,6 +5,8 @@ are rotated to true north and east with the inventory azimuths. Channels coded N
 at face value.
 """
 
+from fractions import Fraction
+
 from obspy import Stream, Inventory
 
 _DEFAULT_PREFILTER = dict(
@@ -53,9 +55,23 @@ def deconvolve_and_filter(
     st = st.filter("bandpass", **filt_kw)
 
     if target_sr is not None:
-        st = st.resample(target_sr)
+        st = resample_on_input_grid(st, target_sr)
 
     return st
+
+
+def resample_on_input_grid(stream: Stream, target_sr: float) -> Stream:
+    """``stream`` resampled to ``target_sr`` Hz, each trace first trimmed at its end to a whole
+    number of output samples.
+
+    The output keeps each trace's start time and an exact spacing of ``1 / target_sr``, so its
+    samples sit on the input's time grid.
+    """
+    for trace in stream:
+        rate_ratio = Fraction(target_sr).limit_denominator(10**6) / Fraction(
+            trace.stats.sampling_rate).limit_denominator(10**6)
+        trace.data = trace.data[: trace.stats.npts - trace.stats.npts % rate_ratio.denominator]
+    return stream.resample(target_sr)
 
 
 def rotate_horizontals_to_north_east(stream: Stream, inventory: Inventory = None) -> Stream:
